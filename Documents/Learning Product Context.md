@@ -1,11 +1,13 @@
 # Learning Product Context (Refinement)
 
-**Version:** 1.1
+**Version:** 1.2
 
 **New Capabilities Added:**
 
 - Learning Asset
 - Product Content Strategy
+
+> **Revision Note (v1.2):** Reconciled Learning Asset ownership with Learning Asset Aggregate Design, which is the authoritative source for asset ownership. Learning Product Context does not own Learning Assets or the Asset Library's underlying data — it curates and selects from assets owned by **Learning Asset Management Context**. Section 9's ownership table and Section 7's lifecycle diagram have been corrected accordingly (see notes in place).
 - Reusable Content Model
 
 ---
@@ -145,6 +147,8 @@ Module 2
 
 A Learning Asset is a reusable educational resource that can be used across multiple learning products and experiences.
 
+**Ownership note:** The Learning Asset itself — file, technical metadata, and AI enrichment — is owned exclusively by **Learning Asset Management Context** (see Learning Asset Aggregate Design). Learning Product Context references and curates assets by identifier; it does not own the underlying resource.
+
 ---
 
 Examples:
@@ -209,7 +213,7 @@ AI Study Guide
 
 ## Definition
 
-The Learning Asset Library is the collection of reusable educational resources owned by a Learning Workspace.
+The Learning Asset Library is the curated collection of Learning Assets available for use within a Learning Workspace. The Library is a Workspace-scoped **view** over assets owned by Learning Asset Management Context (each asset carries a `WorkspaceId`); Learning Product Context does not own the assets it lists, only the act of selecting and organizing them for product use.
 
 ---
 
@@ -373,7 +377,9 @@ Reusable Asset Library
 
 ---
 
-# 7. Learning Asset Lifecycle
+# 7. Learning Asset Lifecycle (Product Curation View)
+
+> **Note:** This diagram describes how an asset moves through Learning Product Context's *curation workflow* — it is not the asset's own technical processing lifecycle. The authoritative asset lifecycle (Uploaded → Processing → Ready → Archived) is owned by Learning Asset Management Context and defined in Learning Asset Aggregate Design. An asset must reach "Ready" in that lifecycle before it can enter "Created" below.
 
 ```
 Created
@@ -449,15 +455,29 @@ Draft outputs
 
 ---
 
+## Learning Asset Management Context owns:
+
+```
+Approved learning assets (the asset itself, once AI drafts are accepted)
+
+Asset technical metadata
+
+Asset AI enrichment
+```
+
+---
+
 ## Learning Product Context owns:
 
 ```
-Approved learning assets
-
 Product structure
 
 Content selection
+
+Which approved assets are included in which product
 ```
+
+Learning Product Context references approved assets by identifier; it does not own the asset record itself. Approval transitions the asset's own lifecycle state within Learning Asset Management Context (see Section 7 note below) — it is not a Learning Product Context action on the asset's data.
 
 ---
 

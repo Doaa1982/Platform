@@ -1,10 +1,12 @@
 # Learning Delivery Context (Refinement)
 
-**Version:** 1.1
+**Version:** 1.2
 
 **New Capability Added:**
 
 - Interactive Learning Events
+
+> **Revision Note (v1.2):** Clarified that Learning Asset ownership belongs exclusively to Learning Asset Management Context (see Learning Asset Aggregate Design). Section 3.3's "Ownership" note previously read "Learning Delivery owns the use of assets," which was ambiguous and read by some as data ownership. This has been corrected to explicitly scope Learning Delivery's responsibility to sequencing and timeline placement, not the asset itself.
 
 ---
 
@@ -175,9 +177,11 @@ Flashcard
 
 ## Ownership
 
-Learning Delivery owns the use of assets.
+Learning Delivery Context does **not** own Learning Assets. The Learning Asset itself — the underlying file, technical metadata, and AI enrichment (transcript, chapters, keywords) — is owned exclusively by **Learning Asset Management Context**, per Learning Asset Aggregate Design.
 
-AI Context may generate or enhance assets.
+Learning Delivery Context owns only the *use* of an asset within a learning experience: which asset appears, in what sequence, at what point in the timeline, and alongside which Interactive Learning Events. It references the asset by `LearningAssetId` and never duplicates or modifies the underlying resource.
+
+AI Context may generate or enhance assets, but the resulting enrichment is persisted against the Learning Asset itself (owned by Learning Asset Management Context), not against the Lesson or Learning Delivery record.
 
 ---
 
@@ -466,6 +470,22 @@ Learner Interaction
 
 Completion Tracking
 ```
+
+---
+
+## Learning Asset Management Context Owns (Referenced, Not Owned, by Learning Delivery)
+
+```
+Learning Asset file
+
+Technical metadata
+
+AI enrichment (transcript, chapters, keywords)
+
+Asset lifecycle
+```
+
+Learning Delivery references these by `LearningAssetId` only. See Learning Asset Aggregate Design.
 
 ---
 

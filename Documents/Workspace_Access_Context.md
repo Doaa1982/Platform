@@ -1,14 +1,17 @@
-# Membership Context
+# Workspace Access Context
 
-**Version:** 1.0 (Draft)
+**Version:** 1.1 (Draft)
 
 **Bounded Context Type:** Supporting Domain
 
 **Domain Classification:** Strategic Supporting Context
 
+> **Revision Note (v1.1):** This document was previously titled "Membership Context." It has been renamed **Workspace Access Context** and its scope extended to explicitly include Onboarding and Workspace Sessions, aligning it with the canonical Identity/Workspace Access split defined in Identity & Workspace Access Architecture and reflected in the Bounded Context Map (v1.1) and Bounded Context Identification (v1.1). No prior content has been removed — "Membership," "Workspace Membership," and "Member" remain the core concepts owned by this context; only the context's name and boundary documentation have been clarified.
+
 **Related Documents**
 
 - Learning Workspace Domain Language & Business Ontology
+- Identity & Workspace Access Architecture (canonical source for the Identity / Workspace Access boundary)
 - Workspace Context
 - Learning Workspace Capability Model
 - Learning Workspace Value Streams
@@ -19,7 +22,7 @@
 
 ## Definition
 
-The Membership Context manages the relationship between people and Learning Workspaces.
+The Workspace Access Context manages the relationship between people and Learning Workspaces.
 
 It answers:
 
@@ -66,13 +69,15 @@ Memberships
 
 # 3. Business Responsibility
 
-The Membership Context owns:
+The Workspace Access Context owns:
 
 - Workspace membership
 - Membership lifecycle
 - Workspace roles
 - Access relationship
 - Invitations
+- Onboarding requests
+- Workspace sessions
 - Membership status
 
 ---
@@ -81,11 +86,11 @@ The Membership Context owns:
 
 ---
 
-# 4.1 Platform Identity
+# 4.1 Platform Identity (Reference Only — Owned by Identity Context)
 
 ## Definition
 
-A Platform Identity represents a unique person recognised by the platform.
+A Platform Identity represents a unique person recognised by the platform. This concept is owned entirely by **Identity Context**; it is described here only to clarify the boundary with Workspace Access Context.
 
 It exists independently from any workspace.
 
@@ -270,16 +275,38 @@ Expired
 
 ---
 
+# 4.6 Onboarding Request
+
+## Definition
+
+An Onboarding Request represents a person's intention to join a Workspace after accepting an Invitation, and exists before Workspace Membership is created.
+
+Onboarding depends on Identity Resolution (determining whether the person already owns an Identity), which is performed by Identity Context. Onboarding never creates a Membership directly — see Identity & Workspace Access Architecture, Section II, for the full lifecycle.
+
+---
+
+# 4.7 Workspace Session
+
+## Definition
+
+A Workspace Session represents an authenticated Identity actively participating inside one specific Workspace. It is created only after Identity authentication succeeds and an active Workspace Membership is validated.
+
+A Workspace Session always belongs to exactly one Workspace and activates that Workspace's branding, navigation, permissions, and AI configuration. See Identity & Workspace Access Architecture, Section II, for the full session lifecycle and creation rules.
+
+---
+
 # 5. Owned Data
 
-The Membership Context is the source of truth for:
+The Workspace Access Context is the source of truth for:
 
 | Data | Owner |
 |-|-|
-| Workspace Membership | Membership Context |
-| Member status | Membership Context |
-| Workspace roles | Membership Context |
-| Invitations | Membership Context |
+| Workspace Membership | Workspace Access Context |
+| Member status | Workspace Access Context |
+| Workspace roles | Workspace Access Context |
+| Invitations | Workspace Access Context |
+| Onboarding Requests | Workspace Access Context |
+| Workspace Sessions | Workspace Access Context |
 
 ---
 
@@ -548,7 +575,7 @@ Guest instructor for one programme.
 
 # 12. Architectural Notes
 
-The Membership Context provides the access relationship between people and workspaces.
+The Workspace Access Context provides the access relationship between people and workspaces.
 
 It should not contain:
 

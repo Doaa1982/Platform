@@ -1,8 +1,14 @@
 # Learning Workspace Bounded Context Map
 
-**Version:** 1.0
+**Version:** 1.3
 
 **Document Type:** Domain Architecture Document
+
+> **Revision Note (v1.1):** Section 5.2 "Identity & Membership Context" has been split into two contexts — **Identity Context** and **Workspace Access Context** — to align with the canonical split established in Identity & Workspace Access Architecture. Identity (authentication, credentials, global profile) is platform-owned infrastructure; Workspace Access (invitations, onboarding, membership, roles, sessions) is Workspace-owned. See Membership_Context.md, which has been reconciled to represent the Workspace Access Context specifically. Subsequent sections have been renumbered accordingly.
+>
+> **Revision Note (v1.2):** Former Section 5.8 "Interactive Learning Authoring Context" has been retired as a standalone bounded context. It was never reflected as a real ownership boundary in Lesson Revision Aggregate Design or the Platform Aggregate Catalogue, both of which assign interactive learning events to the Lesson / Lesson Revision aggregate under Learning Delivery Context. Interactive learning authoring is now documented as a capability of Learning Delivery Context. The Context Landscape Overview diagram (Section 3) and Core Domain composition (Section 4) have been updated accordingly. Sections renumbered from 5.8 onward.
+>
+> **Revision Note (v1.3):** Added a new Section 5.4 "Enrollment Context." Enrollment was previously referenced as a dependency throughout the corpus (Membership, Assignment, Assessment, Learning Delivery) and appears as an Aggregate Root in the Platform Aggregate Catalogue, but had no formal Bounded Context definition. It has been placed immediately after Workspace Access Context in both the landscape diagram and the numbered definitions, reflecting its dependency on an active Workspace Membership. All subsequent sections renumbered accordingly. A companion Enrollment Aggregate Design document has now been authored — see Enrollment_Aggregate_Design.md.
 
 **Purpose:**
 
@@ -54,8 +60,13 @@ A context should answer:
           |                                              |
           v                                              v
 
- Identity & Membership                         Tutor Workspace Experience
+ Identity Context                              Tutor Workspace Experience
           |                                              |
+          v                                              |
+ Workspace Access Context                                |
+          |                                              |
+          v                                              |
+ Enrollment Context                                       |
           |                                              |
           +----------------------+-----------------------+
                                  |
@@ -74,12 +85,8 @@ A context should answer:
 
  Learning Delivery Context
              |
-             |
-             v
-
- Interactive Learning Events
-             |
-             |
+             | (includes Interactive Learning Events
+             |  as a capability, not a separate context)
              v
 
  Assessment Context
@@ -94,6 +101,8 @@ Supporting Contexts:
 
 AI Context provides intelligence across learning domains.
 ```
+
+Note: Identity Context, Workspace Access Context, and Enrollment Context are shown as sequential boxes because each depends on the one before it (an authenticated Identity, then an active Workspace Membership, then a registered Enrollment), but they are three separate bounded contexts with distinct ownership — see sections 5.2, 5.3, and 5.4.
 
 ---
 
@@ -122,6 +131,8 @@ Tutor Workspace Experience
 
 Learning Asset Intelligence
 ```
+
+Note: "Interactive Learning Authoring" here names a **capability** — delivered through Learning Delivery Context (specifically the Lesson Revision aggregate) and powered by AI Capability composition — not a separate bounded context. See Section 5.8 and the retirement note within it.
 
 ---
 
@@ -153,33 +164,98 @@ Manages the creation and configuration of independent Learning Workspaces.
 
 ---
 
-# 5.2 Identity & Membership Context
+# 5.2 Identity Context
 
 ## Purpose
 
-Manages people and their relationships with workspaces.
+Manages the lifelong, platform-owned digital identity of a person, independent of any Workspace.
 
 ---
 
 ## Owns
 
-- User identity
-- Roles
-- Permissions
-- Membership relationships
-- Teacher membership
-- Learner membership
-- Parent relationships
+- Person identity
+- Credentials and authentication
+- External login providers
+- Identity verification and resolution
+- Global profile
+- Professional identity, reputation, and portfolio
 
 ---
 
 ## Business Question
 
-> "Who belongs to this learning environment?"
+> "Who is this person, globally, across every Workspace they touch?"
 
 ---
 
-# 5.3 Tutor Workspace Experience Context
+## Does Not Own
+
+Roles, permissions, and Workspace-specific membership belong to the Workspace Access Context (5.3), not Identity Context. Identity survives the removal of every Workspace Membership.
+
+---
+
+# 5.3 Workspace Access Context
+
+## Purpose
+
+Manages how an authenticated Identity gains access to, and participates in, a specific Workspace.
+
+---
+
+## Owns
+
+- Workspace invitations
+- Onboarding requests
+- Workspace membership relationships
+- Roles (Teacher, Learner, Parent, Administrator, etc.) — Workspace-scoped
+- Permissions
+- Workspace sessions
+
+---
+
+## Business Question
+
+> "Who belongs to this Workspace, and what can they do inside it?"
+
+---
+
+## Does Not Own
+
+Credentials, passwords, and authentication belong to Identity Context (5.2). Workspace Access Context authorizes participation; it never authenticates.
+
+---
+
+# 5.4 Enrollment Context
+
+## Purpose
+
+Registers an active Workspace Member into one or more Learning Products, distinct from Workspace membership itself.
+
+---
+
+## Owns
+
+- Enrollment records
+- Enrollment lifecycle (Invited → Active → Completed / Cancelled)
+- Learner-to-Learning-Product registration
+- Enrollment eligibility rules
+
+---
+
+## Business Question
+
+> "Which Learning Products is this Member registered to participate in?"
+
+---
+
+## Does Not Own
+
+Workspace participation itself belongs to Workspace Access Context (5.3) — a Member may hold an active Workspace Membership with zero Enrollments. Learning Product structure and content belong to Learning Product Context (5.6). Enrollment only records the registration relationship between a Membership and a Learning Product; see Identity & Workspace Access Architecture, Section II, for the business rule separating Membership from Enrollment.
+
+---
+
+# 5.5 Tutor Workspace Experience Context
 
 ## Purpose
 
@@ -203,7 +279,7 @@ Creates the experience that makes each tutor feel they own their own teaching pl
 
 ---
 
-# 5.4 Learning Product Context
+# 5.6 Learning Product Context
 
 ## Purpose
 
@@ -228,7 +304,7 @@ Defines educational offerings.
 
 ---
 
-# 5.5 Learning Asset Management Context
+# 5.7 Learning Asset Management Context
 
 ## Purpose
 
@@ -255,11 +331,11 @@ Manages reusable educational resources.
 
 ---
 
-# 5.6 Learning Delivery Context
+# 5.8 Learning Delivery Context
 
 ## Purpose
 
-Manages how learners experience education.
+Manages how learners experience education, including transforming content into interactive learning experiences.
 
 ---
 
@@ -269,42 +345,24 @@ Manages how learners experience education.
 - Lessons
 - Activities
 - Learning flows
-- Interactive learning events
+- Interactive learning events (video timelines, embedded questions, reflection activities, practice events, learning event structures)
 - Learner progress
 
 ---
 
 ## Business Question
 
-> "How does learning happen?"
+> "How does learning happen, and how do we turn content into active learning?"
 
 ---
 
-# 5.7 Interactive Learning Authoring Context
+## Retired: "Interactive Learning Authoring Context" (formerly Section 5.8)
 
-## Purpose
-
-Transforms content into interactive learning experiences.
+Earlier versions of this document defined Interactive Learning Authoring as its own bounded context, owning interactive video timelines, embedded questions, reflection activities, practice events, and learning event structures. This was never reflected in Lesson Revision Aggregate Design or the Platform Aggregate Catalogue, both of which assign these same objects to the Lesson / Lesson Revision aggregate under Learning Delivery Context. That contradiction has been resolved by retiring the separate context: interactive learning authoring is a **capability** of Learning Delivery Context, exercised through the Lesson Revision aggregate and powered by AI Capability composition (see AI Capability Architecture, Section 10 — "Interactive Learning Capabilities"). Its owned objects have been merged into Learning Delivery Context's "Owns" list above.
 
 ---
 
-## Owns
-
-- Interactive video timelines
-- Embedded questions
-- Reflection activities
-- Practice events
-- Learning event structures
-
----
-
-## Business Question
-
-> "How do we turn content into active learning?"
-
----
-
-# 5.8 Assessment Context
+# 5.9 Assessment Context
 
 ## Purpose
 
@@ -329,7 +387,7 @@ Measures learner achievement.
 
 ---
 
-# 5.9 Scheduling Context
+# 5.10 Scheduling Context
 
 ## Purpose
 
@@ -353,7 +411,7 @@ Manages time-based learning operations.
 
 ---
 
-# 5.10 Commerce Context
+# 5.11 Commerce Context
 
 ## Purpose
 
@@ -379,7 +437,7 @@ Manages financial relationships.
 
 ---
 
-# 5.11 Communication Context
+# 5.12 Communication Context
 
 ## Purpose
 
@@ -403,7 +461,7 @@ Manages communication between the learning business and its community.
 
 ---
 
-# 5.12 Analytics Context
+# 5.13 Analytics Context
 
 ## Purpose
 
@@ -426,7 +484,7 @@ Transforms operational data into insights.
 
 ---
 
-# 5.13 AI Context
+# 5.14 AI Context
 
 ## Purpose
 

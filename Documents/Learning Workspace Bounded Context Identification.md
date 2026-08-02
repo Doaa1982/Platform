@@ -1,8 +1,12 @@
 # Learning Workspace Bounded Context Identification
 
-**Version:** 1.0 (Draft)
+**Version:** 1.2 (Draft)
 
 **Status:** Domain-Driven Design Specification
+
+> **Revision Note (v1.1):** "Membership Context" has been renamed **Workspace Access Context** throughout this document to align with Identity & Workspace Access Architecture and the Bounded Context Map (v1.1). This context already appeared correctly separated from Identity Context in the original v1.0 context list — only the label changes, not the boundary.
+>
+> **Revision Note (v1.2):** Added **Enrollment Context** to the Initial Bounded Context Map (Section 4) and classified it as a Supporting Context (Section 5), aligning with its addition to the Bounded Context Map (v1.3). Enrollment was previously referenced constantly as a dependency across the corpus but had no formal entry in this document's context list.
 
 **Depends On**
 
@@ -164,7 +168,9 @@ Learning Workspace Platform
 │
 ├── Identity Context
 │
-├── Membership Context
+├── Workspace Access Context
+│
+├── Enrollment Context
 │
 ├── Learning Product Context
 │
@@ -220,7 +226,9 @@ Assessment Context
 
 Scheduling Context
 
-Membership Context
+Workspace Access Context
+
+Enrollment Context
 
 Communication Context
 

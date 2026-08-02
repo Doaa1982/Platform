@@ -1,20 +1,22 @@
 # Experience Architecture
 
-Version: 1.0
+Version: 2.0
 
 Status: Foundation
+
+> **Revision Note (v2.0):** This document has been reconciled with the platform's core terminology. Version 1.0 used "Workspace" to mean a role-based user interface surface and "Business Domains" to mean top-level actors (Learner, Educational Provider, Organization). Both usages collided with established platform vocabulary, where **Workspace** exclusively means an independent tenant academy (see Workspace Context, Learning Workspace Domain Language & Business Ontology) and business responsibilities are owned by named **Bounded Contexts** (see Learning Workspace Bounded Context Map). This revision renames the UI-surface concept to **Portal** and replaces the invented "Business Domains" with references to the platform's actual Bounded Contexts. No structural ideas have been removed — only vocabulary that conflicted with the rest of the architecture.
 
 ---
 
 # Purpose
 
-The Experience Architecture defines how users interact with the Educational Ecosystem.
+The Experience Architecture defines how Members interact with the Learning Workspace Platform through role-appropriate user interfaces.
 
-While Business Domains define business rules and capabilities, Experience Architecture defines how those capabilities are presented through cohesive user experiences.
+While Bounded Contexts define business rules and capabilities, Experience Architecture defines how those capabilities are presented through cohesive user experiences.
 
-An Experience does not own business data or business rules.
+A Portal does not own business data or business rules.
 
-Instead, it orchestrates capabilities from multiple Business Domains into intuitive workflows that help users accomplish meaningful educational goals.
+Instead, it orchestrates capabilities from multiple Bounded Contexts into intuitive workflows that help users accomplish meaningful educational goals.
 
 ---
 
@@ -26,7 +28,7 @@ The Experience Architecture aims to:
 - Separate user experience from business logic.
 - Encourage reusable business capabilities.
 - Support multiple client applications.
-- Enable future expansion without redesigning core domains.
+- Enable future expansion without redesigning core Bounded Contexts.
 
 ---
 
@@ -35,11 +37,11 @@ The Experience Architecture aims to:
 The platform follows four architectural layers:
 
 ```text
-Educational Ecosystem
+Learning Workspace Platform
 
 ↓
 
-Business Domains
+Bounded Contexts
 
 ↓
 
@@ -47,7 +49,7 @@ Business Capabilities
 
 ↓
 
-Experience Layer
+Portal Layer
 
 ↓
 
@@ -56,11 +58,11 @@ Applications
 
 Each layer has a distinct responsibility.
 
-Business rules remain within Business Domains.
+Business rules remain within Bounded Contexts.
 
-Experiences orchestrate those rules without duplicating them.
+Portals orchestrate those rules without duplicating them.
 
-Applications provide the visual interface for each Experience.
+Applications provide the visual interface for each Portal.
 
 ---
 
@@ -68,15 +70,15 @@ Applications provide the visual interface for each Experience.
 
 ## Business First
 
-Business rules always belong to Business Domains.
+Business rules always belong to Bounded Contexts.
 
-Experiences consume business capabilities but never redefine them.
+Portals consume business capabilities but never redefine them.
 
 ---
 
 ## User-Centered
 
-Experiences are organised around user intentions rather than technical modules.
+Portals are organised around user intentions rather than technical modules.
 
 Examples include:
 
@@ -90,9 +92,9 @@ Examples include:
 
 ## Composable
 
-Every Experience is assembled from reusable capabilities provided by Business Domains.
+Every Portal is assembled from reusable capabilities provided by Bounded Contexts.
 
-A single capability may appear in multiple Experiences.
+A single capability may appear in multiple Portals.
 
 ---
 
@@ -106,18 +108,18 @@ Experience Architecture is independent of:
 - APIs
 - UI Frameworks
 
-The same Experience may be implemented across multiple platforms.
+The same Portal may be implemented across multiple platforms.
 
 # Experience Model
 
-Every Experience is composed of four elements.
+Every Portal is composed of four elements.
 
 ```text
 User Intention
 
 ↓
 
-Workspace
+Portal
 
 ↓
 
@@ -125,7 +127,7 @@ Business Capabilities
 
 ↓
 
-Business Domains
+Bounded Contexts
 ```
 
 ---
@@ -142,22 +144,22 @@ Examples include:
 - Join a community.
 - Review progress.
 
-Experiences are designed around intentions rather than menus.
+Portals are designed around intentions rather than menus.
 
 ---
 
-## Workspace
+## Portal
 
-A Workspace provides a unified environment that helps users accomplish related goals.
+A Portal provides a unified environment that helps users accomplish related goals.
 
 Examples include:
 
-- Learner Workspace
-- Educational Provider Workspace
-- Organization Workspace
-- Administrator Workspace
+- Learner Portal
+- Workspace Owner Portal
+- Organization Portal
+- Administrator Portal
 
-A Workspace orchestrates multiple Business Capabilities.
+A Portal orchestrates multiple Business Capabilities. A Portal is a presentation-layer concept only — it must never be confused with a **Workspace** (the independent tenant academy defined in Workspace Context), which every Portal operates inside of.
 
 ---
 
@@ -172,32 +174,35 @@ Examples include:
 - Learning Experience
 - Analytics
 - Communication
-- Educational Intelligence
+- AI Intelligence
 
-Business Capabilities may support multiple Workspaces.
+Business Capabilities may support multiple Portals.
 
 ---
 
-## Business Domains
+## Bounded Contexts
 
-Business Domains own business rules and business data.
+Bounded Contexts own business rules and business data.
 
-Examples include:
+Relevant contexts for the Portal Layer include:
 
-- Learner
-- Educational Provider
-- Organization
-- Enrollment
-- Educational Intelligence
+- Membership Context (Learner, Workspace Owner, and other workspace roles)
+- Workspace Context (Workspace identity and configuration)
+- Learning Product Context
+- Learning Delivery Context
+- Enrollment Context
+- AI Context (referred to here as AI Intelligence)
+- Assessment Context
+- Organization Context (future)
 
-Business Domains never depend on Workspaces.
+Bounded Contexts never depend on Portals.
 
 ---
 
 # Architectural Flow
 
 ```text
-Business Domain
+Bounded Context
 
 ↓
 
@@ -205,7 +210,7 @@ Business Capability
 
 ↓
 
-Workspace
+Portal
 
 ↓
 
@@ -214,17 +219,17 @@ Application
 
 Each layer builds upon the previous layer without violating ownership boundaries.
 
-# Workspaces
+# Portals
 
-A Workspace is the primary entry point through which a user interacts with the Educational Ecosystem.
+A Portal is the primary entry point through which a Member interacts with the Learning Workspace Platform, always within the context of a single Workspace.
 
-Workspaces do not own business rules.
+Portals do not own business rules.
 
 Instead, they coordinate multiple capabilities into a coherent user experience.
 
 ---
 
-## Learner Workspace
+## Learner Portal
 
 Purpose:
 
@@ -242,11 +247,13 @@ Examples:
 
 ---
 
-## Educational Provider Workspace
+## Workspace Owner Portal
 
 Purpose:
 
-Support providers in creating, delivering, and improving educational experiences.
+Support Workspace Owners in creating, delivering, and improving educational experiences.
+
+> Note: "Workspace Owner" is the platform's standard term for the business-owning role, consistent with the Learning Workspace Domain Language & Business Ontology. "Tutor" refers only to the pedagogical/teaching role a Member may hold within a Workspace, not to business ownership.
 
 Examples:
 
@@ -261,7 +268,7 @@ Examples:
 
 ---
 
-## Organization Workspace
+## Organization Portal
 
 Purpose:
 
@@ -279,7 +286,7 @@ Examples:
 
 ---
 
-## Administrator Workspace
+## Administrator Portal
 
 Purpose:
 
@@ -294,4 +301,4 @@ Examples:
 - Platform Analytics
 - Security
 
----------
+---
