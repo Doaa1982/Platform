@@ -1,10 +1,12 @@
 # Assessment Context
 
-**Version:** 1.0 (Draft)
+**Version:** 1.1 (Draft)
 
 **Bounded Context Type:** Supporting Domain
 
 **Domain Classification:** Strategic Supporting Context
+
+> **Revision Note (v1.1):** Renamed "Assignment" to **Graded Task** in the Assessment Types list (Section 4.1) to resolve a naming collision with the distinct Assignment concept defined in Assignment Business Analysis and Learning Activity Assignment Business Analysis. See the note in place for the full rationale.
 
 **Related Documents**
 
@@ -92,7 +94,7 @@ Quiz
 
 Exam
 
-Assignment
+Graded Task
 
 Project
 
@@ -106,6 +108,8 @@ Portfolio Review
 
 AI Evaluation
 ```
+
+> **Note:** This list previously included "Assignment" as an Assessment Type. It has been renamed **Graded Task** to avoid collision with the distinct **Assignment** concept defined in Assignment Business Analysis and Learning Activity Assignment Business Analysis, where Assignment names the delivery vehicle for a Learning Activity (targeting, scheduling, due dates) — explicitly separate from evaluation. What this list is actually describing is a piece of graded work reviewed as part of an Assessment; the Assignment (delivery) concept may reference an Assessment of type Graded Task as its evaluation method, but the two remain distinct business objects.
 
 ---
 

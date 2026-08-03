@@ -1,6 +1,6 @@
 # Learning Workspace Bounded Context Map
 
-**Version:** 1.3
+**Version:** 1.4
 
 **Document Type:** Domain Architecture Document
 
@@ -9,6 +9,8 @@
 > **Revision Note (v1.2):** Former Section 5.8 "Interactive Learning Authoring Context" has been retired as a standalone bounded context. It was never reflected as a real ownership boundary in Lesson Revision Aggregate Design or the Platform Aggregate Catalogue, both of which assign interactive learning events to the Lesson / Lesson Revision aggregate under Learning Delivery Context. Interactive learning authoring is now documented as a capability of Learning Delivery Context. The Context Landscape Overview diagram (Section 3) and Core Domain composition (Section 4) have been updated accordingly. Sections renumbered from 5.8 onward.
 >
 > **Revision Note (v1.3):** Added a new Section 5.4 "Enrollment Context." Enrollment was previously referenced as a dependency throughout the corpus (Membership, Assignment, Assessment, Learning Delivery) and appears as an Aggregate Root in the Platform Aggregate Catalogue, but had no formal Bounded Context definition. It has been placed immediately after Workspace Access Context in both the landscape diagram and the numbered definitions, reflecting its dependency on an active Workspace Membership. All subsequent sections renumbered accordingly. A companion Enrollment Aggregate Design document has now been authored — see Enrollment_Aggregate_Design.md.
+>
+> **Revision Note (v1.4):** Renamed Section 5.5 "Tutor Workspace Experience Context" to **Workspace Owner Experience Context**, and updated its Owns list, the landscape diagram (Section 3), the Core Domain composition (Section 4), and the Multi-Tenant Workspace Boundary example (Section 7), to align with the Domain Language & Business Ontology's rule preferring "Workspace Owner" over "Tutor" for business ownership. Companion updates made to Identity & Workspace Access Architecture (v2.1) and Learning Workspace Capability Model (v1.2).
 
 **Purpose:**
 
@@ -60,7 +62,7 @@ A context should answer:
           |                                              |
           v                                              v
 
- Identity Context                              Tutor Workspace Experience
+ Identity Context                              Workspace Owner Experience
           |                                              |
           v                                              |
  Workspace Access Context                                |
@@ -125,7 +127,7 @@ Interactive Learning Authoring
 
 +
 
-Tutor Workspace Experience
+Workspace Owner Experience
 
 +
 
@@ -255,19 +257,19 @@ Workspace participation itself belongs to Workspace Access Context (5.3) — a M
 
 ---
 
-# 5.5 Tutor Workspace Experience Context
+# 5.5 Workspace Owner Experience Context
 
 ## Purpose
 
-Creates the experience that makes each tutor feel they own their own teaching platform.
+Creates the experience that makes each Workspace Owner feel they own their own teaching platform.
 
 ---
 
 ## Owns
 
-- Tutor dashboard experience
+- Workspace Owner dashboard experience
 - Teaching workspace
-- Tutor analytics view
+- Workspace Owner analytics view
 - Personal teaching environment
 - Workspace customisation experience
 
@@ -275,7 +277,7 @@ Creates the experience that makes each tutor feel they own their own teaching pl
 
 ## Business Question
 
-> "How does the educator operate their learning business?"
+> "How does the Workspace Owner operate their learning business?"
 
 ---
 
@@ -702,7 +704,7 @@ One SaaS Platform
 
  Workspace A       Workspace B
 
- Tutor A           Tutor B
+ Workspace Owner A  Workspace Owner B
 
  Own Content       Own Content
 

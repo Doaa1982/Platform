@@ -1,6 +1,6 @@
 # Learning Activity Assignment Business Analysis
 
-> Version: 1.0
+> Version: 1.1
 >
 > Status: Draft
 >
@@ -9,6 +9,8 @@
 > Document Type: Business Analysis
 >
 > Author: Business Analysis Team
+>
+> Revision Note (v1.1): Section 8 "Assignment Rules" previously stated "A Learning Activity may have multiple Assignments," directly contradicting Assignment Business Analysis's stated 1:1 constraint for Version 1. Corrected to match — see new BA-007 in Section 13. Also fixed a markdown formatting defect where the closing summary table had been glued to the preceding paragraph without a line break.
 >
 > Related Documents:
 >
@@ -373,7 +375,7 @@ The platform shall support future activity types without requiring architectural
 ## Assignment Rules
 
 - An Assignment references exactly one Learning Activity.
-- A Learning Activity may have multiple Assignments.
+- In Version 1, each Learning Activity creates exactly one Assignment. (Corrected — see Revision Note. Future versions may relax this to support multiple Assignments per Learning Activity, e.g. differentiated due dates for different cohorts.)
 - Assignment policies are independent of the Learning Activity.
 - Assignments may target individuals or groups.
 - Assignments may be scheduled.
@@ -567,6 +569,15 @@ This capability may be introduced in a future release through an Activity Librar
 AI collaborates with tutors while designing Lesson Revisions.
 
 AI assists in creating Learning Activities but does not independently publish educational content.
+
+---
+
+## BA-007
+
+In Version 1, each Learning Activity creates exactly one Assignment.
+
+This resolves a prior inconsistency between this document and Assignment Business Analysis, which had stated the same 1:1 constraint while this document's Assignment Rules (Section 8) had stated the opposite ("a Learning Activity may have multiple Assignments," with no version qualifier). The 1:1 rule is adopted platform-wide for Version 1 as the simpler, more implementable constraint. Supporting multiple Assignments per Learning Activity — for example, differentiated due dates for different cohorts — is deferred to a future release.
+
 # Summary
 
 Lesson
@@ -585,9 +596,12 @@ Student Submission
       │
       ▼
 Evaluation
+
 The Learning Activity Assignment capability provides a unified business model for assigning, completing, and evaluating any form of educational work.
 
-By separating **Learning Activity** from **Assignment**, the platform enables reusable educational content, flexible delivery, AI-assisted authoring, scalable evaluation strategies, and future educational innovations while maintaining a consistent learner experience| Business Decision                 | Version 1                                                    |
+By separating **Learning Activity** from **Assignment**, the platform enables reusable educational content, flexible delivery, AI-assisted authoring, scalable evaluation strategies, and future educational innovations while maintaining a consistent learner experience.
+
+| Business Decision                 | Version 1                                                    |
 | --------------------------------- | ------------------------------------------------------------ |
 | Learning Activity ownership       | Belongs to exactly one Lesson Revision                       |
 | Standalone Learning Activities    | ❌ Not supported                                              |
@@ -596,4 +610,4 @@ By separating **Learning Activity** from **Assignment**, the platform enables re
 | Copy Activity                     | ❌ Not supported                                              |
 | Activity Marketplace              | ❌ Not supported                                              |
 | Assignment source                 | Must originate from a Learning Activity in a Lesson Revision |
-.
+| Learning Activity → Assignment cardinality | 1:1 (one Assignment per Learning Activity) — see BA-007 |

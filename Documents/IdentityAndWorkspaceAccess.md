@@ -1,12 +1,14 @@
 # Identity & Workspace Access Architecture
 
-**Version:** 2.0
+**Version:** 2.1
 
 **Status:** Draft
 
 **Owner:** Business Architecture
 
 **Document Type:** Core Business Architecture
+
+> **Revision Note (v2.1):** Reconciled terminology with the Learning Workspace Domain Language & Business Ontology's rule that "Workspace Owner" is the preferred term when referring to business ownership of a Workspace, and "Tutor" is avoided for that purpose. This document previously used "Tutor" extensively as the business-owner role (GP-008, the "Enable Tutor-Owned Academies" goal, the Workspace definition table, and roughly a dozen narrative references to "the tutor's academy"), all of which have been renamed to "Workspace Owner." Left unchanged: role-list mentions of "Tutor" as a pedagogical role a Member may hold (e.g., "A Person may participate as: Learner, Tutor, Parent"), the "Tutor Portfolio" professional-growth concept (which documents teaching achievements, not business ownership), and "AI Tutor" as a product feature name — all of which are legitimate uses of "Tutor" under the terminology rule.
 
 ---
 
@@ -24,7 +26,7 @@ Authentication belongs to the platform.
 
 Learning experiences belong to the Workspace.
 
-This separation enables every tutor to operate what appears to be an independent learning academy while sharing a common platform infrastructure.
+This separation enables every Workspace Owner to operate what appears to be an independent learning academy while sharing a common platform infrastructure.
 
 ---
 
@@ -48,9 +50,9 @@ This document focuses specifically on **identity, authentication, workspace acce
 
 The Identity & Workspace Access Architecture exists to achieve the following business goals.
 
-## Enable Tutor-Owned Academies
+## Enable Workspace-Owner Academies
 
-Every tutor should operate an independent academy with complete ownership of their learner relationships.
+Every Workspace Owner should operate an independent academy with complete ownership of their learner relationships.
 
 ---
 
@@ -140,9 +142,9 @@ Each Workspace only knows its own relationship with the learner.
 
 ---
 
-## GP-008 Tutor Owns the Educational Relationship
+## GP-008 Workspace Owner Owns the Educational Relationship
 
-Tutors own:
+Workspace Owners own:
 
 - Courses
 - Learner relationships
@@ -227,7 +229,7 @@ Everything above it is infrastructure.
 | Person | A real human being participating in the platform. |
 | Identity | The globally unique digital identity representing a Person. |
 | Credential | Authentication mechanism belonging to an Identity. |
-| Workspace | An independent learning academy operated by a tutor or organization. |
+| Workspace | An independent learning academy operated by a Workspace Owner or organization. |
 | Workspace Invitation | An invitation allowing a Person to join a Workspace. |
 | Onboarding Request | A pending registration initiated from an invitation. |
 | Identity Resolution | Business process that determines whether the person already has an Identity. |
@@ -252,7 +254,7 @@ One of the most important architectural decisions is separating Identity ownersh
 | Identity Resolution | AI Configuration |
 | Security | Learning Experience |
 
-This separation allows a learner to participate in multiple Workspaces while each tutor experiences complete ownership of their own academy.
+This separation allows a learner to participate in multiple Workspaces while each Workspace Owner experiences complete ownership of their own academy.
 
 ---
 
@@ -715,7 +717,7 @@ Every Workspace independently decides:
 - Permissions
 - Learning participation
 
-Workspace Access is therefore the bridge between the platform's shared Identity infrastructure and the tutor's independent academy.
+Workspace Access is therefore the bridge between the platform's shared Identity infrastructure and the Workspace Owner's independent academy.
 
 ---
 
@@ -758,7 +760,7 @@ The Workspace authorizes participation.
 # Workspace Access Lifecycle
 
 ```text
-Tutor Creates Invitation
+Workspace Owner Creates Invitation
           │
           ▼
 Invitation Sent
@@ -1214,7 +1216,7 @@ Workspace Session
 Workspace Experience
 ```
 
-Workspace Access is responsible for transforming a globally authenticated Identity into an active participant within a specific tutor's academy.
+Workspace Access is responsible for transforming a globally authenticated Identity into an active participant within a specific Workspace Owner's academy.
 
 # SECTION III — Professional Growth
 
@@ -1657,14 +1659,14 @@ The learner has never participated in the platform before.
 
 No Identity exists.
 
-The learner receives an invitation from a tutor.
+The learner receives an invitation from a Workspace Owner.
 
 ---
 
 ## Business Flow
 
 ```text
-Tutor
+Workspace Owner
 
 ↓
 
@@ -1739,7 +1741,7 @@ Future Workspaces will reuse the same Identity.
 
 The learner already owns a global Identity.
 
-Another tutor invites the learner into a different Workspace.
+Another Workspace Owner invites the learner into a different Workspace.
 
 ---
 
@@ -1893,7 +1895,7 @@ Workspace Membership is not created.
 
 Identity is not modified.
 
-The tutor must issue a new invitation.
+The Workspace Owner must issue a new invitation.
 
 ---
 
@@ -2105,7 +2107,7 @@ Workspace Access Scenarios define the operational behavior of the Learning Works
 They ensure that every learner experiences a seamless, Workspace-first journey while preserving the platform's core architectural principles:
 
 - One global Identity.
-- Independent tutor-owned Workspaces.
+- Independent Workspace-Owner-owned Workspaces.
 - Invisible platform infrastructure.
 - Isolated Workspace experiences.
 # SECTION V — Workspace Entry & Resolution Architecture
@@ -2116,7 +2118,7 @@ They ensure that every learner experiences a seamless, Workspace-first journey w
 
 The Learning Workspace Platform is designed around the principle that learners never enter the platform directly.
 
-Instead, every learner begins their journey through a **Workspace Entry Point** that represents a specific tutor's academy.
+Instead, every learner begins their journey through a **Workspace Entry Point** that represents a specific Workspace Owner's academy.
 
 This approach reinforces the platform's core philosophy:
 
@@ -2189,7 +2191,7 @@ Experience is Workspace-specific.
 
 A Workspace Entry Point is any business endpoint through which a learner enters a Workspace.
 
-The Entry Point represents the public entrance to a tutor's academy.
+The Entry Point represents the public entrance to a Workspace Owner's academy.
 
 It is part of the Workspace's business identity rather than the platform's infrastructure.
 
@@ -2361,7 +2363,7 @@ Typical configuration includes:
 - Access Policies
 - Welcome Experience
 
-The learner should immediately perceive they have entered the tutor's own academy.
+The learner should immediately perceive they have entered the Workspace Owner's own academy.
 
 ---
 
@@ -2593,7 +2595,7 @@ This allows authentication screens, branding, language, AI personality, and user
 
 # Summary
 
-Workspace Entry & Resolution Architecture establishes the first interaction between a learner and a tutor's academy.
+Workspace Entry & Resolution Architecture establishes the first interaction between a learner and a Workspace Owner's academy.
 
 By resolving the Workspace before authentication and loading its unique branding and configuration, the platform creates the perception of a dedicated learning environment while relying on a shared infrastructure.
 
@@ -2748,7 +2750,7 @@ Published when Google, Microsoft or Apple authentication is linked.
 
 ## WorkspaceInvitationCreated
 
-Published when a tutor issues an invitation.
+Published when a Workspace Owner issues an invitation.
 
 ---
 
@@ -3562,7 +3564,7 @@ The rule cannot.
 
 Enterprise Business Rules establish the immutable foundation of the Learning Workspace Platform.
 
-They ensure that Identity, Workspace Access, Membership, Authentication, and Workspace Experience behave consistently across all Workspaces while allowing tutors and organizations to customize their onboarding and operational policies through Workspace Access Policies.
+They ensure that Identity, Workspace Access, Membership, Authentication, and Workspace Experience behave consistently across all Workspaces while allowing Workspace Owners and organizations to customize their onboarding and operational policies through Workspace Access Policies.
 
 # SECTION IX — Domain Relationships, Ownership & Architectural Boundaries
 
@@ -4022,6 +4024,6 @@ All higher-level domains—including Learning Products, Learning Delivery, AI Se
 
 Identity & Workspace Access is the foundational business domain of the Learning Workspace Platform.
 
-It separates global identity management from Workspace-specific participation, allowing every tutor, academy, or organization to operate as an independent educational business while sharing secure, scalable platform infrastructure.
+It separates global identity management from Workspace-specific participation, allowing every Workspace Owner, academy, or organization to operate as an independent educational business while sharing secure, scalable platform infrastructure.
 
-This separation of concerns is a defining architectural characteristic of the platform and enables future scalability, multi-tenancy, AI integration, marketplace capabilities, and lifelong professional learning without compromising the autonomy of individual Workspaces.These rules form the authoritative governance layer for the platform and should be referenced by all bounded contexts, application services, and implementation components.They establish a shared business language across bounded contexts while preserving autonomy, enabling future scalability, workflow automation, AI orchestration, analytics, notifications, and event-driven integration without tightly coupling the platform's core domains.This architecture is a key differentiator of the Learning Workspace Platform, enabling every tutor to operate what appears to be an independent educational business without duplicating authentication, identity management, or core platform services.- Secure and reusable authentication.While Workspaces deliver educational experiences and contribute evidence of learning and teaching, the resulting professional assets belong permanently to the Identity, supporting continuous professional development across an entire career.It provides the business boundary that allows every tutor to operate an independent learning business while sharing the platform's underlying infrastructure.
+This separation of concerns is a defining architectural characteristic of the platform and enables future scalability, multi-tenancy, AI integration, marketplace capabilities, and lifelong professional learning without compromising the autonomy of individual Workspaces.These rules form the authoritative governance layer for the platform and should be referenced by all bounded contexts, application services, and implementation components.They establish a shared business language across bounded contexts while preserving autonomy, enabling future scalability, workflow automation, AI orchestration, analytics, notifications, and event-driven integration without tightly coupling the platform's core domains.This architecture is a key differentiator of the Learning Workspace Platform, enabling every Workspace Owner to operate what appears to be an independent educational business without duplicating authentication, identity management, or core platform services.- Secure and reusable authentication.While Workspaces deliver educational experiences and contribute evidence of learning and teaching, the resulting professional assets belong permanently to the Identity, supporting continuous professional development across an entire career.It provides the business boundary that allows every Workspace Owner to operate an independent learning business while sharing the platform's underlying infrastructure.

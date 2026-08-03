@@ -1,6 +1,6 @@
 # Assignment Business Analysis
 
-> Version: 1.0
+> Version: 1.2
 >
 > Status: Draft
 >
@@ -10,12 +10,17 @@
 >
 > Author: Business Analysis Team
 >
+> Revision Note (v1.1): This document's Section 10 rule ("In Version 1, each Learning Activity creates one Assignment") is now the confirmed, platform-wide 1:1 cardinality rule. Learning Activity Assignment Business Analysis previously stated the opposite; it has been corrected to match (see its BA-007). Also see Assessment_Context.md v1.1, where the unrelated "Assignment" Assessment Type was renamed "Graded Task" to remove a naming collision with the Assignment concept defined in this document.
+>
+> Revision Note (v1.2): Resolved all five open-question clusters from the former Section 16 (Recipient Selection, Scheduling, Attempts, Submission Policies, Assignment Management) and formalized them as new Business Decisions BA-007 through BA-011 in Section 15. Section 10's Business Rules were extended accordingly, including a new Recipient Rules subsection tying Assignment targeting explicitly to Enrollment. Section 16 has been retitled "Version 1 Resolutions" and now records the answers rather than the open questions. Section 12's Notifications list gained two events (due date extended, attempts reset) reflecting the newly resolved rules.
+>
 > Related Documents:
 >
 > - Learning Activity Business Analysis
 > - Learning Product Context
 > - Curriculum Aggregate Design
 > - Lesson Aggregate Design
+> - Enrollment Aggregate Design
 > - Lesson Revision Aggregate Design
 > - Enrollment Domain (Future)
 > - Progress Tracking Domain (Future)
@@ -323,6 +328,8 @@ Archived
 - A Learning Activity may have multiple Assignments in future versions.
 - In Version 1, each Learning Activity creates one Assignment.
 - Assignments cannot exist without a Learning Activity.
+- Published Assignments may be edited (due date, attempt limit, visibility, target recipients). Editing an Assignment never creates a new Assignment version — see BA-009.
+- The Learning Activity referenced by a published Assignment cannot be changed; changing instructional content requires a new Lesson Revision per BA-001.
 
 ---
 
@@ -331,6 +338,8 @@ Archived
 - Learners cannot access unpublished Assignments.
 - Scheduled Assignments become available automatically.
 - Closing an Assignment prevents new submissions.
+- Due dates may be extended after publication. Due date changes apply uniformly to all targeted learners in Version 1 — see BA-007.
+- Assignments do not reopen automatically after closing.
 
 ---
 
@@ -339,6 +348,9 @@ Archived
 - Submission behavior is controlled by Assignment policy.
 - Attempt limits are enforced by the Assignment.
 - Submission deadlines belong to the Assignment.
+- Tutors may reset a learner's attempt count.
+- Attempt limits may be increased after publication at any time. Attempt limits may not be decreased below the number of attempts a learner has already used.
+- A Submitted attempt cannot be freely edited by the learner. Reopening a closed Submission uses the existing Return-for-Resubmission mechanism (see Learning Activity Assignment Business Analysis, Submission Lifecycle) rather than a separate reopening concept — see BA-008.
 
 ---
 
@@ -346,6 +358,16 @@ Archived
 
 - Evaluation policy belongs to the Assignment.
 - Different Assignments may evaluate the same Learning Activity differently.
+
+---
+
+## Recipient Rules
+
+- An Assignment targets a set of learners drawn from the Learning Product's active Enrollments — see Enrollment Aggregate Design.
+- The default target is every Membership with an active Enrollment in the Learning Product containing the Assignment's Learning Activity.
+- Targeting a subset of enrolled learners (individuals or a defined group) is supported in Version 1.
+- Targeting learners without an active Enrollment is not supported; Enrollment determines eligibility per BA-010.
+- Collaborative group submission (a single shared Submission for a targeted group) remains Future scope and is distinct from group targeting, which is Version 1.
 
 ---
 
@@ -380,7 +402,10 @@ Typical Assignment events include:
 - Assignment reminder
 - Assignment due soon
 - Assignment overdue
+- Assignment due date extended
+- Assignment attempts reset
 - Submission received
+- Submission returned for resubmission
 - Feedback published
 - Assignment closed
 
@@ -455,45 +480,85 @@ AI assists tutors during Assignment configuration but does not publish Assignmen
 
 ---
 
-# 16. Open Business Questions
+## BA-007
 
-The following decisions remain to be analyzed before domain design.
+Due dates may be extended after publication.
 
-### Recipient Selection
+In Version 1, an Assignment has a single due date applied uniformly to all targeted learners. Differentiated due dates per learner or cohort are deferred to the future release that relaxes the 1:1 Learning Activity → Assignment cardinality (see Learning Activity Assignment Business Analysis, BA-007).
 
-- Can Assignments target individuals?
-- Can Assignments target groups?
-- Can Assignments target entire enrollments?
+Assignments do not reopen automatically after closing.
 
 ---
 
-### Scheduling
+## BA-008
 
-- Can Assignments reopen automatically?
-- Can due dates be extended after publication?
-- Can learners receive different due dates?
+A Submitted attempt cannot be freely edited by the learner.
 
----
-
-### Attempts
-
-- Can tutors reset learner attempts?
-- Can attempt limits change after publication?
+Reopening a closed Submission is not a separate concept — it uses the existing Return-for-Resubmission mechanism already defined in the Submission Lifecycle (see Learning Activity Assignment Business Analysis, Section 10).
 
 ---
 
-### Submission Policies
+## BA-009
 
-- Can submissions be edited after submission?
-- Can tutors reopen closed submissions?
+Published Assignments may be edited. Editing an Assignment never creates a new Assignment version, unlike Lesson Revision.
+
+This is intentional: Assignments never contain instructional content (BA-001), so their fields are operational parameters (due date, attempts, visibility, recipients) rather than content requiring rollback and version comparison. Historical changes are preserved through domain events (e.g., AssignmentDueDateExtended, AssignmentAttemptLimitChanged) rather than through aggregate versioning.
 
 ---
 
-### Assignment Management
+## BA-010
 
-- Can published Assignments be edited?
-- Should editing create a new Assignment version?
-- Should Assignment history be retained?
+An Assignment's recipients are drawn from the Learning Product's active Enrollments. Enrollment is the single source of truth for who is eligible to receive an Assignment.
+
+---
+
+## BA-011
+
+Tutors may reset a learner's attempt count at any time.
+
+Attempt limits may be increased after publication without restriction. Attempt limits may not be decreased below the number of attempts a learner has already used, to avoid invalidating attempts already made.
+
+---
+
+# 16. Version 1 Resolutions (Formerly Open Business Questions)
+
+The following questions were previously open. Each has now been resolved for Version 1 and formalized as a Business Decision in Section 15.
+
+### Recipient Selection — Resolved (BA-010)
+
+- Assignments target learners drawn from the Learning Product's active Enrollments.
+- Individual and group targeting are supported in Version 1.
+- Targeting "entire enrollments" is the default behavior when no subset is specified.
+
+---
+
+### Scheduling — Resolved (BA-007)
+
+- Assignments do not reopen automatically after closing.
+- Due dates may be extended after publication.
+- Differentiated due dates per learner are deferred to a future release (tied to relaxing the 1:1 Learning Activity → Assignment cardinality).
+
+---
+
+### Attempts — Resolved (BA-011)
+
+- Tutors may reset learner attempts.
+- Attempt limits may be increased freely after publication; they may not be decreased below attempts already used.
+
+---
+
+### Submission Policies — Resolved (BA-008)
+
+- Submitted attempts cannot be freely edited by the learner.
+- Reopening a closed Submission reuses the existing Return-for-Resubmission mechanism rather than introducing a new concept.
+
+---
+
+### Assignment Management — Resolved (BA-009)
+
+- Published Assignments may be edited (operational fields only, not the referenced Learning Activity).
+- Editing does not create a new Assignment version — Assignments hold no instructional content requiring rollback.
+- History is preserved through domain events, not aggregate versioning.
 
 ---
 

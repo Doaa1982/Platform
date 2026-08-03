@@ -1,6 +1,8 @@
 # Learning Workspace Capability Model (Refinement)
 
-**Version:** 1.1
+**Version:** 1.2
+
+> **Revision Note (v1.2):** Renamed "Tutor Workspace Experience Capability" (Section 2.3) to **Workspace Owner Experience Capability**, and updated its reference in the Core Differentiating Capabilities list (Section 3), to align with the Learning Workspace Domain Language & Business Ontology's terminology rule: "Workspace Owner" is preferred over "Tutor" when referring to business ownership of a Workspace. "Tutor" remains the correct term for the pedagogical/teaching role a Member may hold, and is unaffected elsewhere in this document.
 
 **Purpose**
 
@@ -89,11 +91,11 @@ Capabilities:
 
 ---
 
-# 2.3 Tutor Workspace Experience Capability
+# 2.3 Workspace Owner Experience Capability
 
 ## Purpose
 
-Creates the feeling that each tutor owns a dedicated educational platform.
+Creates the feeling that each Workspace Owner owns a dedicated educational platform.
 
 ---
 
@@ -404,7 +406,7 @@ Learning Asset Library
 
 Interactive Learning Authoring
 
-Tutor Workspace Experience
+Workspace Owner Experience
 
 Workspace Personalisation
 ```

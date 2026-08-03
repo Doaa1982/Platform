@@ -1,6 +1,6 @@
 # Platform Aggregate Catalogue
 
-> Version: 1.0
+> Version: 1.1
 >
 > Status: Draft
 >
@@ -15,6 +15,12 @@
 > - Learning Delivery Context
 > - Assessment Context
 > - AI Business Architecture
+> - Learning Asset Aggregate Design
+> - Curriculum Aggregate Design
+> - Lesson Revision Aggregate Design
+> - Enrollment Aggregate Design
+>
+> **Revision Note (v1.1):** This Catalogue previously omitted three Aggregate Roots that already had full, standalone Aggregate Design documents elsewhere in the corpus: **Learning Asset**, **Curriculum**, and **Lesson Revision**. All three have been added to Sections 3, 4, 5, 7, and 8 below. The Aggregate Dependencies diagram (Section 5) was also missing Enrollment entirely despite it already appearing in Section 3 — this has been corrected. Section 6's Ownership Rules table has been clarified regarding Transcript ownership, which spans two aggregates with different responsibilities (see the note under that section).
 
 ---
 
@@ -76,8 +82,11 @@ Aggregates should be small enough to support transactional consistency while rem
 | Workspace | Workspace | Represents an independent learning workspace. |
 | Workspace Access | Membership | Represents a user's participation and permissions within a Workspace. |
 | Learning Product | Learning Product | Represents a course, program, learning path, or other educational offering. |
-| Learning Delivery | Lesson | Represents a deliverable learning experience. |
+| Learning Product | Curriculum | Represents the pedagogical structure (units, sequencing, progression rules) of a Learning Product. Separate from Learning Product itself per Curriculum Aggregate Design. |
 | Enrollment | Enrollment | Represents a learner's participation in a Learning Product. |
+| Learning Asset Management | Learning Asset | Represents a reusable educational resource (video, PDF, audio, etc.) referenced by one or more Lesson Revisions. Owns the underlying file, technical metadata, and AI enrichment. |
+| Learning Delivery | Lesson | Represents a deliverable learning experience; owns business identity and publication lifecycle. |
+| Learning Delivery | Lesson Revision | Represents the instructional content of a Lesson at a specific point in time (sections, transcript, objectives, interactive events). Separate Aggregate Root from Lesson per Lesson Revision Aggregate Design. |
 | Assessment | Assessment | Represents an assessable activity. |
 | Assessment | Submission | Represents a learner's submitted work. |
 | Certification | Certificate | Represents an awarded certificate. |
@@ -97,9 +106,15 @@ Membership
 
 Learning Product
 
-Lesson
+Curriculum
 
 Enrollment
+
+Learning Asset
+
+Lesson
+
+Lesson Revision
 
 Assessment
 
@@ -131,7 +146,13 @@ Workspace
 Learning Product
       │
       ▼
+Curriculum
+      │
+      ▼
 Lesson
+      │
+      ▼
+Lesson Revision
       │
       ▼
 Assessment
@@ -142,10 +163,23 @@ Submission
       ▼
 Certificate
 
+Enrollment
+
+(depends on Membership + Learning Product; gates access to Lesson —
+ see Enrollment Aggregate Design, Section 12, for the full relationship)
+
+Learning Asset
+
+(depends only on Workspace; referenced by Lesson Revision but does not
+ depend on the Learning Product / Curriculum / Lesson chain above —
+ see Learning Asset Aggregate Design)
+
 AI Collaboration Session
 
 (references all of the above according to Business Context, but owns none of them)
 ```
+
+Note: This diagram shows the primary structural dependency chain. Enrollment and Learning Asset are shown separately because their dependencies branch off the main chain rather than extending it linearly — Enrollment depends on Membership and Learning Product but is not itself part of the Curriculum → Lesson → Assessment sequence, and Learning Asset is Workspace-scoped and reusable across many Lessons rather than owned by any single one.
 
 ---
 
@@ -157,17 +191,23 @@ Examples:
 
 | Business Object | Owner Aggregate |
 |-----------------|-----------------|
-| Transcript | Lesson |
-| Interactive Learning Event | Lesson |
-| Lesson Chapter | Lesson |
-| Learning Objective | Lesson |
+| Interactive Learning Event | Lesson Revision |
+| Lesson Chapter | Lesson Revision |
+| Learning Objective | Lesson Revision |
+| Lesson Section | Lesson Revision |
+| Publication State | Lesson |
+| Current Published Revision Reference | Lesson |
 | Assessment Question | Assessment |
 | Learner Submission | Submission |
 | Membership Role | Membership |
 | Workspace Policy | Workspace |
 | AI Recommendation | AI Collaboration Session |
+| Curriculum Unit | Curriculum |
+| Asset File / Technical Metadata | Learning Asset |
 
 Ownership determines where business rules are enforced.
+
+**Note on Transcript ownership:** Transcript appears as an owned object in two places for two different reasons, and this is intentional rather than a conflict. **Learning Asset** owns the raw, AI-generated transcript of the underlying media file (technical enrichment — see Learning Asset Aggregate Design, AI Metadata). **Lesson Revision** separately owns a transcript value object representing the curated, potentially teacher-edited transcript as it is presented within that specific lesson (see Lesson Revision Aggregate Design, Section 8). A Lesson Revision's transcript is typically initialized from its referenced Learning Asset's transcript but becomes independently editable instructional content from that point forward — editing it does not modify the underlying asset.
 
 ---
 
@@ -180,6 +220,23 @@ Example:
 Lesson
 
 - LearningProductId
+
+Lesson Revision
+
+- LessonId
+- LearningAssetIds
+- AI Collaboration Session (optional)
+- Author MembershipId
+
+Curriculum
+
+- LearningProductId
+- LessonId (through Curriculum Lesson)
+
+Learning Asset
+
+- WorkspaceId
+- MembershipId (Owner)
 
 Assessment
 
@@ -209,6 +266,18 @@ Examples:
 Lesson
 
 Draft → Published → Archived
+
+Lesson Revision
+
+Draft → Editing → Ready for Review → Approved → Published
+
+Curriculum
+
+Draft → Under Review → Published → Archived
+
+Learning Asset
+
+Uploaded → Processing → Ready → Archived
 
 Assessment
 
