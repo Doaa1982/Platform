@@ -1,0 +1,13 @@
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/bin/Debug/net10.0/Platform.ServiceDefaults.deps.json
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/bin/Debug/net10.0/Platform.ServiceDefaults.dll
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/bin/Debug/net10.0/Platform.ServiceDefaults.pdb
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/Platform.ServiceDefaults.csproj.AssemblyReference.cache
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/Platform.ServiceDefaults.GeneratedMSBuildEditorConfig.editorconfig
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/Platform.ServiceDefaults.AssemblyInfoInputs.cache
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/Platform.ServiceDefaults.AssemblyInfo.cs
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/Platform.ServiceDefaults.csproj.CoreCompileInputs.cache
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/Platform.ServiceDefaults.sourcelink.json
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/Platform.ServiceDefaults.dll
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/refint/Platform.ServiceDefaults.dll
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/Platform.ServiceDefaults.pdb
+/Users/dody/Platform/backend/src/Platform.ServiceDefaults/obj/Debug/net10.0/ref/Platform.ServiceDefaults.dll

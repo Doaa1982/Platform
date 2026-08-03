@@ -1,6 +1,6 @@
 # Assignment Business Analysis
 
-> Version: 1.2
+> Version: 1.3
 >
 > Status: Draft
 >
@@ -14,12 +14,15 @@
 >
 > Revision Note (v1.2): Resolved all five open-question clusters from the former Section 16 (Recipient Selection, Scheduling, Attempts, Submission Policies, Assignment Management) and formalized them as new Business Decisions BA-007 through BA-011 in Section 15. Section 10's Business Rules were extended accordingly, including a new Recipient Rules subsection tying Assignment targeting explicitly to Enrollment. Section 16 has been retitled "Version 1 Resolutions" and now records the answers rather than the open questions. Section 12's Notifications list gained two events (due date extended, attempts reset) reflecting the newly resolved rules.
 >
+> Revision Note (v1.3): Clarified in Section 14's Integration table that Submission is owned by Assessment Context, not Assignment/Learning Delivery — closing a gap where Submission had been independently modeled in Assessment Context (as the thinner "Assessment Attempt") and in Learning Activity Assignment Business Analysis (with a full lifecycle), without either document stating who actually owns the aggregate. See Assessment Context v1.2.
+>
 > Related Documents:
 >
 > - Learning Activity Business Analysis
 > - Learning Product Context
 > - Curriculum Aggregate Design
 > - Lesson Aggregate Design
+> - Assessment Context
 > - Enrollment Aggregate Design
 > - Lesson Revision Aggregate Design
 > - Enrollment Domain (Future)
@@ -431,7 +434,7 @@ The exact contribution is determined by Curriculum rules rather than the Assignm
 |---------|--------------|
 | Lesson Revision | Assignment references a Learning Activity created within a Lesson Revision. |
 | Learning Activity | Defines the educational work delivered by the Assignment. |
-| Submission | Stores learner responses to the Assignment. |
+| Submission | Stores learner responses to the Assignment. Owned by Assessment Context, not Assignment — see Assessment Context, Section 4.3. |
 | Evaluation | Reviews learner submissions. |
 | Enrollment | Determines eligible learners. |
 | Progress Tracking | Consumes Assignment completion events. |

@@ -1,6 +1,6 @@
 # Lesson Revision Aggregate Design
 
-> Version: 1.0
+> Version: 1.1
 >
 > Status: Draft
 >
@@ -15,6 +15,10 @@
 > - AI Authoring Assistant Architecture
 > - AI Collaboration Architecture
 > - Platform Aggregate Catalogue
+> - Learning Activity Assignment Business Analysis
+> - Assignment Business Analysis
+>
+> **Revision Note (v1.1):** Added **Learning Activity** as a formal Entity (Section 7), previously referenced as belonging to Lesson Revision in Learning Activity Assignment Business Analysis but absent from this document's own entity list — a gap identified in the Learning Workspace Architecture Gap Review. Added an explicit distinction from Interactive Learning Event (the two are easy to conflate but differ in timing, delivery mechanism, and governing invariant — see the comparison table in Section 7). Updated the Aggregate Structure diagram (Section 5), Aggregate Relationships diagram (Section 9), Domain Events (Section 13), Commands (Section 14), and added INV-010 (Section 15) accordingly.
 
 ---
 
@@ -77,6 +81,7 @@ Lesson Revision (Aggregate Root)
 ├── Transcript
 ├── Learning Objectives
 ├── Interactive Learning Events
+├── Learning Activities
 ├── Lesson Summary
 ├── Keywords
 ├── Lesson Outline
@@ -97,7 +102,7 @@ The Lesson Revision Aggregate owns:
 - learning objectives
 - summaries
 - transcripts
-- interactive activities
+- interactive activities (both timeline-anchored Interactive Learning Events and assignable Learning Activities — see Section 7 for the distinction)
 - attached learning resources
 
 It does not own:
@@ -175,6 +180,43 @@ Each event includes:
 - Interaction Type
 - Feedback
 - Navigation Rule
+
+---
+
+## Learning Activity
+
+Represents a piece of educational work that extends the learning experience during or after instruction, as defined in Learning Activity Assignment Business Analysis. Every Learning Activity belongs to exactly one Lesson Revision and is created, edited, published, and versioned together with it — the same rule that already applies to every other entity in this section.
+
+Examples:
+
+- Homework
+- Quiz
+- Reading
+- Video Activity
+- Reflection
+- Essay
+- Coding Exercise
+- Discussion
+- File Upload
+- Project
+
+Each Learning Activity includes:
+
+- Activity Id
+- Activity Type
+- Instructions / Content Reference
+- Estimated Completion Time (optional)
+
+**Distinction from Interactive Learning Event:** These two entities are easy to conflate — both represent learner interaction attached to a Lesson Revision, and their example lists overlap in places (e.g., "Discussion"). They are kept as separate entities because they differ in a way that has real structural consequences:
+
+| | Interactive Learning Event | Learning Activity |
+|---|---|---|
+| Timing | Synchronous — occurs *during* playback at a specific Timeline Position | Asynchronous — completed *during or after* instruction, not tied to a playback moment |
+| Delivery mechanism | Embedded directly in the lesson's timeline; answered in place | Delivered via a separate **Assignment** (Learning Delivery), with its own due date, attempt policy, submission window, and evaluation method |
+| Governing invariant | Must reference a valid Learning Asset timeline when tied to time-based media (INV-003) | Referenced by exactly one Assignment when delivered (see Assignment Business Analysis, BA-002) |
+| Typical granularity | A single micro-interaction (one question, one poll) | A complete deliverable unit of work (a full quiz, a whole essay, a project) |
+
+A Learning Activity of type "Quiz" may internally be composed of several individual questions; whether those questions are modeled as Interactive Learning Events reused within the Activity, or as a separate question list owned by the Activity itself, is left for detailed data modeling and is not resolved by this document.
 
 ---
 
@@ -274,6 +316,8 @@ Lesson Revision
 ├── Transcript
 
 ├── Interactive Learning Events
+
+├── Learning Activities
 
 ├── Objectives
 
@@ -415,6 +459,9 @@ Representative events include:
 - ObjectivesGenerated
 - InteractiveLearningEventAdded
 - InteractiveLearningEventUpdated
+- LearningActivityAdded
+- LearningActivityRemoved
+- LearningActivityUpdated
 - LearningAssetAttached
 - LearningAssetDetached
 - SummaryGenerated
@@ -435,6 +482,9 @@ Representative commands include:
 - GenerateTranscript
 - GenerateObjectives
 - GenerateInteractiveEvents
+- AddLearningActivity
+- RemoveLearningActivity
+- UpdateLearningActivity
 - GenerateSummary
 - ImproveLesson
 - UpdateTranscript
@@ -495,6 +545,12 @@ AI-generated content remains editable before publication.
 ## INV-009
 
 Removing a Learning Asset must invalidate or remove dependent Interactive Learning Events before the revision can be validated for publication.
+
+---
+
+## INV-010
+
+Every Learning Activity belongs to exactly one Lesson Revision and is versioned together with it, consistent with Learning Activity Assignment Business Analysis (BA-001). A Learning Activity cannot exist independently of a Lesson Revision.
 
 ---
 

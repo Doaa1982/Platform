@@ -1,0 +1,16 @@
+/Users/dody/Platform/backend/src/Platform.Infrastructure/bin/Debug/net10.0/Platform.Infrastructure.deps.json
+/Users/dody/Platform/backend/src/Platform.Infrastructure/bin/Debug/net10.0/Platform.Infrastructure.dll
+/Users/dody/Platform/backend/src/Platform.Infrastructure/bin/Debug/net10.0/Platform.Infrastructure.pdb
+/Users/dody/Platform/backend/src/Platform.Infrastructure/bin/Debug/net10.0/Platform.Domain.dll
+/Users/dody/Platform/backend/src/Platform.Infrastructure/bin/Debug/net10.0/Platform.Domain.pdb
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.csproj.AssemblyReference.cache
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.AssemblyInfoInputs.cache
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.AssemblyInfo.cs
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.csproj.CoreCompileInputs.cache
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.sourcelink.json
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.A293A272.Up2Date
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.dll
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/refint/Platform.Infrastructure.dll
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.pdb
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/ref/Platform.Infrastructure.dll

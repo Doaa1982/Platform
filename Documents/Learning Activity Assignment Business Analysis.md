@@ -1,6 +1,6 @@
 # Learning Activity Assignment Business Analysis
 
-> Version: 1.1
+> Version: 1.3
 >
 > Status: Draft
 >
@@ -12,12 +12,17 @@
 >
 > Revision Note (v1.1): Section 8 "Assignment Rules" previously stated "A Learning Activity may have multiple Assignments," directly contradicting Assignment Business Analysis's stated 1:1 constraint for Version 1. Corrected to match — see new BA-007 in Section 13. Also fixed a markdown formatting defect where the closing summary table had been glued to the preceding paragraph without a line break.
 >
+> Revision Note (v1.2): Added a note under the Learning Activity definition (Section 4) distinguishing it from Interactive Learning Event, and confirming Learning Activity now formally appears in Lesson Revision Aggregate Design's entity list (v1.1) — closing a gap where this document asserted "belongs to exactly one Lesson Revision" while the aggregate design document's own entity list never mentioned Learning Activity at all.
+>
+> Revision Note (v1.3): Added ownership notes confirming Submission (Section 4 and Section 10) is owned by **Assessment Context**, not Learning Delivery, resolving a case where the same real-world object had been modeled independently in both this document and Assessment Context. The lifecycle originally defined here in Section 10 is now the canonical Submission lifecycle adopted by Assessment Context v1.2 — this document references it rather than owning it.
+>
 > Related Documents:
 >
 > - Learning Product Context
 > - Learning Delivery Context
 > - Curriculum Aggregate Design
 > - Lesson Aggregate Design
+> - Assessment Context
 > - Lesson Revision Aggregate Design
 > - Learning Asset Aggregate Design
 > - AI Capability Architecture
@@ -115,6 +120,8 @@ It cannot exist independently of a Lesson Revision in Version 1.
 
 Future platform versions may introduce reusable activity libraries.
 
+> **Distinction from Interactive Learning Event:** Lesson Revision also owns a separate entity, Interactive Learning Event (see Lesson Revision Aggregate Design, Section 7), which represents timeline-anchored micro-interactions during content playback (e.g., a question at a specific video timestamp). Learning Activity is a distinct, larger-granularity concept: it is completed during or after instruction rather than synchronously, and is delivered via Assignment rather than embedded in a timeline. The two entity types are formally distinguished, with a full comparison table, in Lesson Revision Aggregate Design v1.1.
+
 ---
 ### Ownership
 
@@ -169,6 +176,8 @@ Submissions may include:
 - External links
 - AI conversation history
 - Rich media
+
+> **Ownership note:** Although this document sits within the Learning Delivery domain, Submission is owned by **Assessment Context**, not Learning Delivery — see Assessment Context, Section 4.3, and Platform Aggregate Catalogue. The full Submission lifecycle (Not Started → In Progress → Submitted → Under Review → Evaluated → Returned → Resubmitted → Completed) originally defined here in Section 10 is now the canonical lifecycle adopted by Assessment Context; this document references it, but Assessment Context is the source of truth for the aggregate itself.
 
 ---
 
@@ -424,6 +433,8 @@ Archived
 ---
 
 # 10. Submission Lifecycle
+
+> This lifecycle is the canonical lifecycle for the Submission aggregate, owned by Assessment Context (see Assessment Context, Section 4.3). It is shown here because Submission was originally defined in this document; it now lives as part of Assessment Context's own model.
 
 ```text
 Not Started

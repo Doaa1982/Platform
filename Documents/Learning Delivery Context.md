@@ -1,12 +1,14 @@
 # Learning Delivery Context (Refinement)
 
-**Version:** 1.2
+**Version:** 1.3
 
 **New Capability Added:**
 
 - Interactive Learning Events
 
 > **Revision Note (v1.2):** Clarified that Learning Asset ownership belongs exclusively to Learning Asset Management Context (see Learning Asset Aggregate Design). Section 3.3's "Ownership" note previously read "Learning Delivery owns the use of assets," which was ambiguous and read by some as data ownership. This has been corrected to explicitly scope Learning Delivery's responsibility to sequencing and timeline placement, not the asset itself.
+>
+> **Revision Note (v1.3):** Added a cross-reference note under Section 3.4 (Interactive Learning Event) distinguishing it from **Learning Activity**, a related but separate concept this document had never mentioned despite both belonging to Lesson Revision. See Lesson Revision Aggregate Design (v1.1) for the full comparison.
 
 ---
 
@@ -196,6 +198,8 @@ An Interactive Learning Event represents an intentional learning interaction occ
 ## Purpose
 
 It transforms passive content consumption into active learning.
+
+> **Distinction from Learning Activity:** Interactive Learning Events are timeline-anchored micro-interactions occurring *during* content playback (e.g., a question at 03:25 in a video). They are distinct from **Learning Activity** (Homework, Quiz, Project, etc.), which is completed during or after instruction and is formally delivered to learners via Assignment, with its own due date, attempts, and evaluation policy. Both belong to Lesson Revision; see Lesson Revision Aggregate Design, Section 7, for the full comparison.
 
 ---
 
