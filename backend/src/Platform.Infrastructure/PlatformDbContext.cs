@@ -15,6 +15,8 @@ public class PlatformDbContext : DbContext
     public DbSet<Identity> Identities => Set<Identity>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<Membership> Memberships => Set<Membership>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<PlatformOperator> PlatformOperators => Set<PlatformOperator>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -103,6 +105,54 @@ public class PlatformDbContext : DbContext
 
             entity.Navigation(e => e.Roles)
                   .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<Invitation>(entity =>
+        {
+            entity.ToTable("invitations");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+
+            entity.Property(e => e.Email)
+                  .IsRequired()
+                  .HasMaxLength(256);
+
+            // Validation looks an invitation up by token hash on every link visit
+            entity.Property(e => e.TokenHash)
+                  .IsRequired()
+                  .HasMaxLength(64);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+
+            // The admin's provisioning view lists invitations per Workspace, and
+            // the single-active-invitation check queries by (email, workspace)
+            entity.HasIndex(e => e.WorkspaceId);
+            entity.HasIndex(e => new { e.Email, e.WorkspaceId });
+
+            entity.Property(e => e.IntendedRole)
+                  .HasConversion<string>()
+                  .HasMaxLength(32);
+
+            entity.Property(e => e.Status)
+                  .HasConversion<string>()
+                  .HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<PlatformOperator>(entity =>
+        {
+            entity.ToTable("platform_operators");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.IdentityId).IsRequired();
+
+            // Every authorized admin request resolves the caller's grant by IdentityId
+            entity.HasIndex(e => e.IdentityId);
+
+            entity.Property(e => e.Status)
+                  .HasConversion<string>()
+                  .HasMaxLength(32);
         });
 
         modelBuilder.Entity<WorkspaceRole>(entity =>

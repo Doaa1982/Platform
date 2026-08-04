@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Platform.Api.Authorization;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
@@ -53,10 +55,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+// Platform Administrator authority (Platform Administrator Business Analysis,
+// BA-002): an Active PlatformOperator grant, checked live per request so a
+// revoked grant takes effect immediately rather than at token expiry.
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(PlatformOperatorRequirement.PolicyName, policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.Requirements.Add(new PlatformOperatorRequirement());
+    });
+});
+builder.Services.AddScoped<IAuthorizationHandler, PlatformOperatorHandler>();
 
 // Resolves Workspace-scoped roles per request, since the token carries none
 builder.Services.AddScoped<WorkspaceAccessService>();
+builder.Services.AddScoped<ProvisioningService>();
+builder.Services.AddScoped<TokenService>();
 
 var app = builder.Build();
 
@@ -156,6 +171,20 @@ if (app.Environment.IsDevelopment())
         );
         bothMembership.Activate();
         db.Memberships.Add(bothMembership);
+
+        // The Platform Administrator. Holds no Membership anywhere — its
+        // authority is the PlatformOperator grant, not a Workspace role
+        // (Platform Administrator Business Analysis, BA-001).
+        //
+        // The first grant has to come from a seed: GrantedBy is null because
+        // there is nobody to grant it.
+        var admin = Identity.Create(
+            email:        "admin@platform.com",
+            passwordHash: BCrypt.Net.BCrypt.HashPassword("Test1234!"),
+            fullName:     "Platform Admin"
+        );
+        db.Identities.Add(admin);
+        db.PlatformOperators.Add(PlatformOperator.Grant(admin.Id));
 
         db.SaveChanges();
     }

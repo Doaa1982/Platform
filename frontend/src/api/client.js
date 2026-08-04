@@ -104,3 +104,46 @@ export function getMe(token) {
 export function getWorkspaceAccess(token, slug) {
   return request(`/me/workspaces/${encodeURIComponent(slug)}`, { token });
 }
+
+/* ── Platform administration ───────────────────────────────────────────────
+   Every one of these 403s unless the caller holds an Active PlatformOperator
+   grant, checked server-side per request. The UI never decides who is an
+   admin — it asks and handles being told no.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/admin/workspaces → the provisioning view */
+export function getProvisioningView(token) {
+  return request("/admin/workspaces", { token });
+}
+
+/** POST /api/admin/workspaces → creates the Workspace and invites its Owner */
+export function provisionWorkspace(token, body) {
+  return request("/admin/workspaces", { method: "POST", body, token });
+}
+
+/** POST /api/admin/invitations/{id}/resend → fresh token, same invitation */
+export function resendInvitation(token, invitationId) {
+  return request(`/admin/invitations/${invitationId}/resend`, { method: "POST", token });
+}
+
+/** POST /api/admin/invitations/{id}/cancel */
+export function cancelInvitation(token, invitationId) {
+  return request(`/admin/invitations/${invitationId}/cancel`, { method: "POST", token });
+}
+
+/** POST /api/admin/workspaces/{id}/{action} — suspend | reinstate | archive */
+export function workspaceAction(token, workspaceId, action) {
+  return request(`/admin/workspaces/${workspaceId}/${action}`, { method: "POST", token });
+}
+
+/* ── Invitations (anonymous — the token is the credential) ─────────────── */
+
+/** GET /api/invitations/{token} → what the invitee sees before accepting */
+export function previewInvitation(inviteToken) {
+  return request(`/invitations/${encodeURIComponent(inviteToken)}`);
+}
+
+/** POST /api/invitations/{token}/accept → membership created, returns a session */
+export function acceptInvitation(inviteToken, body) {
+  return request(`/invitations/${encodeURIComponent(inviteToken)}/accept`, { method: "POST", body });
+}
