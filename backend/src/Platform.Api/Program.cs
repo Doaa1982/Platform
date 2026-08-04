@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Platform.Api.Services;
 using Platform.Domain;
@@ -25,7 +27,12 @@ builder.Services.AddCors(options =>
 
 // ── Database — connection string injected by Aspire ("PlatformDB" resource) ───
 builder.Services.AddDbContext<PlatformDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("PlatformDB")));
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("PlatformDB"),
+        npgsql => npgsql.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(5),
+            errorCodesToAdd: null)));
 
 // ── JWT Authentication ─────────────────────────────────────────────────────────
 var jwtKey = builder.Configuration["Jwt:Key"]
@@ -61,6 +68,19 @@ if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+
+    // Wait for Postgres to actually accept connections before touching it.
+    //
+    // Aspire's .WaitFor(db) reports the *container* as started, which is not the
+    // same as the server being ready — and if the container is recreated while
+    // the orchestrator keeps its proxy port open, connections are accepted with
+    // nothing behind them and hang until they time out.
+    //
+    // EnableRetryOnFailure alone does not cover this: Npgsql classifies a
+    // refused connection as non-transient, so the retrying execution strategy
+    // rethrows it immediately. Hence an explicit readiness poll.
+    await WaitForDatabaseAsync(db, app.Logger);
+
     db.Database.EnsureCreated();
 
     if (!db.Identities.Any())
@@ -120,3 +140,33 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+/// <summary>
+/// Polls until the database accepts connections, or gives up and rethrows.
+///
+/// Gives up rather than waiting forever: a database that is still unreachable
+/// after the window is a real misconfiguration, and a host that never finishes
+/// starting is harder to diagnose than one that fails with the actual error.
+/// </summary>
+static async Task WaitForDatabaseAsync(DbContext db, ILogger logger)
+{
+    const int maxAttempts = 12;
+    var delay = TimeSpan.FromSeconds(2);
+
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            if (await db.Database.CanConnectAsync()) return;
+            throw new InvalidOperationException("The database is not accepting connections yet.");
+        }
+        catch (Exception ex) when (attempt < maxAttempts)
+        {
+            logger.LogWarning(
+                "Database not ready (attempt {Attempt}/{Max}): {Reason}. Retrying in {Delay}s…",
+                attempt, maxAttempts, ex.GetBaseException().Message, delay.TotalSeconds);
+
+            await Task.Delay(delay);
+        }
+    }
+}
