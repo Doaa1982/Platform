@@ -159,9 +159,74 @@ mapping change and a data migration.
 
 ---
 
+## TD-006 — Workspace and Membership configuration surfaces not implemented
+
+**Raised:** 2026-08-04 (Workspace + Membership implementation)
+**Area:** Platform.Domain — `Workspace.cs`, `Membership.cs`
+**Severity:** Low — deliberate scope reduction, not a defect
+**Status:** Deferred
+
+The aggregates were built as the core slice needed to move roles onto Membership
+(TD-005). These specified parts were intentionally left out:
+
+**Workspace** (Workspace Aggregate Design §7–8): Entry Point Registry, Enabled
+Capabilities, Branding Configuration, Workspace Configuration (language, timezone,
+regional settings, pacing defaults), and Workspace Identity's Contact Information
+and Visibility Setting.
+
+**Membership** (Membership Aggregate Design §7–8): Permissions (the resolved
+effective permission set), Membership Metadata Origin, and Membership Preferences.
+
+**Consequence — one invariant is only half-enforced.** INV-007 requires a Workspace
+to have both a complete Workspace Identity *and* at least one registered, Active
+Entry Point before it can be Published. `Workspace.Publish()` enforces only the
+Name + Slug half; the Entry Point half cannot be checked because the registry does
+not exist. INV-006 (an Entry Point value resolves to exactly one Workspace) is
+approximated for now by a unique index on `Slug`.
+
+**Trigger:** custom domains / Workspace resolution (Entry Points), maturity-model
+tiering (Capabilities), or workspace theming (Branding). Permissions become
+necessary at the first real authorization decision.
+**Resolution sketch:** add each as its own entity/value object per the design docs.
+Restore the full INV-007 check inside `Publish()` once the Entry Point Registry
+exists.
+
+---
+
+## TD-007 — Contradiction in Membership Aggregate Design: Pending → Archived
+
+**Raised:** 2026-08-04 (Workspace + Membership implementation)
+**Area:** Documentation — `Documents/Membership Aggregate Design.md`
+**Severity:** Low — needs an author's ruling, cheap to fix either way
+**Status:** Deferred (needs decision)
+
+The document contradicts itself on a single transition:
+
+- **§15 (State Machine)** lists "Active or Pending ↓ Archived" — Pending → Archived
+  is legal.
+- **§14, INV-002** gives as its example of an *illegal* transition "Pending directly
+  to Archived without passing through Active or Removed."
+
+`Membership.Archive()` follows §15 (permitting Pending → Archived) on the grounds
+that the state machine diagram is the normative specification and INV-002's clause
+is an illustrative parenthetical. That choice is recorded in the method's doc
+comment.
+
+The business question is real: should a Pending invitation that is never accepted be
+archivable directly, or must it first be Removed? Archiving un-accepted invitations
+directly seems the more natural business behaviour, which also favours §15.
+
+**Trigger:** invitation-expiry handling, or any review of the Membership lifecycle.
+**Resolution sketch:** decide, then correct whichever of §14/§15 is wrong so the
+document is self-consistent, and align `Membership.Archive()` if the ruling goes the
+other way.
+
+---
+
 ## Log
 
 | Date | Change |
 | --- | --- |
 | 2026-08-04 | Created. TD-001…TD-004 raised during Tutor Login API verification. |
 | 2026-08-04 | TD-005 raised during frontend architecture review (single web app vs. split Tutor/Learner apps). |
+| 2026-08-04 | TD-006, TD-007 raised while implementing the Workspace and Membership aggregates. |

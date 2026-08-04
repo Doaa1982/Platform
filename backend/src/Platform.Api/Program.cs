@@ -61,12 +61,40 @@ if (app.Environment.IsDevelopment())
 
     if (!db.Identities.Any())
     {
-        db.Identities.Add(Identity.Create(
+        var tutor = Identity.Create(
             email:        "tutor@platform.com",
             passwordHash: BCrypt.Net.BCrypt.HashPassword("Test1234!"),
             fullName:     "Demo Tutor",
             role:         IdentityRole.Tutor
-        ));
+        );
+        db.Identities.Add(tutor);
+
+        // A Workspace, and the Membership that makes the tutor a Teacher *inside it* —
+        // roles are Workspace-scoped, never global to the Identity.
+        var workspace = Workspace.Create(
+            name:        "Demo Academy",
+            slug:        "demo-academy",
+            description: "Seeded Workspace for local development."
+        );
+        db.Workspaces.Add(workspace);
+
+        var membership = Membership.Create(
+            identityId:  tutor.Id,
+            workspaceId: workspace.Id,
+            WorkspaceRoleName.Owner, WorkspaceRoleName.Teacher
+        );
+        membership.Activate();
+        db.Memberships.Add(membership);
+
+        // Ownership is held via a Membership, not a direct Identity link
+        // (Workspace Aggregate Design, Section 10).
+        workspace.TransferOwnership(membership.Id);
+
+        workspace.BeginConfiguration();
+        workspace.MakePrivate();
+        workspace.Publish();
+        workspace.Activate();
+
         db.SaveChanges();
     }
 }
