@@ -7,6 +7,8 @@ import {
   Rocket, Palette, SlidersHorizontal, Building2, Mail, UserCheck, UserX, PauseCircle, Activity,
   Video, FileText, Layers, Lightbulb
 } from "lucide-react";
+import { useAuth } from "./auth/authContext";
+import { useFonts } from "./hooks/useFonts";
 
 /* =========================================================================
    TOKEN SYSTEMS — one per Academy (Learning Workspace).
@@ -426,15 +428,36 @@ function CourseCover({ title, imageUrl, height = 72, width = "100%" }) {
   );
 }
 
-function useFonts() {
-  useEffect(() => {
-    const href =
-      "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Karla:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap";
-    if (document.querySelector(`link[href="${href}"]`)) return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet"; link.href = href;
-    document.head.appendChild(link);
-  }, []);
+/* =========================================================================
+   ACCOUNT BAR — the real signed-in Identity, above the prototype harness.
+
+   Shows the Workspace actually entered and the roles held *there*, which is
+   the honest counterpart to the demo harness below it: the harness switches
+   between fictional academies, this bar reports the real session.
+   ========================================================================= */
+
+function AccountBar() {
+  const { me, workspace, workspaces, leaveWorkspace, signOut } = useAuth();
+  if (!workspace) return null;
+
+  return (
+    <div className="lw-accountbar">
+      <span className="lw-accountbar__ws">
+        <Building2 size={13} /> {workspace.name}
+      </span>
+      <span className="lw-accountbar__roles">
+        {workspace.roles.map((r) => (
+          <span className="lw-accountbar__role" key={r}>{r.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>
+        ))}
+      </span>
+      <span className="lw-accountbar__spacer" />
+      <span className="lw-accountbar__who">{me?.fullName}</span>
+      {workspaces.length > 1 && (
+        <button onClick={leaveWorkspace}>Switch workspace</button>
+      )}
+      <button onClick={signOut}>Sign out</button>
+    </div>
+  );
 }
 
 /* =========================================================================
@@ -2098,6 +2121,7 @@ export default function App() {
   return (
     <div className="lw-root" style={theme}>
       <style>{CSS}</style>
+      <AccountBar />
       <ControlStrip academyList={academyList} academy={academy} setAcademy={setAcademy} role={role} setRole={setRole}
         onReset={resetFlow} onNewAcademy={() => setWizardOpen(true)} ownerRole={c.ownerRole} />
       {role === "learner" && <AcademyHeader c={c} />}
@@ -2144,6 +2168,15 @@ export default function App() {
 const CSS = `
   .lw-root { font-family: var(--font-body); color: var(--ink); background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; }
   .lw-root * { box-sizing: border-box; }
+
+  .lw-accountbar { background: #FFFFFF; color: #1B2430; border-bottom: 1px solid #E1DED7; font-family: var(--font-body); font-size: 12px; display: flex; align-items: center; gap: 10px; padding: 8px 18px; flex-wrap: wrap; }
+  .lw-accountbar__ws { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+  .lw-accountbar__roles { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .lw-accountbar__role { font-family: var(--font-mono); font-size: 10px; background: #EDF1FB; color: #2449AC; border-radius: 20px; padding: 2px 8px; }
+  .lw-accountbar__spacer { flex: 1; }
+  .lw-accountbar__who { color: #6A7383; }
+  .lw-accountbar button { background: transparent; border: 1px solid #E1DED7; color: #6A7383; border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
+  .lw-accountbar button:hover { color: #1B2430; border-color: #C9C5BC; }
 
   .lw-controlstrip { background: #0D0F12; color: #C9CDD3; font-family: var(--font-mono); font-size: 11px; display: flex; align-items: center; gap: 20px; padding: 8px 18px; flex-wrap: wrap; border-bottom: 1px solid #000; }
   .lw-controlstrip__label { opacity: 0.65; letter-spacing: 0.04em; }
