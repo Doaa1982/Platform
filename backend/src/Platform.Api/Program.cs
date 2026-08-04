@@ -81,7 +81,11 @@ if (app.Environment.IsDevelopment())
     // rethrows it immediately. Hence an explicit readiness poll.
     await WaitForDatabaseAsync(db, app.Logger);
 
-    db.Database.EnsureCreated();
+    // Migrate, not EnsureCreated. EnsureCreated only builds the schema when the
+    // database has NO tables — on a database created by an earlier version of
+    // the model it silently does nothing, so newly added tables never appear and
+    // the first query against them fails with "relation does not exist".
+    db.Database.Migrate();
 
     if (!db.Identities.Any())
     {
