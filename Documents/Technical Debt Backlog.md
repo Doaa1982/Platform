@@ -270,6 +270,47 @@ to be settled.
 
 ---
 
+## TD-009 — A provisioned Workspace has no path out of `Created`
+
+**Raised:** 2026-08-04 (reviewing the Platform Administrator console)
+**Area:** Platform.Api — no Owner-facing Workspace lifecycle endpoints; Documentation — no
+Business Analysis covered the Owner's setup journey
+**Severity:** Moderate — provisioning delivers a Workspace that cannot be finished
+**Status:** Deferred (documented; implementation blocked on BA-002)
+
+Provisioning transfers ownership and stops, exactly as Platform Administrator Business
+Analysis §7 intends. But nothing then advances the Workspace through its own lifecycle
+(`Created → Configuring → Private → Published → Active`, Workspace Aggregate Design §15).
+
+The aggregate methods all exist. What was missing was any authorized caller: `AdminController`
+exposes only `Suspend`/`Reinstate`/`Archive`, which are the platform's exception handling, and
+`WorkspaceMembersController` covers members only. So a tutor handed a Workspace cannot finish
+setting it up by any route.
+
+**Observed, not hypothetical.** Workspaces provisioned through the admin flow sit at
+`lifecycle=Created, provisioning=Provisioned, owner=true`. The only Workspace reaching `Active`
+is the development seed, which drives the four transitions directly in code.
+
+**Documented by:** Workspace Setup Business Analysis (new, 2026-08-04), which specifies the
+Owner's workflow, authority, completion rules and the meaning of each transition.
+
+**Blocked on a decision.** Workspace Setup Business Analysis BA-002: `Published → Active` has
+no business meaning anywhere in the corpus. §15 justifies splitting `Private` from `Published`
+but not `Published` from `Active`. Implementing the transition requires knowing whether it is
+automatic, driven by first real use, or Owner-declared — the document recommends Owner-declared
+and asks for a ruling. Building it on a guess would bake an accidental decision into the tenant
+lifecycle.
+
+**Also note (BA-003):** INV-007 requires an Active Entry Point before publication, which cannot
+be enforced while the Entry Point Registry is unimplemented (TD-006). Version 1 enforces the
+identity half only; the recommendation is to treat the Public Identifier as an implicit
+platform-subdomain Entry Point until the registry exists.
+
+**Trigger:** a ruling on BA-002 unblocks implementation immediately — the endpoints are a thin
+layer over commands that already exist and pass their own invariant checks.
+
+---
+
 ## Log
 
 | Date | Change |
@@ -280,3 +321,4 @@ to be settled.
 | 2026-08-04 | TD-005 closed — roles moved to Membership, identity-level token with per-request resolution. TD-002 closed by the first `[Authorize]` endpoints. |
 | 2026-08-04 | TD-008 raised during Invitation Business Analysis (Invitation state-machine contradiction). |
 | 2026-08-04 | TD-005's "one app vs. two" framing resolved by ExperienceArchitecture.md ADR-EA-001. |
+| 2026-08-04 | TD-009 raised — a provisioned Workspace cannot leave `Created`. Documented by the new Workspace Setup Business Analysis; implementation blocked on its BA-002. |

@@ -172,6 +172,8 @@ Configuring → Private → Published → Active lifecycle independently
 (Workspace Aggregate Design, Section 15).
 ```
 
+> **Continuation:** that independent lifecycle is specified in **Workspace Setup Business Analysis**, which picks up exactly where this workflow stops. Until it was written, no document said who drives those transitions or what must be true to publish — so provisioned Workspaces had no path out of `Created` (Technical Debt Backlog, TD-009).
+
 Alternate flow — Invitation not accepted:
 
 ```text
