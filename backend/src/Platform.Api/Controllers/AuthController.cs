@@ -58,13 +58,15 @@ public class AuthController : ControllerBase
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var expiresAt = DateTime.UtcNow.AddHours(8);
 
+        // Identity-level claims only. No role claim: roles are Workspace-scoped
+        // (Membership Aggregate Design, INV-005) and are resolved per request
+        // against a named Workspace, not carried in the token.
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub,   identity.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, identity.Email),
             new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
-            new Claim(ClaimTypes.Name,               identity.FullName),
-            new Claim(ClaimTypes.Role,               identity.Role.ToString())
+            new Claim(ClaimTypes.Name,               identity.FullName)
         };
 
         var token = new JwtSecurityToken(
@@ -78,8 +80,7 @@ public class AuthController : ControllerBase
         return new LoginResponse(
             Token:     new JwtSecurityTokenHandler().WriteToken(token),
             ExpiresAt: expiresAt,
-            FullName:  identity.FullName,
-            Role:      identity.Role.ToString()
+            FullName:  identity.FullName
         );
     }
 }

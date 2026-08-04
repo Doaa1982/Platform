@@ -39,10 +39,6 @@ public class PlatformDbContext : DbContext
                   .HasMaxLength(256);
 
             // Store enums as readable strings (not integers)
-            entity.Property(e => e.Role)
-                  .HasConversion<string>()
-                  .HasMaxLength(32);
-
             entity.Property(e => e.Status)
                   .HasConversion<string>()
                   .HasMaxLength(32);

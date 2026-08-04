@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Platform.Api.Services;
 using Platform.Domain;
 using Platform.Infrastructure;
 using Scalar.AspNetCore;
@@ -47,6 +48,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+// Resolves Workspace-scoped roles per request, since the token carries none
+builder.Services.AddScoped<WorkspaceAccessService>();
+
 var app = builder.Build();
 
 // ── Map Aspire health & liveness endpoints ─────────────────────────────────────
@@ -64,8 +68,7 @@ if (app.Environment.IsDevelopment())
         var tutor = Identity.Create(
             email:        "tutor@platform.com",
             passwordHash: BCrypt.Net.BCrypt.HashPassword("Test1234!"),
-            fullName:     "Demo Tutor",
-            role:         IdentityRole.Tutor
+            fullName:     "Demo Tutor"
         );
         db.Identities.Add(tutor);
 

@@ -10,6 +10,11 @@ namespace Platform.Domain;
 /// It is referenced by IdentityId from Membership and every Workspace-scoped
 /// aggregate that traces authorship back through a Membership.
 ///
+/// Identity deliberately holds NO role. Per Section 3, Identity is not responsible
+/// for "Workspace-specific roles, permissions, or status" — those belong to the
+/// Membership Aggregate, scoped to one Workspace. The same person may be a Teacher
+/// in one Workspace and a Learner in another.
+///
 /// Invariants enforced here:
 ///   INV-001: Every Person owns exactly one Identity.
 ///   INV-005: An Identity may hold multiple Credentials (modelled as PasswordHash here for Email/Password type).
@@ -21,7 +26,6 @@ public class Identity
     public string Email { get; private set; } = string.Empty;
     public string PasswordHash { get; private set; } = string.Empty;
     public string FullName { get; private set; } = string.Empty;
-    public IdentityRole Role { get; private set; }
     public IdentityStatus Status { get; private set; }
     public DateTime CreatedAt { get; private set; }
 
@@ -35,8 +39,7 @@ public class Identity
     public static Identity Create(
         string email,
         string passwordHash,
-        string fullName,
-        IdentityRole role)
+        string fullName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
@@ -48,7 +51,6 @@ public class Identity
             Email = email.ToLowerInvariant().Trim(),
             PasswordHash = passwordHash,
             FullName = fullName.Trim(),
-            Role = role,
             Status = IdentityStatus.Active,
             CreatedAt = DateTime.UtcNow
         };

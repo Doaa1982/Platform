@@ -38,7 +38,7 @@ startup throw — do not add a fallback default.
 **Raised:** 2026-08-04 (Tutor Login API verification)
 **Area:** Platform.Api — authentication
 **Severity:** Low — verification gap, not a defect
-**Status:** Deferred
+**Status:** Done (2026-08-04)
 
 Authentication is registered and the pipeline calls `UseAuthentication()` /
 `UseAuthorization()`, but no endpoint carries `[Authorize]`. Token *issuance* is
@@ -47,10 +47,10 @@ proven end-to-end; token *validation* is not exercised by any request.
 Issuance and validation read the same `Jwt:Key` / `Jwt:Issuer` / `Jwt:Audience`
 config keys, so they agree by construction. The risk is low.
 
-**Trigger:** the first protected endpoint — this closes itself at that moment.
-**Resolution sketch:** no dedicated work item. When adding the first `[Authorize]`
-endpoint, confirm a token from `POST /api/auth/login` is accepted, and that a
-tampered/expired one returns 401.
+**Closed** by `GET /api/me` and `GET /api/me/workspaces/{slug}` on `MeController`,
+the first `[Authorize]` endpoints. Verified against a live API: no token → 401,
+tampered token → 401, valid token → 200. Token validation is now exercised on every
+request to those routes.
 
 ---
 
@@ -110,7 +110,7 @@ Confirm intent against Identity Aggregate Design before starting.
 **Raised:** 2026-08-04 (frontend architecture review — one app vs. two)
 **Area:** Platform.Domain — `IdentityRole.cs`, `Identity.cs`; Platform.Api — JWT `role` claim
 **Severity:** Moderate — forces rework once authorization becomes real
-**Status:** Deferred
+**Status:** Done (2026-08-04)
 **Related:** TD-004 (same aggregate, same root cause — Identity carrying what Membership owns)
 
 `Identity` holds a single global `IdentityRole` (`Tutor | Learner | Admin`), and
@@ -147,15 +147,23 @@ Deferred deliberately: the global role was a reasonable bootstrap for standing u
 login against a single seeded identity, and there is no Workspace or Membership
 implementation yet to scope a role against.
 
-**Trigger:** whichever comes first — implementing Membership/Workspace, the first
-endpoint making an authorization decision, or role-driven navigation in the frontend.
+**Resolution as built (2026-08-04):**
 
-**Resolution sketch:** move role assignment onto Membership as a workspace-scoped
-collection. Drop `Identity.Role`. Decide the token model deliberately — either a
-Workspace-scoped token minted after Workspace selection (fits "a learner interacts
-with exactly one Workspace at a time", IdentityAndWorkspaceAccess line 131), or an
-identity-level token with roles resolved per request from Membership. Requires an EF
-mapping change and a data migration.
+- `Identity.Role` and the `IdentityRole` enum are removed. Roles now live on
+  `Membership` as a `WorkspaceRole` collection, using the seven role names from
+  Workspace Access Context §4.4.
+- **Token model chosen: identity-level token with per-request role resolution.** The
+  JWT carries `sub`, `email`, `name` and no role claim. `WorkspaceAccessService`
+  resolves roles from Membership per request against a named Workspace.
+- `LoginResponse` no longer returns `Role` — a breaking API change made while it had
+  no consumers.
+- The misleading "Section 7" comment was removed with the enum.
+
+**Follow-up — platform-level Admin has no home.** The old enum's `Admin` value was
+dropped along with it. `WorkspaceRoleName.Administrator` is Workspace-scoped and is
+*not* a replacement: it confers nothing platform-wide. If platform staff / support
+access is ever needed, it must be modelled deliberately rather than by reinstating a
+global role on Identity. No design doc in the corpus currently covers it.
 
 ---
 
@@ -230,3 +238,4 @@ other way.
 | 2026-08-04 | Created. TD-001…TD-004 raised during Tutor Login API verification. |
 | 2026-08-04 | TD-005 raised during frontend architecture review (single web app vs. split Tutor/Learner apps). |
 | 2026-08-04 | TD-006, TD-007 raised while implementing the Workspace and Membership aggregates. |
+| 2026-08-04 | TD-005 closed — roles moved to Membership, identity-level token with per-request resolution. TD-002 closed by the first `[Authorize]` endpoints. |
