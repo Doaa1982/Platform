@@ -5,17 +5,17 @@ import WorkspacePicker from "./screens/WorkspacePicker";
 import App from "./App.jsx";
 
 /* =========================================================================
-   AUTH GATE — decides which of the three states the app is in.
+   AUTH GATE — which of the three states this side is in.
 
-     anonymous              → sign in
-     authenticated, no ws   → choose a workspace
-     authenticated + ws     → the workspace itself
+     anonymous              → sign in on this side
+     authenticated, no ws   → choose a workspace on this side
+     authenticated + ws     → the surface for this side
 
    The middle state is not a detour: roles are Workspace-scoped, so the app
    genuinely cannot know what to render until a Workspace is chosen.
    ========================================================================= */
 
-export default function AuthGate() {
+export default function AuthGate({ side, navigate }) {
   const { status, error, workspace, signOut } = useAuth();
 
   if (status === "loading") {
@@ -37,11 +37,15 @@ export default function AuthGate() {
     );
   }
 
-  if (status === "anonymous") return <LoginScreen />;
+  if (status === "anonymous") {
+    return <LoginScreen side={side} onBack={() => navigate("/")} />;
+  }
 
-  if (!workspace) return <WorkspacePicker />;
+  if (!workspace) {
+    return <WorkspacePicker side={side} onSwitchSide={navigate} />;
+  }
 
-  // App reads the session from context via <AccountBar>, so it needs no props
+  // App reads session and side from context, so it needs no props
   return <App />;
 }
 

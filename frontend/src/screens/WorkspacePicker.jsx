@@ -1,38 +1,48 @@
-import { Building2, ArrowRight, LogOut, Clock, PauseCircle } from "lucide-react";
+import { Building2, ArrowRight, ArrowLeftRight, LogOut, Clock, PauseCircle } from "lucide-react";
 import { useAuth } from "../auth/authContext";
+import { SIDES, rolesMatchSide } from "../auth/sides";
 import { useFonts } from "../hooks/useFonts";
 
 /* =========================================================================
-   WORKSPACE PICKER
+   WORKSPACE PICKER — the bridge between "who you are" and "where you work".
 
-   The bridge between "who you are" and "where you are working". A person may
-   hold different roles in each Workspace, so this is the moment the app
-   learns which role set applies — nothing before this point can know it.
+   Filtered by the side you came in through, because roles are Workspace-scoped:
+   a Workspace where you are only a Learner has nothing to offer the teaching
+   surface, and vice versa. Rather than hide those, they are listed under the
+   other side with a one-click switch — the honest answer to "why isn't my
+   academy here?".
 
-   Skipped automatically when exactly one Active Membership exists.
+   Skipped automatically when exactly one Workspace qualifies for this side.
    ========================================================================= */
 
 /** Non-Active Memberships are listed but not enterable, with the reason shown. */
 const BLOCKED = {
-  Pending:   { icon: Clock,        note: "Invitation not accepted yet" },
-  Suspended: { icon: PauseCircle,  note: "Access suspended" },
-  Archived:  { icon: PauseCircle,  note: "Archived" },
+  Pending:   { icon: Clock,       note: "Invitation not accepted yet" },
+  Suspended: { icon: PauseCircle, note: "Access suspended" },
+  Archived:  { icon: PauseCircle, note: "Archived" },
 };
 
-export default function WorkspacePicker() {
+export default function WorkspacePicker({ side, onSwitchSide }) {
   useFonts();
   const { me, workspaces, selectWorkspace, signOut } = useAuth();
 
+  const config = SIDES[side];
+  const other = SIDES[side === "teach" ? "learn" : "teach"];
+
   const active = workspaces.filter((w) => w.membershipStatus === "Active");
+  const mine = active.filter((w) => rolesMatchSide(w.roles, side));
+  const otherSide = active.filter((w) => !rolesMatchSide(w.roles, side) && rolesMatchSide(w.roles, other.key));
   const blocked = workspaces.filter((w) => w.membershipStatus !== "Active");
 
   return (
-    <div className="pl-picker">
+    <div className="pl-picker" style={{ "--accent": config.login.accent }}>
       <style>{CSS}</style>
 
       <header className="pl-picker__head">
         <div>
-          <div className="pl-picker__eyebrow">Signed in as {me?.email}</div>
+          <div className="pl-picker__eyebrow">
+            {config.label} · signed in as {me?.email}
+          </div>
           <h1 className="pl-picker__title">Choose a workspace</h1>
         </div>
         <button className="pl-picker__signout" onClick={signOut}>
@@ -40,31 +50,18 @@ export default function WorkspacePicker() {
         </button>
       </header>
 
-      {workspaces.length === 0 && (
-        <div className="pl-picker__empty">
-          <Building2 size={28} aria-hidden="true" />
-          <h2>You don't belong to any workspace yet</h2>
-          <p>
-            Workspaces are joined by invitation. Once someone invites you — or you
-            create your own — it will appear here.
-          </p>
-        </div>
-      )}
-
-      {active.length > 0 && (
+      {mine.length > 0 && (
         <ul className="pl-picker__list">
-          {active.map((w) => (
+          {mine.map((w) => (
             <li key={w.workspaceId}>
               <button className="pl-wscard" onClick={() => selectWorkspace(w.slug)}>
                 <span className="pl-wscard__mark" aria-hidden="true">{w.name.trim()[0]}</span>
                 <span className="pl-wscard__body">
                   <span className="pl-wscard__name">{w.name}</span>
                   <span className="pl-wscard__roles">
-                    {w.roles.length > 0
-                      ? w.roles.map((r) => (
-                          <span className="pl-role" key={r}>{humanise(r)}</span>
-                        ))
-                      : <span className="pl-wscard__norole">Member, no roles assigned</span>}
+                    {w.roles.map((r) => (
+                      <span className="pl-role" key={r}>{humanise(r)}</span>
+                    ))}
                   </span>
                 </span>
                 <ArrowRight size={18} className="pl-wscard__go" aria-hidden="true" />
@@ -72,6 +69,50 @@ export default function WorkspacePicker() {
             </li>
           ))}
         </ul>
+      )}
+
+      {mine.length === 0 && (
+        <div className="pl-picker__empty">
+          <Building2 size={28} aria-hidden="true" />
+          <h2>
+            {otherSide.length > 0
+              ? `No ${config.label.toLowerCase()} workspaces on this account`
+              : "You don't belong to any workspace yet"}
+          </h2>
+          <p>
+            {otherSide.length > 0
+              ? `You're a member of ${plural(otherSide.length, "workspace")}, but only on the ${other.label.toLowerCase()} side.`
+              : "Workspaces are joined by invitation. Once someone invites you — or you create your own — it will appear here."}
+          </p>
+          {otherSide.length > 0 && (
+            <button className="pl-picker__switch" onClick={() => onSwitchSide(other.path)}>
+              <ArrowLeftRight size={15} aria-hidden="true" /> Switch to {other.label.toLowerCase()}
+            </button>
+          )}
+        </div>
+      )}
+
+      {mine.length > 0 && otherSide.length > 0 && (
+        <>
+          <h2 className="pl-picker__subhead">On the {other.label.toLowerCase()} side</h2>
+          <ul className="pl-picker__list">
+            {otherSide.map((w) => (
+              <li key={w.workspaceId}>
+                <button className="pl-wscard is-other" onClick={() => onSwitchSide(other.path)}>
+                  <span className="pl-wscard__mark" aria-hidden="true">{w.name.trim()[0]}</span>
+                  <span className="pl-wscard__body">
+                    <span className="pl-wscard__name">{w.name}</span>
+                    <span className="pl-wscard__blockednote">
+                      <ArrowLeftRight size={13} aria-hidden="true" />
+                      {w.roles.map(humanise).join(", ")} — open on the {other.label.toLowerCase()} side
+                    </span>
+                  </span>
+                  <ArrowRight size={18} className="pl-wscard__go" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {blocked.length > 0 && (
@@ -107,18 +148,20 @@ function humanise(role) {
   return role.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
 const CSS = `
   .pl-picker {
-    --pl-bg: #F7F5F1;
     --pl-surface: #FFFFFF;
     --pl-ink: #1B2430;
     --pl-ink-soft: #6A7383;
-    --pl-accent: #2D5BD1;
     --pl-line: #E1DED7;
 
     font-family: 'Karla', system-ui, sans-serif;
     color: var(--pl-ink);
-    background: var(--pl-bg);
+    background: #F7F5F1;
     min-height: 100vh;
     padding: 56px 28px 72px;
   }
@@ -146,7 +189,7 @@ const CSS = `
     padding: 7px 12px; cursor: pointer;
   }
   .pl-picker__signout:hover { color: var(--pl-ink); border-color: #C9C5BC; }
-  .pl-picker__signout:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 1px; }
+  .pl-picker__signout:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .pl-picker__subhead {
     max-width: 620px; margin: 30px auto 12px;
@@ -169,26 +212,27 @@ const CSS = `
     transition: border-color .15s, box-shadow .15s, transform .15s;
   }
   button.pl-wscard:hover {
-    border-color: var(--pl-accent);
+    border-color: var(--accent);
     box-shadow: 0 2px 14px rgba(27,36,48,0.07);
     transform: translateY(-1px);
   }
-  button.pl-wscard:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; }
+  button.pl-wscard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .pl-wscard.is-blocked { cursor: default; opacity: 0.62; background: transparent; }
+  .pl-wscard.is-other { background: transparent; }
 
   .pl-wscard__mark {
     flex-shrink: 0;
     width: 40px; height: 40px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
-    background: var(--pl-accent); color: #fff;
+    background: var(--accent); color: #fff;
     font-family: 'Fraunces', Georgia, serif; font-size: 1.15rem; font-weight: 600;
   }
   .pl-wscard.is-blocked .pl-wscard__mark { background: #B9BCC3; }
+  .pl-wscard.is-other .pl-wscard__mark { background: #9AA1AC; }
 
   .pl-wscard__body { flex: 1; min-width: 0; }
   .pl-wscard__name { display: block; font-weight: 600; font-size: 0.98rem; margin-bottom: 5px; }
   .pl-wscard__roles { display: flex; flex-wrap: wrap; gap: 5px; }
-  .pl-wscard__norole { font-size: 0.8rem; color: var(--pl-ink-soft); font-style: italic; }
   .pl-wscard__go { color: var(--pl-ink-soft); flex-shrink: 0; }
   .pl-wscard__blockednote {
     display: inline-flex; align-items: center; gap: 5px;
@@ -198,7 +242,8 @@ const CSS = `
   .pl-role {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10.5px; letter-spacing: 0.03em;
-    background: #EDF1FB; color: #2449AC;
+    background: color-mix(in srgb, var(--accent) 12%, #fff);
+    color: color-mix(in srgb, var(--accent) 78%, #000);
     border-radius: 20px; padding: 3px 9px;
   }
 
@@ -212,7 +257,14 @@ const CSS = `
     font-family: 'Fraunces', Georgia, serif; font-size: 1.15rem;
     color: var(--pl-ink); margin: 14px 0 8px; font-weight: 600;
   }
-  .pl-picker__empty p { font-size: 0.9rem; line-height: 1.6; max-width: 44ch; margin: 0 auto; }
+  .pl-picker__empty p { font-size: 0.9rem; line-height: 1.6; max-width: 46ch; margin: 0 auto; }
+  .pl-picker__switch {
+    display: inline-flex; align-items: center; gap: 7px; margin-top: 20px;
+    font-family: inherit; font-size: 0.88rem; font-weight: 600;
+    color: #fff; background: var(--accent);
+    border: none; border-radius: 9px; padding: 10px 16px; cursor: pointer;
+  }
+  .pl-picker__switch:focus-visible { outline: 2px solid var(--pl-ink); outline-offset: 2px; }
 
   @media (max-width: 520px) {
     .pl-picker { padding: 36px 20px 56px; }

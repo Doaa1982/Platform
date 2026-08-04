@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 import { AuthContext } from "./authContext";
+import { rolesMatchSide } from "./sides";
 
 /* =========================================================================
    AUTH PROVIDER — holds the signed-in Identity and the Workspaces it reaches.
@@ -15,7 +16,7 @@ import { AuthContext } from "./authContext";
    Learner in another.
    ========================================================================= */
 
-export function AuthProvider({ children }) {
+export function AuthProvider({ side, children }) {
   const [session, setSession] = useState(() => api.loadSession());
   const [me, setMe] = useState(null);
   const [chosenSlug, setChosenSlug] = useState(null);
@@ -79,19 +80,28 @@ export function AuthProvider({ children }) {
     // so the picker can explain them, never selected.
     const active = workspaces.filter((w) => w.membershipStatus === "Active");
 
-    /* Derived, not stored: with exactly one Active Membership there is no
+    /* Only Workspaces whose roles belong to the current side are enterable
+       here. This is what stops the teaching surface from opening in a
+       Workspace where the person is merely a Learner — the door they used
+       never grants anything; these roles do. */
+    const eligible = active.filter((w) => rolesMatchSide(w.roles, side));
+
+    /* Derived, not stored: with exactly one eligible Workspace there is no
        choice to make, so the picker is skipped. Deriving avoids a setState
-       inside an effect and stays correct if the workspace list reloads. */
+       inside an effect and stays correct when the side or the list changes. */
     const workspace =
-      active.find((w) => w.slug === chosenSlug) ??
-      (active.length === 1 ? active[0] : null);
+      eligible.find((w) => w.slug === chosenSlug) ??
+      (eligible.length === 1 ? eligible[0] : null);
 
     return {
       status,
       error,
       session,
       me,
+      side,
       workspaces,
+      /** Workspaces enterable from the current side. */
+      eligibleWorkspaces: eligible,
       workspace,
       /** Roles held in the CURRENT Workspace only — never global. */
       roles: workspace?.roles ?? [],
@@ -101,7 +111,7 @@ export function AuthProvider({ children }) {
       signIn,
       signOut,
     };
-  }, [status, error, session, me, chosenSlug, signIn, signOut]);
+  }, [status, error, session, me, side, chosenSlug, signIn, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

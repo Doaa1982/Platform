@@ -7,7 +7,9 @@ import {
   Rocket, Palette, SlidersHorizontal, Building2, Mail, UserCheck, UserX, PauseCircle, Activity,
   Video, FileText, Layers, Lightbulb
 } from "lucide-react";
+import { ArrowLeftRight } from "lucide-react";
 import { useAuth } from "./auth/authContext";
+import { SIDES, rolesMatchSide } from "./auth/sides";
 import { useFonts } from "./hooks/useFonts";
 
 /* =========================================================================
@@ -437,11 +439,22 @@ function CourseCover({ title, imageUrl, height = 72, width = "100%" }) {
    ========================================================================= */
 
 function AccountBar() {
-  const { me, workspace, workspaces, leaveWorkspace, signOut } = useAuth();
+  const { me, side, workspace, workspaces, eligibleWorkspaces, leaveWorkspace, signOut } = useAuth();
   if (!workspace) return null;
 
+  const config = SIDES[side];
+  const other = SIDES[side === "teach" ? "learn" : "teach"];
+
+  /* Offer the other door only where this person genuinely holds roles for it,
+     in some Active Workspace. Showing it otherwise would send them to a side
+     with nothing on it. */
+  const canSwitchSide = workspaces.some(
+    (w) => w.membershipStatus === "Active" && rolesMatchSide(w.roles, other.key)
+  );
+
   return (
-    <div className="lw-accountbar">
+    <div className="lw-accountbar" style={{ "--side-accent": config.login.accent }}>
+      <span className="lw-accountbar__side">{config.label}</span>
       <span className="lw-accountbar__ws">
         <Building2 size={13} /> {workspace.name}
       </span>
@@ -452,7 +465,12 @@ function AccountBar() {
       </span>
       <span className="lw-accountbar__spacer" />
       <span className="lw-accountbar__who">{me?.fullName}</span>
-      {workspaces.length > 1 && (
+      {canSwitchSide && (
+        <button onClick={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}>
+          <ArrowLeftRight size={12} /> {other.label}
+        </button>
+      )}
+      {eligibleWorkspaces.length > 1 && (
         <button onClick={leaveWorkspace}>Switch workspace</button>
       )}
       <button onClick={signOut}>Sign out</button>
@@ -483,7 +501,12 @@ function AcademyHeader({ c }) {
   );
 }
 
-function ControlStrip({ academyList, academy, setAcademy, role, setRole, onReset, onNewAcademy, ownerRole }) {
+/* The "Viewing as" toggle that used to live here is gone: which surface you
+   see is now decided by the door you signed in through and the roles the API
+   returns for the selected Workspace, so a free-floating switch would be able
+   to claim a view the session does not support. Switching sides is offered in
+   AccountBar instead, and only when your roles actually allow it. */
+function ControlStrip({ academyList, academy, setAcademy, onReset, onNewAcademy, canAuthor }) {
   return (
     <div className="lw-controlstrip">
       <span className="lw-controlstrip__label">PROTOTYPE · demo harness, not part of the product</span>
@@ -492,12 +515,9 @@ function ControlStrip({ academyList, academy, setAcademy, role, setRole, onReset
         {academyList.map((a) => (
           <button key={a.key} className={academy === a.key ? "active" : ""} onClick={() => setAcademy(a.key)}>{a.label}</button>
         ))}
-        <button className="lw-controlstrip__new" onClick={onNewAcademy}><Plus size={12} /> New academy</button>
-      </div>
-      <div className="lw-controlstrip__group">
-        <span>Viewing as</span>
-        <button className={role === "learner" ? "active" : ""} onClick={() => setRole("learner")}>Learner</button>
-        <button className={role === "owner" ? "active" : ""} onClick={() => setRole("owner")}>{ownerRole}</button>
+        {canAuthor && (
+          <button className="lw-controlstrip__new" onClick={onNewAcademy}><Plus size={12} /> New academy</button>
+        )}
       </div>
       <button className="lw-controlstrip__reset" onClick={onReset} title="Reset content studio flow">
         <RotateCcw size={13} /> Reset studio
@@ -2053,7 +2073,12 @@ function WorkspaceWizard({ onClose, onComplete }) {
 export default function App() {
   useFonts();
   const [academy, setAcademy] = useState("lumen");
-  const [role, setRole] = useState("learner");
+
+  /* Which surface renders is decided by the door you came through, not by a
+     toggle — and you only reach this component at all once the API has
+     confirmed you hold a role for that side in the selected Workspace. */
+  const { side } = useAuth();
+  const role = side === "teach" ? "owner" : "learner";
   const [learnerScreen, setLearnerScreen] = useState("dashboard");
   const [ownerScreen, setOwnerScreen] = useState("overview");
   const [profileOpen, setProfileOpen] = useState(false);
@@ -2100,7 +2125,6 @@ export default function App() {
     setCustomAcademies((prev) => ({ ...prev, [key]: { theme: tokens, content } }));
     setStudioFlow((f) => ({ ...f, [key]: { step: "upload", published: [] } }));
     setAcademy(key);
-    setRole("owner");
     setOwnerScreen("overview");
     setWizardOpen(false);
   };
@@ -2122,8 +2146,8 @@ export default function App() {
     <div className="lw-root" style={theme}>
       <style>{CSS}</style>
       <AccountBar />
-      <ControlStrip academyList={academyList} academy={academy} setAcademy={setAcademy} role={role} setRole={setRole}
-        onReset={resetFlow} onNewAcademy={() => setWizardOpen(true)} ownerRole={c.ownerRole} />
+      <ControlStrip academyList={academyList} academy={academy} setAcademy={setAcademy}
+        onReset={resetFlow} onNewAcademy={() => setWizardOpen(true)} canAuthor={role === "owner"} />
       {role === "learner" && <AcademyHeader c={c} />}
       <div className="lw-shell" data-academy={academy}>
         <Nav c={c} role={role} screen={activeNavScreen}
@@ -2170,12 +2194,13 @@ const CSS = `
   .lw-root * { box-sizing: border-box; }
 
   .lw-accountbar { background: #FFFFFF; color: #1B2430; border-bottom: 1px solid #E1DED7; font-family: var(--font-body); font-size: 12px; display: flex; align-items: center; gap: 10px; padding: 8px 18px; flex-wrap: wrap; }
+  .lw-accountbar__side { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; background: var(--side-accent); color: #fff; border-radius: 20px; padding: 3px 9px; }
   .lw-accountbar__ws { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
   .lw-accountbar__roles { display: inline-flex; gap: 4px; flex-wrap: wrap; }
   .lw-accountbar__role { font-family: var(--font-mono); font-size: 10px; background: #EDF1FB; color: #2449AC; border-radius: 20px; padding: 2px 8px; }
   .lw-accountbar__spacer { flex: 1; }
   .lw-accountbar__who { color: #6A7383; }
-  .lw-accountbar button { background: transparent; border: 1px solid #E1DED7; color: #6A7383; border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
+  .lw-accountbar button { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid #E1DED7; color: #6A7383; border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
   .lw-accountbar button:hover { color: #1B2430; border-color: #C9C5BC; }
 
   .lw-controlstrip { background: #0D0F12; color: #C9CDD3; font-family: var(--font-mono); font-size: 11px; display: flex; align-items: center; gap: 20px; padding: 8px 18px; flex-wrap: wrap; border-bottom: 1px solid #000; }

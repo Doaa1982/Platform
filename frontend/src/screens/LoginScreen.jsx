@@ -1,22 +1,27 @@
 import { useState } from "react";
-import { Eye, EyeOff, LoaderCircle, AlertCircle, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, AlertCircle, ArrowRight, ArrowLeft } from "lucide-react";
 import { useAuth } from "../auth/authContext";
+import { SIDES } from "../auth/sides";
 import { useFonts } from "../hooks/useFonts";
 
 /* =========================================================================
-   LOGIN SCREEN
+   LOGIN SCREEN — one component, two faces.
 
-   Deliberately unbranded. Sign-in happens *before* Workspace Resolution, so
-   there is no Workspace yet and therefore no Workspace branding to apply —
-   using an academy's colours here would be a lie about which tenant you are
-   in. Per-Workspace login pages arrive with the Entry Point Registry
-   (Technical Debt Backlog TD-006); until then this is the platform's own
-   neutral front door.
+   The tutor and learner doors differ in copy and colour, not in mechanism:
+   both post the same credentials to the same endpoint and receive the same
+   identity-level token. Which door you used never grants anything — roles on
+   your Membership do that, resolved per Workspace after sign-in.
+
+   Deliberately carries no Workspace branding. Sign-in happens before
+   Workspace Resolution, so there is no tenant whose colours could honestly be
+   applied yet. Per-Workspace login pages arrive with the Entry Point Registry
+   (Technical Debt Backlog TD-006).
    ========================================================================= */
 
-export default function LoginScreen() {
+export default function LoginScreen({ side, onBack }) {
   useFonts();
   const { signIn } = useAuth();
+  const copy = SIDES[side].login;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +40,7 @@ export default function LoginScreen() {
 
     try {
       await signIn(email.trim(), password);
-      // On success the provider swaps this screen out — nothing to do here.
+      // On success the gate swaps this screen out — nothing to do here.
     } catch (err) {
       // Never reveal which field was wrong: the API deliberately returns the
       // same message for an unknown email and a bad password.
@@ -49,8 +54,15 @@ export default function LoginScreen() {
     }
   }
 
+  const themeVars = {
+    "--pl-accent": copy.accent,
+    "--pl-aside-from": copy.asideFrom,
+    "--pl-aside-via": copy.asideVia,
+    "--pl-aside-to": copy.asideTo,
+  };
+
   return (
-    <div className="pl-login">
+    <div className="pl-login" style={themeVars}>
       <style>{CSS}</style>
 
       <section className="pl-login__aside" aria-hidden="true">
@@ -62,18 +74,23 @@ export default function LoginScreen() {
             <path d="M15.5 22 L24.5 22" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
           </svg>
         </div>
-        <h2 className="pl-login__asidetitle">One identity.<br />Every workspace.</h2>
-        <p className="pl-login__asidetext">
-          Your account belongs to you, not to any single academy. Sign in once, then
-          choose the workspace you want to work in.
-        </p>
+        <h2 className="pl-login__asidetitle">
+          {copy.asideTitle.split("\n").map((line, i) => (
+            <span key={i}>{line}<br /></span>
+          ))}
+        </h2>
+        <p className="pl-login__asidetext">{copy.asideText}</p>
       </section>
 
       <main className="pl-login__panel">
         <div className="pl-login__form-wrap">
-          <div className="pl-login__eyebrow">Platform</div>
-          <h1 className="pl-login__title">Sign in</h1>
-          <p className="pl-login__sub">Welcome back. Enter your details to continue.</p>
+          <button type="button" className="pl-login__back" onClick={onBack}>
+            <ArrowLeft size={14} aria-hidden="true" /> Not what you wanted?
+          </button>
+
+          <div className="pl-login__eyebrow">{copy.eyebrow}</div>
+          <h1 className="pl-login__title">{copy.heading}</h1>
+          <p className="pl-login__sub">{copy.sub}</p>
 
           <form onSubmit={handleSubmit} noValidate>
             {error && (
@@ -151,7 +168,6 @@ const CSS = `
     --pl-surface: #FFFFFF;
     --pl-ink: #1B2430;
     --pl-ink-soft: #6A7383;
-    --pl-accent: #2D5BD1;
     --pl-line: #E1DED7;
     --pl-danger: #B3382B;
     --pl-danger-bg: #FDF1EF;
@@ -167,7 +183,7 @@ const CSS = `
 
   /* ── Left brand panel ─────────────────────────────────────────────────── */
   .pl-login__aside {
-    background: linear-gradient(155deg, #1B2430 0%, #24344B 55%, #2D5BD1 160%);
+    background: linear-gradient(155deg, var(--pl-aside-from) 0%, var(--pl-aside-via) 55%, var(--pl-aside-to) 160%);
     color: #F7F5F1;
     padding: 56px 52px;
     display: flex;
@@ -195,6 +211,14 @@ const CSS = `
   /* ── Right form panel ─────────────────────────────────────────────────── */
   .pl-login__panel { display: flex; align-items: center; justify-content: center; padding: 48px 32px; }
   .pl-login__form-wrap { width: 100%; max-width: 380px; }
+
+  .pl-login__back {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: transparent; border: none; padding: 0; margin-bottom: 22px;
+    font-family: inherit; font-size: 0.82rem; color: var(--pl-ink-soft); cursor: pointer;
+  }
+  .pl-login__back:hover { color: var(--pl-ink); }
+  .pl-login__back:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; border-radius: 4px; }
 
   .pl-login__eyebrow {
     font-family: 'IBM Plex Mono', monospace;
@@ -227,7 +251,7 @@ const CSS = `
   .pl-field input:focus-visible {
     outline: none;
     border-color: var(--pl-accent);
-    box-shadow: 0 0 0 3px rgba(45,91,209,0.16);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pl-accent) 18%, transparent);
   }
   .pl-field input[aria-invalid="true"] { border-color: var(--pl-danger); }
   .pl-field input:disabled { background: #F4F3F0; color: var(--pl-ink-soft); }
@@ -250,9 +274,9 @@ const CSS = `
     border: none; border-radius: 10px;
     padding: 12px 16px; margin-top: 6px;
     cursor: pointer;
-    transition: background .15s, opacity .15s;
+    transition: filter .15s, opacity .15s;
   }
-  .pl-btn:hover:not(:disabled) { background: #2449AC; }
+  .pl-btn:hover:not(:disabled) { filter: brightness(0.9); }
   .pl-btn:focus-visible { outline: 2px solid var(--pl-ink); outline-offset: 2px; }
   .pl-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
@@ -277,8 +301,8 @@ const CSS = `
   .pl-spin { animation: plSpin 0.9s linear infinite; }
   @keyframes plSpin { to { transform: rotate(360deg); } }
 
-  /* ── Responsive: the brand panel is decorative, so it goes first and
-        shrinks to a header band before disappearing entirely. ──────────── */
+  /* ── Responsive: the brand panel is decorative, so it shrinks to a header
+        band before disappearing entirely. ─────────────────────────────── */
   @media (max-width: 860px) {
     .pl-login { grid-template-columns: 1fr; }
     .pl-login__aside { padding: 36px 28px; gap: 14px; }

@@ -122,6 +122,41 @@ if (app.Environment.IsDevelopment())
         workspace.Publish();
         workspace.Activate();
 
+        // A learner in the same Workspace, so the learning side has something to
+        // show. Same Identity shape, same credentials mechanism — the only
+        // difference is the role held on the Membership.
+        var learner = Identity.Create(
+            email:        "learner@platform.com",
+            passwordHash: BCrypt.Net.BCrypt.HashPassword("Test1234!"),
+            fullName:     "Demo Learner"
+        );
+        db.Identities.Add(learner);
+
+        var learnerMembership = Membership.Create(
+            identityId:  learner.Id,
+            workspaceId: workspace.Id,
+            WorkspaceRoleName.Learner
+        );
+        learnerMembership.Activate();
+        db.Memberships.Add(learnerMembership);
+
+        // Someone who both teaches and learns — the case a single global role
+        // could never represent, and the reason switching sides exists.
+        var both = Identity.Create(
+            email:        "both@platform.com",
+            passwordHash: BCrypt.Net.BCrypt.HashPassword("Test1234!"),
+            fullName:     "Demo Tutor-Learner"
+        );
+        db.Identities.Add(both);
+
+        var bothMembership = Membership.Create(
+            identityId:  both.Id,
+            workspaceId: workspace.Id,
+            WorkspaceRoleName.Teacher, WorkspaceRoleName.Learner
+        );
+        bothMembership.Activate();
+        db.Memberships.Add(bothMembership);
+
         db.SaveChanges();
     }
 }
