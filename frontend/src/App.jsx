@@ -4,13 +4,14 @@ import {
   Award, Upload, Wand2, CheckCircle2, XCircle, Pencil, Send, ArrowRight, ArrowLeft,
   Bot, Users, BarChart3, Clock, Mic, Sparkles, Check, Circle, RotateCcw, Settings,
   CreditCard, Calendar, ClipboardCheck, TrendingUp, UserCircle, X, Plus,
-  Rocket, Palette, SlidersHorizontal, Building2, Mail, UserCheck, UserX, PauseCircle, Activity,
+  Rocket, Palette, SlidersHorizontal, Building2, Activity,
   Video, FileText, Layers, Lightbulb
 } from "lucide-react";
 import { ArrowLeftRight } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
 import { useFonts } from "./hooks/useFonts";
+import MembersScreen from "./screens/MembersScreen";
 
 /* =========================================================================
    TOKEN SYSTEMS — one per Academy (Learning Workspace).
@@ -1466,122 +1467,6 @@ function OwnerProducts({ c }) {
   );
 }
 
-function OwnerMembers({ c }) {
-  const seedActive = c.members.filter((m) => m.status !== "Invited").map((m, i) => ({ ...m, id: `m${i}` }));
-  const seedInvites = c.members.filter((m) => m.status === "Invited").map((m, i) => ({ id: `i${i}`, email: m.name, status: "Issued" }));
-
-  const [members, setMembers] = useState(seedActive);
-  const [invitations, setInvitations] = useState(seedInvites);
-  const [emailDraft, setEmailDraft] = useState("");
-  const [log, setLog] = useState([]);
-
-  const fire = (event) => setLog((l) => [{ event, id: Date.now() + Math.random() }, ...l].slice(0, 5));
-
-  const sendInvite = () => {
-    if (!emailDraft.trim()) return;
-    setInvitations((inv) => [{ id: `i${Date.now()}`, email: emailDraft.trim(), status: "Issued" }, ...inv]);
-    fire("WorkspaceInvitationCreated");
-    setEmailDraft("");
-  };
-
-  const acceptInvite = (id) => {
-    const invite = invitations.find((i) => i.id === id);
-    if (!invite) return;
-    setInvitations((inv) => inv.filter((i) => i.id !== id));
-    fire("WorkspaceInvitationAccepted");
-    setMembers((ms) => [{ id: `m${Date.now()}`, name: invite.email, role: "Learner", status: "Active" }, ...ms]);
-    fire("WorkspaceMembershipCreated");
-  };
-
-  const cancelInvite = (id) => {
-    setInvitations((inv) => inv.map((i) => (i.id === id ? { ...i, status: "Cancelled" } : i)));
-    fire("WorkspaceInvitationCancelled");
-  };
-
-  const expireInvite = (id) => {
-    setInvitations((inv) => inv.map((i) => (i.id === id ? { ...i, status: "Expired" } : i)));
-    fire("WorkspaceInvitationExpired");
-  };
-
-  const setMemberStatus = (id, status, event) => {
-    setMembers((ms) => ms.map((m) => (m.id === id ? { ...m, status } : m)));
-    fire(event);
-  };
-
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Identity & Membership Context</div>
-      <h1>Members</h1>
-      <p className="lw-sub">Membership belongs to this Workspace only — Identity survives even if Membership is removed (BR-MB-004). The same person may hold a different role in another academy.</p>
-
-      <h2 className="lw-sectiontitle" style={{ marginTop: 0 }}>Active members</h2>
-      <div className="lw-list">
-        {members.map((m) => (
-          <div className={`lw-listrow ${m.status === "Removed" ? "lw-listrow--dim" : ""}`} key={m.id}>
-            <div className="lw-listrow__icon">{m.name[0]}</div>
-            <div className="lw-listrow__body">
-              <div className="lw-listrow__title">{m.name}</div>
-              <div className="lw-listrow__meta">
-                {m.role}
-                {m.status === "Removed" && " · Identity preserved — only Membership ended"}
-              </div>
-            </div>
-            <span className={`lw-tag ${m.status === "Suspended" ? "lw-tag--warn" : ""} ${m.status === "Removed" ? "lw-tag--off" : ""}`}>{m.status}</span>
-            {m.role === "Learner" && m.status === "Active" && (
-              <div className="lw-rowactions">
-                <button title="Suspend membership" onClick={() => setMemberStatus(m.id, "Suspended", "WorkspaceMembershipSuspended")}><PauseCircle size={15} /></button>
-                <button title="Remove membership" onClick={() => setMemberStatus(m.id, "Removed", "WorkspaceMembershipRemoved")}><UserX size={15} /></button>
-              </div>
-            )}
-            {m.role === "Learner" && m.status === "Suspended" && (
-              <div className="lw-rowactions">
-                <button title="Reactivate membership" onClick={() => setMemberStatus(m.id, "Active", "WorkspaceMembershipActivated")}><UserCheck size={15} /></button>
-                <button title="Remove membership" onClick={() => setMemberStatus(m.id, "Removed", "WorkspaceMembershipRemoved")}><UserX size={15} /></button>
-              </div>
-            )}
-          </div>
-        ))}
-        {members.length === 0 && <div className="lw-empty">No active members yet.</div>}
-      </div>
-
-      <h2 className="lw-sectiontitle">Pending invitations</h2>
-      <div className="lw-list">
-        {invitations.map((inv) => (
-          <div className="lw-listrow" key={inv.id}>
-            <div className="lw-listrow__icon"><Mail size={16} /></div>
-            <div className="lw-listrow__body"><div className="lw-listrow__title">{inv.email}</div><div className="lw-listrow__meta">Invitation · {inv.status}</div></div>
-            {inv.status === "Issued" && (
-              <div className="lw-rowactions">
-                <button title="Simulate learner accepting" onClick={() => acceptInvite(inv.id)}><Check size={15} /></button>
-                <button title="Mark expired" onClick={() => expireInvite(inv.id)}><Clock size={15} /></button>
-                <button title="Cancel invitation" onClick={() => cancelInvite(inv.id)}><X size={15} /></button>
-              </div>
-            )}
-            {inv.status !== "Issued" && <span className="lw-tag lw-tag--off">{inv.status}</span>}
-          </div>
-        ))}
-        {invitations.length === 0 && <div className="lw-empty">No pending invitations.</div>}
-      </div>
-
-      <div className="lw-composer" style={{ marginTop: 16 }}>
-        <input value={emailDraft} onChange={(e) => setEmailDraft(e.target.value)} placeholder="Email address to invite…" />
-        <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={sendInvite}><Send size={14} /> Send invite</button>
-      </div>
-
-      {log.length > 0 && (
-        <>
-          <h2 className="lw-sectiontitle">Recent domain events</h2>
-          <div className="lw-eventlog">
-            {log.map((l) => (
-              <div className="lw-eventlog__item" key={l.id}><Activity size={12} /> {l.event}</div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 function OwnerScheduling({ c }) {
   return (
     <div className="lw-page">
@@ -2171,7 +2056,10 @@ export default function App() {
           )}
           {role === "owner" && ownerScreen === "studio" && flow.step === "review" && <StudioReview c={c} onPublish={publish} />}
           {role === "owner" && ownerScreen === "studio" && flow.step === "published" && <StudioPublished c={c} published={flow.published} setStep={setStudioStep} />}
-          {role === "owner" && ownerScreen === "members" && <OwnerMembers key={academy} c={c} />}
+          {/* Real membership management against the API, not the prototype's
+              simulated version — the roles, the lifecycle and the caller's own
+              right to change any of it all come from the server. */}
+          {role === "owner" && ownerScreen === "members" && <MembersScreen />}
           {role === "owner" && ownerScreen === "scheduling" && <OwnerScheduling c={c} />}
           {role === "owner" && ownerScreen === "commerce" && <OwnerCommerce c={c} />}
           {role === "owner" && ownerScreen === "communication" && <OwnerCommunication key={academy} c={c} />}

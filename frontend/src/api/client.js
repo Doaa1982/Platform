@@ -136,6 +136,43 @@ export function workspaceAction(token, workspaceId, action) {
   return request(`/admin/workspaces/${workspaceId}/${action}`, { method: "POST", token });
 }
 
+/* ── Workspace members (the tutor's own surface) ───────────────────────────
+   Authority here is Workspace-scoped and resolved server-side from the
+   caller's Membership, so the UI asks and reflects the answer rather than
+   deciding who may manage.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/workspaces/{slug}/members → members, invitations, and canManage */
+export function getMembers(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/members`, { token });
+}
+
+/** POST /api/workspaces/{slug}/invitations → invite someone into this Workspace */
+export function inviteMember(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/invitations`, { method: "POST", body, token });
+}
+
+/** POST /api/workspaces/{slug}/members/{id}/{action} — activate | suspend | reinstate | archive | remove */
+export function memberAction(token, slug, membershipId, action) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/members/${membershipId}/${action}`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../members/{id}/roles → grant a Workspace role */
+export function assignMemberRole(token, slug, membershipId, role) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/members/${membershipId}/roles`, {
+    method: "POST", body: { role }, token,
+  });
+}
+
+/** DELETE .../members/{id}/roles/{role} → revoke a Workspace role */
+export function removeMemberRole(token, slug, membershipId, role) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/members/${membershipId}/roles/${encodeURIComponent(role)}`, {
+    method: "DELETE", token,
+  });
+}
+
 /* ── Invitations (anonymous — the token is the credential) ─────────────── */
 
 /** GET /api/invitations/{token} → what the invitee sees before accepting */

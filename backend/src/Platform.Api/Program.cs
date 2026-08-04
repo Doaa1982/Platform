@@ -71,6 +71,7 @@ builder.Services.AddScoped<IAuthorizationHandler, PlatformOperatorHandler>();
 // Resolves Workspace-scoped roles per request, since the token carries none
 builder.Services.AddScoped<WorkspaceAccessService>();
 builder.Services.AddScoped<ProvisioningService>();
+builder.Services.AddScoped<WorkspaceMemberService>();
 builder.Services.AddScoped<TokenService>();
 
 // ── Invitation delivery ────────────────────────────────────────────────────────
