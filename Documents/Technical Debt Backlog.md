@@ -165,6 +165,12 @@ dropped along with it. `WorkspaceRoleName.Administrator` is Workspace-scoped and
 access is ever needed, it must be modelled deliberately rather than by reinstating a
 global role on Identity. No design doc in the corpus currently covers it.
 
+**Follow-up resolved (2026-08-04):** Platform Administrator Business Analysis now
+covers this Actor. The "one app vs. two" framing this item was raised under is
+resolved separately by ExperienceArchitecture.md, ADR-EA-001 (one Application for
+Learner + Workspace Owner Portals; Administrator Portal named as a reasonable
+candidate for its own Application, not decided there).
+
 ---
 
 ## TD-006 — Workspace and Membership configuration surfaces not implemented
@@ -231,6 +237,39 @@ other way.
 
 ---
 
+## TD-008 — Contradiction in Invitation state machine: two documents, two lifecycles
+
+**Raised:** 2026-08-04 (Invitation Business Analysis)
+**Area:** Documentation — `Documents/Workspace_Access_Context.md` §4.5, `Documents/IdentityAndWorkspaceAccess.md` §1
+**Severity:** Low — needs an author's ruling, same shape as TD-007
+**Status:** Deferred (needs decision)
+
+The two documents describe the Invitation lifecycle differently:
+
+- **Workspace_Access_Context §4.5** — `Created → Sent → Accepted → Membership Created`, or
+  `Created → Expired`. No `Cancelled` state.
+- **IdentityAndWorkspaceAccess §1 ("Workspace Invitation")** — `Draft → Issued → Delivered →
+  Accepted → Expired → Cancelled`, plus a field list (Invitation Identifier, Invitation Token,
+  Workspace, Intended Role, Intended Learning Product, Expiration Date, Invitation Status,
+  Issued By, Issued At) and rules WA-101–WA-105, including WA-104 ("Invitations may be
+  cancelled before acceptance") — a capability the other document's state machine has no
+  state for.
+
+Invitation Business Analysis (Section 9) works around this rather than silently picking one:
+it adopts Workspace_Access_Context §4.5 as the base (the more recent document, and the one
+Membership Aggregate Design already builds on) and adds `Cancelled` from IdentityAndWorkspaceAccess
+to satisfy WA-104, giving `Created → Sent → {Accepted | Expired | Cancelled}`. `Draft` and the
+`Issued`/`Delivered` split are treated as finer-grained sub-steps of `Created`/`Sent`, not
+separately tracked states, for Version 1.
+
+**Trigger:** any implementation work on Invitation, or a documentation review pass.
+**Resolution sketch:** an author picks the normative lifecycle (Invitation Business Analysis's
+reconciliation is the working answer, not a ruling) and corrects whichever of the two source
+documents disagrees, the same way TD-007 asks for Membership's Pending→Archived contradiction
+to be settled.
+
+---
+
 ## Log
 
 | Date | Change |
@@ -239,3 +278,5 @@ other way.
 | 2026-08-04 | TD-005 raised during frontend architecture review (single web app vs. split Tutor/Learner apps). |
 | 2026-08-04 | TD-006, TD-007 raised while implementing the Workspace and Membership aggregates. |
 | 2026-08-04 | TD-005 closed — roles moved to Membership, identity-level token with per-request resolution. TD-002 closed by the first `[Authorize]` endpoints. |
+| 2026-08-04 | TD-008 raised during Invitation Business Analysis (Invitation state-machine contradiction). |
+| 2026-08-04 | TD-005's "one app vs. two" framing resolved by ExperienceArchitecture.md ADR-EA-001. |
