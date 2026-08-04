@@ -38,16 +38,21 @@ public record InvitationSummary(
 /// Returned when an Invitation is issued or resent.
 ///
 /// Carries the invitation link, which contains the raw token — the only moment
-/// it exists in readable form (Invitation Business Analysis §8). In Version 1
-/// there is no email delivery, so the admin copies this link and sends it
-/// themselves (BA-005 leaves delivery ownership open).
+/// it exists in readable form (Invitation Business Analysis §8).
+///
+/// The link is returned even when the email was delivered successfully, on
+/// purpose: it is the admin's only fallback if the mail never arrives, and the
+/// token cannot be recovered afterwards because only its hash is stored.
 /// </summary>
 public record InvitationIssuedResponse(
     Guid InvitationId,
     string Email,
     string IntendedRole,
     DateTime ExpiresAt,
-    string InvitationLink);
+    string InvitationLink,
+    bool Delivered,
+    string DeliveryChannel,
+    string? DeliveryDetail);
 
 /// <summary>Platform-level status change on a Workspace or Identity.</summary>
 public record AdminStatusChangeRequest(string Reason);

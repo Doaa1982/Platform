@@ -73,6 +73,20 @@ builder.Services.AddScoped<WorkspaceAccessService>();
 builder.Services.AddScoped<ProvisioningService>();
 builder.Services.AddScoped<TokenService>();
 
+// ── Invitation delivery ────────────────────────────────────────────────────────
+// A platform-level notification, not a Communication Context message: an
+// invitation goes out before a Workspace has any community (BA-005).
+var emailOptions = builder.Configuration.GetSection(EmailOptions.Section).Get<EmailOptions>()
+                   ?? new EmailOptions();
+builder.Services.AddSingleton(emailOptions);
+
+if (emailOptions.Enabled)
+    builder.Services.AddScoped<IInvitationDelivery, SmtpInvitationDelivery>();
+else
+    // Logs the link and reports honestly that nothing was sent, so the console
+    // tells the admin to deliver it by hand rather than implying mail is coming.
+    builder.Services.AddScoped<IInvitationDelivery, LoggingInvitationDelivery>();
+
 var app = builder.Build();
 
 // ── Map Aspire health & liveness endpoints ─────────────────────────────────────

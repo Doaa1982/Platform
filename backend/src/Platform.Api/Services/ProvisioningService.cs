@@ -30,13 +30,44 @@ public record ProvisioningResult<T>(T? Value, ProvisioningError Error = Provisio
 ///   - lazy expiry: an Invitation past its date is expired the moment anyone
 ///     looks, with no background job (§10, "Expiry Rules")
 /// </summary>
-public class ProvisioningService(PlatformDbContext db, IConfiguration config)
+public class ProvisioningService(
+    PlatformDbContext db,
+    IConfiguration config,
+    IInvitationDelivery delivery,
+    EmailOptions email)
 {
     private TimeSpan ValidFor =>
         TimeSpan.FromDays(config.GetValue("Invitations:ValidForDays", 7));
 
-    /// <summary>Invitation links are relative; the client makes them absolute against its own origin.</summary>
+    /// <summary>Relative for the client, which resolves it against its own origin.</summary>
     private static string LinkFor(string rawToken) => $"/invite/{rawToken}";
+
+    /// <summary>Absolute for email, which has no origin to resolve against.</summary>
+    private string AbsoluteLinkFor(string rawToken) =>
+        $"{email.PublicBaseUrl.TrimEnd('/')}{LinkFor(rawToken)}";
+
+    /// <summary>
+    /// Hands the link to delivery and reports what happened. Failure is folded
+    /// into the response rather than thrown: the Invitation is already valid,
+    /// and the admin still has the link to send by hand.
+    /// </summary>
+    private async Task<InvitationIssuedResponse> DeliverAsync(
+        Invitation invitation, string rawToken, string workspaceName, CancellationToken ct)
+    {
+        var outcome = await delivery.SendInvitationAsync(
+            invitation.Email, workspaceName, invitation.IntendedRole.ToString(),
+            AbsoluteLinkFor(rawToken), invitation.ExpiresAt, ct);
+
+        return new InvitationIssuedResponse(
+            InvitationId:    invitation.Id,
+            Email:           invitation.Email,
+            IntendedRole:    invitation.IntendedRole.ToString(),
+            ExpiresAt:       invitation.ExpiresAt,
+            InvitationLink:  LinkFor(rawToken),
+            Delivered:       outcome.Delivered,
+            DeliveryChannel: outcome.Channel,
+            DeliveryDetail:  outcome.Detail);
+    }
 
     // ── Admin: provisioning view ─────────────────────────────────────────────
 
@@ -141,12 +172,8 @@ public class ProvisioningService(PlatformDbContext db, IConfiguration config)
 
         await db.SaveChangesAsync(ct);
 
-        return ProvisioningResult<InvitationIssuedResponse>.Success(new InvitationIssuedResponse(
-            InvitationId:   invitation.Id,
-            Email:          invitation.Email,
-            IntendedRole:   invitation.IntendedRole.ToString(),
-            ExpiresAt:      invitation.ExpiresAt,
-            InvitationLink: LinkFor(rawToken)));
+        return ProvisioningResult<InvitationIssuedResponse>.Success(
+            await DeliverAsync(invitation, rawToken, workspace.Name, ct));
     }
 
     // ── Admin: resend / cancel ───────────────────────────────────────────────
@@ -171,12 +198,13 @@ public class ProvisioningService(PlatformDbContext db, IConfiguration config)
         var rawToken = invitation.Resend(ValidFor);
         await db.SaveChangesAsync(ct);
 
-        return ProvisioningResult<InvitationIssuedResponse>.Success(new InvitationIssuedResponse(
-            InvitationId:   invitation.Id,
-            Email:          invitation.Email,
-            IntendedRole:   invitation.IntendedRole.ToString(),
-            ExpiresAt:      invitation.ExpiresAt,
-            InvitationLink: LinkFor(rawToken)));
+        var workspaceName = await db.Workspaces
+            .Where(w => w.Id == invitation.WorkspaceId)
+            .Select(w => w.Name)
+            .FirstOrDefaultAsync(ct) ?? "your workspace";
+
+        return ProvisioningResult<InvitationIssuedResponse>.Success(
+            await DeliverAsync(invitation, rawToken, workspaceName, ct));
     }
 
     public async Task<ProvisioningResult<bool>> CancelAsync(Guid invitationId, CancellationToken ct = default)

@@ -293,12 +293,20 @@ function IssuedLink({ issued, onDismiss }) {
   const absolute = `${window.location.origin}${issued.invitationLink}`;
 
   return (
-    <div className="pl-admin__issued">
+    <div className={`pl-admin__issued ${issued.delivered ? "" : "is-undelivered"}`}>
       <div>
-        <strong>Invitation ready for {issued.email}</strong>
+        <strong>
+          {issued.delivered
+            ? `Invitation emailed to ${issued.email}`
+            : `Invitation ready for ${issued.email} — not delivered`}
+        </strong>
         <p>
-          There's no email delivery yet, so send this link yourself. It's shown
-          once — reopening this page won't show it again, and resending replaces it.
+          {issued.delivered
+            ? "The link is below as a fallback in case the email doesn't arrive. It's shown once — reopening this page won't show it again, and resending replaces it."
+            : "Sending failed, so send this link yourself. The invitation itself is valid either way. It's shown once — reopening this page won't show it again."}
+          {!issued.delivered && issued.deliveryDetail && (
+            <><br /><span className="pl-admin__why">Reason: {issued.deliveryDetail}</span></>
+          )}
         </p>
         <code>{absolute}</code>
       </div>
@@ -387,6 +395,9 @@ const CSS = `
     background: #0F1215; border: 1px solid var(--line); border-radius: 7px;
     padding: 9px 11px; word-break: break-all; color: var(--accent);
   }
+  .pl-admin__issued.is-undelivered { background: rgba(224,168,62,0.1); border-color: rgba(224,168,62,0.45); }
+  .pl-admin__issued.is-undelivered code { color: var(--warn); }
+  .pl-admin__why { color: var(--warn); font-size: 0.8rem; }
   .pl-admin__issuedactions { display: flex; gap: 8px; flex-shrink: 0; }
 
   .pl-admin__tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
