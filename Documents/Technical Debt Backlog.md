@@ -276,7 +276,7 @@ to be settled.
 **Area:** Platform.Api — no Owner-facing Workspace lifecycle endpoints; Documentation — no
 Business Analysis covered the Owner's setup journey
 **Severity:** Moderate — provisioning delivers a Workspace that cannot be finished
-**Status:** Deferred (documented; implementation blocked on BA-002)
+**Status:** Done (2026-08-04) — see "Resolution as built" at the end of this entry
 
 Provisioning transfers ownership and stops, exactly as Platform Administrator Business
 Analysis §7 intends. But nothing then advances the Workspace through its own lifecycle
@@ -306,8 +306,70 @@ be enforced while the Entry Point Registry is unimplemented (TD-006). Version 1 
 identity half only; the recommendation is to treat the Public Identifier as an implicit
 platform-subdomain Entry Point until the registry exists.
 
-**Trigger:** a ruling on BA-002 unblocks implementation immediately — the endpoints are a thin
-layer over commands that already exist and pass their own invariant checks.
+**Resolution as built (2026-08-04):**
+
+`/api/workspaces/{slug}/setup` — GET returning identity, status, derived completeness and the
+single available next transition; PUT identity; and `begin-configuration`, `make-private`,
+`publish`, `activate`. Authority is Owner or Administrator, resolved per request from the
+caller's Membership. A `WorkspaceSetupScreen` in the tutor surface renders the journey and
+whichever action the server says is available.
+
+No new domain method was required, exactly as Platform Administrator Business Analysis BA-003
+predicted.
+
+**BA-002 was still open, and implementation proceeded on the analysis's own recommendation:**
+`Activate` is Owner-declared. It is a separate command with no side effects beyond the status
+change, so a different ruling — automatic on publish, or driven by first real use — changes
+only `ActivateAsync` and `NextStep`. Nothing else depends on which reading wins. The decision
+remains open in the document; only the implementation has taken a position.
+
+**Still true (BA-003):** the aggregate enforces INV-007's identity half only. Addressability is
+satisfied by the Public Identifier as an implicit platform-subdomain entry point until the
+Entry Point Registry exists (TD-006), and is reported as its own completeness flag so the
+distinction stays visible.
+
+**Known limitation:** `readyToPublish` cannot currently be false, because provisioning always
+supplies a name and identifier. The check is real but always satisfied until self-serve
+creation can produce a partial Workspace.
+
+---
+
+## TD-010 — Nobody can ask to join a Workspace
+
+**Raised:** 2026-08-04 (reviewing the tutor lifecycle end to end)
+**Area:** Platform.Api — no inbound path to Membership; Documentation — no concept covered it
+**Severity:** Moderate — the growth path is one-directional
+**Status:** Deferred (documented; one open question should be settled before public exposure)
+
+Every Membership in the system originates inside the Workspace: someone decides they
+want you and sends an Invitation. There is no way for a person to approach a Workspace
+they have found.
+
+This makes `Workspace.Visibility = Published` do almost no work. The `Private`/`Published`
+split exists specifically to mark public discoverability (Workspace Aggregate Design §15),
+but discovery currently leads nowhere — a person who finds an academy can only wait to be
+invited by someone who does not know they exist.
+
+**Documented by:** Join Request Business Analysis (new, 2026-08-04).
+
+**Correction it records (BA-004).** It was initially expected that Join Requests would
+give `MembershipStatus.Pending` a persistent producer, since nothing currently creates a
+Membership that waits — invitation acceptance creates and activates in one step. On
+analysis they do not and should not: the waiting belongs in the Join Request's own
+`Submitted` state, and leaving a Membership `Pending` after approval would invent a second
+confirmation nobody asked for. `Pending` therefore still has no persistent producer; its
+natural sources are bulk import and any flow requiring a member to complete something
+before access begins.
+
+**Settle before public exposure (BA-003, §16).** A Join Request creates an Identity when
+the requester has none — which is unavoidable, since the platform has no self-serve signup
+and requiring an existing Identity would mean only already-invited people could ask. That
+makes account creation self-serve and therefore abusable. Email verification and rate
+limiting are undesigned. The blast radius is small today (an Identity with no Membership
+can only log in and see an empty list), but this should be built before the feature is
+public, not after.
+
+**Trigger:** wanting a Workspace to grow by being found rather than only by reaching out.
 
 ---
 
@@ -322,3 +384,5 @@ layer over commands that already exist and pass their own invariant checks.
 | 2026-08-04 | TD-008 raised during Invitation Business Analysis (Invitation state-machine contradiction). |
 | 2026-08-04 | TD-005's "one app vs. two" framing resolved by ExperienceArchitecture.md ADR-EA-001. |
 | 2026-08-04 | TD-009 raised — a provisioned Workspace cannot leave `Created`. Documented by the new Workspace Setup Business Analysis; implementation blocked on its BA-002. |
+| 2026-08-04 | TD-009 closed — Owner-facing setup lifecycle implemented; BA-002 proceeded on the analysis's recommendation (Owner-declared Activate), isolated so a different ruling changes one method. |
+| 2026-08-04 | TD-010 raised — no inbound path to Membership. Documented by the new Join Request Business Analysis. |
