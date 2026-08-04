@@ -173,6 +173,27 @@ export function removeMemberRole(token, slug, membershipId, role) {
   });
 }
 
+/* ── Workspace setup (the owner's own lifecycle) ───────────────────────── */
+
+/** GET /api/workspaces/{slug}/setup → identity, status, completeness, next step */
+export function getSetup(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/setup`, { token });
+}
+
+/** PUT /api/workspaces/{slug}/setup/identity */
+export function updateWorkspaceIdentity(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/setup/identity`, { method: "PUT", body, token });
+}
+
+/**
+ * POST /api/workspaces/{slug}/setup/{transition}
+ * begin-configuration | make-private | publish | activate
+ * Each returns the whole setup state, so the caller never re-derives what changed.
+ */
+export function workspaceTransition(token, slug, transition) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/setup/${transition}`, { method: "POST", token });
+}
+
 /* ── Invitations (anonymous — the token is the credential) ─────────────── */
 
 /** GET /api/invitations/{token} → what the invitee sees before accepting */

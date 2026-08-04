@@ -72,6 +72,7 @@ builder.Services.AddScoped<IAuthorizationHandler, PlatformOperatorHandler>();
 builder.Services.AddScoped<WorkspaceAccessService>();
 builder.Services.AddScoped<ProvisioningService>();
 builder.Services.AddScoped<WorkspaceMemberService>();
+builder.Services.AddScoped<WorkspaceSetupService>();
 builder.Services.AddScoped<TokenService>();
 
 // ── Invitation delivery ────────────────────────────────────────────────────────

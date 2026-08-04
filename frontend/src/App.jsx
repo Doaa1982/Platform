@@ -12,6 +12,7 @@ import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
 import { useFonts } from "./hooks/useFonts";
 import MembersScreen from "./screens/MembersScreen";
+import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 
 /* =========================================================================
    TOKEN SYSTEMS — one per Academy (Learning Workspace).
@@ -561,6 +562,8 @@ const OWNER_NAV = [
   { divider: "Prove" },
   { id: "assessment", label: "Assessment & Certificates", icon: Award },
   { divider: "Configure" },
+  // The real Workspace lifecycle, above the prototype's settings panel
+  { id: "setup", label: "Workspace Setup", icon: Rocket },
   { id: "settings", label: "Workspace Settings", icon: Settings },
 ];
 
@@ -2060,6 +2063,7 @@ export default function App() {
               simulated version — the roles, the lifecycle and the caller's own
               right to change any of it all come from the server. */}
           {role === "owner" && ownerScreen === "members" && <MembersScreen />}
+          {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
           {role === "owner" && ownerScreen === "scheduling" && <OwnerScheduling c={c} />}
           {role === "owner" && ownerScreen === "commerce" && <OwnerCommerce c={c} />}
           {role === "owner" && ownerScreen === "communication" && <OwnerCommunication key={academy} c={c} />}
