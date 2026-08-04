@@ -1,31 +1,90 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Platform.Domain;
+using Platform.Infrastructure;
 using Scalar.AspNetCore;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add common Aspire service defaults (OpenTelemetry, service discovery, health checks)
+// ── Aspire service defaults (OpenTelemetry, health checks, service discovery) ──
 builder.AddServiceDefaults();
 
-// Add services to the container
+// ── Controllers + OpenAPI ──────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+// ── CORS — open policy for local development (same as SMS reference) ──────────
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+});
+
+// ── Database — connection string injected by Aspire ("PlatformDB" resource) ───
+builder.Services.AddDbContext<PlatformDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("PlatformDB")));
+
+// ── JWT Authentication ─────────────────────────────────────────────────────────
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key must be configured in appsettings.");
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer              = builder.Configuration["Jwt:Issuer"]   ?? "platform-api",
+            ValidAudience            = builder.Configuration["Jwt:Audience"] ?? "platform-client",
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
+
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
-// Map default health endpoints
+// ── Map Aspire health & liveness endpoints ─────────────────────────────────────
 app.MapDefaultEndpoints();
 
-// Configure HTTP request pipeline
+// ── Dev-only: auto-create schema + seed one test Tutor ────────────────────────
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+    db.Database.EnsureCreated();
+
+    if (!db.Identities.Any())
+    {
+        db.Identities.Add(Identity.Create(
+            email:        "tutor@platform.com",
+            passwordHash: BCrypt.Net.BCrypt.HashPassword("Test1234!"),
+            fullName:     "Demo Tutor",
+            role:         IdentityRole.Tutor
+        ));
+        db.SaveChanges();
+    }
+}
+
+// ── HTTP pipeline ──────────────────────────────────────────────────────────────
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.MapScalarApiReference(options => 
+    app.MapScalarApiReference(options =>
     {
-        options.WithTitle("Platform API Documentations")
+        options.WithTitle("Platform API Documentation")
                .WithTheme(ScalarTheme.Moon);
     });
 }
 
+app.UseCors();
 app.UseHttpsRedirection();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
