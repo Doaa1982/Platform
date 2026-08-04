@@ -38,7 +38,10 @@ It defines:
 - in which order,
 - under which conditions,
 - at what pace,
-- and how completion is measured.
+- how learners progress,
+- and the learning rules that govern successful completion.
+
+The Curriculum represents the educational structure of the learning experience together with the educational rules that define learner progression.
 
 The Curriculum is independent of the Learning Product's commercial aspects and independent of the Lesson's instructional implementation.
 
@@ -53,7 +56,7 @@ The Curriculum Aggregate is responsible for:
 - Managing learning paths.
 - Managing prerequisites.
 - Managing release rules.
-- Managing completion rules.
+-- Defining learning rules.
 - Managing curriculum navigation.
 - Defining learner progression.
 
@@ -67,7 +70,17 @@ The Curriculum Aggregate is **not** responsible for:
 - Pricing
 - Certificates
 
----
+Learning Rules include:
+
+- navigation rules,
+- release rules,
+- progression rules,
+- completion rules,
+- passing requirements.
+
+These rules define educational expectations.
+
+Operational domains consume these rules but do not modify them.---
 
 # 4. Aggregate Root
 
@@ -156,7 +169,7 @@ Curriculum Lesson is not the Lesson Aggregate itself.
 
 ---
 
-# 8. Value Objects
+# 8. Learning Rules and Value Objects
 
 ## Curriculum Metadata
 
@@ -192,18 +205,37 @@ Examples:
 
 ## Completion Rules
 
-Examples:
+Examples include:
 
-- Minimum Progress
-- Required Lessons
-- Required Units
-- Passing Score Requirements
+- Required lessons
+- Required curriculum units
+- Minimum progress threshold
+- Minimum passing score
+- Required assignments
+- Tutor approval requirement
+
+Completion Rules define educational expectations.
+
+They do not determine whether an individual learner has satisfied those expectations.
+
+That responsibility belongs to the Learning Progress Tracking capability.
 
 ---
 
-## Progress Calculation
+## Progress Rules
 
-Defines how learner progress is calculated.
+Defines the educational rules used by the Progress Tracking capability when interpreting learner advancement.
+
+Examples include:
+
+- Progress based on completed lessons
+- Progress based on required lessons only
+- Progress based on completed learning activities
+- Progress based on required assignments
+
+The Curriculum defines these rules.
+
+The Progress Tracking capability evaluates learner activity according to them.
 
 Examples:
 

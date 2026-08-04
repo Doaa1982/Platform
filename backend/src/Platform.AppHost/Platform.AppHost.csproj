@@ -5,10 +5,12 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <UserSecretsId>c1a2b3d4-e5f6-7890-abcd-ef1234567890</UserSecretsId>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.0.1" />
+        <PackageReference Include="Aspire.Hosting.NodeJs" Version="9.5.2" />
         <PackageReference Include="System.Net.Http" Version="4.3.4" />
     </ItemGroup>
 

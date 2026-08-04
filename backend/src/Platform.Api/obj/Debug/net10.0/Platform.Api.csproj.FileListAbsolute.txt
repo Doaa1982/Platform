@@ -66,3 +66,12 @@
 /Users/dody/Platform/backend/src/Platform.Api/obj/Debug/net10.0/Platform.Api.pdb
 /Users/dody/Platform/backend/src/Platform.Api/obj/Debug/net10.0/Platform.Api.genruntimeconfig.cache
 /Users/dody/Platform/backend/src/Platform.Api/obj/Debug/net10.0/ref/Platform.Api.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/BCrypt.Net-Next.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/Microsoft.AspNetCore.Authentication.JwtBearer.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/Microsoft.IdentityModel.Abstractions.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/Microsoft.IdentityModel.JsonWebTokens.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/Microsoft.IdentityModel.Logging.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/Microsoft.IdentityModel.Protocols.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/Microsoft.IdentityModel.Tokens.dll
+/Users/dody/Platform/backend/src/Platform.Api/bin/Debug/net10.0/System.IdentityModel.Tokens.Jwt.dll

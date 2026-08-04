@@ -92,12 +92,16 @@ A context should answer:
              v
 
  Assessment Context
+            |
+             v
 
+ Certification Context
 
 Supporting Contexts:
 
 - Scheduling Context
-- Communication Context
+-- Communication Context
+- Community Context
 - Analytics Context
 
 
@@ -463,15 +467,15 @@ Manages communication between the learning business and its community.
 
 ---
 
-# 5.13 Analytics Context
+## 5.13 Analytics Context
 
-## Purpose
+### Purpose
 
 Transforms operational data into insights.
 
 ---
 
-## Owns
+### Owns
 
 - Analytics models
 - Reports
@@ -480,21 +484,21 @@ Transforms operational data into insights.
 
 ---
 
-## Business Question
+### Business Question
 
 > "What is happening and what should we improve?"
 
 ---
 
-# 5.14 AI Context
+## 5.14 AI Context
 
-## Purpose
+### Purpose
 
 Provides workspace-aware intelligence and automation.
 
 ---
 
-## Owns
+### Owns
 
 - AI agents
 - AI configuration
@@ -504,6 +508,52 @@ Provides workspace-aware intelligence and automation.
 
 ---
 
+## 5.15 Certification Context
+
+### Purpose
+
+Manages the issuance, presentation, and verification of formal recognition of learner achievement.
+
+---
+
+### Owns
+
+- Certificates
+- Certificate issuance records
+- Certificate presentation and branding configuration references
+- Certificate verification records
+
+---
+
+### Business Question
+
+> "How is learner achievement formally recognized and verified?"
+
+"What has this learner formally achieved, and can it be proven?"
+
+Does Not Own
+
+Certification does not determine whether achievement criteria are met — that determination is made by Enrollment Context (product-level completion, per Enrollment Aggregate Design, Section 12) or Assessment Context (assessment-level achievement, per Assessment and Submission Aggregate Design, Section 10). Certification Context consumes those signals as triggers; it does not own or recompute them. See Certificate Aggregate Design for the full aggregate-level treatment.
+
+# 5.16 — Community Context
+### Purpose
+
+Manages participatory, many-to-many discussion and collaborative community spaces within a Workspace.
+
+### Owns
+Discussion Threads
+Comments
+Thread moderation state
+Community participation scope
+Business Question
+
+"What is being discussed, by whom, and where does it live?"
+
+Does Not Own
+
+Community Context does not own private Messages, Conversations, or broadcast Announcements — those belong to Communication Context (see Communication Context, Sections 4.1–4.3). The distinction is stated formally in Discussion Thread Aggregate Design, Section 10: Communication Context handles addressed or one-to-many communication; Community Context handles participatory, typically public-within-Workspace discussion.
+
+Community Context was already correctly classified as a Supporting Context in Learning Workspace Bounded Context Identification (Section 5) prior to this amendment; this section brings the Bounded Context Map into alignment with that existing classification rather than introducing a new one.
 ## Business Question
 
 > "How can AI help this learning business create, teach, and grow?"

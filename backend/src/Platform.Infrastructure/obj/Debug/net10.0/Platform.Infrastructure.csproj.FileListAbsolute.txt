@@ -14,3 +14,5 @@
 /Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/refint/Platform.Infrastructure.dll
 /Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.pdb
 /Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/ref/Platform.Infrastructure.dll
+/Users/dody/Platform/backend/src/Platform.Infrastructure/bin/Debug/net10.0/Platform.Infrastructure.runtimeconfig.json
+/Users/dody/Platform/backend/src/Platform.Infrastructure/obj/Debug/net10.0/Platform.Infrastructure.genruntimeconfig.cache

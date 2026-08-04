@@ -59,6 +59,10 @@
               "version": "[13.0.1, )",
               "autoReferenced": true
             },
+            "Aspire.Hosting.NodeJs": {
+              "target": "Package",
+              "version": "[9.5.2, )"
+            },
             "Aspire.Hosting.Orchestration.osx-arm64": {
               "target": "Package",
               "version": "[13.0.1, )",

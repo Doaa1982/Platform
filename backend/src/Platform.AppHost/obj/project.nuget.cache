@@ -1,12 +1,13 @@
 {
   "version": 2,
-  "dgSpecHash": "ISsROWyBQHY=",
+  "dgSpecHash": "jShmtjZPcKs=",
   "success": true,
   "projectFilePath": "/Users/dody/Platform/backend/src/Platform.AppHost/Platform.AppHost.csproj",
   "expectedPackageFiles": [
     "/Users/dody/.nuget/packages/aspire.dashboard.sdk.osx-arm64/13.0.1/aspire.dashboard.sdk.osx-arm64.13.0.1.nupkg.sha512",
     "/Users/dody/.nuget/packages/aspire.hosting/13.0.1/aspire.hosting.13.0.1.nupkg.sha512",
     "/Users/dody/.nuget/packages/aspire.hosting.apphost/13.0.1/aspire.hosting.apphost.13.0.1.nupkg.sha512",
+    "/Users/dody/.nuget/packages/aspire.hosting.nodejs/9.5.2/aspire.hosting.nodejs.9.5.2.nupkg.sha512",
     "/Users/dody/.nuget/packages/aspire.hosting.orchestration.osx-arm64/13.0.1/aspire.hosting.orchestration.osx-arm64.13.0.1.nupkg.sha512",
     "/Users/dody/.nuget/packages/aspire.hosting.postgresql/13.0.1/aspire.hosting.postgresql.13.0.1.nupkg.sha512",
     "/Users/dody/.nuget/packages/aspnetcore.healthchecks.npgsql/9.0.0/aspnetcore.healthchecks.npgsql.9.0.0.nupkg.sha512",

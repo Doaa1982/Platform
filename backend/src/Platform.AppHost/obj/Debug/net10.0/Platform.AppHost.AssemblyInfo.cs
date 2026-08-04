@@ -10,6 +10,7 @@
 using System;
 using System.Reflection;
 
+[assembly: Microsoft.Extensions.Configuration.UserSecrets.UserSecretsIdAttribute("c1a2b3d4-e5f6-7890-abcd-ef1234567890")]
 [assembly: System.Reflection.AssemblyMetadata("dcpclipath", ("/Users/dody/.nuget/packages/aspire.hosting.orchestration.osx-arm64/13.0.1/tools/d" +
     "cp"))]
 [assembly: System.Reflection.AssemblyMetadata("dcpextensionpaths", ("/Users/dody/.nuget/packages/aspire.hosting.orchestration.osx-arm64/13.0.1/tools/e" +
@@ -24,7 +25,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Platform.AppHost")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e52e78c42e37ac936e660573296a3c3cb069c552")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d761e9924299232dcd17b92b136a60762c682b1d")]
 [assembly: System.Reflection.AssemblyProductAttribute("Platform.AppHost")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Platform.AppHost")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
