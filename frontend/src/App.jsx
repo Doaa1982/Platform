@@ -1,13 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, BookOpen, PlayCircle, MessageSquare, MessageCircle, Megaphone,
-  Award, Upload, Wand2, XCircle, Send, ArrowRight, ArrowLeft,
-  Bot, Users, BarChart3, Clock, Mic, Sparkles, Check, Circle, RotateCcw, Settings,
-  CreditCard, Calendar, ClipboardCheck, UserCircle, X, Plus,
-  Rocket, Palette, SlidersHorizontal, Building2,
-
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bot, Building2, Calendar, ClipboardCheck, CreditCard, LayoutDashboard, Megaphone, MessageCircle, MessageSquare, PlayCircle, Rocket, Settings, UserCircle, Users, Wand2, X
 } from "lucide-react";
-import { ArrowLeftRight } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
 import { useFonts } from "./hooks/useFonts";
@@ -15,6 +9,8 @@ import MembersScreen from "./screens/MembersScreen";
 import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
 import NotBuiltYet from "./screens/NotBuiltYet";
+import LearnerHomeScreen from "./screens/LearnerHomeScreen";
+import * as api from "./api/client";
 
 /* =========================================================================
    TOKEN SYSTEMS — one per Academy (Learning Workspace).
@@ -23,31 +19,18 @@ import NotBuiltYet from "./screens/NotBuiltYet";
    proof of "Branded Experience" / "Workspace-Native AI" as architected.
    ========================================================================= */
 
-const THEMES = {
-  lumen: {
-    "--bg": "#F3ECDD", "--surface": "#FFFFFF", "--surface-2": "#EAE0C8",
-    "--ink": "#223046", "--ink-soft": "#6B7280", "--accent": "#A6612A",
-    "--accent-2": "#3F6E5B", "--line": "#DBCCA9", "--danger": "#B14232",
-    "--radius": "20px", "--radius-sm": "12px",
-    "--nav-bg": "#223046", "--nav-text": "#F3ECDD",
-    "--font-display": "'Fraunces', serif", "--font-body": "'Karla', sans-serif",
-    "--font-mono": "'IBM Plex Mono', monospace",
-  },
-  vantage: {
-    "--bg": "#EEF2F6", "--surface": "#FFFFFF", "--surface-2": "#E2E8EF",
-    "--ink": "#161A1F", "--ink-soft": "#5B6470", "--accent": "#2454C7",
-    "--accent-2": "#1E8E63", "--line": "#D3DBE3", "--danger": "#C1362B",
-    "--radius": "6px", "--radius-sm": "4px",
-    "--nav-bg": "#161A1F", "--nav-text": "#EEF2F6",
-    "--font-display": "'Space Grotesk', sans-serif", "--font-body": "'IBM Plex Sans', sans-serif",
-    "--font-mono": "'IBM Plex Mono', monospace",
-  },
-};
-
-const GLOBAL_IDENTITY = {
-  fullName: "Jordan Byrne",
-  email: "jordan.byrne@example.com",
-  memberSince: "2024",
+/* The platform default palette. Per-workspace branding is not implemented
+   (Technical Debt Backlog TD-006); this replaces the two fixture academy
+   themes, which dressed every workspace as somebody else's brand. */
+const DEFAULT_THEME = {
+  "--bg": "#F7F5F1", "--surface": "#FFFFFF", "--surface-2": "#EFEDE8",
+  "--ink": "#1B2430", "--ink-soft": "#6A7383", "--accent": "#2D5BD1",
+  "--accent-2": "#1E7F63", "--line": "#E1DED7", "--danger": "#B3382B",
+  "--radius": "14px", "--radius-sm": "10px",
+  "--nav-bg": "#1B2430", "--nav-text": "#F2F5FA",
+  "--font-display": "'Fraunces', Georgia, serif",
+  "--font-body": "'Karla', system-ui, sans-serif",
+  "--font-mono": "'IBM Plex Mono', monospace",
 };
 
 /* =========================================================================
@@ -56,283 +39,14 @@ const GLOBAL_IDENTITY = {
    (Workspace Context lifecycle: Draft → Configuring → Published → Active).
    ========================================================================= */
 
-const BRAND_PRESETS = [
-  {
-    id: "botanical",
-    label: "Botanical Studio",
-    description: "Organic, warm, creative — for hands-on or craft-led teaching.",
-    tokens: {
-      "--bg": "#EEF0E7", "--surface": "#FFFFFF", "--surface-2": "#E1E6D6",
-      "--ink": "#1F2A1D", "--ink-soft": "#5C6B58", "--accent": "#4C7A4F",
-      "--accent-2": "#A85338", "--line": "#D6DECB", "--danger": "#B14232",
-      "--radius": "24px", "--radius-sm": "14px",
-      "--nav-bg": "#1F2A1D", "--nav-text": "#EEF0E7",
-      "--font-display": "'Fraunces', serif", "--font-body": "'Karla', sans-serif",
-      "--font-mono": "'IBM Plex Mono', monospace",
-    },
-  },
-  {
-    id: "afterhours",
-    label: "After Hours",
-    description: "Dark, focused, technical — for coding, data, or skills tracks.",
-    tokens: {
-      "--bg": "#14171B", "--surface": "#1D2126", "--surface-2": "#262B31",
-      "--ink": "#E8EAED", "--ink-soft": "#9096A0", "--accent": "#2FB6C4",
-      "--accent-2": "#E0A83E", "--line": "#31363D", "--danger": "#E0615A",
-      "--radius": "8px", "--radius-sm": "5px",
-      "--nav-bg": "#0D0F12", "--nav-text": "#E8EAED",
-      "--font-display": "'Space Grotesk', sans-serif", "--font-body": "'IBM Plex Sans', sans-serif",
-      "--font-mono": "'IBM Plex Mono', monospace",
-    },
-  },
-  {
-    id: "editorial",
-    label: "Minimal Editorial",
-    description: "Clean, quiet, confident — for academic or professional cohorts.",
-    tokens: {
-      "--bg": "#FAFAF8", "--surface": "#FFFFFF", "--surface-2": "#F0EFEA",
-      "--ink": "#17181A", "--ink-soft": "#6B6D70", "--accent": "#D6455B",
-      "--accent-2": "#2D3142", "--line": "#E4E3DE", "--danger": "#C1362B",
-      "--radius": "3px", "--radius-sm": "2px",
-      "--nav-bg": "#17181A", "--nav-text": "#FAFAF8",
-      "--font-display": "'Space Grotesk', sans-serif", "--font-body": "'IBM Plex Sans', sans-serif",
-      "--font-mono": "'IBM Plex Mono', monospace",
-    },
-  },
-];
-
-const CATEGORY_COURSES = {
-  Language: ["Getting Started: Core Vocabulary", "Everyday Conversation", "Confidence Building"],
-  "Exam Prep": ["Diagnostic & Foundations", "Core Skills Practice", "Timed Mock Practice"],
-  General: ["Module 1: Introduction", "Module 2: Core Skills", "Module 3: Applied Practice"],
-};
-
-const CATEGORY_CAPABILITIES = {
-  // Language academies lean conversational/social early — messaging matters from day one,
-  // community usually doesn't exist yet with zero learners.
-  Language: { aiTutor: true, assessments: true, certificates: true, schedule: true, messages: true, community: false },
-  // Exam prep leans structured/scored — assessments and certificates matter immediately,
-  // live scheduling and messaging are typically added once there's a cohort.
-  "Exam Prep": { aiTutor: true, assessments: true, certificates: true, schedule: false, messages: false, community: false },
-  // Unknown category — most conservative defaults, everything opt-in except the AI assistant.
-  General: { aiTutor: true, assessments: false, certificates: false, schedule: false, messages: false, community: false },
-};
-
 /* Builds a full CONTENT-shaped object for a brand-new Workspace on day one:
    one owner, zero learners, zero revenue — an honest empty state rather
    than pre-seeded demo data, since that is what WorkspacePublished
    actually looks like before any Membership or Enrollment exists. */
-const PRESET_LOGO_STYLE = { botanical: "leaf", afterhours: "circuit", editorial: "bracket" };
-
-function buildAcademyContent(form) {
-  const courseNames = CATEGORY_COURSES[form.category] || CATEGORY_COURSES.General;
-  return {
-    name: form.name || "New Academy",
-    tagline: form.tagline || "A new learning workspace.",
-    mark: (form.name || "N").trim()[0]?.toUpperCase() || "N",
-    logoStyle: PRESET_LOGO_STYLE[form.presetId] || "geometric",
-    aiName: form.aiName || "Aria",
-    aiRole: "your workspace AI",
-    ownerRole: form.ownerRole || "Instructor",
-    learnerName: "Jordan",
-    ownerPerson: form.ownerPerson || "You",
-    teachingStyle: form.teachingStyle,
-    feedbackStyle: form.feedbackStyle,
-    capabilities: { ...(CATEGORY_CAPABILITIES[form.category] || CATEGORY_CAPABILITIES.General) },
-    courses: courseNames.map((title, i) => ({
-      id: `new-c${i}`, title, lessons: 0, progress: 0, price: "Not priced yet", enrolled: 0,
-    })),
-    activeLesson: {
-      title: "No lesson published yet", course: courseNames[0], duration: "—",
-      events: [], question: { prompt: "", options: [], correct: 0 },
-    },
-    uploadFile: "your_first_lesson.mp4",
-    aiDraft: {
-      title: "Your first AI-drafted lesson will appear here",
-      objectives: [], questions: [],
-    },
-    members: [{ name: form.ownerPerson || "You", role: form.ownerRole || "Instructor", status: "Active" }],
-    sessions: [], orders: [],
-    revenue: { total: "$0", mrr: "$0", trend: "Just launched" },
-    insight: "No learner activity yet — insights will appear once your first learners enrol.",
-    announcements: [], assessmentsOwner: [], certificatesIssued: [], communityPosts: [],
-    learnerAssessments: [], learnerCertificates: [], learnerSessions: [], messagesThread: [],
-  };
-}
 
 /* =========================================================================
    CONTENT — every bounded context's data, per Academy.
    ========================================================================= */
-
-const CONTENT = {
-  lumen: {
-    name: "Lumen Language Academy", tagline: "Learn to speak, not just study.", mark: "L",
-    logoStyle: "stamp",
-    aiName: "Mira", aiRole: "your conversation partner", ownerRole: "Mentor",
-    learnerName: "Jordan", ownerPerson: "Fatima N.",
-    capabilities: { aiTutor: true, assessments: true, certificates: true, schedule: true, messages: true, community: true },
-
-    courses: [
-      { id: "c1", title: "Everyday Conversation A2", lessons: 12, progress: 64, price: "$99", enrolled: 34 },
-      { id: "c2", title: "Confident Speaking B1", lessons: 9, progress: 30, price: "$29/mo", enrolled: 21 },
-      { id: "c3", title: "Travel & Culture Immersion", lessons: 15, progress: 8, price: "$149", enrolled: 9 },
-    ],
-    activeLesson: {
-      title: "Ordering at a Parisian Café", course: "Travel & Culture Immersion", duration: "07:40",
-      events: [
-        { t: "01:15", label: "Vocabulary: l'addition" },
-        { t: "03:40", label: "Question · listening check" },
-        { t: "05:55", label: "Practice: your turn to order" },
-      ],
-      question: {
-        prompt: "In this scene, what does the waiter mean by “l'addition”?",
-        options: ["The menu", "The bill", "A recommendation", "The tip"], correct: 1,
-      },
-    },
-    uploadFile: "cafe_conversation_take3.mp4",
-    aiDraft: {
-      title: "Ordering Confidently in French Cafés",
-      objectives: [
-        "Recognise café vocabulary in natural speech",
-        "Respond appropriately when the bill arrives",
-        "Practise polite requests using conditional phrasing",
-      ],
-      questions: [
-        { t: "01:15", type: "Vocabulary", text: "What does “l'addition” mean here?", status: "pending" },
-        { t: "03:40", type: "Listening", text: "What did the customer order first?", status: "pending" },
-        { t: "05:55", type: "Practice", text: "Record yourself ordering the same item.", status: "pending" },
-      ],
-    },
-
-    members: [
-      { name: "Jordan Byrne", role: "Learner", status: "Active" },
-      { name: "Diego R.", role: "Learner", status: "Active" },
-      { name: "Fatima N.", role: "Mentor", status: "Active" },
-      { name: "Yuki T.", role: "Learner", status: "Invited" },
-    ],
-    sessions: [
-      { title: "Conversation Circle: Café Culture", when: "Tue · 5:00 PM", people: 6 },
-      { title: "1:1 Speaking Practice — Jordan", when: "Wed · 6:30 PM", people: 1 },
-      { title: "Travel Immersion Workshop", when: "Sat · 10:00 AM", people: 14 },
-    ],
-    orders: [
-      { learner: "Jordan Byrne", product: "Travel & Culture Immersion", amount: "$149", status: "Paid" },
-      { learner: "Diego R.", product: "Confident Speaking B1", amount: "$29/mo", status: "Active subscription" },
-      { learner: "Yuki T.", product: "Everyday Conversation A2", amount: "$99", status: "Pending" },
-    ],
-    revenue: { total: "$4,280", mrr: "$610", trend: "+12% this month" },
-    insight: "Learners drop off after Lesson 9 in Travel & Culture Immersion — consider adding a shorter practice checkpoint there.",
-    announcements: [
-      { title: "New immersion weekend added for October", date: "2 days ago", audience: "All learners" },
-      { title: "Café Culture circle moves to Tuesdays", date: "5 days ago", audience: "Travel Immersion" },
-    ],
-    assessmentsOwner: [{ name: "Speaking Fluency Check", type: "AI + Mentor", avgScore: "82%" }],
-    certificatesIssued: [{ learner: "Diego R.", cert: "Everyday Conversation A2 — Completed" }],
-    communityPosts: [
-      { author: "Diego R.", text: "Finally ordered a full meal in French without switching to English 🎉", replies: 4 },
-      { author: "Mira (AI)", text: "This week's challenge: record yourself asking for directions.", replies: 9 },
-    ],
-
-    learnerAssessments: [{ name: "Speaking Fluency Check — Week 4", status: "Graded", score: "82%", feedback: "Strong vocabulary — work on liaison sounds." }],
-    learnerCertificates: [
-      { name: "Café Culture Basics", issued: "Aug 2025", status: "earned" },
-      { name: "Everyday Conversation A2", issued: null, status: "68% complete" },
-    ],
-    learnerSessions: [
-      { title: "Conversation Circle: Café Culture", when: "Tue · 5:00 PM" },
-      { title: "1:1 Speaking Practice", when: "Wed · 6:30 PM" },
-    ],
-    messagesThread: [
-      { from: "mentor", text: "Great progress this week — keep practicing the café dialogue!" },
-      { from: "user", text: "Thank you! Can we add an extra session before my trip?" },
-      { from: "mentor", text: "Of course — I'll add one for Saturday." },
-    ],
-  },
-
-  vantage: {
-    name: "Vantage Exam Prep", tagline: "Precision practice. Measurable results.", mark: "V",
-    logoStyle: "ledger",
-    aiName: "Scout", aiRole: "your prep analyst", ownerRole: "Instructor",
-    learnerName: "Jordan", ownerPerson: "Dr. Chen",
-    capabilities: { aiTutor: true, assessments: true, certificates: true, schedule: true, messages: true, community: true },
-
-    courses: [
-      { id: "c1", title: "IELTS Full Mastery", lessons: 24, progress: 71, price: "$220", enrolled: 58 },
-      { id: "c2", title: "SAT Math Intensive", lessons: 18, progress: 45, price: "$45/mo", enrolled: 42 },
-      { id: "c3", title: "GRE Verbal Bootcamp", lessons: 20, progress: 12, price: "$180", enrolled: 15 },
-    ],
-    activeLesson: {
-      title: "IELTS Speaking Part 2: Fluency Under Pressure", course: "IELTS Full Mastery", duration: "11:20",
-      events: [
-        { t: "02:05", label: "Concept: cue card structure" },
-        { t: "05:30", label: "Question · scored check" },
-        { t: "08:45", label: "Practice: 2-minute timed response" },
-      ],
-      question: {
-        prompt: "A strong cue-card answer should be structured around:",
-        options: ["One long anecdote", "Topic, detail, reflection", "Only opinions", "Memorised phrases"], correct: 1,
-      },
-    },
-    uploadFile: "ielts_speaking_part2_raw.mp4",
-    aiDraft: {
-      title: "IELTS Speaking Part 2 — Structuring Under Time Pressure",
-      objectives: [
-        "Apply the topic → detail → reflection structure in 2 minutes",
-        "Identify filler-word patterns that cost fluency points",
-        "Self-score a response against the band descriptors",
-      ],
-      questions: [
-        { t: "02:05", type: "Concept", text: "Which structural element is missing from the sample answer?", status: "pending" },
-        { t: "05:30", type: "Scored", text: "Score this response's coherence 1–9.", status: "pending" },
-        { t: "08:45", type: "Practice", text: "Record a 2-minute timed response.", status: "pending" },
-      ],
-    },
-
-    members: [
-      { name: "Jordan Byrne", role: "Learner", status: "Active" },
-      { name: "Michael O.", role: "Learner", status: "Active" },
-      { name: "Dr. Chen", role: "Instructor", status: "Active" },
-      { name: "Sara W.", role: "Learner", status: "Invited" },
-    ],
-    sessions: [
-      { title: "Timed Mock — Full IELTS", when: "Mon · 4:00 PM", people: 22 },
-      { title: "1:1 Score Review — Jordan", when: "Thu · 6:00 PM", people: 1 },
-      { title: "SAT Math Drill Group", when: "Sat · 9:00 AM", people: 11 },
-    ],
-    orders: [
-      { learner: "Jordan Byrne", product: "IELTS Full Mastery", amount: "$220", status: "Paid" },
-      { learner: "Michael O.", product: "SAT Math Intensive", amount: "$45/mo", status: "Active subscription" },
-      { learner: "Sara W.", product: "GRE Verbal Bootcamp", amount: "$180", status: "Pending" },
-    ],
-    revenue: { total: "$9,140", mrr: "$1,320", trend: "+18% this month" },
-    insight: "Coherence scores dip sharply after 90 seconds in timed drills — consider a mid-response pacing cue.",
-    announcements: [
-      { title: "New timed mock exam released for IELTS", date: "1 day ago", audience: "IELTS Full Mastery" },
-      { title: "SAT drill group moved to Saturdays", date: "4 days ago", audience: "SAT Math Intensive" },
-    ],
-    assessmentsOwner: [{ name: "Timed Coherence Rubric", type: "AI + Instructor", avgScore: "7.1 / 9" }],
-    certificatesIssued: [{ learner: "Michael O.", cert: "SAT Math Intensive — Diagnostic Passed" }],
-    communityPosts: [
-      { author: "Michael O.", text: "Hit 720 on the practice SAT math section today.", replies: 6 },
-      { author: "Scout (AI)", text: "This week's drill: 3 timed responses, self-scored against the rubric.", replies: 11 },
-    ],
-
-    learnerAssessments: [{ name: "Timed Coherence Rubric — Attempt 3", status: "Graded", score: "7.1 / 9", feedback: "Strong structure — reduce filler words under time pressure." }],
-    learnerCertificates: [
-      { name: "IELTS Diagnostic Badge", issued: "Jun 2025", status: "earned" },
-      { name: "IELTS Full Mastery", issued: null, status: "71% complete" },
-    ],
-    learnerSessions: [
-      { title: "Timed Mock — Full IELTS", when: "Mon · 4:00 PM" },
-      { title: "1:1 Score Review", when: "Thu · 6:00 PM" },
-    ],
-    messagesThread: [
-      { from: "mentor", text: "Your last mock improved 0.5 bands — solid work." },
-      { from: "user", text: "Thanks — can you review my speaking recording before Thursday?" },
-      { from: "mentor", text: "Sending feedback tonight." },
-    ],
-  },
-};
 
 /* =========================================================================
    GENERATED VISUAL IDENTITY — logo mark + curriculum cover art.
@@ -342,12 +56,6 @@ const CONTENT = {
    render that instead the moment one exists (see `logoUrl` / `imageUrl`),
    so swapping in real brand assets later is a one-line change.
    ========================================================================= */
-
-function hashStr(s) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
-  return Math.abs(h);
-}
 
 function BrandMark({ c, size = 34 }) {
   if (c.logoUrl) return <img src={c.logoUrl} alt={`${c.name} logo`} className="lw-brandmark" style={{ width: size, height: size, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />;
@@ -409,31 +117,6 @@ function BrandMark({ c, size = 34 }) {
 /* Deterministic abstract cover art for a course/product, standing in for
    curriculum photography until real images are uploaded. Seeded by title
    so the same course always renders the same cover. */
-function CourseCover({ title, imageUrl, height = 72, width = "100%" }) {
-  if (imageUrl) return <div className="lw-cover" style={{ height, width }}><img src={imageUrl} alt={title} /></div>;
-
-  const h = hashStr(title || "course");
-  const angle = h % 360;
-  const variant = h % 3;
-  const cx1 = 20 + (h % 30), cy1 = 15 + ((h >> 3) % 25);
-  const cx2 = 60 + ((h >> 5) % 30), cy2 = 55 + ((h >> 7) % 25);
-
-  return (
-    <div className="lw-cover" style={{ height, width }}>
-      <svg viewBox="0 0 100 72" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
-        <rect width="100" height="72" fill="var(--surface-2)" />
-        <g transform={`rotate(${angle % 40} 50 36)`} opacity="0.9">
-          <circle cx={cx1} cy={cy1} r="26" fill="var(--accent)" opacity="0.55" />
-          <circle cx={cx2} cy={cy2} r="22" fill="var(--accent-2)" opacity="0.55" />
-          {variant === 0 && <rect x="30" y="10" width="40" height="40" rx="8" fill="var(--ink)" opacity="0.12" />}
-          {variant === 1 && <circle cx="50" cy="36" r="16" fill="none" stroke="var(--ink)" strokeWidth="1.5" opacity="0.25" strokeDasharray="3 3" />}
-          {variant === 2 && <path d="M10 55 L40 25 L60 45 L90 15" fill="none" stroke="var(--ink)" strokeWidth="1.5" opacity="0.2" />}
-        </g>
-      </svg>
-    </div>
-  );
-}
-
 /* =========================================================================
    ACCOUNT BAR — the real signed-in Identity, above the prototype harness.
 
@@ -510,26 +193,6 @@ function AcademyHeader({ c }) {
    returns for the selected Workspace, so a free-floating switch would be able
    to claim a view the session does not support. Switching sides is offered in
    AccountBar instead, and only when your roles actually allow it. */
-function ControlStrip({ academyList, academy, setAcademy, onReset, onNewAcademy, canAuthor }) {
-  return (
-    <div className="lw-controlstrip">
-      <span className="lw-controlstrip__label">PROTOTYPE · demo harness, not part of the product</span>
-      <div className="lw-controlstrip__group">
-        <span>Academy</span>
-        {academyList.map((a) => (
-          <button key={a.key} className={academy === a.key ? "active" : ""} onClick={() => setAcademy(a.key)}>{a.label}</button>
-        ))}
-        {canAuthor && (
-          <button className="lw-controlstrip__new" onClick={onNewAcademy}><Plus size={12} /> New academy</button>
-        )}
-      </div>
-      <button className="lw-controlstrip__reset" onClick={onReset} title="Reset content studio flow">
-        <RotateCcw size={13} /> Reset studio
-      </button>
-    </div>
-  );
-}
-
 /* =========================================================================
    NAV
    ========================================================================= */
@@ -549,7 +212,6 @@ const LEARNER_NAV = [
 /* Maps a Learner nav id to the Workspace capability that gates it — the
    single source of truth used by both Nav (to hide items) and App (to
    redirect away from a screen an Owner just turned off). */
-const NAV_CAPABILITY = Object.fromEntries(LEARNER_NAV.filter((i) => i.capability).map((i) => [i.id, i.capability]));
 
 const OWNER_NAV = [
   { divider: "Grow" },
@@ -569,10 +231,10 @@ const OWNER_NAV = [
   { id: "settings", label: "Workspace Settings", icon: Settings },
 ];
 
-function Nav({ c, role, screen, setScreen, onOpenProfile }) {
-  const items = role === "learner"
-    ? LEARNER_NAV.filter((it) => !it.capability || c.capabilities[it.capability] !== false)
-    : OWNER_NAV;
+function Nav({ c, role, screen, setScreen, onOpenProfile, personName, personRole }) {
+  // Capability gating came from fixture flags. Capabilities are not implemented
+  // (TD-006), so every item is shown and each says for itself what is not built.
+  const items = role === "learner" ? LEARNER_NAV : OWNER_NAV;
   return (
     <div className="lw-nav">
       <div className="lw-nav__brand">
@@ -602,10 +264,10 @@ function Nav({ c, role, screen, setScreen, onOpenProfile }) {
         <UserCircle size={16} /> My professional profile
       </button>
       <div className="lw-nav__person">
-        <div className="lw-nav__avatar">{(role === "learner" ? c.learnerName : c.ownerPerson)[0]}</div>
+        <div className="lw-nav__avatar">{(personName || "?").trim()[0]}</div>
         <div>
-          <div className="lw-nav__personname">{role === "learner" ? c.learnerName : c.ownerPerson}</div>
-          <div className="lw-nav__personrole">{role === "learner" ? "Learner" : c.ownerRole}</div>
+          <div className="lw-nav__personname">{personName}</div>
+          <div className="lw-nav__personrole">{personRole}</div>
         </div>
       </div>
     </div>
@@ -615,256 +277,6 @@ function Nav({ c, role, screen, setScreen, onOpenProfile }) {
 /* =========================================================================
    LEARNER SCREENS
    ========================================================================= */
-
-function LearnerDashboard({ c, academy, setScreen }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-greeting">
-        <div>
-          <div className="lw-eyebrow">Welcome back</div>
-          <h1>{academy === "lumen" ? `Bonjour, ${c.learnerName}.` : `Let's raise that score, ${c.learnerName}.`}</h1>
-          <p>{academy === "lumen" ? "You practised 4 days this week — your best streak yet." : "3 practice sessions logged this week. Consistency is compounding."}</p>
-        </div>
-        <button className="lw-btn lw-btn--accent" onClick={() => setScreen("lesson")}>Continue lesson <ArrowRight size={16} /></button>
-      </div>
-
-      <div className={c.capabilities.aiTutor ? "lw-grid3" : "lw-grid2"}>
-        <div className="lw-card lw-stampcard">
-          <div className="lw-card__eyebrow"><Clock size={14} /> In progress</div>
-          <div className="lw-card__title">{c.activeLesson.title}</div>
-          <div className="lw-card__meta">{c.activeLesson.course} · {c.activeLesson.duration}</div>
-        </div>
-        <div className="lw-card">
-          <div className="lw-card__eyebrow"><BarChart3 size={14} /> This month</div>
-          <div className="lw-meter">{Array.from({ length: 12 }).map((_, i) => <span key={i} className={i < 8 ? "filled" : ""} />)}</div>
-          <div className="lw-card__meta">8 of 12 sessions complete</div>
-        </div>
-        {c.capabilities.aiTutor && (
-          <div className="lw-card">
-            <div className="lw-card__eyebrow"><Bot size={14} /> {c.aiName}</div>
-            <div className="lw-card__title" style={{ fontSize: "1rem" }}>
-              {academy === "lumen" ? "“Ready to practise ordering food today?”" : "“Your coherence score dipped in timed drills — let's fix that.”"}
-            </div>
-            <button className="lw-btn lw-btn--ghost" onClick={() => setScreen("ai")}>Open chat</button>
-          </div>
-        )}
-      </div>
-
-      <h2 className="lw-sectiontitle">Your courses</h2>
-      <div className="lw-grid3">
-        {c.courses.map((course) => (
-          <div className="lw-card lw-coursecard" key={course.id} onClick={() => setScreen("courses")}>
-            <CourseCover title={course.title} imageUrl={course.imageUrl} height={78} />
-            <div className="lw-card__title" style={{ marginTop: 12 }}>{course.title}</div>
-            <div className="lw-card__meta">{course.lessons} lessons</div>
-            <div className="lw-progressbar"><span style={{ width: `${course.progress}%` }} /></div>
-            <div className="lw-card__meta">{course.progress}% complete</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LearnerCourses({ c, published, setScreen }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Your Academy</div>
-      <h1>Courses</h1>
-      <div className="lw-list">
-        {published.length > 0 && (
-          <div className="lw-listrow lw-listrow--new">
-            <div className="lw-listrow__icon"><Sparkles size={18} /></div>
-            <div className="lw-listrow__body">
-              <div className="lw-listrow__title">{published[published.length - 1].title} <span className="lw-tag lw-tag--new">New</span></div>
-              <div className="lw-listrow__meta">Just published by your {c.ownerRole.toLowerCase()} · added to {c.courses[0].title}</div>
-            </div>
-            <button className="lw-btn lw-btn--sm" onClick={() => setScreen("lesson")}>Start</button>
-          </div>
-        )}
-        {c.courses.map((course) => (
-          <div className="lw-listrow" key={course.id}>
-            <CourseCover title={course.title} imageUrl={course.imageUrl} width={44} height={44} />
-            <div className="lw-listrow__body">
-              <div className="lw-listrow__title">{course.title}</div>
-              <div className="lw-listrow__meta">{course.lessons} lessons · {course.progress}% complete</div>
-            </div>
-            <button className="lw-btn lw-btn--sm" onClick={() => setScreen("lesson")}>Open</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LearnerLesson({ c, academy }) {
-  const [answered, setAnswered] = useState(false);
-  const [choice, setChoice] = useState(null);
-  const q = c.activeLesson.question;
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">{c.activeLesson.course}</div>
-      <h1>{c.activeLesson.title}</h1>
-      <div className="lw-player">
-        <div className="lw-player__frame"><PlayCircle size={52} /><span>{c.activeLesson.duration} · interactive lesson</span></div>
-        <div className="lw-timeline">
-          {c.activeLesson.events.map((ev, i) => (
-            <div className="lw-timeline__event" key={i}>
-              <span className="lw-timeline__dot" /><span className="lw-timeline__time">{ev.t}</span><span className="lw-timeline__label">{ev.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="lw-card lw-questioncard">
-        <div className="lw-card__eyebrow"><Mic size={14} /> Question event · 03:40</div>
-        <div className="lw-questioncard__prompt">{q.prompt}</div>
-        <div className="lw-options">
-          {q.options.map((opt, i) => {
-            const isCorrect = i === q.correct, isChosen = i === choice;
-            return (
-              <button key={i} className={`lw-option ${answered && isCorrect ? "is-correct" : ""} ${answered && isChosen && !isCorrect ? "is-wrong" : ""}`}
-                onClick={() => { setChoice(i); setAnswered(true); }} disabled={answered}>
-                <span>{opt}</span>
-                {answered && isCorrect && <Check size={16} />}
-                {answered && isChosen && !isCorrect && <XCircle size={16} />}
-              </button>
-            );
-          })}
-        </div>
-        {answered && (
-          <div className="lw-feedback">
-            <Bot size={15} />
-            {academy === "lumen" ? `${c.aiName}: Exactement — "l'addition" is how you ask for the bill.` : `${c.aiName}: Correct. Structure drives coherence score — log this pattern.`}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function LearnerAssessments({ c }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Assessment Context</div>
-      <h1>Assessments</h1>
-      <p className="lw-sub">How your achievement is measured — kept separate from the lessons themselves.</p>
-      <div className="lw-list">
-        {c.learnerAssessments.map((a, i) => (
-          <div className="lw-listrow" key={i}>
-            <div className="lw-listrow__icon"><ClipboardCheck size={18} /></div>
-            <div className="lw-listrow__body">
-              <div className="lw-listrow__title">{a.name} <span className="lw-tag">{a.status}</span></div>
-              <div className="lw-listrow__meta">{a.feedback}</div>
-            </div>
-            <div className="lw-scorepill">{a.score}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LearnerCertificates({ c }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Achievement</div>
-      <h1>Certificates</h1>
-      <div className="lw-badgegrid">
-        {c.learnerCertificates.map((cert, i) => (
-          <div className={`lw-badge ${cert.status === "earned" ? "is-earned" : ""}`} key={i}>
-            <Award size={26} />
-            <div className="lw-badge__name">{cert.name}</div>
-            <div className="lw-badge__meta">{cert.status === "earned" ? `Earned · ${cert.issued}` : cert.status}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LearnerSchedule({ c }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Scheduling Context</div>
-      <h1>Your schedule</h1>
-      <div className="lw-list">
-        {c.learnerSessions.map((s, i) => (
-          <div className="lw-listrow" key={i}>
-            <div className="lw-listrow__icon"><Calendar size={18} /></div>
-            <div className="lw-listrow__body">
-              <div className="lw-listrow__title">{s.title}</div>
-              <div className="lw-listrow__meta">{s.when}</div>
-            </div>
-            <button className="lw-btn lw-btn--sm">Add to calendar</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LearnerMessages({ c }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Communication Context</div>
-      <h1>Messages</h1>
-      <div className="lw-chat">
-        {c.messagesThread.map((m, i) => (
-          <div key={i} className={`lw-bubble lw-bubble--${m.from === "user" ? "user" : "ai"}`}>
-            {m.from !== "user" && <span className="lw-bubble__avatar">{c.ownerPerson[0]}</span>}
-            {m.text}
-          </div>
-        ))}
-        <div className="lw-chatinput"><input placeholder={`Message ${c.ownerPerson}…`} /><button className="lw-btn lw-btn--accent lw-btn--sm"><Send size={14} /></button></div>
-      </div>
-    </div>
-  );
-}
-
-function LearnerCommunity({ c }) {
-  const [posts, setPosts] = useState(c.communityPosts);
-  const [draft, setDraft] = useState("");
-  const add = () => { if (!draft.trim()) return; setPosts([{ author: c.learnerName, text: draft, replies: 0 }, ...posts]); setDraft(""); };
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Community Context</div>
-      <h1>Community</h1>
-      <div className="lw-composer">
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Share something with the academy…" />
-        <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={add}><Send size={14} /></button>
-      </div>
-      <div className="lw-list">
-        {posts.map((p, i) => (
-          <div className="lw-listrow" key={i}>
-            <div className="lw-listrow__icon">{p.author.includes("AI") ? <Bot size={18} /> : p.author[0]}</div>
-            <div className="lw-listrow__body">
-              <div className="lw-listrow__title">{p.author}</div>
-              <div className="lw-listrow__meta">{p.text}</div>
-            </div>
-            <div className="lw-tag">{p.replies} replies</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LearnerAI({ c, academy }) {
-  const convo = academy === "lumen"
-    ? [{ from: "ai", text: "Salut! Want to practise ordering dessert next?" }, { from: "user", text: "Yes — but I always forget how to ask for the bill politely." }, { from: "ai", text: "Try: “L'addition, s'il vous plaît.” Want to record yourself saying it?" }]
-    : [{ from: "ai", text: "Your last timed response scored 6.5 on coherence. Want to see why?" }, { from: "user", text: "Yes, I think I ran out of structure halfway through." }, { from: "ai", text: "Correct — you dropped the reflection step. Let's drill that specifically." }];
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">AI Context · scoped to {c.name} only</div>
-      <h1>{c.aiName}</h1>
-      <p className="lw-sub">{c.aiRole}, tuned to this academy's teaching style. {c.aiName} never sees data from any other workspace.</p>
-      <div className="lw-chat">
-        {convo.map((m, i) => (<div key={i} className={`lw-bubble lw-bubble--${m.from}`}>{m.from === "ai" && <Bot size={14} />}{m.text}</div>))}
-        <div className="lw-chatinput"><input placeholder={academy === "lumen" ? "Ask Mira anything…" : "Ask Scout for a drill or score breakdown…"} /><button className="lw-btn lw-btn--accent lw-btn--sm"><Send size={14} /></button></div>
-      </div>
-    </div>
-  );
-}
 
 /* =========================================================================
    OWNER / WORKSPACE-OWNER SCREENS
@@ -878,12 +290,6 @@ function LearnerAI({ c, academy }) {
    prototype, but the SHAPE of every suggestion matches what the docs
    describe the real AI Context returning.
    ========================================================================= */
-
-const UNIT_THEME_BANK = {
-  Language: ["Foundations & Greetings", "Everyday Situations", "Building Fluency", "Real-World Immersion"],
-  "Exam Prep": ["Diagnostic & Foundations", "Core Skills Drilling", "Timed Practice", "Final Review & Mock Exams"],
-  General: ["Getting Started", "Core Concepts", "Applied Practice", "Mastery & Review"],
-};
 
 /* =========================================================================
    PRODUCT BUILDER — Units → Lessons → Interactive Videos,
@@ -903,66 +309,6 @@ const UNIT_THEME_BANK = {
    Either overrides the generated brand art from BrandMark / CourseCover.
    ========================================================================= */
 
-const WIDGET_META = [
-  { key: "aiTutor", label: "AI Tutor", consequence: "AI chat tab hidden from learners" },
-  { key: "assessments", label: "Assessments", consequence: "Assessments tab and scores hidden from learners" },
-  { key: "certificates", label: "Certificates", consequence: "Certificates tab hidden from learners" },
-  { key: "schedule", label: "Schedule", consequence: "Schedule tab and session times hidden from learners" },
-  { key: "messages", label: "Messages", consequence: "1:1 messaging hidden from learners" },
-  { key: "community", label: "Community", consequence: "Community feed hidden from learners" },
-];
-
-/* =========================================================================
-   CONTENT STUDIO (AI-Assisted Learning Content Lifecycle)
-   ========================================================================= */
-
-/* =========================================================================
-   PROFESSIONAL PROFILE OVERLAY (Identity Context, Section III)
-   One Global Identity — achievements aggregated across every Workspace.
-   ========================================================================= */
-
-function ProfessionalProfile({ onClose }) {
-  const earned = Object.entries(CONTENT).flatMap(([key, c]) =>
-    c.learnerCertificates.filter((cert) => cert.status === "earned").map((cert) => ({ ...cert, academy: c.name, key }))
-  );
-  return (
-    <div className="lw-overlay">
-      <div className="lw-overlay__panel">
-        <button className="lw-overlay__close" onClick={onClose}><X size={18} /></button>
-        <div className="lw-eyebrow" style={{ color: "#8A8F97" }}>Identity Context · platform-level, not Workspace-owned</div>
-        <h1 style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>My professional profile</h1>
-        <div className="lw-idcard">
-          <div className="lw-idcard__avatar">{GLOBAL_IDENTITY.fullName[0]}</div>
-          <div>
-            <div className="lw-idcard__name">{GLOBAL_IDENTITY.fullName}</div>
-            <div className="lw-idcard__meta">{GLOBAL_IDENTITY.email} · member since {GLOBAL_IDENTITY.memberSince}</div>
-          </div>
-        </div>
-        <p className="lw-sub">One Identity, many Workspace Memberships (GP-005). Achievements travel with the person, not the academy.</p>
-        <h2 className="lw-sectiontitle" style={{ marginTop: 24 }}>Memberships</h2>
-        <div className="lw-list">
-          {Object.entries(CONTENT).map(([key, c]) => (
-            <div className="lw-listrow" key={key}>
-              <div className="lw-listrow__icon">{c.mark}</div>
-              <div className="lw-listrow__body"><div className="lw-listrow__title">{c.name}</div><div className="lw-listrow__meta">Role: Learner · independent membership</div></div>
-            </div>
-          ))}
-        </div>
-        <h2 className="lw-sectiontitle">Portable achievements</h2>
-        <div className="lw-badgegrid">
-          {earned.map((cert, i) => (
-            <div className="lw-badge is-earned" key={i}>
-              <Award size={26} />
-              <div className="lw-badge__name">{cert.name}</div>
-              <div className="lw-badge__meta">{cert.academy} · {cert.issued}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* =========================================================================
    WORKSPACE SETUP WIZARD (Value Stream 1: "Launch Learning Business")
    Business Basics → Branding → AI Persona → Publish trace.
@@ -971,231 +317,62 @@ function ProfessionalProfile({ onClose }) {
    branded experience can be shown at all.
    ========================================================================= */
 
-const PUBLISH_EVENTS = [
-  "WorkspaceCreated",
-  "WorkspaceConfigured",
-  "WorkspaceBrandUpdated",
-  "WorkspaceAIProfileConfigured",
-  "WorkspacePublished",
-];
-
-function WorkspaceWizard({ onClose, onComplete }) {
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState({
-    name: "", tagline: "", ownerPerson: "", category: "Language",
-    presetId: "botanical", aiName: "", ownerRole: "Instructor",
-    teachingStyle: "Friendly", feedbackStyle: "Encouraging",
-  });
-  const [eventIdx, setEventIdx] = useState(-1);
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  const canProceedBasics = form.name.trim().length > 0 && form.ownerPerson.trim().length > 0;
-
-  useEffect(() => {
-    if (step !== 3) return;
-    setEventIdx(0);
-    const timers = PUBLISH_EVENTS.map((_, i) =>
-      setTimeout(() => setEventIdx(i + 1), 500 * (i + 1))
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [step]);
-
-  const preset = BRAND_PRESETS.find((p) => p.id === form.presetId) || BRAND_PRESETS[0];
-
-  const finish = () => {
-    const key = (form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") || "academy") + "-" + Date.now().toString(36).slice(-4);
-    const content = buildAcademyContent(form);
-    onComplete(key, preset.tokens, content);
-  };
-
-  return (
-    <div className="lw-overlay">
-      <div className="lw-overlay__panel lw-overlay__panel--wizard">
-        <button className="lw-overlay__close" onClick={onClose}><X size={18} /></button>
-        <div className="lw-eyebrow" style={{ color: "#8A8F97" }}>Workspace Management Context · Launch Learning Business</div>
-        <h1 style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>Set up a new academy</h1>
-
-        <div className="lw-wizardsteps">
-          {["Basics", "Branding", "AI Persona", "Publish"].map((l, i) => (
-            <div key={l} className={`lw-wizardsteps__item ${i <= step ? "done" : ""} ${i === step ? "active" : ""}`}>
-              <span>{i < step ? <Check size={11} /> : i + 1}</span>{l}
-            </div>
-          ))}
-        </div>
-
-        {step === 0 && (
-          <div className="lw-wizardbody">
-            <div className="lw-wfield"><label><Building2 size={13} /> Academy name</label><input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Riverside Coding School" /></div>
-            <div className="lw-wfield"><label>Tagline</label><input value={form.tagline} onChange={(e) => set("tagline", e.target.value)} placeholder="One line describing your academy" /></div>
-            <div className="lw-wfield"><label>Your name (Workspace Owner)</label><input value={form.ownerPerson} onChange={(e) => set("ownerPerson", e.target.value)} placeholder="e.g. Sam Rivera" /></div>
-            <div className="lw-wfield">
-              <label>Category</label>
-              <div className="lw-segctrl">
-                {Object.keys(CATEGORY_COURSES).map((cat) => (
-                  <button key={cat} className={form.category === cat ? "active" : ""} onClick={() => set("category", cat)}>{cat}</button>
-                ))}
-              </div>
-            </div>
-            <button className="lw-btn lw-btn--accent lw-btn--lg" disabled={!canProceedBasics} onClick={() => setStep(1)}>
-              Continue to branding <ArrowRight size={16} />
-            </button>
-          </div>
-        )}
-
-        {step === 1 && (
-          <div className="lw-wizardbody">
-            <p className="lw-sub" style={{ color: "#666" }}><Palette size={13} style={{ verticalAlign: "-2px" }} /> Pick a starting brand — fully editable later in Workspace Settings.</p>
-            <div className="lw-presetgrid">
-              {BRAND_PRESETS.map((p) => (
-                <div key={p.id} className={`lw-presetcard ${form.presetId === p.id ? "is-selected" : ""}`} onClick={() => set("presetId", p.id)}>
-                  <div className="lw-presetcard__swatches">
-                    <span style={{ background: p.tokens["--bg"] }} />
-                    <span style={{ background: p.tokens["--accent"] }} />
-                    <span style={{ background: p.tokens["--accent-2"] }} />
-                    <span style={{ background: p.tokens["--ink"] }} />
-                  </div>
-                  <div className="lw-presetcard__label">{p.label}</div>
-                  <div className="lw-presetcard__desc">{p.description}</div>
-                </div>
-              ))}
-            </div>
-            <div className="lw-wizardnav">
-              <button className="lw-btn lw-btn--ghost" onClick={() => setStep(0)}><ArrowLeft size={15} /> Back</button>
-              <button className="lw-btn lw-btn--accent lw-btn--lg" onClick={() => setStep(2)}>Continue to AI persona <ArrowRight size={16} /></button>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="lw-wizardbody">
-            <p className="lw-sub" style={{ color: "#666" }}><SlidersHorizontal size={13} style={{ verticalAlign: "-2px" }} /> AI behaviour is Workspace-native — two academies never sound the same.</p>
-            <div className="lw-wfield"><label>AI assistant name</label><input value={form.aiName} onChange={(e) => set("aiName", e.target.value)} placeholder="e.g. Nova" /></div>
-            <div className="lw-wfield"><label>What learners call you</label><input value={form.ownerRole} onChange={(e) => set("ownerRole", e.target.value)} placeholder="e.g. Instructor, Mentor, Coach" /></div>
-            <div className="lw-wfield">
-              <label>Teaching style</label>
-              <div className="lw-segctrl">
-                {["Friendly", "Balanced", "Structured"].map((s) => (
-                  <button key={s} className={form.teachingStyle === s ? "active" : ""} onClick={() => set("teachingStyle", s)}>{s}</button>
-                ))}
-              </div>
-            </div>
-            <div className="lw-wfield">
-              <label>Feedback style</label>
-              <div className="lw-segctrl">
-                {["Encouraging", "Balanced", "Detailed"].map((s) => (
-                  <button key={s} className={form.feedbackStyle === s ? "active" : ""} onClick={() => set("feedbackStyle", s)}>{s}</button>
-                ))}
-              </div>
-            </div>
-            <div className="lw-wizardnav">
-              <button className="lw-btn lw-btn--ghost" onClick={() => setStep(1)}><ArrowLeft size={15} /> Back</button>
-              <button className="lw-btn lw-btn--accent lw-btn--lg" onClick={() => setStep(3)}>Review & publish <ArrowRight size={16} /></button>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="lw-wizardbody">
-            <div className="lw-wizardsummary">
-              <div><span>Academy</span>{form.name || "—"}</div>
-              <div><span>Category</span>{form.category}</div>
-              <div><span>Brand</span>{preset.label}</div>
-              <div><span>AI assistant</span>{form.aiName || "Aria"} · {form.teachingStyle}, {form.feedbackStyle}</div>
-            </div>
-            <div className="lw-eventtrace">
-              {PUBLISH_EVENTS.map((ev, i) => (
-                <div key={ev} className={`lw-eventtrace__item ${i < eventIdx ? "done" : ""}`}>
-                  {i < eventIdx ? <Check size={13} /> : <Circle size={13} />} {ev}
-                </div>
-              ))}
-            </div>
-            {eventIdx >= PUBLISH_EVENTS.length ? (
-              <button className="lw-btn lw-btn--accent lw-btn--lg" onClick={finish}>
-                <Rocket size={16} /> Enter your new academy
-              </button>
-            ) : (
-              <div className="lw-sub" style={{ color: "#888" }}>Publishing…</div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* =========================================================================
    ROOT APP
    ========================================================================= */
 
 export default function App() {
   useFonts();
-  const [academy, setAcademy] = useState("lumen");
 
   /* Which surface renders is decided by the door you came through, not by a
      toggle — and you only reach this component at all once the API has
      confirmed you hold a role for that side in the selected Workspace. */
-  const { side } = useAuth();
+  const { side, me, workspace, session } = useAuth();
   const role = side === "teach" ? "owner" : "learner";
+
   const [learnerScreen, setLearnerScreen] = useState("dashboard");
   const [ownerScreen, setOwnerScreen] = useState("overview");
   const [profileOpen, setProfileOpen] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [customAcademies, setCustomAcademies] = useState({}); // { key: { theme, content } }
-  const [capabilityOverrides, setCapabilityOverrides] = useState({}); // { [academyKey]: { ...capability flags } }
-  const [logoOverrides, setLogoOverrides] = useState({}); // { [academyKey]: dataUrl | httpUrl | null }
-  const [studioFlow, setStudioFlow] = useState({
-    lumen: { step: "upload", published: [] },
-    vantage: { step: "upload", published: [] },
-  });
 
-  const isCustom = !!customAcademies[academy];
-  const baseContent = isCustom ? customAcademies[academy].content : CONTENT[academy];
-  const theme = isCustom ? customAcademies[academy].theme : THEMES[academy];
-  const flow = studioFlow[academy] || { step: "upload", published: [] };
+  /* The workspace description lives on the setup endpoint rather than in
+     /api/me, so the shell fetches it once for the tagline. Absent is a normal
+     state — a workspace need not describe itself — and the chrome simply
+     omits the line rather than substituting anything. */
+  const [description, setDescription] = useState(null);
 
-  // Capabilities and the logo are held here (not on the base content) so
-  // toggling a widget or swapping a logo never deletes anything underlying —
-  // flip it back and everything (posts, sessions, the generated mark…) is
-  // exactly as it was.
-  const capabilities = { ...baseContent.capabilities, ...(capabilityOverrides[academy] || {}) };
-  const logoUrl = academy in logoOverrides ? logoOverrides[academy] : baseContent.logoUrl;
-  const c = { ...baseContent, capabilities, logoUrl };
+  useEffect(() => {
+    let cancelled = false;
+    api.getSetup(session.token, workspace.slug)
+      .then((s) => { if (!cancelled) setDescription(s.description ?? ""); })
+      .catch(() => { if (!cancelled) setDescription(""); });
+    return () => { cancelled = true; };
+  }, [session.token, workspace.slug]);
 
-  const toggleCapability = (key) =>
-    setCapabilityOverrides((prev) => ({
-      ...prev,
-      [academy]: { ...capabilities, [key]: !capabilities[key] },
-    }));
-
-  const setLogo = (url) => setLogoOverrides((prev) => ({ ...prev, [academy]: url }));
-
-  const academyList = [
-    ...Object.entries(CONTENT).map(([key, ct]) => ({ key, label: ct.name.split(" ")[0] })),
-    ...Object.entries(customAcademies).map(([key, a]) => ({ key, label: a.content.name.split(" ")[0] || "New" })),
-  ];
-
-  const setStudioStep = (step) => setStudioFlow((f) => ({ ...f, [academy]: { ...(f[academy] || { published: [] }), step } }));
-  const publish = (lesson) => setStudioFlow((f) => ({ ...f, [academy]: { step: "published", published: [...(f[academy]?.published || []), lesson] } }));
-  const resetFlow = () => setStudioFlow((f) => ({ ...f, [academy]: { step: "upload", published: f[academy]?.published || [] } }));
-
-  const finishWizard = (key, tokens, content) => {
-    setCustomAcademies((prev) => ({ ...prev, [key]: { theme: tokens, content } }));
-    setStudioFlow((f) => ({ ...f, [key]: { step: "upload", published: [] } }));
-    setAcademy(key);
-    setOwnerScreen("overview");
-    setWizardOpen(false);
+  /* The chrome, built from the real workspace and the real person signed in.
+     This used to come from CONTENT — two fictional academies with invented
+     names, taglines, mentors and colour schemes. A tutor saw "Lumen Language
+     Academy · Learn to speak, not just study" above their own workspace. */
+  const c = {
+    name: workspace.name,
+    tagline: description || "",
+    mark: (workspace.name.trim()[0] || "W").toUpperCase(),
+    logoStyle: "geometric",
+    logoUrl: null,
   };
 
-  useEffect(() => { setLearnerScreen("dashboard"); setOwnerScreen("overview"); }, [academy, role]);
+  /* Branding is not implemented (Technical Debt Backlog TD-006), so every
+     workspace renders in the platform default. Inventing a palette per
+     workspace would be another fiction, just a prettier one. */
+  const theme = DEFAULT_THEME;
 
-  // If the Owner just switched off the capability behind the screen the
-  // Learner nav is currently sitting on, fall back to Dashboard rather
-  // than showing a dead screen with no nav item pointing at it.
-  useEffect(() => {
-    const requiredCapability = NAV_CAPABILITY[learnerScreen];
-    if (requiredCapability && capabilities[requiredCapability] === false) setLearnerScreen("dashboard");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capabilities, learnerScreen]);
+  /* The person is whoever is actually signed in, and their label is the roles
+     they actually hold here — not a fixture "Mentor" or "Instructor". */
+  const personName = me?.fullName ?? "";
+  const personRole = (workspace.roles ?? [])
+    .map((r) => r.replace(/([a-z])([A-Z])/g, "$1 $2"))
+    .join(", ") || "Member";
+
+  useEffect(() => { setLearnerScreen("dashboard"); setOwnerScreen("overview"); }, [role]);
 
   const activeNavScreen = role === "learner" ? learnerScreen : (ownerScreen === "studio" ? "studio" : ownerScreen);
 
@@ -1203,23 +380,51 @@ export default function App() {
     <div className="lw-root" style={theme}>
       <style>{CSS}</style>
       <AccountBar />
-      <ControlStrip academyList={academyList} academy={academy} setAcademy={setAcademy}
-        onReset={resetFlow} onNewAcademy={() => setWizardOpen(true)} canAuthor={role === "owner"} />
+      {/* The academy switcher and workspace wizard are gone: they moved between
+          two fictional academies, which cannot coexist with a real signed-in
+          workspace. */}
       {role === "learner" && <AcademyHeader c={c} />}
-      <div className="lw-shell" data-academy={academy}>
+      <div className="lw-shell">
         <Nav c={c} role={role} screen={activeNavScreen}
+          personName={personName} personRole={personRole}
           setScreen={role === "learner" ? setLearnerScreen : setOwnerScreen}
           onOpenProfile={() => setProfileOpen(true)} />
         <div className="lw-content">
-          {role === "learner" && learnerScreen === "dashboard" && <LearnerDashboard c={c} academy={academy} setScreen={setLearnerScreen} />}
-          {role === "learner" && learnerScreen === "courses" && <LearnerCourses c={c} published={flow.published} setScreen={setLearnerScreen} />}
-          {role === "learner" && learnerScreen === "lesson" && <LearnerLesson c={c} academy={academy} />}
-          {role === "learner" && learnerScreen === "assessments" && <LearnerAssessments c={c} />}
-          {role === "learner" && learnerScreen === "certificates" && <LearnerCertificates c={c} />}
-          {role === "learner" && learnerScreen === "schedule" && <LearnerSchedule c={c} />}
-          {role === "learner" && learnerScreen === "messages" && <LearnerMessages c={c} />}
-          {role === "learner" && learnerScreen === "community" && <LearnerCommunity key={academy} c={c} />}
-          {role === "learner" && learnerScreen === "ai" && <LearnerAI c={c} academy={academy} />}
+          {/* Learner screens. Only the home is real; the rest describe a
+              curriculum that does not exist yet. */}
+          {role === "learner" && learnerScreen === "dashboard" && <LearnerHomeScreen />}
+          {role === "learner" && learnerScreen === "courses" && (
+            <NotBuiltYet area="Learning Product Context" onNavigate={setLearnerScreen}
+              blurb="Courses aren’t built yet, so there is nothing published for you to open." />
+          )}
+          {role === "learner" && learnerScreen === "lesson" && (
+            <NotBuiltYet area="Lesson Delivery" onNavigate={setLearnerScreen}
+              blurb="Lessons aren’t built yet. When your tutor publishes one, it will appear here." />
+          )}
+          {role === "learner" && learnerScreen === "assessments" && (
+            <NotBuiltYet area="Assessment Context" onNavigate={setLearnerScreen}
+              blurb="Assessments aren’t built yet, so no work of yours has been marked." />
+          )}
+          {role === "learner" && learnerScreen === "certificates" && (
+            <NotBuiltYet area="Certification Context" onNavigate={setLearnerScreen}
+              blurb="Certificates aren’t built yet. Nothing has been awarded, so nothing is shown." />
+          )}
+          {role === "learner" && learnerScreen === "schedule" && (
+            <NotBuiltYet area="Scheduling Context" onNavigate={setLearnerScreen}
+              blurb="Scheduling isn’t built yet, so there are no sessions in your calendar." />
+          )}
+          {role === "learner" && learnerScreen === "messages" && (
+            <NotBuiltYet area="Communication Context" onNavigate={setLearnerScreen}
+              blurb="Messaging isn’t built yet. Contact your tutor the way you normally would." />
+          )}
+          {role === "learner" && learnerScreen === "community" && (
+            <NotBuiltYet area="Community Context" onNavigate={setLearnerScreen}
+              blurb="Community discussion isn’t built yet." />
+          )}
+          {role === "learner" && learnerScreen === "ai" && (
+            <NotBuiltYet area="AI Context" onNavigate={setLearnerScreen}
+              blurb="The workspace AI assistant isn’t built yet." />
+          )}
 
           {/* Owner screens. Only overview, members and setup are real; the rest
               have no domain behind them yet and say so, rather than rendering
@@ -1262,7 +467,6 @@ export default function App() {
         </div>
       </div>
       {profileOpen && <ProfessionalProfile onClose={() => setProfileOpen(false)} />}
-      {wizardOpen && <WorkspaceWizard onClose={() => setWizardOpen(false)} onComplete={finishWizard} />}
     </div>
   );
 }
@@ -1547,3 +751,41 @@ const CSS = `
 
   button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 `;
+
+/* The person behind the membership, across the platform rather than inside one
+   workspace. Identity Aggregate Design gives this a Professional Profile,
+   Reputation and Professional History; none of that is built, so this shows the
+   Identity that genuinely exists and says the rest is missing rather than
+   inventing a portfolio. */
+function ProfessionalProfile({ onClose }) {
+  const { me, workspaces } = useAuth();
+  const active = workspaces.filter((w) => w.membershipStatus === "Active");
+
+  return (
+    <div className="lw-modal" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="lw-modal__panel" onClick={(e) => e.stopPropagation()}>
+        <button className="lw-modal__close" onClick={onClose} aria-label="Close"><X size={16} /></button>
+        <div className="lw-eyebrow">Your account</div>
+        <h2>{me?.fullName}</h2>
+        <p className="lw-modal__sub">{me?.email}</p>
+
+        <h3 className="lw-modal__h3">Workspaces you belong to</h3>
+        <div className="lw-modal__list">
+          {active.length === 0 && <p className="lw-modal__muted">None yet.</p>}
+          {active.map((w) => (
+            <div className="lw-modal__row" key={w.workspaceId}>
+              <strong>{w.name}</strong>
+              <span>{w.roles.map((r) => r.replace(/([a-z])([A-Z])/g, "$1 $2")).join(", ")}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="lw-modal__muted">
+          Your identity is yours and follows you across every workspace. A public
+          professional profile, reputation and teaching history are described in
+          the design but not built yet, so nothing here is inferred or invented.
+        </p>
+      </div>
+    </div>
+  );
+}
