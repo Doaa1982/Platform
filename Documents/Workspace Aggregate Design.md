@@ -352,6 +352,19 @@ Deleted
 
 This state machine reconciles the two slightly different lifecycle diagrams that previously existed independently — Workspace Context, Section 3.1 ("Created → Configuring → Active → Suspended → Archived → Deleted") and Learning Workspace Domain Language & Business Ontology, Section 4.2 ("Draft → Configuring → Private → Published → Active → Growing → Archived → Deleted"). This document adopts the more granular Ontology sequence as canonical for the Aggregate's formal state machine, since it distinguishes "Private" (configured but not yet publicly discoverable) from "Published" (publicly listed) — a distinction with real business consequence for Workspace Resolution (Identity & Workspace Access Architecture, Section V) that "Active" alone does not capture. "Growing" from the Ontology's version is treated as a business/maturity-model label (Learning Workspace Business Value Streams & Maturity Model, Section 10) rather than a distinct Aggregate lifecycle state, and is not included in the formal state machine above.
 
+## What `Published → Active` means
+
+> **Ruling (2026-08-05, Workspace Setup Business Analysis BA-002; Technical Debt Backlog TD-009):** this section justified splitting `Private` from `Published` but left `Active` without a stated meaning, which made the transition unimplementable except as a guess.
+
+**`Active` is Owner-declared: the Workspace's Owner saying "we are open for business."** It is deliberately distinct from `Published`, which means only that the Workspace is publicly discoverable and resolvable by its Entry Points. Being findable and being open are different claims, and only the Owner can make the second one.
+
+Two alternative readings were considered and rejected:
+
+- **Automatic on publication** — would make `Active` carry no information `Published` does not already carry, leaving it vestigial. If the distinction ever proves worthless in practice, the correct response is to remove the state from this section, not to keep it as a no-op.
+- **Driven by first real use** (a published Learning Product, or a first Enrollment) — would give `Active` real meaning, but at the cost of making Workspace depend on Learning Product and Enrollment, which Section 6 explicitly refuses.
+
+Suspension, archival and deletion remain platform-driven and are not part of the Owner's lifecycle (Workspace Setup Business Analysis, Section 5).
+
 ---
 
 # 16. Business Invariants

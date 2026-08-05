@@ -243,7 +243,9 @@ Every Membership belongs to exactly one Workspace and references exactly one Ide
 
 ## INV-002
 
-Membership status transitions must follow the defined state machine (Section 15). Illegal transitions (e.g., Pending directly to Archived without passing through Active or Removed) are rejected.
+Membership status transitions must follow the defined state machine (Section 15). Illegal transitions (e.g., Removed back to Active, or Archived to any other state) are rejected.
+
+> **Ruling (2026-08-05, Technical Debt Backlog TD-007):** where this invariant and Section 15 disagree, **Section 15 is normative**. An earlier version of this clause gave "Pending directly to Archived" as its example of an illegal transition, which contradicted Section 15's own diagram ("Active or Pending ↓ Archived"). Section 15 is correct: archiving an invitation that was never accepted is ordinary business behaviour, and forcing it through `Removed` first would misrepresent what happened. The example has been replaced with transitions Section 15 genuinely forbids.
 
 ---
 

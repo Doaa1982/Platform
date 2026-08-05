@@ -307,7 +307,9 @@ Reasoning: Workspace Context §3.2 treats the Owner as accountable for the Works
 
 ## BA-002
 
-**What `Published → Active` means is left open, with a recommendation.**
+**RULED (2026-08-05): `Published → Active` is Owner-declared.**
+
+The alternatives and reasoning below are retained rather than trimmed, so the choice stays auditable — a reader can see what was rejected and why, not merely what was picked. The ruling is also recorded in Workspace Aggregate Design §15, which is where a reader of the state machine will look for it.
 
 Workspace Aggregate Design §15 adopts the granular Ontology sequence and justifies distinguishing `Private` from `Published`, but gives no equivalent reasoning for `Active`. Three readings are possible:
 
@@ -351,9 +353,9 @@ A stored completion flag can disagree with the data it summarises, and then must
 
 # 16. Version 1 Open Questions
 
-### `Published → Active` semantics — Open (BA-002)
+### ~~`Published → Active` semantics~~ — Ruled 2026-08-05 (BA-002)
 
-Needs a ruling before the transition can be implemented as anything other than an automatic no-op.
+Owner-declared. Recorded in BA-002 above and in Workspace Aggregate Design §15. No longer open.
 
 ### Entry Point Registry — Deferred (BA-003, TD-006)
 

@@ -865,6 +865,16 @@ Expired
 Cancelled
 ```
 
+> **Ruling (2026-08-05, Technical Debt Backlog TD-008):** the arrows above read as a single sequence, which no Invitation actually follows — `Accepted`, `Expired` and `Cancelled` are mutually exclusive outcomes, not successive steps. An Invitation reaches exactly one of them.
+>
+> **Invitation Business Analysis §9 is normative** for the Invitation lifecycle. It reconciles this list with Workspace Access Context §4.5 as:
+>
+> ```text
+> Created → Sent → { Accepted | Expired | Cancelled }
+> ```
+>
+> The six states here are not wrong, only finer-grained: `Draft` is a sub-step of `Created`, and `Issued` / `Delivered` split `Sent` into queued-for-delivery and confirmed-delivered. Version 1 does not track that split separately, because nothing yet acts on the difference. This model is retained rather than rewritten precisely because that distinction will matter if delivery failures ever need their own visibility — at which point splitting `Sent` is a refinement, not a redesign.
+
 ---
 
 ## Business Rules

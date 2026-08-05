@@ -270,8 +270,26 @@ Created
 
 ↓
 
+Sent
+
+↓
+
 Expired
 ```
+
+or
+
+```
+Created  or  Sent
+
+↓
+
+Cancelled
+```
+
+> **Ruling (2026-08-05, Technical Debt Backlog TD-008):** `Cancelled` is part of this lifecycle. It was missing here while WA-104 in Identity & Workspace Access Architecture ("Invitations may be cancelled before acceptance") required it, leaving a capability with no state to occupy. Expiry is also shown from `Sent` rather than `Created`, since an Invitation that was never sent expires to no purpose.
+>
+> The reconciled lifecycle — `Created → Sent → {Accepted | Expired | Cancelled}` — is specified in full by **Invitation Business Analysis §9**, which is normative for Invitation. Cancelling before sending is legal; cancelling after acceptance is not, because removing someone who has already become a Member is `Membership.Remove`'s job.
 
 ---
 

@@ -85,7 +85,7 @@ remove the comment. Consider rate limiting on the login route at the same time.
 **Raised:** 2026-08-04 (Tutor Login API verification)
 **Area:** Platform.Domain — Identity aggregate
 **Severity:** Informational — scope question, not a defect
-**Status:** Deferred (pending intent confirmation)
+**Status:** Deferred (confirmed 2026-08-05 — intent settled, not an open question)
 
 The Tutor Login API plan's architecture overview mentioned a `Credential` value
 object and Identity domain events. The plan's itemised changes never specified
@@ -95,6 +95,11 @@ credential as a flat `PasswordHash` property.
 Per Identity Aggregate Design §4, INV-005 ("an Identity may hold multiple
 Credentials"), a flat `PasswordHash` cannot represent more than one credential —
 so this becomes real work as soon as a second credential type appears.
+
+**Confirmed deferred (2026-08-05).** This is settled, not undecided: the work is real
+(a `Credential` collection, an EF mapping change and a data migration) and has no
+consumer today. A flat `PasswordHash` is the correct shape while exactly one credential
+type exists. Revisit when the trigger fires, and not before.
 
 **Trigger:** adding a second credential type (SSO, magic link, OAuth), or wiring
 the first consumer of Identity domain events.
@@ -212,7 +217,7 @@ exists.
 **Raised:** 2026-08-04 (Workspace + Membership implementation)
 **Area:** Documentation — `Documents/Membership Aggregate Design.md`
 **Severity:** Low — needs an author's ruling, cheap to fix either way
-**Status:** Deferred (needs decision)
+**Status:** Done (2026-08-05)
 
 The document contradicts itself on a single transition:
 
@@ -230,10 +235,16 @@ The business question is real: should a Pending invitation that is never accepte
 archivable directly, or must it first be Removed? Archiving un-accepted invitations
 directly seems the more natural business behaviour, which also favours §15.
 
-**Trigger:** invitation-expiry handling, or any review of the Membership lifecycle.
-**Resolution sketch:** decide, then correct whichever of §14/§15 is wrong so the
-document is self-consistent, and align `Membership.Archive()` if the ruling goes the
-other way.
+**Ruling (2026-08-05): §15 is normative — `Pending → Archived` is legal.**
+
+Archiving an invitation that was never accepted is ordinary business behaviour, and
+forcing it through `Removed` first would misrepresent what happened. INV-002's example
+has been replaced in `Membership Aggregate Design.md` with transitions §15 genuinely
+forbids (`Removed → Active`, `Archived → anything`), and a note records that §15 wins
+where the two disagree.
+
+No code change: `Membership.Archive()` already permitted Active and Pending, and the
+method's doc comment already pointed at this contradiction.
 
 ---
 
@@ -242,7 +253,7 @@ other way.
 **Raised:** 2026-08-04 (Invitation Business Analysis)
 **Area:** Documentation — `Documents/Workspace_Access_Context.md` §4.5, `Documents/IdentityAndWorkspaceAccess.md` §1
 **Severity:** Low — needs an author's ruling, same shape as TD-007
-**Status:** Deferred (needs decision)
+**Status:** Done (2026-08-05)
 
 The two documents describe the Invitation lifecycle differently:
 
@@ -262,11 +273,25 @@ to satisfy WA-104, giving `Created → Sent → {Accepted | Expired | Cancelled}
 `Issued`/`Delivered` split are treated as finer-grained sub-steps of `Created`/`Sent`, not
 separately tracked states, for Version 1.
 
-**Trigger:** any implementation work on Invitation, or a documentation review pass.
-**Resolution sketch:** an author picks the normative lifecycle (Invitation Business Analysis's
-reconciliation is the working answer, not a ruling) and corrects whichever of the two source
-documents disagrees, the same way TD-007 asks for Membership's Pending→Archived contradiction
-to be settled.
+**Ruling (2026-08-05): Invitation Business Analysis §9 is normative.**
+
+`Created → Sent → {Accepted | Expired | Cancelled}`. Both source documents now carry a note
+pointing at it:
+
+- **Workspace_Access_Context §4.5** gained the missing `Cancelled` branch — its absence left
+  WA-104 ("Invitations may be cancelled before acceptance") describing a capability with no
+  state to occupy. Expiry now branches from `Sent` rather than `Created`, since an Invitation
+  that was never sent expires to no purpose.
+- **IdentityAndWorkspaceAccess §1** keeps its six-state list, with a note that its arrows read
+  as a sequence no Invitation follows — `Accepted`, `Expired` and `Cancelled` are mutually
+  exclusive outcomes — and that `Draft` and the `Issued`/`Delivered` split are finer-grained
+  sub-steps of `Created`/`Sent`.
+
+The richer model was deliberately **not** rewritten. Splitting `Sent` into queued and
+confirmed-delivered will matter if delivery failures ever need their own visibility, and
+discarding it now would mean rediscovering it later.
+
+No code change: `Invitation` already implements the reconciled lifecycle.
 
 ---
 
@@ -373,6 +398,49 @@ public, not after.
 
 ---
 
+## TD-011 — Two inbound-request concepts with the same shape at different scopes
+
+**Raised:** 2026-08-05 (reviewing Platform Administrator Business Analysis v1.2 alongside
+Join Request Business Analysis)
+**Area:** Documentation / design — `Tutor Signup Request` vs `Join Request`
+**Severity:** Low now, moderate if both are built independently
+**Status:** Deferred (needs decision before the second one is implemented)
+
+Two concepts were designed within days of each other, from opposite ends of the platform,
+and came out structurally identical:
+
+| | Direction | Decided by | Lifecycle | Token link |
+| --- | --- | --- | --- | --- |
+| **Tutor Signup Request** | person → **platform** | Platform Administrator | Submitted → Approved / Rejected | Signup Status Link |
+| **Join Request** | person → **workspace** | Workspace Owner / Administrator | Submitted → Approved / Declined / Withdrawn | — |
+
+Both are unsolicited inbound requests from someone with no existing relationship, reviewed
+by whoever holds authority at that scope, granting access on approval and nothing on
+refusal. Both need an unguessable token link so an applicant without an Identity can check
+back. Both must resolve identity at approval time.
+
+Neither document is wrong, and the duplication is not accidental — it is the same business
+pattern appearing at two scopes, which is usually a sign the pattern is real.
+
+**The decision needed:** do these stay two independent aggregates, or share an explicit
+abstraction?
+
+The reasoning in Join Request Business Analysis BA-001 (for keeping Join Request separate
+from Invitation) argues *for* keeping them separate here too: their reviewing authority,
+their scope, and what approval produces all differ, and a shared `scope` discriminator would
+make most rules conditional on it. The counter-argument is that a token-bearing status link
+and an approval workflow are genuine shared mechanism, and building them twice invites them
+to drift.
+
+**A middle answer worth considering:** keep the two aggregates separate, but extract the
+*token status link* mechanism — which is already a third copy of the pattern used by
+Invitation Links — rather than the request lifecycle.
+
+**Trigger:** implementing whichever of the two comes second. Deciding after both exist is
+markedly more expensive than deciding now.
+
+---
+
 ## Log
 
 | Date | Change |
@@ -386,3 +454,8 @@ public, not after.
 | 2026-08-04 | TD-009 raised — a provisioned Workspace cannot leave `Created`. Documented by the new Workspace Setup Business Analysis; implementation blocked on its BA-002. |
 | 2026-08-04 | TD-009 closed — Owner-facing setup lifecycle implemented; BA-002 proceeded on the analysis's recommendation (Owner-declared Activate), isolated so a different ruling changes one method. |
 | 2026-08-04 | TD-010 raised — no inbound path to Membership. Documented by the new Join Request Business Analysis. |
+| 2026-08-05 | TD-007 closed — §15 normative; `Pending → Archived` is legal. INV-002's contradictory example replaced. |
+| 2026-08-05 | TD-008 closed — Invitation Business Analysis §9 normative. Both source documents annotated; the six-state model retained rather than rewritten. |
+| 2026-08-05 | TD-009's BA-002 ruled — `Published → Active` is Owner-declared. Recorded in Workspace Aggregate Design §15. |
+| 2026-08-05 | TD-004 confirmed deferred — settled, not undecided. |
+| 2026-08-05 | TD-011 raised — Tutor Signup Request and Join Request share a shape; decide before the second is built. |
