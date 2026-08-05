@@ -327,3 +327,29 @@ Examples:
 **Out of scope for this ADR — Administrator Portal and Organization Portal:** The Administrator Portal is platform-wide by definition (Platform Administrator Business Analysis, Section 1: "operates the platform itself, not any single Workspace"), unlike Learner and Workspace Owner Portals, which are always entered within one Workspace (Portals, above: "always within the context of a single Workspace"). That's a real architectural difference, not just a role difference, and is a reasonable candidate for its own separate Application — distinct auth surface, no reason for a Tutor's or Learner's bundle to ever carry platform-admin code. Organization Portal is similarly not addressed here (Organization Context is marked Future). Neither is decided by this ADR; both are named so they aren't mistaken for having been decided here.
 
 ---
+
+## ADR-EA-002 — Platform Root: Who It's For, Since It Isn't Learners
+
+**Decision:** `https://platform.com/` is a real, minimal public page whose only job is converting a Prospective Tutor into an applicant — not routing several kinds of visitor to several destinations. It is not a marketing site design exercise, and it is not a bare redirect either.
+
+**Context:** ADR-WE-001 (IdentityAndWorkspaceAccess, "Workspace-First Entry") establishes that learners never begin their journey at a platform home page — they always arrive through a Workspace Entry Point. That rule is scoped to learners only. It says nothing about a Prospective Tutor, a returning user who lands here instead of their Workspace URL, or a Platform Administrator — and nothing else in the corpus fills that space. Logged as Technical Debt Backlog TD-013.
+
+**Who lands here, and what they see:**
+
+- **Prospective Tutor, no relationship with the platform yet.** The page's only call to action: "Become a Tutor" (or equivalent framing — "Start for free"), leading into the Tutor Signup Request (Platform Administrator Business Analysis, Section 7.1). This is the entire audience the root page is built to convert — see the Business Model Note, below.
+- **Returning user with a session, who lands here instead of a Workspace URL** (bookmarked the root, cleared cookies and re-logged in, etc.). Resolved via the existing `GET /api/me`: exactly one Membership routes straight into that Workspace; more than one shows the existing Workspace picker (reused, not rebuilt); zero Memberships falls through to the same single call to action a new visitor sees.
+- **Platform Administrator.** Deliberately **not** linked from this page. Consistent with ADR-EA-001's note that the Administrator Portal is a candidate for its own separate Application with its own auth surface — advertising an "Admin" entry point on a public page invites exactly the probing that surface should avoid. Admins reach sign-in by a known URL, not by browsing from the root.
+- **A visitor who doesn't know what the platform is.** Needs minimal explanatory copy — framed as a pitch to a prospective Tutor, not a neutral description — before the call to action makes sense. Content, not a new business concept; out of scope here.
+
+**Business Model Note — no Workspace discovery, by design, not by omission:** Earlier drafts of this ADR included a second call to action, "Find an Academy," for a Prospective Learner with no target academy in mind, treating platform-wide Workspace discovery as a Future feature merely not yet built. That has been corrected: this platform's paying customer is the Tutor, who brings their own students — the same shape as Shopify, whose root page (shopify.com) sells exclusively to merchants and provides no consumer-facing directory of Shopify stores at all. A shopper only ever reaches a specific store through that merchant's own link or domain, never through Shopify itself. This platform adopts the same posture deliberately: the root page never offers Workspace discovery, search, or a directory, in this or any future version, because doing so would put the platform in competition with its own paying customers for their students' attention. See Join Request Business Analysis, BA-007, which resolves the corresponding "where requesters find Workspaces" question the same way.
+
+**Rules:**
+
+- Un-authenticated content is exactly one call to action — Become a Tutor — plus minimal explanatory copy pitched at that Tutor. Not a full marketing site, and never a second, discovery-oriented call to action.
+- The root page never lists or links a Platform Administrator entry point.
+- The root page never offers a Workspace directory, search, or "browse academies" feature of any kind — this is a permanent product decision, not a deferred one.
+- An authenticated visitor holding one or more Memberships is never shown the un-authenticated content; they are routed via the existing `GET /api/me` shape, not a new endpoint.
+
+**Out of scope:** Visual design; the Platform Administrator's own sign-in surface (ADR-EA-001 named it as a candidate, not decided here either).
+
+---

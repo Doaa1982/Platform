@@ -1,6 +1,6 @@
 # Join Request Business Analysis
 
-> Version: 1.0
+> Version: 1.1
 >
 > Status: Draft
 >
@@ -9,6 +9,8 @@
 > Document Type: Business Analysis
 >
 > Author: Business Analysis Team (drafted to close the gap recorded in Technical Debt Backlog, TD-010: nobody can ask to join a Workspace)
+>
+> Revision Note (v1.1): Added BA-007, resolving Section 16's former "Where requesters find Workspaces" open question — the platform provides no directory or discovery of any kind, by permanent decision rather than Future scope. See ExperienceArchitecture.md, ADR-EA-002.
 >
 > Related Documents:
 >
@@ -20,7 +22,8 @@
 > - IdentityAndWorkspaceAccess
 > - Identity Aggregate Design
 > - Enrollment_Aggregate_Design
-> - Technical Debt Backlog (TD-006, TD-010)
+> - ExperienceArchitecture
+> - Technical Debt Backlog (TD-006, TD-010, TD-013)
 
 ---
 
@@ -356,6 +359,18 @@ Reasoning: a reason is either boilerplate, which is worse than nothing, or genui
 
 ---
 
+## BA-007
+
+**The platform never helps a requester find a Workspace. Discovery happens entirely off-platform, permanently, not as a Future gap.**
+
+This document's own premise — "a person has already found a published Workspace" — previously left open how that happens. It is now decided: there is no public directory, search, or "browse academies" feature anywhere on the platform, in this or any future version, and none is planned. A Requester learns a Workspace exists only through that Workspace's own off-platform marketing — a shared link, a social post, a website the Tutor runs themselves — never through the platform surfacing it on their behalf.
+
+Reasoning: this platform's paying customer is the Tutor, who brings their own students (Platform Administrator Business Analysis, Section 1; ExperienceArchitecture.md, ADR-EA-002, Business Model Note). Providing discovery would put the platform in competition with its own customers for their students' attention — the same reasoning Shopify applies by giving merchants a signup site with no consumer-facing store directory.
+
+**Consequence for `Workspace.Visibility`:** `Published` continues to mean only "not hidden from someone who already has the link," per Workspace Aggregate Design §15 — it does not mean "listed" anywhere, and BA-005's per-Workspace opt-in for accepting Join Requests governs a separate concern (whether a found Workspace accepts unsolicited requests at all, not how it was found).
+
+---
+
 # 16. Version 1 Open Questions
 
 ### Abuse control on Identity creation — Open (BA-003)
@@ -366,9 +381,9 @@ Self-serve Identity creation needs at least email verification, and probably rat
 
 A declined person may currently submit again immediately. Whether that needs a cooldown, a limit, or nothing at all depends on volumes nobody has observed yet.
 
-### Where requesters find Workspaces — Open
+### Where requesters find Workspaces — Resolved (BA-007)
 
-This document assumes a person has already found a published Workspace. How they find one — a public directory, a shared link, search — is not specified anywhere in the corpus, and `Published` currently means only "not hidden" rather than "listed somewhere".
+This document assumes a person has already found a published Workspace. How they find one is now settled: never through the platform itself. See BA-007.
 
 ### Notification delivery — Inherited
 
