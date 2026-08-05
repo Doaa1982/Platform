@@ -194,6 +194,44 @@ export function workspaceTransition(token, slug, transition) {
   return request(`/workspaces/${encodeURIComponent(slug)}/setup/${transition}`, { method: "POST", token });
 }
 
+/* ── Join requests ─────────────────────────────────────────────────────────
+   The only inbound path to Membership. Preview and submit are anonymous by
+   necessity: a stranger has no account, and requiring one first is circular
+   (BA-003). Submit is the rate-limited endpoint.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/workspaces/{slug}/join — anonymous; 404 unless discoverable */
+export function previewJoin(slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/join`);
+}
+
+/** POST /api/workspaces/{slug}/join — anonymous; creates an Identity, returns a session */
+export function submitJoin(slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/join`, { method: "POST", body });
+}
+
+/** GET /api/workspaces/{slug}/join-requests — the reviewer's queue */
+export function getJoinRequests(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/join-requests`, { token });
+}
+
+/** POST .../join-requests/{id}/{decision} — approve | decline */
+export function decideJoinRequest(token, slug, id, decision) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/join-requests/${id}/${decision}`, {
+    method: "POST", token,
+  });
+}
+
+/** GET /api/me/join-requests — the requester's own */
+export function getMyJoinRequests(token) {
+  return request("/me/join-requests", { token });
+}
+
+/** POST /api/me/join-requests/{id}/withdraw */
+export function withdrawJoinRequest(token, id) {
+  return request(`/me/join-requests/${id}/withdraw`, { method: "POST", token });
+}
+
 /* ── Invitations (anonymous — the token is the credential) ─────────────── */
 
 /** GET /api/invitations/{token} → what the invitee sees before accepting */

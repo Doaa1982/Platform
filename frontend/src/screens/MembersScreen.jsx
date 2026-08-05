@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   LoaderCircle, AlertCircle, UserPlus, Copy, Check, Crown,
-  PauseCircle, PlayCircle, UserX, Plus, X, RefreshCw,
+  PauseCircle, PlayCircle, UserX, UserCheck, Plus, X, RefreshCw,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -29,22 +29,30 @@ export default function MembersScreen() {
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
+  const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState(null);
   const [inviteOpen, setInviteOpen] = useState(false);
 
   const load = useCallback(
-    () => api.getMembers(session.token, slug)
-      .then((d) => { setData(d); setError(null); })
+    () => Promise.all([
+      api.getMembers(session.token, slug),
+      // A member who cannot review simply has no queue — not an error
+      api.getJoinRequests(session.token, slug).catch(() => []),
+    ]).then(([members, joins]) => { setData(members); setRequests(joins); setError(null); })
       .catch((e) => setError(e.message)),
     [session.token, slug]);
 
   useEffect(() => {
     let cancelled = false;
-    api.getMembers(session.token, slug)
-      .then((d) => { if (!cancelled) { setData(d); setError(null); } })
-      .catch((e) => { if (!cancelled) setError(e.message); });
+    Promise.all([
+      api.getMembers(session.token, slug),
+      api.getJoinRequests(session.token, slug).catch(() => []),
+    ]).then(([members, joins]) => {
+      if (cancelled) return;
+      setData(members); setRequests(joins); setError(null);
+    }).catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [session.token, slug]);
 
@@ -80,6 +88,7 @@ export default function MembersScreen() {
   }
 
   const openInvites = data.invitations.filter((i) => i.isOpen);
+  const pendingRequests = requests.filter((r) => r.status === "Submitted");
 
   return (
     <div className="lw-page">
@@ -182,6 +191,41 @@ export default function MembersScreen() {
           </div>
         ))}
       </div>
+
+      {/* People who asked to get in, rather than being asked. Placed above
+          invitations because these are the ones waiting on a decision. */}
+      {pendingRequests.length > 0 && (
+        <>
+          <h2 className="lw-sectiontitle">Requests to join</h2>
+          <div className="lw-members__list">
+            {pendingRequests.map((r) => (
+              <div className="lw-members__row" key={r.id}>
+                <div className="lw-members__avatar is-request">{r.fullName.trim()[0]}</div>
+                <div className="lw-members__who">
+                  <div className="lw-members__name">{r.fullName}</div>
+                  <div className="lw-members__email">
+                    {r.email} · asked to join as {humanise(r.requestedRole)}
+                  </div>
+                  {r.message && <div className="lw-members__msg">“{r.message}”</div>}
+                </div>
+                <span className="lw-members__status is-pending">{r.status}</span>
+                {data.canManage && (
+                  <div className="lw-members__actions">
+                    <button disabled={busy}
+                            onClick={() => run(() => api.decideJoinRequest(session.token, slug, r.id, "approve"))}>
+                      <UserCheck size={12} /> Approve
+                    </button>
+                    <button disabled={busy}
+                            onClick={() => run(() => api.decideJoinRequest(session.token, slug, r.id, "decline"))}>
+                      <X size={12} /> Decline
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {openInvites.length > 0 && (
         <>
@@ -361,6 +405,11 @@ const CSS = `
     font-family: var(--font-display); font-weight: 600;
   }
   .lw-members__avatar.is-pending { background: var(--line); color: var(--ink-soft); }
+  .lw-members__avatar.is-request { background: var(--accent-2); }
+  .lw-members__msg {
+    font-size: 0.82rem; color: var(--ink-soft); font-style: italic;
+    margin-top: 6px; max-width: 52ch; line-height: 1.5;
+  }
 
   .lw-members__who { flex: 1; min-width: 0; }
   .lw-members__name { font-weight: 600; font-size: 0.93rem; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
