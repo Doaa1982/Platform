@@ -79,11 +79,23 @@ public static class RateLimitPolicies
     }
 
     /// <summary>
-    /// Partition key for an anonymous caller.
+    /// Partition key for an anonymous caller — the connecting peer's address.
     ///
-    /// Behind a reverse proxy every request appears to come from the proxy, so
-    /// this would need the forwarded-headers middleware configured before it
-    /// partitions correctly in a deployed environment — see TD-012.
+    /// **This is the immediate peer, not the end user.** Behind any proxy every
+    /// request appears to come from that proxy, so all callers collapse into one
+    /// partition. That is already true of browser traffic here, which arrives
+    /// via the Vite dev-server proxy and Aspire's own DCP proxy; it is harmless
+    /// with a single developer, but it means this partitioning is not exercised
+    /// by the normal path.
+    ///
+    /// The failure mode when deployed is not a weaker limit but an inverted one:
+    /// real users share a single bucket and trip it collectively, while an
+    /// attacker is constrained no more than anyone else.
+    ///
+    /// Fixing it is NOT just enabling forwarded headers — `X-Forwarded-For` is
+    /// attacker-controlled, so an unrestricted configuration trades a shared
+    /// bucket for no bucket at all. It needs KnownProxies/KnownNetworks, which
+    /// are deployment-specific. See Technical Debt Backlog TD-012.
     /// </summary>
     private static string ClientKey(HttpContext context) =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown";

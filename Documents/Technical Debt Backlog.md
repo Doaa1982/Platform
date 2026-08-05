@@ -441,6 +441,53 @@ markedly more expensive than deciding now.
 
 ---
 
+## TD-012 — Rate limiting partitions by a client IP the API cannot currently see
+
+**Raised:** 2026-08-05 (implementing Join Request rate limiting)
+**Area:** Platform.Api — `RateLimitPolicies.cs`; deployment configuration
+**Severity:** Low today, High the moment anything is deployed behind a proxy
+**Status:** Deferred (blocked on a deployment topology existing — same gate as TD-001)
+
+`RateLimitPolicies` partitions its limiters by `context.Connection.RemoteIpAddress`, which
+is the address of the **immediately connecting peer** — not the end user, whenever anything
+sits in front of the API.
+
+**This is already the case in development.** Both the Vite dev-server proxy and Aspire's
+own DCP proxy forward requests, so the API sees `127.0.0.1` or `::1` for every browser
+request regardless of who sent it. With one developer that is harmless, and direct calls to
+the API (which is how the limiter was verified) do partition correctly. But it means the
+per-client partitioning is not actually being exercised by the normal path even now.
+
+**Why it matters more than it looks.** When every caller lands in one partition, the failure
+is not "the limit is weaker" — it is inverted:
+
+- Legitimate users consume one shared bucket and collectively trip the limit, which is a
+  denial of service against your own users.
+- An attacker is constrained no more than anyone else, because everyone already shares the
+  same allowance.
+
+So the guard degrades into something actively harmful rather than merely absent, and it does
+so silently, at the moment a proxy is introduced.
+
+**The fix is NOT simply `UseForwardedHeaders`.** Enabling it naively is itself a
+vulnerability: `X-Forwarded-For` is attacker-controlled, so an unrestricted configuration
+lets anyone claim any address and defeat the limiter completely — trading a shared bucket
+for no bucket at all. It must be paired with `KnownProxies` / `KnownNetworks` so only
+trusted hops are honoured, and that list is deployment-specific, which is why this cannot be
+settled before a deployment target exists.
+
+**Worth considering alongside it:** a secondary limit keyed on the submitted email address
+would survive the proxy problem entirely, since it does not depend on network identity. It
+does not stop an attacker cycling through addresses, so it complements the IP limit rather
+than replacing it — but it is the part that keeps working when the network signal is
+untrustworthy.
+
+**Trigger:** the first deployment behind any reverse proxy, load balancer, or CDN — which is
+effectively all of them. Pair this with TD-001, since both are settled by the same decision
+about where and how the platform runs.
+
+---
+
 ## Log
 
 | Date | Change |
@@ -459,3 +506,5 @@ markedly more expensive than deciding now.
 | 2026-08-05 | TD-009's BA-002 ruled — `Published → Active` is Owner-declared. Recorded in Workspace Aggregate Design §15. |
 | 2026-08-05 | TD-004 confirmed deferred — settled, not undecided. |
 | 2026-08-05 | TD-011 raised — Tutor Signup Request and Join Request share a shape; decide before the second is built. |
+| 2026-08-05 | TD-010 implemented — Join Requests, with per-IP rate limiting on the one anonymous endpoint that can create an Identity. |
+| 2026-08-05 | TD-012 raised — the rate limiter's IP partition is already blind behind the dev proxies, and inverts into a self-inflicted denial of service once deployed. |
