@@ -14,7 +14,10 @@ namespace Platform.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/invitations")]
-public class InvitationsController(ProvisioningService provisioning, TokenService tokens) : ControllerBase
+public class InvitationsController(
+    ProvisioningService provisioning,
+    SignupRequestService signups,
+    TokenService tokens) : ControllerBase
 {
     /// <summary>
     /// GET /api/invitations/{token}
@@ -38,8 +41,19 @@ public class InvitationsController(ProvisioningService provisioning, TokenServic
     public async Task<ActionResult<LoginResponse>> Accept(
         string token, [FromBody] AcceptInvitationRequest request, CancellationToken ct)
     {
+        var workspaceId = await provisioning.PeekWorkspaceIdAsync(token, ct);
+
         var result = await provisioning.AcceptAsync(token, request, tokens, ct);
-        return result.Ok ? Ok(result.Value) : Problem(result);
+        if (!result.Ok) return Problem(result);
+
+        // The acceptor now holds a real Identity, so any Signup Status Link that
+        // stood in for one is retired. Best-effort and after the fact: the
+        // membership is already created, and failing to tidy up a token must not
+        // undo someone's successful sign-up.
+        if (workspaceId is not null)
+            await signups.RevokeStatusLinkForWorkspaceAsync(workspaceId.Value, ct);
+
+        return Ok(result.Value);
     }
 
     private ObjectResult Problem<T>(ProvisioningResult<T> result) => result.Error switch

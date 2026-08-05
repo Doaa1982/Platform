@@ -35,8 +35,23 @@ public class SignupRequest
     /// Hash of the Signup Status Link token (BA-008). The applicant has no
     /// Identity — necessarily, at this stage — so this link is the only way
     /// they can check back. Raw value is never persisted.
+    ///
+    /// Cleared when the link is revoked, so a spent token cannot resolve at all
+    /// rather than merely being refused.
     /// </summary>
-    public string TokenHash { get; private set; } = string.Empty;
+    public string? TokenHash { get; private set; }
+
+    /// <summary>
+    /// When the status link stops working regardless of anything else.
+    ///
+    /// The link is a bearer credential: whoever holds the URL sees the
+    /// applicant's name, email and progress. An Invitation limits that exposure
+    /// with an expiry and single use; this had neither, so a forwarded email or
+    /// a browser history entry stayed live indefinitely. The window is generous
+    /// because a real application can sit unreviewed for a while — it is a
+    /// backstop, not a deadline.
+    /// </summary>
+    public DateTime TokenExpiresAt { get; private set; }
 
     public SignupRequestStatus Status { get; private set; }
     public PaymentStatus Payment { get; private set; }
@@ -65,12 +80,17 @@ public class SignupRequest
     /// Submits an application. Returns the raw status-link token — the only
     /// moment it exists in readable form.
     /// </summary>
-    public static (SignupRequest Request, string RawToken) Submit(string fullName, string email, string? about)
+    public static (SignupRequest Request, string RawToken) Submit(
+        string fullName, string email, string? about, TimeSpan linkValidFor)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fullName);
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
+        if (linkValidFor <= TimeSpan.Zero)
+            throw new ArgumentException("The status link must expire in the future.", nameof(linkValidFor));
+
         var (raw, hash) = SecureToken.Generate();
+        var now = DateTime.UtcNow;
 
         return (new SignupRequest
         {
@@ -79,11 +99,27 @@ public class SignupRequest
             Email = email.ToLowerInvariant().Trim(),
             About = string.IsNullOrWhiteSpace(about) ? null : about.Trim(),
             TokenHash = hash,
+            TokenExpiresAt = now.Add(linkValidFor),
             Status = SignupRequestStatus.Submitted,
             Payment = PaymentStatus.NotStarted,
-            SubmittedAt = DateTime.UtcNow
+            SubmittedAt = now
         }, raw);
     }
+
+    /// <summary>Whether the status link still resolves.</summary>
+    public bool StatusLinkIsValid(DateTime? asOf = null) =>
+        TokenHash is not null && TokenExpiresAt > (asOf ?? DateTime.UtcNow);
+
+    /// <summary>
+    /// Retires the status link permanently.
+    ///
+    /// Called once the applicant has a real Identity — at which point the whole
+    /// reason this token exists has gone (BA-008: "they have no Identity yet,
+    /// necessarily"). Clearing the hash rather than flagging it means a spent
+    /// token stops resolving entirely, instead of resolving to a refusal that
+    /// still confirms the application exists.
+    /// </summary>
+    public void RevokeStatusLink() => TokenHash = null;
 
     /// <summary>
     /// Submitted → UnderReview, once the Signup Status Link has been handed off

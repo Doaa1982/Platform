@@ -227,6 +227,21 @@ public class ProvisioningService(
 
     // ── Invitee: preview and accept ──────────────────────────────────────────
 
+    /// <summary>
+    /// The Workspace an invitation token points at, read before acceptance
+    /// consumes the token. Returns null when the token resolves to nothing.
+    /// </summary>
+    public async Task<Guid?> PeekWorkspaceIdAsync(string rawToken, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken)) return null;
+
+        var hash = SecureToken.Hash(rawToken);
+        return await db.Invitations.AsNoTracking()
+            .Where(i => i.TokenHash == hash)
+            .Select(i => (Guid?)i.WorkspaceId)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<ProvisioningResult<InvitationPreview>> PreviewAsync(
         string rawToken, CancellationToken ct = default)
     {

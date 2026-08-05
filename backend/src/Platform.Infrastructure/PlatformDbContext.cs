@@ -213,7 +213,10 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.RejectionReason).HasMaxLength(2000);
 
             // Every status-link visit looks the application up by token hash
-            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64);
+            // Nullable: the hash is cleared when the status link is revoked, so a
+            // spent token stops resolving entirely. Postgres permits many NULLs
+            // under a unique index, which is exactly what retired links need.
+            entity.Property(e => e.TokenHash).HasMaxLength(64);
             entity.HasIndex(e => e.TokenHash).IsUnique();
 
             // The admin queue reads by status; the duplicate check reads by email

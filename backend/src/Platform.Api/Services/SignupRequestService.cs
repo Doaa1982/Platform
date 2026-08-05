@@ -25,6 +25,15 @@ public class SignupRequestService(
     private TimeSpan PaymentWindow =>
         TimeSpan.FromDays(config.GetValue("Signup:PaymentWindowDays", 14));
 
+    /// <summary>
+    /// How long the Signup Status Link stays live. Generous — an application
+    /// can legitimately sit unreviewed for a while — because this is a backstop
+    /// against an abandoned link living forever, not a deadline for the
+    /// applicant.
+    /// </summary>
+    private TimeSpan StatusLinkLifetime =>
+        TimeSpan.FromDays(config.GetValue("Signup:StatusLinkDays", 90));
+
     private static string LinkFor(string rawToken) => $"/apply/status/{rawToken}";
     private string AbsoluteLinkFor(string rawToken) =>
         $"{email.PublicBaseUrl.TrimEnd('/')}{LinkFor(rawToken)}";
@@ -62,7 +71,8 @@ public class SignupRequestService(
                 ProvisioningError.Conflict);
         }
 
-        var (signup, rawToken) = SignupRequest.Submit(request.FullName, applicantEmail, request.About);
+        var (signup, rawToken) = SignupRequest.Submit(
+            request.FullName, applicantEmail, request.About, StatusLinkLifetime);
         signup.MarkUnderReview();
         db.SignupRequests.Add(signup);
         await db.SaveChangesAsync(ct);
@@ -122,9 +132,16 @@ public class SignupRequestService(
             ("Your last payment attempt didn't go through",
              "Please try again — your application is still approved."),
 
+        // Paid covers two genuinely different situations for the applicant, and
+        // telling them "we're setting up your workspace" after it already
+        // exists is simply untrue. ProvisionedWorkspaceId distinguishes them.
+        SignupRequestStatus.Paid when r.ProvisionedWorkspaceId is not null =>
+            ("Your workspace is ready",
+             "Check your email for an invitation to it. Opening that invitation creates your account and hands the workspace to you."),
+
         SignupRequestStatus.Paid =>
-            ("You're all set",
-             "Payment received. We're setting up your workspace and will email you the moment it's ready."),
+            ("Payment received",
+             "We're setting up your workspace and will email you the moment it's ready."),
 
         SignupRequestStatus.Rejected =>
             ("Thank you for applying",
@@ -241,11 +258,39 @@ public class SignupRequestService(
 
     // ── Shared ───────────────────────────────────────────────────────────────
 
-    private Task<SignupRequest?> FindByTokenAsync(string rawToken, CancellationToken ct)
+    /// <summary>
+    /// Resolves a status link, treating an expired or revoked one as no match
+    /// at all. A refusal that still confirmed the application existed would
+    /// leak the very thing the expiry is there to stop leaking.
+    /// </summary>
+    private async Task<SignupRequest?> FindByTokenAsync(string rawToken, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(rawToken)) return Task.FromResult<SignupRequest?>(null);
+        if (string.IsNullOrWhiteSpace(rawToken)) return null;
+
         var hash = SecureToken.Hash(rawToken);
-        return db.SignupRequests.FirstOrDefaultAsync(r => r.TokenHash == hash, ct);
+        var found = await db.SignupRequests.FirstOrDefaultAsync(r => r.TokenHash == hash, ct);
+
+        return found is not null && found.StatusLinkIsValid() ? found : null;
+    }
+
+    /// <summary>
+    /// Retires the status link for whichever application produced this
+    /// Workspace. Called when the applicant accepts their invitation: they now
+    /// hold a real Identity, so the token that stood in for one has no further
+    /// purpose (BA-008).
+    ///
+    /// Matched on ProvisionedWorkspaceId rather than email — an exact link
+    /// recorded at provisioning, not a guess.
+    /// </summary>
+    public async Task RevokeStatusLinkForWorkspaceAsync(Guid workspaceId, CancellationToken ct = default)
+    {
+        var signup = await db.SignupRequests
+            .FirstOrDefaultAsync(r => r.ProvisionedWorkspaceId == workspaceId && r.TokenHash != null, ct);
+
+        if (signup is null) return;
+
+        signup.RevokeStatusLink();
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Writes the lapse the clock already made true. Returns whether anything changed.</summary>
