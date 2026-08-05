@@ -14,6 +14,7 @@
 >
 > - Workspace_Access_Context (§4.5 Invitation, §4.6 Onboarding Request)
 > - IdentityAndWorkspaceAccess (§1 Workspace Invitation; Workspace Entry Point; Workspace Resolution)
+> - First Login Business Analysis (picks up immediately after Membership Created — credential capture, session issuance, and Workspace selection this document does not cover)
 > - Membership Aggregate Design
 > - Workspace Aggregate Design
 > - Identity Aggregate Design

@@ -91,7 +91,8 @@ Workspace Setup is responsible for:
 
 Workspace Setup is **not** responsible for:
 
-- Creating the Workspace or transferring ownership to the Owner — that is Platform Administrator Business Analysis §7, complete before this document begins.
+- Creating the Workspace or transferring ownership to the Owner — that is Platform Administrator Business Analysis §7, complete before this document begins. How the Owner actually becomes authenticated and arrives here — credential capture, session issuance, Workspace selection, the first-run Welcome — is First Login Business Analysis's territory, not this one's.
+- The tutor's own profile, teaching preferences, and personal resource initialization — TutorWorkspaceFirstTimeExperienceArchitecture.md's territory. That document's onboarding stages run independent of, and in parallel with, this document's `Created → Active` publish lifecycle, not before or after it — an Owner may complete one while the other is still in progress. See Technical Debt Backlog TD-015.
 - Platform-level `Suspend` / `Reinstate` / `Archive`, which remain the Platform Administrator's (Platform Administrator Business Analysis §5). An Owner configures their Workspace; they do not suspend it.
 - Membership management inside the Workspace — invitations, roles, member lifecycle (Membership Aggregate Design; Workspace_Access_Context §4.5–4.6).
 - Learning Products, Curricula or Lessons. A Workspace becomes ready to *receive* content; it does not create it.

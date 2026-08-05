@@ -548,6 +548,74 @@ put it on.
 
 ---
 
+## TD-014 — First login was built with no Business Analysis behind it, and diverges from §4.7
+
+**Raised:** 2026-08-05 (documenting the bridge between Invitation acceptance and Workspace Setup)
+**Area:** Documentation — no document covered credential capture, session issuance, or
+Workspace selection at first login; `Documents/Workspace_Access_Context.md` §4.7
+**Severity:** Low — the code works; the risk is a future reader trusting §4.7 over it
+**Status:** Deferred (documented; §4.7 itself not yet corrected)
+
+Invitation Business Analysis ends at "Membership Created." Workspace Setup Business Analysis
+explicitly begins with an already-authenticated Owner already inside the Workspace, stating
+plainly that getting there is "complete before this document begins." Nothing in between was
+ever specified — even though `InviteScreen.jsx`, `ProvisioningService.AcceptAsync`,
+`AuthProvider.jsx`, and `WorkspaceHomeScreen.jsx` already implement a complete, working
+mechanism for it: inline credential capture (new password vs. existing-password check),
+immediate session issuance with no separate login step, client-side auto-selection of the
+sole eligible Workspace, and a dedicated first-run Welcome screen distinct from Setup.
+
+**The more consequential half:** this working mechanism does not match Workspace_Access_Context
+§4.7's `Workspace Session` — a concept that specifies a session created only once both
+authentication and Membership validation for one specific Workspace succeed together, implying
+a workspace-scoped session artifact. What is built is a single identity-level token (per TD-005,
+already a deliberate choice) with Workspace context resolved client-side, per request, from
+`GET /api/me` — never persisted server-side, never workspace-scoped at the token level. §4.7 was
+never implemented this way and, per the new document below, will not be.
+
+**Documented by:** First Login Business Analysis (new, 2026-08-05), which names all of the
+above as business concepts and states in its BA-004 that its model **supersedes** §4.7 for
+Version 1 — a correction, not an extension. The document does not itself edit
+Workspace_Access_Context.md.
+
+**Trigger:** any review of Workspace_Access_Context.md, or the first time someone builds
+against §4.7 expecting a workspace-scoped session to exist.
+**Resolution sketch:** correct §4.7 to describe the identity-level-token model actually built,
+or mark it explicitly superseded by First Login Business Analysis BA-004, so a future reader
+does not treat it as the still-current target design.
+
+---
+
+## TD-015 — Two onboarding lifecycles, unstated relationship
+
+**Raised:** 2026-08-05 (reviewing TutorWorkspaceFirstTimeExperienceArchitecture.md)
+**Area:** Documentation — `TutorWorkspaceFirstTimeExperienceArchitecture.md`; Workspace Setup
+Business Analysis; First Login Business Analysis
+**Severity:** Low — no code contradiction, only a documentation gap that invites one
+**Status:** Done (2026-08-05) — resolved by cross-references, no code affected
+
+`TutorWorkspaceFirstTimeExperienceArchitecture.md` (drafted separately from the Business
+Analysis series, in a different template — "Architecture" framing, no `BA-XXX` decisions, no
+Technical Debt Backlog citations) describes a tutor-onboarding lifecycle — `First Workspace
+Entry → Workspace Onboarding → Workspace Ready → Normal Tutor Experience` — that never
+mentions Workspace Setup Business Analysis's already-built `Created → Configuring → Private →
+Published → Active` publish lifecycle. Nothing stated whether these are the same lifecycle
+under two names, one sequenced before the other, or two independent tracks.
+
+**Resolved:** they are two independent tracks that run in parallel — Workspace Setup governs
+whether the tenant business is publicly operable; the new document governs whether this
+specific tutor has finished their own profile, preferences, and resource setup. Neither implies
+the other's completion. Cross-reference notes were added to all three documents rather than
+merging or resequencing anything.
+
+**Also noted, not separately raised:** the new document's Stage 4 (Course Library, Lesson
+Repository, Resource Library, Personal Calendar) is not yet mapped onto existing aggregates
+(Curriculum, Lesson, Learning Asset Aggregate Design) and should be read as target-state, not
+Version 1 scope. "AI Workspace" is the one Stage 4 item that is already grounded — it matches
+the AI Workspace Profile boundary flag Workspace Aggregate Design already owns.
+
+---
+
 ## Log
 
 | Date | Change |
@@ -572,3 +640,5 @@ put it on.
 | 2026-08-05 | Tutor Signup Request implemented — the last unbuilt stage of the tutor lifecycle. `/apply` is now a real form. |
 | 2026-08-05 | TD-013 raised — no public entry page for Prospective Tutors, returning multi-Membership users, or Workspace discovery; ADR-WE-001 covers learners only. Documented by ExperienceArchitecture.md ADR-EA-002. |
 | 2026-08-05 | Workspace discovery ruled out permanently, not deferred — root page is single-CTA (Become a Tutor only). ExperienceArchitecture.md ADR-EA-002 revised; Join Request Business Analysis v1.1 adds BA-007, resolving its "where requesters find Workspaces" open question the same way. |
+| 2026-08-05 | TD-014 raised — first login (credential capture, session issuance, Workspace selection, first-run Welcome) was built with no Business Analysis behind it, and diverges from Workspace_Access_Context §4.7's unbuilt Workspace Session. Documented by the new First Login Business Analysis, whose BA-004 supersedes §4.7 for Version 1; §4.7 itself not yet corrected. |
+| 2026-08-05 | TD-015 raised and closed — TutorWorkspaceFirstTimeExperienceArchitecture.md's onboarding lifecycle and Workspace Setup's publish lifecycle are independent parallel tracks, not sequenced. Cross-references added to all three documents. |
