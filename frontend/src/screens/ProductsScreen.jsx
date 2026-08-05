@@ -20,8 +20,24 @@ import { useAuth } from "../auth/authContext";
    intention, not something a learner can actually take.
    ========================================================================= */
 
-const PACING = ["SelfPaced", "CohortBased", "InstructorLed"];
-const ENROLLMENT = ["Open", "InvitationOnly", "ApprovalRequired"];
+/* Definitions from Learning Product Aggregate Design §8. Shown in the form
+   because the values are not self-explanatory — the difference between
+   cohort-based and instructor-led in particular is a real judgement, and a
+   tutor picking blind will pick inconsistently. */
+const PACING = [
+  { value: "SelfPaced",
+    help: "The learner sets the pace. Enrol any time, work through at whatever speed suits — no shared dates, nobody to wait for." },
+  { value: "CohortBased",
+    help: "A shared schedule sets the pace. A group starts together on a set date and moves through in step; joining late means missing something." },
+  { value: "InstructorLed",
+    help: "You set the pace, per learner. You decide what happens next and when, usually in sessions arranged with them. Closest to one-to-one tutoring." },
+];
+
+const ENROLLMENT = [
+  { value: "Open",             help: "Anyone who can reach the product can enrol themselves." },
+  { value: "InvitationOnly",   help: "You choose who gets in; nobody can enrol unprompted." },
+  { value: "ApprovalRequired", help: "Learners ask to join and you approve each one." },
+];
 
 /** Which transitions each status offers, mirroring §16's ordered machine. */
 const ACTIONS = {
@@ -214,17 +230,22 @@ function ProductForm({ product, onSubmit, onCancel, busy }) {
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
                   placeholder="Who it's for and what they'll come away with." disabled={busy} />
       </label>
+      {/* The help text follows the selection rather than sitting in a tooltip:
+          this is a choice a tutor makes once and lives with, so the meaning
+          should be readable without hunting for it. */}
       <label>
-        <span>Pacing</span>
+        <span>Pacing — what decides when a learner moves on</span>
         <select value={pacing} onChange={(e) => setPacing(e.target.value)} disabled={busy}>
-          {PACING.map((p) => <option key={p} value={p}>{human(p)}</option>)}
+          {PACING.map((p) => <option key={p.value} value={p.value}>{human(p.value)}</option>)}
         </select>
+        <small>{PACING.find((p) => p.value === pacing)?.help}</small>
       </label>
       <label>
         <span>How learners get in</span>
         <select value={enrollmentMode} onChange={(e) => setEnrollmentMode(e.target.value)} disabled={busy}>
-          {ENROLLMENT.map((m) => <option key={m} value={m}>{human(m)}</option>)}
+          {ENROLLMENT.map((m) => <option key={m.value} value={m.value}>{human(m.value)}</option>)}
         </select>
+        <small>{ENROLLMENT.find((m) => m.value === enrollmentMode)?.help}</small>
       </label>
       <label>
         <span>Category <em>(optional)</em></span>
@@ -275,6 +296,10 @@ const CSS = `
     width: 100%; font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
+  }
+  .lw-prod__form small {
+    display: block; margin-top: 6px; font-size: 0.76rem;
+    color: var(--ink-soft); line-height: 1.5;
   }
   .lw-prod__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 

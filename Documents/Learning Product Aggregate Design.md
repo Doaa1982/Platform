@@ -211,6 +211,22 @@ Contains:
 - Default Language
 - Enrollment Mode Hint (Open, Invitation-Only, Approval-Required — descriptive; actual eligibility enforcement is Enrollment's responsibility per Enrollment Aggregate Design INV-002)
 
+### Pacing Model — what each value means
+
+> **Added 2026-08-05.** These three values were listed here, in Workspace Aggregate Design §8 ("Default Pacing Model") and in the AI Authoring Assistant Architecture without ever being defined. A Tutor choosing between them had no guidance, and two readers would reasonably disagree — is a weekly live class Cohort-Based or Instructor-Led? Defined here so the answer is the same everywhere.
+
+The Pacing Model answers: **what determines when a learner moves from one thing to the next?**
+
+| Value | What sets the pace | Typical shape |
+| --- | --- | --- |
+| **Self-Paced** | The learner | Enrol at any time, work through at whatever speed suits. No shared dates, no cohort, no waiting for anyone. |
+| **Cohort-Based** | A shared schedule | A group starts together on a set date and moves through in step. Intakes are periodic rather than continuous, and a learner joining late has missed something. |
+| **Instructor-Led** | The tutor, per learner | The tutor decides what happens next and when, usually in live sessions arranged with that learner. Closest to conventional one-to-one tutoring. |
+
+The distinction between Cohort-Based and Instructor-Led is **whether the schedule is shared**: a cohort moves as a group whether or not the tutor is present for each step, while instructor-led is paced individually even if several learners are doing the same material.
+
+**This is a descriptive setting, exactly like Enrollment Mode Hint.** It records the Tutor's intent and enforces nothing by itself. What would act on it — Curriculum sequencing, Scheduling's cohort dates, Enrollment's start conditions — belongs to those aggregates. A Learning Product with a Pacing Model of Cohort-Based does not thereby have cohorts; it declares that it is meant to.
+
 ---
 
 # 9. Aggregate Relationships
