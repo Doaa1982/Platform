@@ -173,6 +173,28 @@ export function removeMemberRole(token, slug, membershipId, role) {
   });
 }
 
+/* ── Learning products ──────────────────────────────────────────────────── */
+
+/** GET /api/workspaces/{slug}/products */
+export function getProducts(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products`, { token });
+}
+
+/** POST /api/workspaces/{slug}/products */
+export function createProduct(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products`, { method: "POST", body, token });
+}
+
+/** PUT /api/workspaces/{slug}/products/{id} */
+export function updateProduct(token, slug, id, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${id}`, { method: "PUT", body, token });
+}
+
+/** POST .../products/{id}/{transition} — submit | return | publish | unpublish | archive */
+export function productTransition(token, slug, id, transition) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${id}/${transition}`, { method: "POST", token });
+}
+
 /* ── Workspace setup (the owner's own lifecycle) ───────────────────────── */
 
 /** GET /api/workspaces/{slug}/setup → identity, status, completeness, next step */

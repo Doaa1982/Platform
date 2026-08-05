@@ -19,6 +19,7 @@ public class PlatformDbContext : DbContext
     public DbSet<PlatformOperator> PlatformOperators => Set<PlatformOperator>();
     public DbSet<JoinRequest> JoinRequests => Set<JoinRequest>();
     public DbSet<SignupRequest> SignupRequests => Set<SignupRequest>();
+    public DbSet<LearningProduct> LearningProducts => Set<LearningProduct>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -230,6 +231,33 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Payment)
                   .HasConversion<string>()
                   .HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<LearningProduct>(entity =>
+        {
+            entity.ToTable("learning_products");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.CreatedByMembershipId).IsRequired();
+
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Description).HasMaxLength(4000);
+            entity.Property(e => e.Category).HasMaxLength(128);
+            entity.Property(e => e.DefaultLanguage).HasMaxLength(32);
+
+            // Tags are a small ordered list owned entirely by this aggregate;
+            // a join table would add a query for no benefit at this size.
+            entity.PrimitiveCollection(e => e.Tags);
+
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Pacing).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.EnrollmentMode).HasConversion<string>().HasMaxLength(32);
+
+            // Every listing is scoped to one workspace (INV-001)
+            entity.HasIndex(e => e.WorkspaceId);
         });
 
         modelBuilder.Entity<PlatformOperator>(entity =>

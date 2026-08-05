@@ -9,6 +9,7 @@ import MembersScreen from "./screens/MembersScreen";
 import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
 import NotBuiltYet from "./screens/NotBuiltYet";
+import ProductsScreen from "./screens/ProductsScreen";
 import LearnerHomeScreen from "./screens/LearnerHomeScreen";
 import * as api from "./api/client";
 
@@ -433,11 +434,7 @@ export default function App() {
           {role === "owner" && ownerScreen === "members" && <MembersScreen />}
           {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
 
-          {role === "owner" && ownerScreen === "products" && (
-            <NotBuiltYet area="Learning Product Context" onNavigate={setOwnerScreen}
-              blurb="Courses and learning products don't exist on the platform yet, so there's nothing to list or price here."
-              next={{ text: "Finish setting up your workspace", to: "setup" }} />
-          )}
+          {role === "owner" && ownerScreen === "products" && <ProductsScreen />}
           {role === "owner" && ownerScreen === "studio" && (
             <NotBuiltYet area="Content Authoring" onNavigate={setOwnerScreen}
               blurb="Lesson authoring — uploads, AI-drafted questions, publishing — isn't built yet. It arrives with Learning Products." />
