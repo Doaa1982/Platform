@@ -76,6 +76,27 @@ export function AuthProvider({ side, children }) {
     setSession(next);         // triggers the profile fetch above
   }, []);
 
+  /**
+   * Re-reads the profile from the API.
+   *
+   * The workspace name, slug and roles in this provider are a snapshot taken at
+   * sign-in. Anything that changes them elsewhere — renaming a workspace in
+   * setup, a role being granted — leaves the chrome showing stale values until
+   * the next sign-in, which reads as the app disagreeing with what you just did.
+   *
+   * Deliberately silent: it does not touch `status`, so a refresh never flashes
+   * the app back to a loading screen. A failure leaves the previous profile in
+   * place, which is the better of two imperfect outcomes.
+   */
+  const refreshProfile = useCallback(async () => {
+    if (!session) return;
+    try {
+      setMe(await api.getMe(session.token));
+    } catch {
+      // Keep what we have; the next deliberate action will surface any real problem
+    }
+  }, [session]);
+
   const signIn = useCallback(async (email, password) => {
     setError(null);
     const result = await api.login(email, password);
@@ -129,10 +150,11 @@ export function AuthProvider({ side, children }) {
       selectWorkspace: setChosenSlug,
       leaveWorkspace: () => setChosenSlug(null),
       adoptSession,
+      refreshProfile,
       signIn,
       signOut,
     };
-  }, [status, error, session, me, side, chosenSlug, adoptSession, signIn, signOut]);
+  }, [status, error, session, me, side, chosenSlug, adoptSession, refreshProfile, signIn, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

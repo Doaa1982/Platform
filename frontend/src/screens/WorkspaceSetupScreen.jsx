@@ -48,7 +48,7 @@ const ACTION_BLURB = {
 };
 
 export default function WorkspaceSetupScreen() {
-  const { session, workspace } = useAuth();
+  const { session, workspace, refreshProfile } = useAuth();
   const slug = workspace?.slug;
 
   const [setup, setSetup] = useState(null);
@@ -76,6 +76,11 @@ export default function WorkspaceSetupScreen() {
     try {
       const next = await fn();
       if (next) setSetup(next);   // every endpoint returns the whole state
+
+      /* The workspace name and slug the chrome renders were snapshotted at
+         sign-in. Renaming here without this leaves the sidebar and account bar
+         calling the workspace something the owner just stopped calling it. */
+      await refreshProfile();
       return next;
     } catch (e) {
       setError(e.message);
