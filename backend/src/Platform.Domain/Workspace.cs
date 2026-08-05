@@ -47,6 +47,18 @@ public class Workspace
     public DateTime? OwnershipAssignedAt { get; private set; }
     public DateTime CreatedAt { get; private set; }
 
+    /// <summary>
+    /// Whether strangers may ask to join (Join Request Business Analysis, BA-005).
+    ///
+    /// Off by default, deliberately. An academy that intends to work only with
+    /// invited people should not silently acquire a queue of strangers, and
+    /// opting in means the feature cannot surprise Workspaces that already exist.
+    ///
+    /// This belongs with Enabled Capabilities (Section 7) once that registry is
+    /// implemented (TD-006); until then it is a plain configuration flag.
+    /// </summary>
+    public bool AcceptsJoinRequests { get; private set; }
+
     // Required by EF Core — not for application use
     private Workspace() { }
 
@@ -99,6 +111,17 @@ public class Workspace
         OwnerMembershipId = membershipId;
         OwnershipAssignedAt = DateTime.UtcNow;
     }
+
+    /// <summary>
+    /// Opens or closes the Workspace to unsolicited join requests.
+    ///
+    /// Independent of the lifecycle: an Owner may decide this at any point, and
+    /// it does not move the Workspace through Section 15. Whether a request can
+    /// actually be submitted also depends on the Workspace being discoverable,
+    /// which the caller checks — a Workspace can be open to requests while still
+    /// Private, it simply cannot be found yet.
+    /// </summary>
+    public void SetAcceptsJoinRequests(bool accepts) => AcceptsJoinRequests = accepts;
 
     // ── Lifecycle (Section 15) ───────────────────────────────────────────────────
 

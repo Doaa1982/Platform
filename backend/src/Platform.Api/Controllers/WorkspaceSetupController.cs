@@ -32,6 +32,15 @@ public class WorkspaceSetupController(WorkspaceSetupService setup) : ControllerB
         string slug, [FromBody] UpdateWorkspaceIdentityRequest request, CancellationToken ct)
         => Run(await setup.UpdateIdentityAsync(slug, Caller(), request, ct));
 
+    /// <summary>
+    /// PUT /join-requests — open or close the Workspace to unsolicited requests.
+    /// Off by default (Join Request Business Analysis, BA-005).
+    /// </summary>
+    [HttpPut("join-requests")]
+    public async Task<ActionResult<WorkspaceSetupResponse>> SetAcceptsJoinRequests(
+        string slug, [FromBody] SetJoinRequestsRequest request, CancellationToken ct)
+        => Run(await setup.SetAcceptsJoinRequestsAsync(slug, Caller(), request.Accepts, ct));
+
     /// <summary>Created → Configuring.</summary>
     [HttpPost("begin-configuration")]
     public async Task<ActionResult<WorkspaceSetupResponse>> BeginConfiguration(string slug, CancellationToken ct)

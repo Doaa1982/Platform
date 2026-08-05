@@ -143,23 +143,35 @@ Person finds a Published Workspace
 ↓
 
 Person submits a Join Request
-  (name, email, requested role, optional message)
+  (name, email, password, requested role, optional message)
+
+  Identity Resolution runs HERE, not at approval (BA-003):
+    · no Identity for this email  → create one
+    · Identity already exists     → the password must match it,
+                                    so that holding someone's email
+                                    is not enough to queue up as them
+
 Join Request status: Submitted
+  (the requester can now sign in and see their pending request.
+   They are a member of nothing.)
 
 ↓  reviewer decides
 
 ┌─────────────────────────────┬──────────────────────────────┐
 │  APPROVED                   │  DECLINED                    │
 │                             │                              │
-│  Identity Resolution        │  No Membership created.      │
-│  (reuse or create)          │  Requester is told the       │
-│         ↓                   │  outcome, not the reason     │
-│  Membership.Create(Learner) │  (BA-006).                   │
-│         ↓                   │                              │
-│  Membership.Activate()      │                              │
-│  → Membership: Active       │                              │
+│  Membership.Create(Learner) │  No Membership created.      │
+│         ↓                   │  Requester is told the       │
+│  Membership.Activate()      │  outcome, not the reason     │
+│  → Membership: Active       │  (BA-006).                   │
+│                             │                              │
+│  (the Identity already      │  (the Identity remains,      │
+│   exists — nothing to       │   owning no Membership)      │
+│   resolve at this point)    │                              │
 └─────────────────────────────┴──────────────────────────────┘
 ```
+
+> **Corrected 2026-08-05.** Version 1.0 of this document placed Identity Resolution at approval in this diagram, contradicting BA-003, which places it at submission. BA-003 is operative: its own reasoning depends on the Identity existing before a decision is made ("an Identity with no Membership can do nothing but log in and see an empty workspace list"). Resolving at approval would also leave a requester unable to check back on their own request, which is the thing BA-003's whole trade-off buys.
 
 Alternate flow — requester changes their mind:
 

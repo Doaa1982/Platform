@@ -44,15 +44,16 @@ public class WorkspaceSetupService(PlatformDbContext db)
         var (next, blocker) = NextStep(w, completeness);
 
         return new WorkspaceSetupResponse(
-            WorkspaceId:    w.Id,
-            Name:           w.Name,
-            Slug:           w.Slug,
-            Description:    w.Description,
-            Status:         w.Status.ToString(),
-            CanManage:      canManage,
-            Completeness:   completeness,
-            NextTransition: next,
-            Blocker:        blocker);
+            WorkspaceId:         w.Id,
+            Name:                w.Name,
+            Slug:                w.Slug,
+            Description:         w.Description,
+            Status:              w.Status.ToString(),
+            CanManage:           canManage,
+            AcceptsJoinRequests: w.AcceptsJoinRequests,
+            Completeness:        completeness,
+            NextTransition:      next,
+            Blocker:             blocker);
     }
 
     /// <summary>
@@ -126,6 +127,27 @@ public class WorkspaceSetupService(PlatformDbContext db)
         catch (ArgumentException ex) { return Fail(ex.Message, ProvisioningError.Invalid); }
 
         await db.SaveChangesAsync(ct);
+        return ProvisioningResult<WorkspaceSetupResponse>.Success(Describe(workspace, canManage));
+    }
+
+    /// <summary>
+    /// Opens or closes the Workspace to unsolicited join requests
+    /// (Join Request Business Analysis, BA-005 — off by default).
+    ///
+    /// Independent of the lifecycle: it can be set at any point and moves the
+    /// Workspace through no states. A Workspace can be open to requests while
+    /// still Private; it simply cannot be found yet.
+    /// </summary>
+    public async Task<ProvisioningResult<WorkspaceSetupResponse>> SetAcceptsJoinRequestsAsync(
+        string slug, Guid callerIdentityId, bool accepts, CancellationToken ct = default)
+    {
+        var (workspace, canManage, error) = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (error is not null)
+            return ProvisioningResult<WorkspaceSetupResponse>.Fail(error.Value.Error, error.Value.Message);
+
+        workspace!.SetAcceptsJoinRequests(accepts);
+        await db.SaveChangesAsync(ct);
+
         return ProvisioningResult<WorkspaceSetupResponse>.Success(Describe(workspace, canManage));
     }
 

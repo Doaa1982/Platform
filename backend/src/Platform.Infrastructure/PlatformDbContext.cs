@@ -17,6 +17,7 @@ public class PlatformDbContext : DbContext
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<PlatformOperator> PlatformOperators => Set<PlatformOperator>();
+    public DbSet<JoinRequest> JoinRequests => Set<JoinRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -161,6 +162,41 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Status)
                   .HasConversion<string>()
                   .HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<JoinRequest>(entity =>
+        {
+            entity.ToTable("join_requests");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.IdentityId).IsRequired();
+
+            entity.Property(e => e.Email)
+                  .IsRequired()
+                  .HasMaxLength(256);
+
+            entity.Property(e => e.FullName)
+                  .IsRequired()
+                  .HasMaxLength(256);
+
+            entity.Property(e => e.Message)
+                  .HasMaxLength(2000);
+
+            entity.Property(e => e.RequestedRole)
+                  .HasConversion<string>()
+                  .HasMaxLength(32);
+
+            entity.Property(e => e.Status)
+                  .HasConversion<string>()
+                  .HasMaxLength(32);
+
+            // The reviewer's queue reads by Workspace; the single-open-request
+            // check reads by (identity, workspace)
+            entity.HasIndex(e => e.WorkspaceId);
+            entity.HasIndex(e => new { e.IdentityId, e.WorkspaceId });
         });
 
         modelBuilder.Entity<PlatformOperator>(entity =>

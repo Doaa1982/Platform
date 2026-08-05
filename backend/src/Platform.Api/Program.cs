@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Platform.Api;
 using Platform.Api.Authorization;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -73,6 +74,10 @@ builder.Services.AddScoped<WorkspaceAccessService>();
 builder.Services.AddScoped<ProvisioningService>();
 builder.Services.AddScoped<WorkspaceMemberService>();
 builder.Services.AddScoped<WorkspaceSetupService>();
+builder.Services.AddScoped<JoinRequestService>();
+
+// Guards the one endpoint a stranger can reach that creates an Identity
+builder.Services.AddPlatformRateLimiting(builder.Configuration);
 builder.Services.AddScoped<TokenService>();
 
 // ── Invitation delivery ────────────────────────────────────────────────────────
@@ -219,6 +224,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 app.UseHttpsRedirection();
+// Before authentication: an abusive caller should be turned away without
+// costing a token validation or a database round trip
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

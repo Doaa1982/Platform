@@ -16,6 +16,11 @@ public record WorkspaceSetupResponse(
     string Status,
     /// <summary>Whether the caller may change any of this, or only look.</summary>
     bool CanManage,
+    /// <summary>
+    /// Whether strangers may ask to join (Join Request Business Analysis, BA-005).
+    /// Off by default; independent of the lifecycle.
+    /// </summary>
+    bool AcceptsJoinRequests,
     SetupCompleteness Completeness,
     /// <summary>The single transition available now, or null when there is none.</summary>
     string? NextTransition,
@@ -38,3 +43,6 @@ public record SetupCompleteness(
 
 /// <summary>Amend the Workspace Identity value object (Workspace Aggregate Design §8).</summary>
 public record UpdateWorkspaceIdentityRequest(string Name, string Slug, string? Description);
+
+/// <summary>Open or close the Workspace to unsolicited join requests.</summary>
+public record SetJoinRequestsRequest(bool Accepts);
