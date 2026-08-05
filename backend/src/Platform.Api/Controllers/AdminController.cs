@@ -26,8 +26,76 @@ namespace Platform.Api.Controllers;
 [Authorize(Policy = PlatformOperatorRequirement.PolicyName)]
 public class AdminController(
     PlatformDbContext db,
-    ProvisioningService provisioning) : ControllerBase
+    ProvisioningService provisioning,
+    SignupRequestService signups) : ControllerBase
 {
+    // ── Tutor Signup Requests (§7.1) ─────────────────────────────────────────
+
+    /// <summary>GET /api/admin/signup-requests — the application queue.</summary>
+    [HttpGet("signup-requests")]
+    public async Task<ActionResult<IReadOnlyList<SignupRequestRow>>> GetSignupRequests(CancellationToken ct)
+        => Ok(await signups.ListAsync(ct));
+
+    /// <summary>
+    /// Approves an application. The applicant is not yet a tutor — payment comes
+    /// next, inside this flow rather than as an assumed external event (BA-006).
+    /// </summary>
+    [HttpPost("signup-requests/{id:guid}/approve")]
+    public async Task<IActionResult> ApproveSignup(Guid id, CancellationToken ct)
+    {
+        if (!TryGetIdentityId(out var reviewer))
+            return Unauthorized(new { message = "Token does not carry a valid identity." });
+
+        var result = await signups.ApproveAsync(id, reviewer, ct);
+        return result.Ok ? Ok(new { status = result.Value }) : Problem(result);
+    }
+
+    /// <summary>
+    /// Rejects an application. Distinct from an expired payment window (BA-007):
+    /// this is a decision about the applicant, and is terminal.
+    /// </summary>
+    [HttpPost("signup-requests/{id:guid}/reject")]
+    public async Task<IActionResult> RejectSignup(
+        Guid id, [FromBody] RejectSignupRequest request, CancellationToken ct)
+    {
+        if (!TryGetIdentityId(out var reviewer))
+            return Unauthorized(new { message = "Token does not carry a valid identity." });
+
+        var result = await signups.RejectAsync(id, reviewer, request, ct);
+        return result.Ok ? Ok(new { status = result.Value }) : Problem(result);
+    }
+
+    /// <summary>
+    /// POST /api/admin/signup-requests/{id}/provision — §7.2 for a paid applicant.
+    ///
+    /// Provisioning stays admin-initiated rather than firing automatically on
+    /// payment (BA-004's Version 1 recommendation), but the application is
+    /// recorded against the Workspace so it can only happen once.
+    /// </summary>
+    [HttpPost("signup-requests/{id:guid}/provision")]
+    public async Task<ActionResult<InvitationIssuedResponse>> ProvisionForSignup(
+        Guid id, [FromBody] ProvisionWorkspaceRequest request, CancellationToken ct)
+    {
+        if (!TryGetIdentityId(out var adminIdentityId))
+            return Unauthorized(new { message = "Token does not carry a valid identity." });
+
+        var provisioned = await provisioning.ProvisionAsync(request, adminIdentityId, ct);
+        if (!provisioned.Ok) return Problem(provisioned);
+
+        // Link the application to its Workspace. If this fails the Workspace
+        // still exists, so the failure is surfaced rather than swallowed.
+        var workspace = await db.Workspaces
+            .FirstOrDefaultAsync(w => w.Slug == request.Slug.ToLowerInvariant().Trim(), ct);
+
+        if (workspace is not null)
+        {
+            var linked = await signups.MarkProvisionedAsync(id, workspace.Id, ct);
+            if (!linked.Ok) return Problem(linked);
+        }
+
+        return Ok(provisioned.Value);
+    }
+
     /// <summary>
     /// GET /api/admin/workspaces
     /// The provisioning view (§9): every Workspace with its composed status.

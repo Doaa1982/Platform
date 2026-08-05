@@ -404,7 +404,7 @@ public, not after.
 Join Request Business Analysis)
 **Area:** Documentation / design — `Tutor Signup Request` vs `Join Request`
 **Severity:** Low now, moderate if both are built independently
-**Status:** Deferred (needs decision before the second one is implemented)
+**Status:** Done (2026-08-05)
 
 Two concepts were designed within days of each other, from opposite ends of the platform,
 and came out structurally identical:
@@ -436,8 +436,29 @@ to drift.
 *token status link* mechanism — which is already a third copy of the pattern used by
 Invitation Links — rather than the request lifecycle.
 
-**Trigger:** implementing whichever of the two comes second. Deciding after both exist is
-markedly more expensive than deciding now.
+**Ruling (2026-08-05): separate aggregates, shared token mechanism.**
+
+Taken while implementing Tutor Signup Request — the second of the two — exactly at the
+point this entry said the decision was due. Platform Administrator Business Analysis
+BA-008 had already implied the answer: a Signup Status Link "reuses the general
+unguessable-token-link pattern ... as a distinct concept."
+
+What was shared: `InvitationToken` became `SecureToken`, and Invitation, Join Request
+and Signup Request all use it. That removes what would otherwise have been a third
+hand-rolled copy of the same generate/hash/constant-time-compare logic — the place
+drift actually starts.
+
+What was kept apart: the aggregates. `SignupRequest` and `JoinRequest` share no base
+type, table or lifecycle. Their reviewing authority differs (Platform Operator vs
+Workspace Owner), what approval produces differs (an approved application still has to
+be paid for, then provisioned; an approved join request is immediately a Membership),
+and only one has a payment stage at all. A shared discriminator would have made nearly
+every rule conditional on which kind it was — the same reasoning Join Request BA-001
+used to keep Join Request separate from Invitation.
+
+The pattern being visible in two places is not duplication to be eliminated. It is one
+business shape appearing at two scopes, and the honest response was to share the
+mechanism and let the meanings stay distinct.
 
 ---
 
@@ -488,6 +509,45 @@ about where and how the platform runs.
 
 ---
 
+## TD-013 — No public entry page for anyone ADR-WE-001 doesn't cover
+
+**Raised:** 2026-08-05 (reviewing what a visitor sees at the platform root)
+**Area:** Documentation / design — platform root (`/`); `frontend/src/AppRoot.jsx`
+**Severity:** Moderate — Tutor Signup Request (Platform Administrator Business Analysis §7.1)
+has nowhere for an applicant to actually start
+**Status:** Deferred (documented; not built)
+
+ADR-WE-001 (IdentityAndWorkspaceAccess, "Workspace-First Entry") rules out a platform home
+page — but only for learners, who always arrive through a Workspace Entry Point. It says
+nothing about a Prospective Tutor or a returning user who lands on the root instead of their
+Workspace URL. No document reconciled this until now, and nothing in the corpus's Open
+Questions (Platform Administrator Business Analysis §16; Join Request Business Analysis §16,
+prior to its own v1.1) named it either.
+
+**Observed, not hypothetical.** `frontend/src/AppRoot.jsx` routes `/` to `SideChooser`, a
+binary "I teach / I'm learning" login router — it has no path for an unauthenticated
+Prospective Tutor to apply. `/apply` does not exist in the frontend or the backend
+(`Program.cs` maps no such route) — Section 7.1 is fully specified in documentation and
+entirely unbuilt in code.
+
+**Documented by:** ExperienceArchitecture.md, ADR-EA-002, which settles the root page as a
+single-purpose page converting a Prospective Tutor into an applicant — one call to action,
+Become a Tutor — with the Platform Administrator deliberately unlinked. It does not design the
+page visually.
+
+**Resolved alongside this (not a separate open item):** an earlier draft of ADR-EA-002 gave
+the root page a second call to action, "Find an Academy," treating Workspace discovery as a
+Future feature not yet built. That has been corrected to a permanent decision, not a deferred
+one — the platform will never provide Workspace discovery, in any version. See ADR-EA-002's
+Business Model Note and Join Request Business Analysis BA-007 (v1.1), which resolves that
+document's own former "where requesters find Workspaces" open question the same way.
+
+**Trigger:** implementing the Tutor Signup Request frontend (Section 7.1 has no UI yet), or
+any work that would otherwise add an ad hoc "apply" link somewhere without an owning page to
+put it on.
+
+---
+
 ## Log
 
 | Date | Change |
@@ -508,3 +568,7 @@ about where and how the platform runs.
 | 2026-08-05 | TD-011 raised — Tutor Signup Request and Join Request share a shape; decide before the second is built. |
 | 2026-08-05 | TD-010 implemented — Join Requests, with per-IP rate limiting on the one anonymous endpoint that can create an Identity. |
 | 2026-08-05 | TD-012 raised — the rate limiter's IP partition is already blind behind the dev proxies, and inverts into a self-inflicted denial of service once deployed. |
+| 2026-08-05 | TD-011 closed — separate aggregates, shared `SecureToken` mechanism, decided while implementing Tutor Signup Request. |
+| 2026-08-05 | Tutor Signup Request implemented — the last unbuilt stage of the tutor lifecycle. `/apply` is now a real form. |
+| 2026-08-05 | TD-013 raised — no public entry page for Prospective Tutors, returning multi-Membership users, or Workspace discovery; ADR-WE-001 covers learners only. Documented by ExperienceArchitecture.md ADR-EA-002. |
+| 2026-08-05 | Workspace discovery ruled out permanently, not deferred — root page is single-CTA (Become a Tutor only). ExperienceArchitecture.md ADR-EA-002 revised; Join Request Business Analysis v1.1 adds BA-007, resolving its "where requesters find Workspaces" open question the same way. |

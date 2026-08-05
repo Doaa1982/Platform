@@ -334,7 +334,7 @@ public class ProvisioningService(
         if (string.IsNullOrWhiteSpace(rawToken))
             return (null, null, (ProvisioningError.NotFound, "This invitation link is not valid."));
 
-        var hash = InvitationToken.Hash(rawToken);
+        var hash = SecureToken.Hash(rawToken);
         var invitation = await db.Invitations.FirstOrDefaultAsync(i => i.TokenHash == hash, ct);
 
         if (invitation is null)

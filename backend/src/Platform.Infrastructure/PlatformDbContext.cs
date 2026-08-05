@@ -18,6 +18,7 @@ public class PlatformDbContext : DbContext
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<PlatformOperator> PlatformOperators => Set<PlatformOperator>();
     public DbSet<JoinRequest> JoinRequests => Set<JoinRequest>();
+    public DbSet<SignupRequest> SignupRequests => Set<SignupRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -197,6 +198,35 @@ public class PlatformDbContext : DbContext
             // check reads by (identity, workspace)
             entity.HasIndex(e => e.WorkspaceId);
             entity.HasIndex(e => new { e.IdentityId, e.WorkspaceId });
+        });
+
+        modelBuilder.Entity<SignupRequest>(entity =>
+        {
+            entity.ToTable("signup_requests");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.FullName).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.About).HasMaxLength(2000);
+            entity.Property(e => e.RejectionReason).HasMaxLength(2000);
+
+            // Every status-link visit looks the application up by token hash
+            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+
+            // The admin queue reads by status; the duplicate check reads by email
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.Email);
+
+            entity.Property(e => e.Status)
+                  .HasConversion<string>()
+                  .HasMaxLength(32);
+
+            entity.Property(e => e.Payment)
+                  .HasConversion<string>()
+                  .HasMaxLength(32);
         });
 
         modelBuilder.Entity<PlatformOperator>(entity =>

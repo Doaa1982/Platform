@@ -1,0 +1,264 @@
+using Microsoft.EntityFrameworkCore;
+using Platform.Api.Models;
+using Platform.Domain;
+using Platform.Infrastructure;
+
+namespace Platform.Api.Services;
+
+/// <summary>
+/// Tutor Signup Requests — Platform Administrator Business Analysis §7.1.
+///
+/// The platform's front door for someone with no relationship to it at all: no
+/// account, no workspace, no payment. It is the stage that used to be an
+/// unexplained "external signal" before v1.2 replaced it with a real process
+/// (BA-006).
+///
+/// Lazy expiry, like Invitation: nothing sweeps in the background, so an
+/// elapsed payment window is written the first time anyone looks.
+/// </summary>
+public class SignupRequestService(
+    PlatformDbContext db,
+    IConfiguration config,
+    IInvitationDelivery delivery,
+    EmailOptions email)
+{
+    private TimeSpan PaymentWindow =>
+        TimeSpan.FromDays(config.GetValue("Signup:PaymentWindowDays", 14));
+
+    private static string LinkFor(string rawToken) => $"/apply/status/{rawToken}";
+    private string AbsoluteLinkFor(string rawToken) =>
+        $"{email.PublicBaseUrl.TrimEnd('/')}{LinkFor(rawToken)}";
+
+    // ── Applying ─────────────────────────────────────────────────────────────
+
+    public async Task<ProvisioningResult<SignupSubmittedResponse>> SubmitAsync(
+        SubmitSignupRequest request, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.FullName) || string.IsNullOrWhiteSpace(request.Email))
+            return Fail<SignupSubmittedResponse>("A name and email address are required.", ProvisioningError.Invalid);
+
+        var applicantEmail = request.Email.ToLowerInvariant().Trim();
+
+        // One live application per person. A second while one is open would give
+        // the reviewer two of the same thing to decide.
+        var existing = await db.SignupRequests
+            .Where(r => r.Email == applicantEmail)
+            .ToListAsync(ct);
+
+        foreach (var stale in existing) ExpireIfLapsed(stale);
+
+        var live = existing.FirstOrDefault(r =>
+            r.Status is SignupRequestStatus.Submitted
+                     or SignupRequestStatus.UnderReview
+                     or SignupRequestStatus.ApprovedAwaitingPayment
+                     or SignupRequestStatus.PaymentFailed
+                     or SignupRequestStatus.Paid);
+
+        if (live is not null)
+        {
+            await db.SaveChangesAsync(ct);   // persist any lazy expiry we just wrote
+            return Fail<SignupSubmittedResponse>(
+                "There's already an application in progress for this email. Check the link we sent you.",
+                ProvisioningError.Conflict);
+        }
+
+        var (signup, rawToken) = SignupRequest.Submit(request.FullName, applicantEmail, request.About);
+        signup.MarkUnderReview();
+        db.SignupRequests.Add(signup);
+        await db.SaveChangesAsync(ct);
+
+        // Reuses the invitation delivery channel — this is a platform-level
+        // notification for the same reason an invitation is (BA-005): no
+        // Workspace, and therefore no Workspace community, exists yet.
+        var outcome = await delivery.SendInvitationAsync(
+            signup.Email, "your Platform application", "Tutor",
+            AbsoluteLinkFor(rawToken), signup.SubmittedAt.AddDays(365), ct);
+
+        return ProvisioningResult<SignupSubmittedResponse>.Success(
+            new SignupSubmittedResponse(signup.Id, LinkFor(rawToken), outcome.Delivered));
+    }
+
+    // ── Checking back ────────────────────────────────────────────────────────
+
+    public async Task<ProvisioningResult<SignupStatusResponse>> GetStatusAsync(
+        string rawToken, CancellationToken ct = default)
+    {
+        var signup = await FindByTokenAsync(rawToken, ct);
+        if (signup is null)
+            return Fail<SignupStatusResponse>("This link isn't valid.", ProvisioningError.NotFound);
+
+        if (ExpireIfLapsed(signup)) await db.SaveChangesAsync(ct);
+
+        var (headline, detail) = Message(signup);
+
+        return ProvisioningResult<SignupStatusResponse>.Success(new SignupStatusResponse(
+            FullName:            signup.FullName,
+            Email:               signup.Email,
+            Status:              signup.Status.ToString(),
+            Headline:            headline,
+            Detail:              detail,
+            CanPay:              signup.CanPay(),
+            PaymentWindowEndsAt: signup.PaymentWindowEndsAt,
+            SubmittedAt:         signup.SubmittedAt));
+    }
+
+    /// <summary>
+    /// The applicant-facing wording from §7.1, "What the Prospective Tutor Sees".
+    ///
+    /// Rejected and Expired read very differently on purpose (BA-007): one is a
+    /// decision about them, the other is only a lapsed clock.
+    /// </summary>
+    private static (string Headline, string Detail) Message(SignupRequest r) => r.Status switch
+    {
+        SignupRequestStatus.Submitted or SignupRequestStatus.UnderReview =>
+            ("Your application is under review",
+             "We'll email you once a decision has been made."),
+
+        SignupRequestStatus.ApprovedAwaitingPayment =>
+            ("Your application has been approved",
+             "Complete your subscription payment to activate your workspace."),
+
+        SignupRequestStatus.PaymentFailed =>
+            ("Your last payment attempt didn't go through",
+             "Please try again — your application is still approved."),
+
+        SignupRequestStatus.Paid =>
+            ("You're all set",
+             "Payment received. We're setting up your workspace and will email you the moment it's ready."),
+
+        SignupRequestStatus.Rejected =>
+            ("Thank you for applying",
+             r.RejectionReasonVisible && r.RejectionReason is not null
+                 ? r.RejectionReason
+                 : "After review, we're not able to approve your application at this time."),
+
+        SignupRequestStatus.Expired =>
+            ("Your approved application expired",
+             "Payment wasn't completed in time, so this application has lapsed. You're welcome to apply again."),
+
+        _ => ("Application", string.Empty),
+    };
+
+    // ── Payment ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Records the outcome of a payment attempt.
+    ///
+    /// The processor call itself is the one genuinely external thing left
+    /// (BA-006) and is not modelled here — this records what it said. A failure
+    /// is not a rejection: the applicant may retry while the window is open.
+    /// </summary>
+    public async Task<ProvisioningResult<SignupStatusResponse>> RecordPaymentAsync(
+        string rawToken, bool succeeded, CancellationToken ct = default)
+    {
+        var signup = await FindByTokenAsync(rawToken, ct);
+        if (signup is null)
+            return Fail<SignupStatusResponse>("This link isn't valid.", ProvisioningError.NotFound);
+
+        ExpireIfLapsed(signup);
+
+        if (!signup.CanPay())
+        {
+            await db.SaveChangesAsync(ct);
+            return Fail<SignupStatusResponse>(
+                signup.Status == SignupRequestStatus.Expired
+                    ? "The payment window for this application has closed. Please apply again."
+                    : "This application isn't awaiting payment.",
+                ProvisioningError.Conflict);
+        }
+
+        try
+        {
+            signup.BeginPayment();
+            if (succeeded) signup.PaymentSucceeded(); else signup.PaymentFailed();
+        }
+        catch (InvalidOperationException ex) { return Fail<SignupStatusResponse>(ex.Message, ProvisioningError.Conflict); }
+
+        await db.SaveChangesAsync(ct);
+        return await GetStatusAsync(rawToken, ct);
+    }
+
+    // ── Reviewing ────────────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<SignupRequestRow>> ListAsync(CancellationToken ct = default)
+    {
+        var all = await db.SignupRequests.ToListAsync(ct);
+
+        var changed = false;
+        foreach (var r in all) changed |= ExpireIfLapsed(r);
+        if (changed) await db.SaveChangesAsync(ct);
+
+        return all
+            // Waiting-on-me first, then paid-and-not-yet-provisioned, then the rest
+            .OrderBy(r => r.AwaitsDecision ? 0
+                        : r.Status == SignupRequestStatus.Paid && r.ProvisionedWorkspaceId is null ? 1 : 2)
+            .ThenByDescending(r => r.SubmittedAt)
+            .Select(r => new SignupRequestRow(
+                r.Id, r.FullName, r.Email, r.About,
+                r.Status.ToString(), r.Payment.ToString(),
+                r.SubmittedAt, r.ReviewedAt, r.PaymentWindowEndsAt, r.ProvisionedWorkspaceId))
+            .ToList();
+    }
+
+    public async Task<ProvisioningResult<string>> ApproveAsync(
+        Guid id, Guid reviewerIdentityId, CancellationToken ct = default)
+        => await DecideAsync(id, r => r.Approve(reviewerIdentityId, PaymentWindow), ct);
+
+    public async Task<ProvisioningResult<string>> RejectAsync(
+        Guid id, Guid reviewerIdentityId, RejectSignupRequest request, CancellationToken ct = default)
+        => await DecideAsync(id, r => r.Reject(reviewerIdentityId, request.Reason, request.ReasonVisible), ct);
+
+    private async Task<ProvisioningResult<string>> DecideAsync(
+        Guid id, Action<SignupRequest> decide, CancellationToken ct)
+    {
+        var signup = await db.SignupRequests.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (signup is null) return Fail<string>("No such application.", ProvisioningError.NotFound);
+
+        try { decide(signup); }
+        catch (InvalidOperationException ex) { return Fail<string>(ex.Message, ProvisioningError.Conflict); }
+        catch (ArgumentException ex) { return Fail<string>(ex.Message, ProvisioningError.Invalid); }
+
+        await db.SaveChangesAsync(ct);
+        return ProvisioningResult<string>.Success(signup.Status.ToString());
+    }
+
+    /// <summary>
+    /// Links a paid application to the Workspace provisioned for it, so §7.2
+    /// runs once per applicant rather than once per admin click.
+    /// </summary>
+    public async Task<ProvisioningResult<string>> MarkProvisionedAsync(
+        Guid id, Guid workspaceId, CancellationToken ct = default)
+    {
+        var signup = await db.SignupRequests.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (signup is null) return Fail<string>("No such application.", ProvisioningError.NotFound);
+
+        try { signup.MarkProvisioned(workspaceId); }
+        catch (InvalidOperationException ex) { return Fail<string>(ex.Message, ProvisioningError.Conflict); }
+
+        await db.SaveChangesAsync(ct);
+        return ProvisioningResult<string>.Success(signup.Status.ToString());
+    }
+
+    // ── Shared ───────────────────────────────────────────────────────────────
+
+    private Task<SignupRequest?> FindByTokenAsync(string rawToken, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken)) return Task.FromResult<SignupRequest?>(null);
+        var hash = SecureToken.Hash(rawToken);
+        return db.SignupRequests.FirstOrDefaultAsync(r => r.TokenHash == hash, ct);
+    }
+
+    /// <summary>Writes the lapse the clock already made true. Returns whether anything changed.</summary>
+    private static bool ExpireIfLapsed(SignupRequest r)
+    {
+        if (r.Status is not (SignupRequestStatus.ApprovedAwaitingPayment or SignupRequestStatus.PaymentFailed))
+            return false;
+        if (r.PaymentWindowEndsAt > DateTime.UtcNow) return false;
+
+        r.Expire();
+        return true;
+    }
+
+    private static ProvisioningResult<T> Fail<T>(string message, ProvisioningError error)
+        => ProvisioningResult<T>.Fail(error, message);
+}

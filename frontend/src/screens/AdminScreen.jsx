@@ -23,22 +23,37 @@ import { useFonts } from "../hooks/useFonts";
 /** Provisioning statuses where the admin has outstanding work (§9). */
 const NEEDS_ACTION = new Set(["Awaiting Invitation", "Invitation Expired"]);
 
+/** Application statuses still waiting on a reviewer's decision (§7.1). */
+const AWAITING = new Set(["Submitted", "UnderReview"]);
+
+/** ApprovedAwaitingPayment → "Approved — awaiting payment" */
+function humanStatus(status) {
+  return status
+    .replace("ApprovedAwaitingPayment", "Approved — awaiting payment")
+    .replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
 export default function AdminScreen() {
   useFonts();
   const { session, me, signOut } = useAuth();
 
   const [rows, setRows] = useState(null);
+  const [applications, setApplications] = useState([]);
   const [error, setError] = useState(null);
   const [denied, setDenied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [provisionFor, setProvisionFor] = useState(null);  // the paid applicant being provisioned
   const [issued, setIssued] = useState(null);   // most recently created/resent link
 
   /* Used by the refresh button and after every mutation. State lands in the
      promise callbacks, never synchronously. */
   const load = useCallback(
-    () => api.getProvisioningView(session.token)
-      .then((data) => { setRows(data); setError(null); })
+    () => Promise.all([
+      api.getProvisioningView(session.token),
+      api.getSignupRequests(session.token),
+    ])
+      .then(([workspaces, signups]) => { setRows(workspaces); setApplications(signups); setError(null); })
       .catch((e) => {
         // 403 is not an error to retry — it is the answer. The account is
         // signed in but holds no PlatformOperator grant.
@@ -52,8 +67,14 @@ export default function AdminScreen() {
   useEffect(() => {
     let cancelled = false;
 
-    api.getProvisioningView(session.token)
-      .then((data) => { if (!cancelled) { setRows(data); setError(null); } })
+    Promise.all([
+      api.getProvisioningView(session.token),
+      api.getSignupRequests(session.token),
+    ])
+      .then(([workspaces, signups]) => {
+        if (cancelled) return;
+        setRows(workspaces); setApplications(signups); setError(null);
+      })
       .catch((e) => {
         if (cancelled) return;
         if (e.status === 403) setDenied(true);
@@ -132,6 +153,64 @@ export default function AdminScreen() {
       )}
 
       {issued && <IssuedLink issued={issued} onDismiss={() => setIssued(null)} />}
+
+      {/* §7.1 — applications, which come before any workspace exists. Placed
+          first because an unreviewed one is the platform's oldest outstanding
+          work: nothing else can happen for that person until it's decided. */}
+      {applications.length > 0 && (
+        <section className="pl-admin__apps">
+          <h2 className="pl-admin__h2">Tutor applications</h2>
+          <div className="pl-admin__applist">
+            {applications.map((a) => (
+              <div key={a.id} className={`pl-admin__app ${AWAITING.has(a.status) ? "is-attention" : ""}`}>
+                <div className="pl-admin__appwho">
+                  <strong>{a.fullName}</strong>
+                  <span>{a.email}</span>
+                  {a.about && <p>{a.about}</p>}
+                </div>
+                <div className="pl-admin__appstate">
+                  <span className={`pl-admin__pill ${AWAITING.has(a.status) ? "is-warn" : a.status === "Paid" ? "is-ok" : ""}`}>
+                    {humanStatus(a.status)}
+                  </span>
+                  {a.payment !== "NotStarted" && <span className="pl-admin__pill">Payment: {a.payment}</span>}
+                </div>
+                <div className="pl-admin__actions">
+                  {AWAITING.has(a.status) && (
+                    <>
+                      <button disabled={busy} onClick={() => run(() => api.approveSignup(session.token, a.id))}>
+                        <Check size={12} /> Approve
+                      </button>
+                      <button disabled={busy}
+                              onClick={() => run(() => api.rejectSignup(session.token, a.id, { reason: null, reasonVisible: false }))}>
+                        <X size={12} /> Reject
+                      </button>
+                    </>
+                  )}
+                  {/* Paid but not yet provisioned — §7.2 stays admin-initiated (BA-004) */}
+                  {a.status === "Paid" && !a.provisionedWorkspaceId && (
+                    <button disabled={busy} onClick={() => setProvisionFor(a)}>
+                      <Plus size={12} /> Provision workspace
+                    </button>
+                  )}
+                  {a.provisionedWorkspaceId && <span className="pl-admin__muted">Provisioned</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {provisionFor && (
+        <ProvisionForm
+          busy={busy}
+          applicant={provisionFor}
+          onCancel={() => setProvisionFor(null)}
+          onSubmit={async (body) => {
+            const result = await run(() => api.provisionForSignup(session.token, provisionFor.id, body));
+            if (result) { setIssued(result); setProvisionFor(null); }
+          }}
+        />
+      )}
 
       {rows === null && (
         <div className="pl-admin__loading">
@@ -233,10 +312,12 @@ export default function AdminScreen() {
 
 /* ── Provision form ──────────────────────────────────────────────────────── */
 
-function ProvisionForm({ onSubmit, onCancel, busy }) {
+function ProvisionForm({ onSubmit, onCancel, busy, applicant }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
-  const [ownerEmail, setOwnerEmail] = useState("");
+  // Prefilled when provisioning for a specific applicant, so their email is
+  // never retyped — and never mistyped — at the point it matters most
+  const [ownerEmail, setOwnerEmail] = useState(applicant?.email ?? "");
   const [slugTouched, setSlugTouched] = useState(false);
 
   // Suggest a slug from the name until the admin edits it themselves
@@ -269,6 +350,9 @@ function ProvisionForm({ onSubmit, onCancel, busy }) {
         </label>
       </div>
       <p className="pl-admin__formnote">
+        {applicant
+          ? `Provisioning for ${applicant.fullName}'s approved and paid application. `
+          : ""}
         The workspace is created unowned. Ownership transfers when the invited
         tutor accepts — nothing else claims it in the meantime.
       </p>
@@ -399,6 +483,25 @@ const CSS = `
   .pl-admin__issued.is-undelivered code { color: var(--warn); }
   .pl-admin__why { color: var(--warn); font-size: 0.8rem; }
   .pl-admin__issuedactions { display: flex; gap: 8px; flex-shrink: 0; }
+
+  .pl-admin__apps { margin-bottom: 26px; }
+  .pl-admin__h2 {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500;
+    color: var(--ink-soft); margin: 0 0 10px;
+  }
+  .pl-admin__applist { display: flex; flex-direction: column; gap: 8px; }
+  .pl-admin__app {
+    display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 11px; padding: 14px 16px;
+  }
+  .pl-admin__app.is-attention { border-color: rgba(224,168,62,0.4); background: rgba(224,168,62,0.05); }
+  .pl-admin__appwho { flex: 1; min-width: 200px; }
+  .pl-admin__appwho strong { display: block; font-size: 0.93rem; }
+  .pl-admin__appwho span { display: block; font-size: 0.79rem; color: var(--ink-soft); margin-top: 2px; }
+  .pl-admin__appwho p { font-size: 0.83rem; color: var(--ink-soft); margin: 8px 0 0; max-width: 60ch; line-height: 1.55; }
+  .pl-admin__appstate { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; flex-shrink: 0; }
 
   .pl-admin__tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
   .pl-admin__table { width: 100%; border-collapse: collapse; font-size: 0.87rem; min-width: 860px; }

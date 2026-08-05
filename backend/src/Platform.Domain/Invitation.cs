@@ -66,7 +66,7 @@ public class Invitation
         if (validFor <= TimeSpan.Zero)
             throw new ArgumentException("An Invitation must expire in the future.", nameof(validFor));
 
-        var (raw, hash) = InvitationToken.Generate();
+        var (raw, hash) = SecureToken.Generate();
         var now = DateTime.UtcNow;
 
         var invitation = new Invitation
@@ -132,7 +132,7 @@ public class Invitation
         if (validFor <= TimeSpan.Zero)
             throw new ArgumentException("An Invitation must expire in the future.", nameof(validFor));
 
-        var (raw, hash) = InvitationToken.Generate();
+        var (raw, hash) = SecureToken.Generate();
 
         TokenHash = hash;
         Status = InvitationStatus.Sent;

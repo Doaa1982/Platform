@@ -5,6 +5,7 @@ import InviteScreen from "./screens/InviteScreen";
 import JoinScreen from "./screens/JoinScreen";
 import RootGate from "./RootGate";
 import ApplyScreen from "./screens/ApplyScreen";
+import SignupStatusScreen from "./screens/SignupStatusScreen";
 import AuthGate from "./AuthGate";
 import AdminGate from "./AdminGate";
 
@@ -13,6 +14,7 @@ import AdminGate from "./AdminGate";
 
      /                platform landing, or routed onward if signed in
      /apply           become a tutor
+     /apply/status/…  an applicant checking their own application
      /teach           teaching side
      /learn           learning side
      /admin           platform operations (deliberately unlinked anywhere)
@@ -67,10 +69,25 @@ export default function AppRoot() {
     );
   }
 
+  // The Signup Status Link. Anonymous by necessity: an applicant has no
+  // Identity at this stage, so the token is their only way back (BA-008).
+  const statusToken = match(pathname, /^\/apply\/status\/([^/]+)\/?$/);
+  if (statusToken) {
+    return (
+      <AuthProvider side={null}>
+        <SignupStatusScreen token={statusToken} onApplyAgain={() => navigate("/apply")} />
+      </AuthProvider>
+    );
+  }
+
   if (path === "/apply") {
     return (
       <AuthProvider side={null}>
-        <ApplyScreen onBack={() => navigate("/")} onSignIn={() => navigate("/teach")} />
+        <ApplyScreen
+          onBack={() => navigate("/")}
+          onSignIn={() => navigate("/teach")}
+          onStatus={(link) => navigate(link)}
+        />
       </AuthProvider>
     );
   }

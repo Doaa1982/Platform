@@ -194,6 +194,49 @@ export function workspaceTransition(token, slug, transition) {
   return request(`/workspaces/${encodeURIComponent(slug)}/setup/${transition}`, { method: "POST", token });
 }
 
+/* ── Tutor signup ──────────────────────────────────────────────────────────
+   Entirely anonymous: an applicant has no Identity at this stage and gets one
+   only later, when they accept the invitation to their provisioned workspace.
+   They check back via their Signup Status Link, not by logging in (BA-008).
+   ------------------------------------------------------------------------ */
+
+/** POST /api/signup-requests — apply to become a tutor */
+export function submitSignup(body) {
+  return request("/signup-requests", { method: "POST", body });
+}
+
+/** GET /api/signup-requests/status/{token} — the Signup Status Link */
+export function getSignupStatus(token) {
+  return request(`/signup-requests/status/${encodeURIComponent(token)}`);
+}
+
+/** POST /api/signup-requests/status/{token}/payment — record a payment outcome */
+export function recordSignupPayment(token, succeeded) {
+  return request(`/signup-requests/status/${encodeURIComponent(token)}/payment?succeeded=${succeeded}`, {
+    method: "POST",
+  });
+}
+
+/** GET /api/admin/signup-requests — the reviewer's application queue */
+export function getSignupRequests(token) {
+  return request("/admin/signup-requests", { token });
+}
+
+/** POST /api/admin/signup-requests/{id}/approve */
+export function approveSignup(token, id) {
+  return request(`/admin/signup-requests/${id}/approve`, { method: "POST", token });
+}
+
+/** POST /api/admin/signup-requests/{id}/reject */
+export function rejectSignup(token, id, body) {
+  return request(`/admin/signup-requests/${id}/reject`, { method: "POST", body, token });
+}
+
+/** POST /api/admin/signup-requests/{id}/provision — §7.2 for a paid applicant */
+export function provisionForSignup(token, id, body) {
+  return request(`/admin/signup-requests/${id}/provision`, { method: "POST", body, token });
+}
+
 /* ── Join requests ─────────────────────────────────────────────────────────
    The only inbound path to Membership. Preview and submit are anonymous by
    necessity: a stranger has no account, and requiring one first is circular
