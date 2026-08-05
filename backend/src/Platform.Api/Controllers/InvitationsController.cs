@@ -17,7 +17,8 @@ namespace Platform.Api.Controllers;
 public class InvitationsController(
     ProvisioningService provisioning,
     SignupRequestService signups,
-    TokenService tokens) : ControllerBase
+    TokenService tokens,
+    ILogger<InvitationsController> logger) : ControllerBase
 {
     /// <summary>
     /// GET /api/invitations/{token}
@@ -47,11 +48,26 @@ public class InvitationsController(
         if (!result.Ok) return Problem(result);
 
         // The acceptor now holds a real Identity, so any Signup Status Link that
-        // stood in for one is retired. Best-effort and after the fact: the
-        // membership is already created, and failing to tidy up a token must not
-        // undo someone's successful sign-up.
+        // stood in for one is retired.
+        //
+        // Genuinely best-effort: acceptance has already committed by this point.
+        // Letting a failure here surface would return 500 for a sign-up that
+        // actually succeeded — and the retry would then hit "already used",
+        // stranding someone who is in fact a member. A stale status link is a
+        // far smaller problem than that, so it is logged and swallowed.
         if (workspaceId is not null)
-            await signups.RevokeStatusLinkForWorkspaceAsync(workspaceId.Value, ct);
+        {
+            try
+            {
+                await signups.RevokeStatusLinkForWorkspaceAsync(workspaceId.Value, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "Invitation accepted for workspace {WorkspaceId}, but the signup status link could not be revoked.",
+                    workspaceId);
+            }
+        }
 
         return Ok(result.Value);
     }
