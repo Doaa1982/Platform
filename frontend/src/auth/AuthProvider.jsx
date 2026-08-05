@@ -54,15 +54,35 @@ export function AuthProvider({ side, children }) {
     return () => { cancelled = true; };
   }, [session]);
 
+  /**
+   * Takes on a session obtained somewhere other than the sign-in form —
+   * accepting an invitation, or submitting a join request, both of which return
+   * one because the person has just been created.
+   *
+   * Those screens must go through here rather than writing storage directly.
+   * The provider reads storage once, at mount, and navigating between routes
+   * does not remount it: every branch of AppRoot renders an AuthProvider in the
+   * same position, so React preserves its state. A session written behind its
+   * back is therefore invisible — and if someone was already signed in (an
+   * admin who had just copied the invitation link, say), the app would carry on
+   * as that person and show their workspaces instead of the new account's.
+   */
+  const adoptSession = useCallback((next) => {
+    api.saveSession(next);
+    setError(null);
+    setMe(null);              // the previous person's profile must not linger
+    setChosenSlug(null);      // nor their workspace choice
+    setStatus("loading");
+    setSession(next);         // triggers the profile fetch above
+  }, []);
+
   const signIn = useCallback(async (email, password) => {
     setError(null);
     const result = await api.login(email, password);
     const next = { token: result.token, expiresAt: result.expiresAt, fullName: result.fullName };
-    api.saveSession(next);
-    setStatus("loading");
-    setSession(next);          // triggers the profile fetch above
+    adoptSession(next);
     return next;
-  }, []);
+  }, [adoptSession]);
 
   const signOut = useCallback(() => {
     api.clearSession();
@@ -108,10 +128,11 @@ export function AuthProvider({ side, children }) {
       hasRole: (role) => (workspace?.roles ?? []).includes(role),
       selectWorkspace: setChosenSlug,
       leaveWorkspace: () => setChosenSlug(null),
+      adoptSession,
       signIn,
       signOut,
     };
-  }, [status, error, session, me, side, chosenSlug, signIn, signOut]);
+  }, [status, error, session, me, side, chosenSlug, adoptSession, signIn, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

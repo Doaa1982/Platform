@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle, AlertCircle, CheckCircle2, ArrowRight, Building2 } from "lucide-react";
 import * as api from "../api/client";
+import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 
 /* =========================================================================
@@ -18,6 +19,7 @@ import { useFonts } from "../hooks/useFonts";
 
 export default function InviteScreen({ token, onAccepted }) {
   useFonts();
+  const { adoptSession } = useAuth();
 
   const [preview, setPreview] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -46,7 +48,11 @@ export default function InviteScreen({ token, onAccepted }) {
         fullName: preview.accountExists ? undefined : fullName.trim(),
         password,
       });
-      api.saveSession({
+
+      // Through the provider, never straight to storage: whoever was signed in
+      // before — very often the admin who just copied this link — must be
+      // replaced, not left in place for the next screen to read.
+      adoptSession({
         token: session.token,
         expiresAt: session.expiresAt,
         fullName: session.fullName,

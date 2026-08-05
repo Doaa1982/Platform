@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle, AlertCircle, CheckCircle2, ArrowRight, Building2, Clock } from "lucide-react";
 import * as api from "../api/client";
+import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 
 /* =========================================================================
@@ -20,6 +21,7 @@ import { useFonts } from "../hooks/useFonts";
 
 export default function JoinScreen({ slug, onJoined, onSignIn }) {
   useFonts();
+  const { adoptSession } = useAuth();
 
   const [preview, setPreview] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -52,7 +54,10 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
         password,
         message: message.trim() || null,
       });
-      api.saveSession({
+      // Through the provider, not straight to storage — see AuthProvider's
+      // adoptSession: a session written behind its back is invisible to it,
+      // and any previously signed-in person would silently remain current.
+      adoptSession({
         token: session.token,
         expiresAt: session.expiresAt,
         fullName: session.fullName,
