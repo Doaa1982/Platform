@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard, BookOpen, PlayCircle, MessageSquare, MessageCircle, Megaphone,
-  Award, Upload, Wand2, CheckCircle2, XCircle, Pencil, Send, ArrowRight, ArrowLeft,
+  Award, Upload, Wand2, XCircle, Send, ArrowRight, ArrowLeft,
   Bot, Users, BarChart3, Clock, Mic, Sparkles, Check, Circle, RotateCcw, Settings,
-  CreditCard, Calendar, ClipboardCheck, TrendingUp, UserCircle, X, Plus,
-  Rocket, Palette, SlidersHorizontal, Building2, Activity,
-  Video, FileText, Layers, Lightbulb
+  CreditCard, Calendar, ClipboardCheck, UserCircle, X, Plus,
+  Rocket, Palette, SlidersHorizontal, Building2,
+
 } from "lucide-react";
 import { ArrowLeftRight } from "lucide-react";
 import { useAuth } from "./auth/authContext";
@@ -13,6 +13,8 @@ import { SIDES, rolesMatchSide } from "./auth/sides";
 import { useFonts } from "./hooks/useFonts";
 import MembersScreen from "./screens/MembersScreen";
 import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
+import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
+import NotBuiltYet from "./screens/NotBuiltYet";
 
 /* =========================================================================
    TOKEN SYSTEMS — one per Academy (Learning Workspace).
@@ -868,33 +870,6 @@ function LearnerAI({ c, academy }) {
    OWNER / WORKSPACE-OWNER SCREENS
    ========================================================================= */
 
-function OwnerOverview({ c }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Analytics + AI Business Assistant</div>
-      <h1>Overview</h1>
-      <div className="lw-grid3">
-        <div className="lw-card"><div className="lw-card__eyebrow"><TrendingUp size={14} /> Revenue</div><div className="lw-stat">{c.revenue.total}</div><div className="lw-card__meta">{c.revenue.trend}</div></div>
-        <div className="lw-card"><div className="lw-card__eyebrow"><CreditCard size={14} /> MRR</div><div className="lw-stat">{c.revenue.mrr}</div><div className="lw-card__meta">Recurring commerce</div></div>
-        <div className="lw-card"><div className="lw-card__eyebrow"><Users size={14} /> Members</div><div className="lw-stat">{c.members.length}</div><div className="lw-card__meta">Across all roles</div></div>
-      </div>
-      <div className="lw-principle" style={{ marginTop: 24 }}>
-        <Sparkles size={16} />
-        <span><strong>AI Business Assistant:</strong> {c.insight}</span>
-      </div>
-      <h2 className="lw-sectiontitle">Top learning products</h2>
-      <div className="lw-list">
-        {c.courses.map((course) => (
-          <div className="lw-listrow" key={course.id}>
-            <div className="lw-listrow__icon"><BookOpen size={18} /></div>
-            <div className="lw-listrow__body"><div className="lw-listrow__title">{course.title}</div><div className="lw-listrow__meta">{course.enrolled} enrolled · {course.price}</div></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* =========================================================================
    PSEUDO-AI HELPERS for the Product Builder.
    These simulate what the AI Content Assistant / AI Business Assistant
@@ -910,154 +885,10 @@ const UNIT_THEME_BANK = {
   General: ["Getting Started", "Core Concepts", "Applied Practice", "Mastery & Review"],
 };
 
-function aiOutline(topic, category) {
-  const bank = UNIT_THEME_BANK[category] || UNIT_THEME_BANK.General;
-  const title = topic.trim() ? topic.trim() : "Untitled Product";
-  const description =
-    category === "Language"
-      ? `A structured path to help learners build real conversational confidence in ${topic || "this topic"}.`
-      : category === "Exam Prep"
-      ? `A focused, scored path to help learners achieve their target result in ${topic || "this exam"}.`
-      : `A guided path to help learners master ${topic || "this subject"} step by step.`;
-  return {
-    title, description,
-    units: bank.slice(0, 3).map((theme, i) => ({
-      title: theme,
-      lessons: [`Introduction to ${theme}`, i < 2 ? `Practicing ${theme}` : `Review: ${theme}`],
-    })),
-  };
-}
-
-function aiNextUnit(existingTitles, category) {
-  const bank = UNIT_THEME_BANK[category] || UNIT_THEME_BANK.General;
-  const next = bank.find((t) => !existingTitles.includes(t)) || `Advanced: ${category || "Topic"}`;
-  const basis = existingTitles[existingTitles.length - 1];
-  return {
-    title: next,
-    rationale: basis
-      ? `Suggested because your last unit was "${basis}" — this is the natural next step for ${category || "this"} learners.`
-      : `Suggested as a strong starting point for a new ${category || ""} product.`,
-  };
-}
-
-function aiLessonObjective(title) {
-  const t = title.toLowerCase();
-  if (t.includes("practi")) return `By the end of this lesson, learners can apply "${title}" in a realistic scenario.`;
-  if (t.includes("review")) return `By the end of this lesson, learners can self-assess their progress on "${title}".`;
-  return `By the end of this lesson, learners can recognise and explain the core idea behind "${title}".`;
-}
-
-function aiVideoDraft(filename) {
-  const cleanTitle = (filename || "lesson").replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (m) => m.toUpperCase());
-  return {
-    title: `${cleanTitle} — AI Draft`,
-    questions: [
-      { t: "01:20", type: "Concept Check", text: "What is the main idea introduced so far?", rationale: "Placed right after the explanation, to check understanding immediately." },
-      { t: "04:10", type: "Prediction", text: "What do you think happens next?", rationale: "Placed before the example, to prompt an active prediction." },
-      { t: "07:00", type: "Application", text: "Try applying this yourself now.", rationale: "Placed after the example, to check the learner can apply it." },
-    ],
-  };
-}
-
 /* =========================================================================
    PRODUCT BUILDER — Units → Lessons → Interactive Videos,
    with AI assistance surfaced at every step.
    ========================================================================= */
-
-function AiSuggestBanner({ icon: Icon = Lightbulb, children, onAccept, onDismiss, acceptLabel = "Accept" }) {
-  return (
-    <div className="lw-aicard">
-      <Icon size={16} />
-      <div className="lw-aicard__body">{children}</div>
-      <div className="lw-aicard__actions">
-        {onAccept && <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={onAccept}>{acceptLabel}</button>}
-        {onDismiss && <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onDismiss}>Dismiss</button>}
-      </div>
-    </div>
-  );
-}
-
-function NewProductPanel({ onCreate, onCancel }) {
-  const [mode, setMode] = useState("choose"); // choose | blank | ai | ai-loading | ai-review
-  const [topic, setTopic] = useState("");
-  const [category, setCategory] = useState("General");
-  const [draft, setDraft] = useState(null);
-  const [blankTitle, setBlankTitle] = useState("");
-  const [blankDesc, setBlankDesc] = useState("");
-
-  const runAi = () => {
-    setMode("ai-loading");
-    setTimeout(() => { setDraft(aiOutline(topic, category)); setMode("ai-review"); }, 1200);
-  };
-
-  return (
-    <div className="lw-card" style={{ marginBottom: 20 }}>
-      {mode === "choose" && (
-        <>
-          <div className="lw-card__eyebrow">New learning product</div>
-          <div className="lw-wizardnav" style={{ justifyContent: "flex-start", gap: 10, marginTop: 8 }}>
-            <button className="lw-btn lw-btn--accent" onClick={() => setMode("ai")}><Sparkles size={15} /> Draft with AI</button>
-            <button className="lw-btn lw-btn--ghost" onClick={() => setMode("blank")}>Start blank</button>
-            <button className="lw-btn lw-btn--ghost" onClick={onCancel}>Cancel</button>
-          </div>
-        </>
-      )}
-
-      {mode === "ai" && (
-        <div className="lw-wizardbody" style={{ gap: 10 }}>
-          <div className="lw-card__eyebrow"><Sparkles size={13} style={{ verticalAlign: "-2px" }} /> AI Content Assistant</div>
-          <div className="lw-wfield"><label>What's this product about?</label><input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. Business English for meetings" /></div>
-          <div className="lw-wfield">
-            <label>Category</label>
-            <div className="lw-segctrl">{Object.keys(UNIT_THEME_BANK).map((cat) => <button key={cat} className={category === cat ? "active" : ""} onClick={() => setCategory(cat)}>{cat}</button>)}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="lw-btn lw-btn--accent" onClick={runAi}>Generate outline <ArrowRight size={15} /></button>
-            <button className="lw-btn lw-btn--ghost" onClick={() => setMode("choose")}>Back</button>
-          </div>
-        </div>
-      )}
-
-      {mode === "ai-loading" && (
-        <div className="lw-analyzing"><div className="lw-spinner" /><div>AI Content Assistant is drafting a product outline for "{topic || "your topic"}"…</div></div>
-      )}
-
-      {mode === "ai-review" && draft && (
-        <div className="lw-wizardbody" style={{ gap: 12 }}>
-          <AiSuggestBanner>AI drafted a full outline below. Nothing is created until you approve it — you stay the source of truth (AI assists, you own it).</AiSuggestBanner>
-          <div className="lw-wfield"><label>Product title</label><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></div>
-          <div className="lw-wfield"><label>Description</label><input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></div>
-          <div className="lw-list">
-            {draft.units.map((u, i) => (
-              <div className="lw-listrow" key={i}>
-                <div className="lw-listrow__icon"><Layers size={16} /></div>
-                <div className="lw-listrow__body"><div className="lw-listrow__title">{u.title}</div><div className="lw-listrow__meta">{u.lessons.join(" · ")}</div></div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="lw-btn lw-btn--accent" onClick={() => onCreate({ title: draft.title, description: draft.description, category, units: draft.units.map((u, ui) => ({ id: `u${ui}`, title: u.title, lessons: u.lessons.map((lt, li) => ({ id: `l${ui}-${li}`, title: lt, type: "text", status: "Draft" })) })) }, true)}>
-              <Check size={15} /> Create product from draft
-            </button>
-            <button className="lw-btn lw-btn--ghost" onClick={() => setMode("ai")}>Regenerate</button>
-          </div>
-        </div>
-      )}
-
-      {mode === "blank" && (
-        <div className="lw-wizardbody" style={{ gap: 10 }}>
-          <div className="lw-wfield"><label>Product title</label><input value={blankTitle} onChange={(e) => setBlankTitle(e.target.value)} placeholder="e.g. Business English for Meetings" /></div>
-          <div className="lw-wfield"><label>Description</label><input value={blankDesc} onChange={(e) => setBlankDesc(e.target.value)} placeholder="One line describing this product" /></div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="lw-btn lw-btn--accent" disabled={!blankTitle.trim()} onClick={() => onCreate({ title: blankTitle, description: blankDesc, category: "General", units: [] }, false)}>Create product</button>
-            <button className="lw-btn lw-btn--ghost" onClick={() => setMode("choose")}>Back</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* =========================================================================
    VIDEO SOURCE PICKER — shared by Content Studio and the Product Builder.
@@ -1072,495 +903,6 @@ function NewProductPanel({ onCreate, onCancel }) {
    Either overrides the generated brand art from BrandMark / CourseCover.
    ========================================================================= */
 
-function ImagePicker({ value, onChange }) {
-  const [mode, setMode] = useState("upload");
-  const [url, setUrl] = useState(value && value.startsWith("http") ? value : "");
-  const fileRef = useRef(null);
-
-  const handleFile = (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => onChange(reader.result);
-    reader.readAsDataURL(f);
-  };
-
-  const applyUrl = () => { if (url.trim()) onChange(url.trim()); };
-
-  return (
-    <div className="lw-imagepicker">
-      <div className="lw-segctrl">
-        <button className={mode === "upload" ? "active" : ""} onClick={() => setMode("upload")}>Upload file</button>
-        <button className={mode === "url" ? "active" : ""} onClick={() => setMode("url")}>Paste URL</button>
-      </div>
-      {mode === "upload" ? (
-        <>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => fileRef.current && fileRef.current.click()}><Upload size={13} /> Choose image</button>
-        </>
-      ) : (
-        <div style={{ display: "flex", gap: 6 }}>
-          <input className="lw-inlineinput" style={{ flex: 1 }} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
-          <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={!url.trim()} onClick={applyUrl}>Apply</button>
-        </div>
-      )}
-      {value && <button className="lw-inlineai" onClick={() => { onChange(null); setUrl(""); }}>Remove — use generated art instead</button>}
-    </div>
-  );
-}
-
-function VideoSourcePicker({ onChange }) {
-  const [mode, setMode] = useState("upload");
-  const [file, setFile] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [url, setUrl] = useState("");
-  const fileRef = useRef(null);
-
-  const detectSource = (u) => {
-    if (/youtube\.com|youtu\.be/i.test(u)) return "YouTube";
-    if (/vimeo\.com/i.test(u)) return "Vimeo";
-    if (/^https?:\/\//i.test(u)) return "Video URL";
-    return "";
-  };
-  const source = mode === "url" ? detectSource(url) : "Upload";
-
-  const labelFor = () => {
-    if (mode === "upload") return file;
-    try {
-      const parsed = new URL(url);
-      const seg = parsed.pathname.split("/").filter(Boolean).pop();
-      return (seg || parsed.hostname.replace("www.", "")).replace(/[-_]+/g, " ");
-    } catch {
-      return "Imported Video";
-    }
-  };
-
-  const ready = mode === "upload" ? !!file && !uploading : /^https?:\/\/.+\..+/i.test(url.trim());
-
-  useEffect(() => {
-    onChange({ ready, label: labelFor(), sourceType: mode === "upload" ? "Upload" : (source || "URL") });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, file, uploading, url]);
-
-  const handleFile = (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    setUploading(true);
-    setTimeout(() => { setFile(f.name); setUploading(false); }, 900);
-  };
-
-  return (
-    <div className="lw-videosource">
-      <div className="lw-segctrl">
-        <button className={mode === "upload" ? "active" : ""} onClick={() => setMode("upload")}>Upload file</button>
-        <button className={mode === "url" ? "active" : ""} onClick={() => setMode("url")}>Paste URL</button>
-      </div>
-
-      {mode === "upload" ? (
-        <>
-          <input ref={fileRef} type="file" accept="video/*,.mp4,.mov" style={{ display: "none" }} onChange={handleFile} />
-          <div className="lw-dropzone lw-dropzone--compact" onClick={() => fileRef.current && fileRef.current.click()}>
-            {uploading ? (
-              <><div className="lw-spinner" /> Uploading…</>
-            ) : file ? (
-              <><Check size={20} /><div className="lw-dropzone__title">{file}</div><div className="lw-dropzone__meta">Click to replace</div></>
-            ) : (
-              <><Upload size={22} /><div className="lw-dropzone__title">Click to choose a video file</div><div className="lw-dropzone__meta">MP4 or MOV from your computer</div></>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="lw-wfield">
-          <label>Video URL {source && <span className="lw-tag lw-tag--source">{source} detected</span>}</label>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or https://vimeo.com/…" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AddLessonPanel({ unitTitle, onAddText, onAddVideo }) {
-  const [mode, setMode] = useState("choose"); // choose | text | video-form | video-analyzing | video-review
-  const [title, setTitle] = useState("");
-  const [objective, setObjective] = useState("");
-  const [source, setSource] = useState({ ready: false, label: "", sourceType: "Upload" });
-  const [videoDraft, setVideoDraft] = useState(null);
-  const [questions, setQuestions] = useState([]);
-
-  const draftObjective = () => setObjective(aiLessonObjective(title || unitTitle));
-
-  const startVideoAi = () => {
-    setMode("video-analyzing");
-    setTimeout(() => {
-      const d = aiVideoDraft(source.label);
-      setVideoDraft({ ...d, sourceType: source.sourceType });
-      setQuestions(d.questions.map((q) => ({ ...q, status: "pending" })));
-      setMode("video-review");
-    }, 1400);
-  };
-
-  const setQStatus = (i, status) => setQuestions((qs) => qs.map((q, idx) => (idx === i ? { ...q, status } : q)));
-
-  if (mode === "choose") {
-    return (
-      <div className="lw-wizardnav" style={{ justifyContent: "flex-start", gap: 8 }}>
-        <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setMode("text")}><FileText size={14} /> Blank lesson</button>
-        <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setMode("video-form")}><Video size={14} /> Interactive video lesson</button>
-      </div>
-    );
-  }
-
-  if (mode === "text") {
-    return (
-      <div className="lw-wizardbody" style={{ gap: 8, background: "var(--surface-2)", padding: 14, borderRadius: "var(--radius-sm)" }}>
-        <div className="lw-wfield"><label>Lesson title</label><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Asking for Directions" /></div>
-        <div className="lw-wfield">
-          <label>Objective <button className="lw-inlineai" onClick={draftObjective} disabled={!title.trim()}><Sparkles size={12} /> Draft with AI</button></label>
-          <input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="AI can draft this from the title" />
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={!title.trim()} onClick={() => { onAddText(title, objective); setMode("choose"); setTitle(""); setObjective(""); }}>Add lesson</button>
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setMode("choose")}>Cancel</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (mode === "video-form") {
-    return (
-      <div className="lw-wizardbody" style={{ gap: 10, background: "var(--surface-2)", padding: 14, borderRadius: "var(--radius-sm)" }}>
-        <VideoSourcePicker onChange={setSource} />
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={!source.ready} onClick={startVideoAi}><Sparkles size={14} /> Analyse with AI</button>
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setMode("choose")}>Cancel</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (mode === "video-analyzing") {
-    return (
-      <div className="lw-analyzing" style={{ background: "var(--surface-2)", padding: 14, borderRadius: "var(--radius-sm)" }}>
-        <div className="lw-spinner" />
-        <ul className="lw-analyzing__steps">
-          <li className="done"><Check size={13} /> Transcribing speech</li>
-          <li className="done"><Check size={13} /> Extracting key concepts</li>
-          <li className="active"><Circle size={13} /> Placing interactive questions</li>
-        </ul>
-      </div>
-    );
-  }
-
-  if (mode === "video-review" && videoDraft) {
-    return (
-      <div className="lw-wizardbody" style={{ gap: 10, background: "var(--surface-2)", padding: 14, borderRadius: "var(--radius-sm)" }}>
-        <div className="lw-wfield"><label>Lesson title <span className="lw-tag lw-tag--source">Source: {videoDraft.sourceType}</span></label><input value={videoDraft.title} onChange={(e) => setVideoDraft({ ...videoDraft, title: e.target.value })} /></div>
-        <div className="lw-list">
-          {questions.map((q, i) => (
-            <div className={`lw-listrow lw-questionrow ${q.status}`} key={i}>
-              <div className="lw-listrow__icon lw-timestamp">{q.t}</div>
-              <div className="lw-listrow__body">
-                <span className="lw-tag">{q.type}</span>
-                <div className="lw-listrow__title">{q.text}</div>
-                <div className="lw-rationale"><Bot size={11} /> {q.rationale}</div>
-              </div>
-              <div className="lw-rowactions">
-                <button className={q.status === "accepted" ? "active" : ""} onClick={() => setQStatus(i, "accepted")}><Check size={14} /></button>
-                <button className={q.status === "removed" ? "active danger" : ""} onClick={() => setQStatus(i, "removed")}><XCircle size={14} /></button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={() => { onAddVideo(videoDraft.title, questions.filter((q) => q.status !== "removed").length); setMode("choose"); setSource({ ready: false, label: "", sourceType: "Upload" }); }}>
-            <Check size={14} /> Publish to unit
-          </button>
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setMode("choose")}>Cancel</button>
-        </div>
-      </div>
-    );
-  }
-  return null;
-}
-
-function ProductDetail({ product, onUpdate, onBack, fire }) {
-  const [addingLessonFor, setAddingLessonFor] = useState(null);
-  const [suggestion, setSuggestion] = useState(null);
-  const [suggestLoading, setSuggestLoading] = useState(false);
-
-  const update = (fn) => onUpdate((p) => fn({ ...p, units: p.units.map((u) => ({ ...u, lessons: [...u.lessons] })) }));
-
-  const addUnit = (title) => {
-    update((p) => ({ ...p, units: [...p.units, { id: `u${Date.now()}`, title, lessons: [] }] }));
-    fire("ProductContentUpdated");
-  };
-
-  const removeUnit = (id) => { update((p) => ({ ...p, units: p.units.filter((u) => u.id !== id) })); fire("ProductContentUpdated"); };
-  const removeLesson = (unitId, lessonId) => {
-    update((p) => ({ ...p, units: p.units.map((u) => (u.id === unitId ? { ...u, lessons: u.lessons.filter((l) => l.id !== lessonId) } : u)) }));
-    fire("ProductContentUpdated");
-  };
-
-  const addTextLesson = (unitId, title, objective) => {
-    update((p) => ({ ...p, units: p.units.map((u) => (u.id === unitId ? { ...u, lessons: [...u.lessons, { id: `l${Date.now()}`, title, type: "text", status: "Published", objective }] } : u)) }));
-    fire("LearningAssetCreated"); fire("LessonPublished");
-  };
-
-  const addVideoLesson = (unitId, title, questionCount) => {
-    update((p) => ({ ...p, units: p.units.map((u) => (u.id === unitId ? { ...u, lessons: [...u.lessons, { id: `l${Date.now()}`, title, type: "video", status: "Published", questionCount }] } : u)) }));
-    fire("VideoUploaded"); fire("VideoProcessingStarted"); fire("TranscriptGenerated");
-    fire("AIAnalysisCompleted"); fire("InteractiveQuestionsGenerated"); fire("LearningAssetApproved"); fire("LessonPublished");
-  };
-
-  const suggestNextUnit = () => {
-    setSuggestLoading(true);
-    setTimeout(() => { setSuggestion(aiNextUnit(product.units.map((u) => u.title), product.category)); setSuggestLoading(false); }, 900);
-  };
-
-  const totalLessons = product.units.reduce((s, u) => s + u.lessons.length, 0);
-
-  return (
-    <div className="lw-page">
-      <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onBack} style={{ marginBottom: 16 }}><ArrowLeft size={14} /> All products</button>
-      <CourseCover title={product.title} imageUrl={product.imageUrl} height={140} />
-      <div style={{ marginTop: 10 }}>
-        <ImagePicker value={product.imageUrl} onChange={(url) => update((p) => ({ ...p, imageUrl: url }))} />
-      </div>
-      <div className="lw-eyebrow" style={{ marginTop: 16 }}>Learning Product Context · Product Content Strategy</div>
-      <h1>{product.title}</h1>
-      <p className="lw-sub">{product.description || "No description yet."} · {product.units.length} units · {totalLessons} lessons · <em style={{ fontStyle: "normal", color: "var(--ink-soft)" }}>curriculum cover shown to learners on their Courses page</em></p>
-
-      <AiSuggestBanner icon={Bot}>
-        AI Content Assistant: {totalLessons === 0
-          ? "This product has no lessons yet — start with a unit, then add your first lesson below."
-          : totalLessons < 4
-          ? "Good start — most published products in this category have 8–12 lessons across 3+ units."
-          : "Solid structure. Consider whether an assessment should sit at the end of the final unit."}
-      </AiSuggestBanner>
-
-      <h2 className="lw-sectiontitle">Units</h2>
-      <div className="lw-unitlist">
-        {product.units.map((u) => (
-          <div className="lw-unitcard" key={u.id}>
-            <div className="lw-unitcard__head">
-              <Layers size={15} /> <span>{u.title}</span>
-              <button className="lw-unitcard__remove" onClick={() => removeUnit(u.id)}><X size={13} /></button>
-            </div>
-            <div className="lw-list">
-              {u.lessons.map((l) => (
-                <div className="lw-listrow" key={l.id}>
-                  <div className="lw-listrow__icon">{l.type === "video" ? <Video size={15} /> : <FileText size={15} />}</div>
-                  <div className="lw-listrow__body">
-                    <div className="lw-listrow__title">{l.title}</div>
-                    <div className="lw-listrow__meta">{l.type === "video" ? `Interactive video · ${l.questionCount} AI-placed questions` : (l.objective || "Text lesson")}</div>
-                  </div>
-                  <span className="lw-tag">{l.status}</span>
-                  <button className="lw-rowactions__single" onClick={() => removeLesson(u.id, l.id)}><X size={13} /></button>
-                </div>
-              ))}
-              {u.lessons.length === 0 && <div className="lw-empty" style={{ padding: 14 }}>No lessons in this unit yet.</div>}
-            </div>
-            {addingLessonFor === u.id ? (
-              <AddLessonPanel unitTitle={u.title}
-                onAddText={(title, obj) => addTextLesson(u.id, title, obj)}
-                onAddVideo={(title, qc) => addVideoLesson(u.id, title, qc)} />
-            ) : (
-              <button className="lw-btn lw-btn--ghost lw-btn--sm" style={{ marginTop: 10 }} onClick={() => setAddingLessonFor(u.id)}><Plus size={13} /> Add lesson</button>
-            )}
-          </div>
-        ))}
-        {product.units.length === 0 && <div className="lw-empty">No units yet — add one to start structuring this product.</div>}
-      </div>
-
-      {suggestion && (
-        <AiSuggestBanner icon={Lightbulb} acceptLabel="Add this unit"
-          onAccept={() => { addUnit(suggestion.title); fire("AIRecommendationGenerated"); setSuggestion(null); }}
-          onDismiss={() => setSuggestion(null)}>
-          <strong>Suggested unit: {suggestion.title}</strong><br />{suggestion.rationale}
-        </AiSuggestBanner>
-      )}
-
-      <div className="lw-wizardnav" style={{ justifyContent: "flex-start", gap: 8, marginTop: 14 }}>
-        <ManualAddUnit onAdd={addUnit} />
-        <button className="lw-btn lw-btn--ghost" onClick={suggestNextUnit} disabled={suggestLoading}>
-          <Sparkles size={15} /> {suggestLoading ? "Thinking…" : "AI: suggest next unit"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ManualAddUnit({ onAdd }) {
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  if (!open) return <button className="lw-btn lw-btn--ghost" onClick={() => setOpen(true)}><Plus size={15} /> Add unit</button>;
-  return (
-    <div style={{ display: "flex", gap: 6 }}>
-      <input className="lw-inlineinput" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Unit title" autoFocus />
-      <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={!title.trim()} onClick={() => { onAdd(title); setTitle(""); setOpen(false); }}>Add</button>
-    </div>
-  );
-}
-
-function OwnerProducts({ c }) {
-  const [products, setProducts] = useState(() =>
-    c.courses.map((course, i) => ({
-      ...course,
-      description: course.description || "",
-      category: "General",
-      units: i === 0
-        ? [{ id: "u0", title: "Live Lessons", lessons: [{ id: "l0", title: c.activeLesson.title, type: "video", status: "Published", questionCount: c.activeLesson.events.length }] }]
-        : [],
-    }))
-  );
-  const [selectedId, setSelectedId] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [log, setLog] = useState([]);
-
-  const fire = (event) => setLog((l) => [{ event, id: Date.now() + Math.random() }, ...l].slice(0, 6));
-
-  const updateProduct = (id, fn) => setProducts((ps) => ps.map((p) => (p.id === id ? fn(p) : p)));
-
-  const createProduct = (data, viaAi) => {
-    const id = `p${Date.now()}`;
-    setProducts((ps) => [...ps, { id, price: "Not priced yet", enrolled: 0, lessons: 0, progress: 0, ...data }]);
-    if (viaAi) { fire("AIContentGenerationRequested"); fire("AILessonDraftCreated"); }
-    fire("LearningProductCreated");
-    setCreating(false);
-    setSelectedId(id);
-  };
-
-  const selected = products.find((p) => p.id === selectedId);
-
-  if (selected) {
-    return (
-      <>
-        <ProductDetail product={selected} onUpdate={(fn) => updateProduct(selected.id, fn)} onBack={() => setSelectedId(null)} fire={fire} />
-        {log.length > 0 && (
-          <div className="lw-page" style={{ marginTop: -8 }}>
-            <h2 className="lw-sectiontitle">Recent domain events</h2>
-            <div className="lw-eventlog">{log.map((l) => <div className="lw-eventlog__item" key={l.id}><Activity size={12} /> {l.event}</div>)}</div>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Learning Product Context</div>
-      <h1>Learning products</h1>
-      <p className="lw-sub">What you offer — structured as reusable content composed into products, independent of pricing or delivery. AI can help draft the outline, but you approve everything.</p>
-
-      {creating ? (
-        <NewProductPanel onCreate={createProduct} onCancel={() => setCreating(false)} />
-      ) : (
-        <button className="lw-btn lw-btn--ghost" style={{ marginBottom: 20 }} onClick={() => setCreating(true)}><Plus size={15} /> New learning product</button>
-      )}
-
-      <div className="lw-table">
-        <div className="lw-table__row lw-table__row--head"><span>Product</span><span>Units</span><span>Lessons</span><span>Price</span></div>
-        {products.map((p) => (
-          <div className="lw-table__row lw-table__row--click" key={p.id} onClick={() => setSelectedId(p.id)}>
-            <span>{p.title}</span><span>{p.units.length}</span><span>{p.units.reduce((s, u) => s + u.lessons.length, 0)}</span><span>{p.price}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function OwnerScheduling({ c }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Scheduling Context</div>
-      <h1>Sessions</h1>
-      <div className="lw-list">
-        {c.sessions.map((s, i) => (
-          <div className="lw-listrow" key={i}>
-            <div className="lw-listrow__icon"><Calendar size={18} /></div>
-            <div className="lw-listrow__body"><div className="lw-listrow__title">{s.title}</div><div className="lw-listrow__meta">{s.when}</div></div>
-            <span className="lw-tag">{s.people} {s.people === 1 ? "person" : "people"}</span>
-          </div>
-        ))}
-      </div>
-      <button className="lw-btn lw-btn--ghost" style={{ marginTop: 16 }}><Plus size={15} /> New session</button>
-    </div>
-  );
-}
-
-function OwnerCommerce({ c }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Commerce Context</div>
-      <h1>Orders & revenue</h1>
-      <div className="lw-grid3" style={{ marginBottom: 24 }}>
-        <div className="lw-card"><div className="lw-card__eyebrow">Total revenue</div><div className="lw-stat">{c.revenue.total}</div></div>
-        <div className="lw-card"><div className="lw-card__eyebrow">MRR</div><div className="lw-stat">{c.revenue.mrr}</div></div>
-        <div className="lw-card"><div className="lw-card__eyebrow">Trend</div><div className="lw-stat">{c.revenue.trend}</div></div>
-      </div>
-      <div className="lw-table">
-        <div className="lw-table__row lw-table__row--head"><span>Learner</span><span>Product</span><span>Amount</span><span>Status</span></div>
-        {c.orders.map((o, i) => (
-          <div className="lw-table__row" key={i}><span>{o.learner}</span><span>{o.product}</span><span>{o.amount}</span><span>{o.status}</span></div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function OwnerCommunication({ c }) {
-  const [items, setItems] = useState(c.announcements);
-  const [draft, setDraft] = useState("");
-  const publish = () => { if (!draft.trim()) return; setItems([{ title: draft, date: "Just now", audience: "All learners" }, ...items]); setDraft(""); };
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Communication Context</div>
-      <h1>Announcements</h1>
-      <div className="lw-composer">
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Write an announcement…" />
-        <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={publish}><Send size={14} /> Publish</button>
-      </div>
-      <div className="lw-list">
-        {items.map((a, i) => (
-          <div className="lw-listrow" key={i}>
-            <div className="lw-listrow__icon"><Megaphone size={18} /></div>
-            <div className="lw-listrow__body"><div className="lw-listrow__title">{a.title}</div><div className="lw-listrow__meta">{a.date} · {a.audience}</div></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function OwnerAssessment({ c }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Assessment Context</div>
-      <h1>Assessment & certificates</h1>
-      <h2 className="lw-sectiontitle">Rubrics in use</h2>
-      <div className="lw-list">
-        {c.assessmentsOwner.map((a, i) => (
-          <div className="lw-listrow" key={i}>
-            <div className="lw-listrow__icon"><ClipboardCheck size={18} /></div>
-            <div className="lw-listrow__body"><div className="lw-listrow__title">{a.name}</div><div className="lw-listrow__meta">Evaluation: {a.type}</div></div>
-            <div className="lw-scorepill">{a.avgScore}</div>
-          </div>
-        ))}
-      </div>
-      <h2 className="lw-sectiontitle">Certificates issued</h2>
-      <div className="lw-list">
-        {c.certificatesIssued.map((cert, i) => (
-          <div className="lw-listrow" key={i}>
-            <div className="lw-listrow__icon"><Award size={18} /></div>
-            <div className="lw-listrow__body"><div className="lw-listrow__title">{cert.learner}</div><div className="lw-listrow__meta">{cert.cert}</div></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const WIDGET_META = [
   { key: "aiTutor", label: "AI Tutor", consequence: "AI chat tab hidden from learners" },
   { key: "assessments", label: "Assessments", consequence: "Assessments tab and scores hidden from learners" },
@@ -1570,182 +912,9 @@ const WIDGET_META = [
   { key: "community", label: "Community", consequence: "Community feed hidden from learners" },
 ];
 
-function OwnerSettings({ c, theme, capabilities, onToggleCapability, onSetLogo }) {
-  return (
-    <div className="lw-page">
-      <div className="lw-eyebrow">Workspace Management Context</div>
-      <h1>Workspace settings</h1>
-      <p className="lw-sub">Changes here are isolated to {c.name} only — no other Workspace is affected (ER-005 / BR-WS-004).</p>
-      <div className="lw-card">
-        <div className="lw-card__eyebrow">Identity</div>
-        <div className="lw-settingsrow"><label>Workspace name</label><input defaultValue={c.name} /></div>
-        <div className="lw-settingsrow"><label>Tagline</label><input defaultValue={c.tagline} /></div>
-      </div>
-      <div className="lw-card" style={{ marginTop: 16 }}>
-        <div className="lw-card__eyebrow">Logo</div>
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-          <BrandMark c={c} size={56} />
-          <div style={{ flex: 1 }}>
-            <p className="lw-sub" style={{ marginBottom: 10 }}>Upload a logo or paste a URL. Without one, {c.name} uses a generated mark that matches your brand colors — shown to the left.</p>
-            <ImagePicker value={c.logoUrl} onChange={onSetLogo} />
-          </div>
-        </div>
-      </div>
-      <div className="lw-card" style={{ marginTop: 16 }}>
-        <div className="lw-card__eyebrow">Branding</div>
-        <div className="lw-swatchrow">
-          {["--accent", "--accent-2", "--bg", "--ink"].map((k) => (
-            <div className="lw-swatch" key={k}><span style={{ background: theme[k] }} /><div>{k.replace("--", "")}<br />{theme[k]}</div></div>
-          ))}
-        </div>
-        <div className="lw-settingsrow"><label>Display font</label><input defaultValue={theme["--font-display"]} readOnly /></div>
-        <div className="lw-settingsrow"><label>Body font</label><input defaultValue={theme["--font-body"]} readOnly /></div>
-      </div>
-      <div className="lw-card" style={{ marginTop: 16 }}>
-        <div className="lw-card__eyebrow">AI configuration</div>
-        <div className="lw-settingsrow"><label>Assistant name</label><input defaultValue={c.aiName} /></div>
-        <div className="lw-settingsrow"><label>Owner-role terminology</label><input defaultValue={c.ownerRole} /></div>
-      </div>
-      <div className="lw-card" style={{ marginTop: 16 }}>
-        <div className="lw-card__eyebrow">Student dashboard widgets</div>
-        <p className="lw-sub" style={{ marginBottom: 14 }}>Turn capabilities on or off for learners in this academy only. Data is preserved when a widget is off — turning it back on restores it.</p>
-        {WIDGET_META.map((w) => (
-          <div className="lw-widgetrow" key={w.key}>
-            <div>
-              <div className="lw-widgetrow__label">{w.label}</div>
-              <div className="lw-widgetrow__consequence">{capabilities[w.key] ? "Visible to learners" : w.consequence}</div>
-            </div>
-            <button
-              className={`lw-toggle ${capabilities[w.key] ? "is-on" : ""}`}
-              onClick={() => onToggleCapability(w.key)}
-              aria-pressed={capabilities[w.key]}
-            ><span /></button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* =========================================================================
    CONTENT STUDIO (AI-Assisted Learning Content Lifecycle)
    ========================================================================= */
-
-function Stepper({ step }) {
-  const steps = ["upload", "analyzing", "review", "published"];
-  const labels = ["Upload", "AI Analysis", "Review", "Publish"];
-  const idx = steps.indexOf(step);
-  return (
-    <div className="lw-stepper">
-      {labels.map((l, i) => (
-        <div key={l} className={`lw-stepper__item ${i <= idx ? "done" : ""} ${i === idx ? "active" : ""}`}>
-          <span>{i < idx ? <Check size={12} /> : i + 1}</span>{l}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StudioUpload({ c, step, setStep }) {
-  const [source, setSource] = useState({ ready: false, label: "", sourceType: "Upload" });
-  useEffect(() => {
-    if (step === "analyzing") { const t = setTimeout(() => setStep("review"), 1700); return () => clearTimeout(t); }
-  }, [step, setStep]);
-
-  if (step === "analyzing") {
-    return (
-      <div className="lw-page">
-        <Stepper step={step} />
-        <div className="lw-eyebrow">AI Content Assistant</div>
-        <h1>Analysing your video…</h1>
-        <div className="lw-card lw-analyzing">
-          <div className="lw-spinner" />
-          <div>
-            <div className="lw-card__title" style={{ fontSize: "1rem" }}>{source.label || c.uploadFile} <span className="lw-tag lw-tag--source">{source.sourceType}</span></div>
-            <ul className="lw-analyzing__steps">
-              <li className="done"><Check size={14} /> Transcribing speech</li>
-              <li className="done"><Check size={14} /> Extracting key concepts</li>
-              <li className="active"><Circle size={14} /> Drafting interactive questions</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="lw-page">
-      <Stepper step={step} />
-      <div className="lw-eyebrow">{c.ownerRole} tools · {c.name}</div>
-      <h1>Turn a recording into an interactive lesson</h1>
-      <p className="lw-sub">Upload a video you already have, or paste a link. {c.aiName} will draft the title, objectives and questions — you approve everything before learners see it.</p>
-      <VideoSourcePicker onChange={setSource} />
-      <button className="lw-btn lw-btn--accent lw-btn--lg" disabled={!source.ready} onClick={() => setStep("analyzing")}>
-        <Sparkles size={16} /> Analyse with AI
-      </button>
-      <div className="lw-principle"><Sparkles size={16} /><span><strong>AI assists, you own it.</strong> {c.aiName} never publishes directly to learners.</span></div>
-    </div>
-  );
-}
-
-function StudioReview({ c, onPublish }) {
-  const [title, setTitle] = useState(c.aiDraft.title);
-  const [questions, setQuestions] = useState(c.aiDraft.questions.map((q) => ({ ...q })));
-  const setStatus = (i, status) => setQuestions((qs) => qs.map((q, idx) => (idx === i ? { ...q, status } : q)));
-  const remaining = questions.filter((q) => q.status !== "removed");
-  return (
-    <div className="lw-page">
-      <Stepper step="review" />
-      <div className="lw-eyebrow"><Wand2 size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />AI-generated draft · awaiting your review</div>
-      <h1><input className="lw-titleinput" value={title} onChange={(e) => setTitle(e.target.value)} /></h1>
-      <div className="lw-card">
-        <div className="lw-card__eyebrow">Learning objectives</div>
-        <ul className="lw-objectives">{c.aiDraft.objectives.map((o, i) => <li key={i}>{o}</li>)}</ul>
-      </div>
-      <h2 className="lw-sectiontitle">Suggested interactive questions</h2>
-      <div className="lw-list">
-        {questions.map((q, i) => (
-          <div className={`lw-listrow lw-questionrow ${q.status}`} key={i}>
-            <div className="lw-listrow__icon lw-timestamp">{q.t}</div>
-            <div className="lw-listrow__body">
-              <span className="lw-tag">{q.type}</span>
-              <div className="lw-listrow__title">{q.text}</div>
-              {q.status === "removed" && <div className="lw-listrow__meta">Removed — won't appear to learners</div>}
-              {q.status === "accepted" && <div className="lw-listrow__meta">Accepted</div>}
-            </div>
-            <div className="lw-rowactions">
-              <button title="Accept" className={q.status === "accepted" ? "active" : ""} onClick={() => setStatus(i, "accepted")}><Check size={15} /></button>
-              <button title="Edit"><Pencil size={15} /></button>
-              <button title="Remove" className={q.status === "removed" ? "active danger" : ""} onClick={() => setStatus(i, "removed")}><XCircle size={15} /></button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="lw-principle"><Sparkles size={16} /><span>{remaining.length} of {questions.length} questions will publish. You stay the source of truth for correctness and teaching style.</span></div>
-      <button className="lw-btn lw-btn--accent lw-btn--lg" onClick={() => onPublish({ title, questions: remaining })}>Publish lesson <ArrowRight size={16} /></button>
-    </div>
-  );
-}
-
-function StudioPublished({ c, published, setStep }) {
-  return (
-    <div className="lw-page">
-      <Stepper step="published" />
-      <div className="lw-eyebrow">Published</div>
-      <h1>Live in {c.name}</h1>
-      <p className="lw-sub">Learners in this academy only will see these lessons — fully isolated from every other workspace on the platform.</p>
-      <div className="lw-list">
-        {published.length === 0 && <div className="lw-empty">No lessons published yet in this session.</div>}
-        {published.map((p, i) => (
-          <div className="lw-listrow" key={i}>
-            <div className="lw-listrow__icon"><Award size={18} /></div>
-            <div className="lw-listrow__body"><div className="lw-listrow__title">{p.title}</div><div className="lw-listrow__meta">{p.questions.length} interactive questions · published just now</div></div>
-          </div>
-        ))}
-      </div>
-      <button className="lw-btn lw-btn--ghost" onClick={() => setStep("upload")}><ArrowLeft size={15} /> Author another lesson</button>
-    </div>
-  );
-}
 
 /* =========================================================================
    PROFESSIONAL PROFILE OVERLAY (Identity Context, Section III)
@@ -2052,23 +1221,44 @@ export default function App() {
           {role === "learner" && learnerScreen === "community" && <LearnerCommunity key={academy} c={c} />}
           {role === "learner" && learnerScreen === "ai" && <LearnerAI c={c} academy={academy} />}
 
-          {role === "owner" && ownerScreen === "overview" && <OwnerOverview c={c} />}
-          {role === "owner" && ownerScreen === "products" && <OwnerProducts key={academy} c={c} />}
-          {role === "owner" && ownerScreen === "studio" && flow.step !== "review" && flow.step !== "published" && (
-            <StudioUpload c={c} step={flow.step} setStep={setStudioStep} />
-          )}
-          {role === "owner" && ownerScreen === "studio" && flow.step === "review" && <StudioReview c={c} onPublish={publish} />}
-          {role === "owner" && ownerScreen === "studio" && flow.step === "published" && <StudioPublished c={c} published={flow.published} setStep={setStudioStep} />}
-          {/* Real membership management against the API, not the prototype's
-              simulated version — the roles, the lifecycle and the caller's own
-              right to change any of it all come from the server. */}
+          {/* Owner screens. Only overview, members and setup are real; the rest
+              have no domain behind them yet and say so, rather than rendering
+              fixture data as though it were this tutor's own academy. */}
+          {role === "owner" && ownerScreen === "overview" && <WorkspaceHomeScreen onNavigate={setOwnerScreen} />}
           {role === "owner" && ownerScreen === "members" && <MembersScreen />}
           {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
-          {role === "owner" && ownerScreen === "scheduling" && <OwnerScheduling c={c} />}
-          {role === "owner" && ownerScreen === "commerce" && <OwnerCommerce c={c} />}
-          {role === "owner" && ownerScreen === "communication" && <OwnerCommunication key={academy} c={c} />}
-          {role === "owner" && ownerScreen === "assessment" && <OwnerAssessment c={c} />}
-          {role === "owner" && ownerScreen === "settings" && <OwnerSettings c={c} theme={theme} capabilities={capabilities} onToggleCapability={toggleCapability} onSetLogo={setLogo} />}
+
+          {role === "owner" && ownerScreen === "products" && (
+            <NotBuiltYet area="Learning Product Context" onNavigate={setOwnerScreen}
+              blurb="Courses and learning products don't exist on the platform yet, so there's nothing to list or price here."
+              next={{ text: "Finish setting up your workspace", to: "setup" }} />
+          )}
+          {role === "owner" && ownerScreen === "studio" && (
+            <NotBuiltYet area="Content Authoring" onNavigate={setOwnerScreen}
+              blurb="Lesson authoring — uploads, AI-drafted questions, publishing — isn't built yet. It arrives with Learning Products." />
+          )}
+          {role === "owner" && ownerScreen === "scheduling" && (
+            <NotBuiltYet area="Scheduling Context" onNavigate={setOwnerScreen}
+              blurb="Sessions and scheduling aren't built yet. Once they are, what you schedule here will be what your learners see." />
+          )}
+          {role === "owner" && ownerScreen === "commerce" && (
+            <NotBuiltYet area="Commerce Context" onNavigate={setOwnerScreen}
+              blurb="Pricing, orders and payouts aren't built yet. Your own subscription to the platform is separate and already handled." />
+          )}
+          {role === "owner" && ownerScreen === "communication" && (
+            <NotBuiltYet area="Communication Context" onNavigate={setOwnerScreen}
+              blurb="Announcements and messaging aren't built yet. For now, invitations are the only thing the platform sends on your behalf."
+              next={{ text: "Invite someone", to: "members" }} />
+          )}
+          {role === "owner" && ownerScreen === "assessment" && (
+            <NotBuiltYet area="Assessment & Certification" onNavigate={setOwnerScreen}
+              blurb="Assessments and certificates aren't built yet. They depend on Learning Products, which come first." />
+          )}
+          {role === "owner" && ownerScreen === "settings" && (
+            <NotBuiltYet area="Workspace Configuration" onNavigate={setOwnerScreen}
+              blurb="Branding, capabilities and regional settings aren't built yet. Your workspace's name, address and lifecycle live under Workspace Setup."
+              next={{ text: "Open Workspace Setup", to: "setup" }} />
+          )}
         </div>
       </div>
       {profileOpen && <ProfessionalProfile onClose={() => setProfileOpen(false)} />}
