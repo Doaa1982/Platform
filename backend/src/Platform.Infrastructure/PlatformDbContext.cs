@@ -20,6 +20,8 @@ public class PlatformDbContext : DbContext
     public DbSet<JoinRequest> JoinRequests => Set<JoinRequest>();
     public DbSet<SignupRequest> SignupRequests => Set<SignupRequest>();
     public DbSet<LearningProduct> LearningProducts => Set<LearningProduct>();
+    public DbSet<Curriculum> Curricula => Set<Curriculum>();
+    public DbSet<Lesson> Lessons => Set<Lesson>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -258,6 +260,73 @@ public class PlatformDbContext : DbContext
 
             // Every listing is scoped to one workspace (INV-001)
             entity.HasIndex(e => e.WorkspaceId);
+        });
+
+        modelBuilder.Entity<Curriculum>(entity =>
+        {
+            entity.ToTable("curricula");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.LearningProductId).IsRequired();
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // INV-003 (Learning Product): at most one active Curriculum per product,
+            // so every read is by product
+            entity.HasIndex(e => e.LearningProductId);
+
+            entity.HasMany(e => e.Units).WithOne()
+                  .HasForeignKey(u => u.CurriculumId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.Units).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<CurriculumUnit>(entity =>
+        {
+            entity.ToTable("curriculum_units");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+
+            entity.HasMany(e => e.Lessons).WithOne()
+                  .HasForeignKey(l => l.UnitId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.Lessons).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<CurriculumLesson>(entity =>
+        {
+            entity.ToTable("curriculum_lessons");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            // A lesson appears at most once in a given unit
+            entity.HasIndex(e => new { e.UnitId, e.LessonId }).IsUnique();
+        });
+
+        modelBuilder.Entity<Lesson>(entity =>
+        {
+            entity.ToTable("lessons");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.LearningProductId).IsRequired();
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.HasIndex(e => e.LearningProductId);
+
+            entity.HasMany(e => e.Revisions).WithOne()
+                  .HasForeignKey(r => r.LessonId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.Revisions).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<LessonRevision>(entity =>
+        {
+            entity.ToTable("lesson_revisions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            // Version numbers are unique per lesson and never reused
+            entity.HasIndex(e => new { e.LessonId, e.Version }).IsUnique();
         });
 
         modelBuilder.Entity<PlatformOperator>(entity =>

@@ -9,14 +9,11 @@ namespace Platform.Api.Services;
 /// Learning Products inside one Workspace — Learning Product Aggregate Design.
 ///
 /// A Learning Product is *what is offered*; a Curriculum is *what is taught*
-/// (§10). Only the offer exists so far: a tutor can define, describe, price the
-/// intent of, and publish a product, but there is nothing to teach inside it
-/// yet.
+/// (§10). Both now exist, so a product can be given real structure.
 ///
-/// That gap is deliberate rather than hidden. INV-006 forbids publishing
-/// without an active, published Curriculum, and Curriculum is not implemented,
-/// so the check cannot run. Rather than pretend it passes, the API reports on
-/// every product whether it has teaching content — which today is always no.
+/// INV-006 — no publishing without an active, published Curriculum — is now
+/// enforceable and enforced. Each product reports whether it has one, so a
+/// client can say what is missing before the tutor tries to publish.
 /// </summary>
 public class LearningProductService(PlatformDbContext db)
 {
@@ -45,13 +42,19 @@ public class LearningProductService(PlatformDbContext db)
             .ThenByDescending(p => p.UpdatedAt)
             .ToListAsync(ct);
 
+        // One query for the whole page rather than one per product
+        var withCurriculum = await db.Curricula.AsNoTracking()
+            .Where(c => c.WorkspaceId == ctx.Workspace!.Id && c.Status == CurriculumStatus.Published)
+            .Select(c => c.LearningProductId)
+            .ToListAsync(ct);
+
         return ProvisioningResult<LearningProductListResponse>.Success(new LearningProductListResponse(
             WorkspaceName: ctx.Workspace!.Name,
             CanAuthor:     ctx.CanAuthor,
-            Products:      products.Select(Describe).ToList()));
+            Products:      products.Select(p => Describe(p, withCurriculum.Contains(p.Id))).ToList()));
     }
 
-    private static LearningProductRow Describe(LearningProduct p) => new(
+    private static LearningProductRow Describe(LearningProduct p, bool hasCurriculum = false) => new(
         Id:              p.Id,
         Title:           p.Title,
         Description:     p.Description,
@@ -64,10 +67,7 @@ public class LearningProductService(PlatformDbContext db)
         CreatedAt:       p.CreatedAt,
         UpdatedAt:       p.UpdatedAt,
         PublishedAt:     p.PublishedAt,
-        // Always false today: Curriculum is not implemented, so no product can
-        // have teaching content. Reported rather than assumed, so the client can
-        // say so plainly instead of implying a course is ready to take.
-        HasCurriculum:   false);
+        HasCurriculum:   hasCurriculum);
 
     // ── Writing ──────────────────────────────────────────────────────────────
 
@@ -117,18 +117,25 @@ public class LearningProductService(PlatformDbContext db)
     /// </summary>
     public async Task<ProvisioningResult<LearningProductRow>> TransitionAsync(
         string slug, Guid callerIdentityId, Guid productId, string transition, CancellationToken ct = default)
-        => await MutateAsync(slug, callerIdentityId, productId, p =>
+    {
+        // Established before the mutation so INV-006 can be checked without the
+        // aggregate reaching into another one
+        var hasPublishedCurriculum = await db.Curricula.AsNoTracking()
+            .AnyAsync(c => c.LearningProductId == productId && c.Status == CurriculumStatus.Published, ct);
+
+        return await MutateAsync(slug, callerIdentityId, productId, p =>
         {
             switch (transition.ToLowerInvariant())
             {
                 case "submit":    p.SubmitForReview(); break;
                 case "return":    p.ReturnToDraft();   break;
-                case "publish":   p.Publish();         break;
+                case "publish":   p.Publish(hasPublishedCurriculum); break;
                 case "unpublish": p.Unpublish();       break;
                 case "archive":   p.Archive();         break;
                 default: throw new ArgumentException($"\"{transition}\" is not a learning product transition.");
             }
         }, ct);
+    }
 
     private async Task<ProvisioningResult<LearningProductRow>> MutateAsync(
         string slug, Guid callerIdentityId, Guid productId, Action<LearningProduct> mutate, CancellationToken ct)

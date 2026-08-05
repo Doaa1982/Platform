@@ -77,6 +77,7 @@ builder.Services.AddScoped<WorkspaceSetupService>();
 builder.Services.AddScoped<JoinRequestService>();
 builder.Services.AddScoped<SignupRequestService>();
  builder.Services.AddScoped<LearningProductService>();
+builder.Services.AddScoped<ContentStudioService>();
 
 // Guards the one endpoint a stranger can reach that creates an Identity
 builder.Services.AddPlatformRateLimiting(builder.Configuration);

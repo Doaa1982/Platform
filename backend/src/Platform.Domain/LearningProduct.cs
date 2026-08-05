@@ -138,10 +138,17 @@ public class LearningProduct
     /// treated as satisfied — it is recorded in the backlog rather than assumed
     /// away. What is enforced here is the ordering and a non-empty title.
     /// </summary>
-    public void Publish()
+    public void Publish(bool hasPublishedCurriculum)
     {
         if (string.IsNullOrWhiteSpace(Title))
             throw new InvalidOperationException("A Learning Product needs a title before it can be published.");
+
+        // INV-006, now enforceable. The Curriculum lives in its own aggregate,
+        // so the caller establishes this and passes the answer in rather than
+        // this aggregate reaching across the boundary to look for itself.
+        if (!hasPublishedCurriculum)
+            throw new InvalidOperationException(
+                "This product has no published curriculum, so there would be nothing inside it for a learner to do (INV-006). Build and publish its curriculum first.");
 
         Transition(LearningProductStatus.Published, LearningProductStatus.Draft, LearningProductStatus.UnderReview);
         PublishedAt = DateTime.UtcNow;
