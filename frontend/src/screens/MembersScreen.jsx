@@ -293,17 +293,25 @@ function InviteForm({ onSubmit, onCancel, busy }) {
       className="lw-members__form"
       onSubmit={(e) => { e.preventDefault(); onSubmit({ email: email.trim(), role }); }}
     >
-      <input
-        type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-        placeholder="their@email.com" required autoFocus disabled={busy}
-      />
-      <select value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
-        {GRANTABLE.map((r) => <option key={r} value={r}>{humanise(r)}</option>)}
-      </select>
-      <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !email.trim()}>
-        {busy ? <LoaderCircle size={14} className="lw-members__spin" /> : "Send invitation"}
-      </button>
-      <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>Cancel</button>
+      <label>
+        <span>Email</span>
+        <input
+          type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          placeholder="their@email.com" required autoFocus disabled={busy}
+        />
+      </label>
+      <label>
+        <span>Role</span>
+        <select value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
+          {GRANTABLE.map((r) => <option key={r} value={r}>{humanise(r)}</option>)}
+        </select>
+      </label>
+      <div className="lw-members__formactions">
+        <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !email.trim()}>
+          {busy ? <LoaderCircle size={14} className="lw-members__spin" /> : "Send invitation"}
+        </button>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>Cancel</button>
+      </div>
     </form>
   );
 }
@@ -362,17 +370,25 @@ const CSS = `
     padding: 10px 13px; margin-bottom: 16px; font-size: 0.87rem;
   }
 
+  /* UIC-003: one property per row — label left, value right. */
   .lw-members__form {
-    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    display: grid; grid-template-columns: max-content 1fr; row-gap: 12px; column-gap: 16px; align-items: start;
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 14px; margin-bottom: 16px;
   }
+  .lw-members__form > label { display: contents; }
+  .lw-members__form label > span:first-child { font-size: 0.78rem; font-weight: 600; padding-top: 9px; white-space: nowrap; }
   .lw-members__form input, .lw-members__form select {
-    font-family: var(--font-body); font-size: 0.88rem; color: var(--ink);
+    width: 100%; font-family: var(--font-body); font-size: 0.88rem; color: var(--ink);
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 8px 10px;
   }
-  .lw-members__form input { flex: 1; min-width: 200px; }
+  .lw-members__formactions { grid-column: 1 / -1; display: flex; gap: 8px; }
+  @media (max-width: 480px) {
+    .lw-members__form { grid-template-columns: 1fr; }
+    .lw-members__form > label { display: flex; flex-direction: column; gap: 5px; }
+    .lw-members__form label > span:first-child { padding-top: 0; }
+  }
 
   .lw-members__issued {
     display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;

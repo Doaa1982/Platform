@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, LoaderCircle, AlertCircle, CheckCircle2, Copy, C
 import * as api from "../api/client";
 import { useFonts } from "../hooks/useFonts";
 import InfoTip from "../components/InfoTip";
+import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 
 /* =========================================================================
    APPLY — /apply
@@ -26,12 +27,19 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
   const [about, setAbout] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [attempted, setAttempted] = useState(false);
   const [result, setResult] = useState(null);
   const [copied, setCopied] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
     if (submitting) return;
+
+    if (!fullName.trim() || !email.trim()) {
+      setAttempted(true);
+      setError("Fill in your name and email before sending — both are required.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -90,8 +98,6 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
     );
   }
 
-  const canSubmit = fullName.trim() && email.trim() && !submitting;
-
   return (
     <Shell>
       <div className="pl-apply__card">
@@ -106,7 +112,7 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
           and there's nothing to pay unless we approve yours.
         </p>
 
-        <form onSubmit={handleSubmit} noValidate>
+        <form className="pl-apply__form" onSubmit={handleSubmit} noValidate>
           {error && (
             <div className="pl-apply__alert" role="alert">
               <AlertCircle size={16} aria-hidden="true" /> <span>{error}</span>
@@ -114,27 +120,29 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
           )}
 
           <label className="pl-apply__field">
-            <span>Your name</span>
+            <span>Your name<RequiredMark /></span>
             <input type="text" autoComplete="name" required autoFocus
-                   value={fullName} onChange={(e) => setFullName(e.target.value)}
-                   placeholder="Nadia Haddad" disabled={submitting} />
+                   value={fullName} onChange={(e) => { setFullName(e.target.value); setError(null); }}
+                   placeholder="Nadia Haddad" disabled={submitting}
+                   style={attempted && !fullName.trim() ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-apply__field">
-            <span>Email <InfoTip text="We'll send your application link here." /></span>
+            <span>Email<RequiredMark /> <InfoTip text="We'll send your application link here." /></span>
             <input type="email" autoComplete="email" required
-                   value={email} onChange={(e) => setEmail(e.target.value)}
-                   placeholder="you@example.com" disabled={submitting} />
+                   value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }}
+                   placeholder="you@example.com" disabled={submitting}
+                   style={attempted && !email.trim() ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-apply__field">
-            <span>What do you teach? <em>(optional)</em></span>
+            <span>What do you teach?</span>
             <textarea rows={3} value={about} onChange={(e) => setAbout(e.target.value)}
                       placeholder="A-level physics, small groups, mostly exam preparation…"
                       disabled={submitting} />
           </label>
 
-          <button type="submit" className="pl-apply__primary is-full" disabled={!canSubmit}>
+          <button type="submit" className="pl-apply__primary is-full" disabled={submitting}>
             {submitting
               ? (<><LoaderCircle size={16} className="pl-apply__spin" aria-hidden="true" /> Sending…</>)
               : (<>Send application <ArrowRight size={16} aria-hidden="true" /></>)}
@@ -191,20 +199,31 @@ const CSS = `
   }
   .pl-apply__mark.is-good { background: rgba(127,211,184,0.16); color: #7FD3B8; }
 
+  /* UIC-004: the page's own header (eyebrow + h1) is centered; the lead
+     paragraph and everything below stays left-aligned, as body copy. */
   .pl-apply__eyebrow {
     font-family: 'IBM Plex Mono', monospace; font-size: 11px;
     letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
+    text-align: center;
   }
-  .pl-apply h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.5rem; font-weight: 600; margin: 0 0 10px; }
+  .pl-apply h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.5rem; font-weight: 600; margin: 0 0 10px; text-align: center; }
   .pl-apply__lead { color: var(--ink-soft); font-size: 0.9rem; line-height: 1.65; margin: 0 0 24px; }
 
-  .pl-apply__field { display: block; margin-bottom: 16px; }
-  .pl-apply__field > span { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; }
+  /* UIC-003: one property per row — label left, value right. */
+  .pl-apply__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 16px; column-gap: 14px; align-items: start; }
+  .pl-apply__form > .pl-apply__field { display: contents; }
+  .pl-apply__field > span:first-child { font-size: 0.8rem; font-weight: 600; padding-top: 11px; white-space: nowrap; }
   .pl-apply__field em { font-style: normal; font-weight: 400; color: var(--ink-soft); }
   .pl-apply__field input, .pl-apply__field textarea {
     width: 100%; font-family: inherit; font-size: 0.93rem; color: var(--ink);
     background: #0F1319; border: 1px solid rgba(255,255,255,0.12);
     border-radius: 10px; padding: 11px 13px; resize: vertical;
+  }
+  .pl-apply__form > .pl-apply__alert, .pl-apply__form > .pl-apply__primary { grid-column: 1 / -1; }
+  @media (max-width: 480px) {
+    .pl-apply__form { grid-template-columns: 1fr; }
+    .pl-apply__form > .pl-apply__field { display: flex; flex-direction: column; gap: 6px; }
+    .pl-apply__field > span:first-child { padding-top: 0; white-space: normal; }
   }
   .pl-apply__field input:focus-visible, .pl-apply__field textarea:focus-visible {
     outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,141,239,0.2);

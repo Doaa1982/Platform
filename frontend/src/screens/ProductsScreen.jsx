@@ -6,6 +6,7 @@ import {
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import InfoTip from "../components/InfoTip";
+import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 
 /* =========================================================================
    LEARNING PRODUCTS — what this workspace offers.
@@ -21,24 +22,28 @@ import InfoTip from "../components/InfoTip";
    intention, not something a learner can actually take.
    ========================================================================= */
 
-/* Definitions from Learning Product Aggregate Design §8. Shown in the form
-   because the values are not self-explanatory — the difference between
-   cohort-based and instructor-led in particular is a real judgement, and a
-   tutor picking blind will pick inconsistently. */
-const PACING = [
-  { value: "SelfPaced",
-    help: "The learner sets the pace. Enrol any time, work through at whatever speed suits — no shared dates, nobody to wait for." },
-  { value: "CohortBased",
-    help: "A shared schedule sets the pace. A group starts together on a set date and moves through in step; joining late means missing something." },
-  { value: "InstructorLed",
-    help: "You set the pace, per learner. You decide what happens next and when, usually in sessions arranged with them. Closest to one-to-one tutoring." },
-];
+/* Pacing (Learning Product Aggregate Design §8: SelfPaced / CohortBased /
+   InstructorLed) is hidden from the form for now and every product is
+   created and saved as SelfPaced — CohortBased and InstructorLed have no
+   Scheduling Context behind them yet, so offering the choice would let a
+   tutor pick a pacing this app can't actually deliver on. Reinstate the
+   selector (see git history for the removed `PACING` options array + label)
+   once scheduling exists. */
+const DEFAULT_PACING = "SelfPaced";
 
+/* Display names for EnrollmentMode (Learning Product Aggregate Design §8's
+   "Enrollment Mode Hint") — casual, tutor-facing wording. The wire values
+   (Open / InvitationOnly / ApprovalRequired) are the domain's own vocabulary
+   and stay as they are; only what's shown on screen changed. */
 const ENROLLMENT = [
-  { value: "Open",             help: "Anyone who can reach the product can enrol themselves." },
-  { value: "InvitationOnly",   help: "You choose who gets in; nobody can enrol unprompted." },
-  { value: "ApprovalRequired", help: "Learners ask to join and you approve each one." },
+  { value: "Open", label: "Open to everyone",
+    help: "Anyone who finds this product can join right away — no approval needed." },
+  { value: "InvitationOnly", label: "By invite only",
+    help: "Only people you personally invite can get in. No one can just sign themselves up." },
+  { value: "ApprovalRequired", label: "Ask to join first",
+    help: "Anyone can ask to join, but you decide who actually gets in, one request at a time." },
 ];
+const enrollmentLabel = (value) => ENROLLMENT.find((m) => m.value === value)?.label ?? value;
 
 /** Which transitions each status offers, mirroring §16's ordered machine. */
 const ACTIONS = {
@@ -114,7 +119,7 @@ export default function ProductsScreen({ onOpenStudio }) {
         through, is built separately in Content Studio.
       </p>
 
-      {error && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
+      {error && !editing && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
 
       {data.canAuthor && (
         <div className="lw-prod__bar">
@@ -133,6 +138,7 @@ export default function ProductsScreen({ onOpenStudio }) {
             <button className="lw-prod__panelclose" onClick={() => setEditing(null)} aria-label="Close"><X size={16} /></button>
             <div className="lw-eyebrow">{editing === "new" ? "New product" : "Edit product"}</div>
             <h2 className="lw-prod__panelh2">{editing === "new" ? "Create a learning product" : editing.title}</h2>
+            {error && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
             <ProductForm
               busy={busy}
               product={editing === "new" ? null : editing}
@@ -179,11 +185,8 @@ export default function ProductsScreen({ onOpenStudio }) {
                     ? <span className="lw-prod__propvalue">{p.description}</span>
                     : <span className="lw-prod__propvalue is-empty">No description yet</span>}
 
-                  <span className="lw-prod__proplabel">🕒 Pacing</span>
-                  <span className="lw-prod__propvalue">{human(p.pacing)}</span>
-
-                  <span className="lw-prod__proplabel">🔓 Enrollment</span>
-                  <span className="lw-prod__propvalue">{human(p.enrollmentMode)}</span>
+                  <span className="lw-prod__proplabel">🔓 Who can join</span>
+                  <span className="lw-prod__propvalue">{enrollmentLabel(p.enrollmentMode)}</span>
 
                   {p.category && (
                     <>
@@ -252,66 +255,65 @@ function ProductForm({ product, onSubmit, onCancel, busy }) {
   const [description, setDescription] = useState(product?.description ?? "");
   const [category, setCategory] = useState(product?.category ?? "");
   const [tags, setTags] = useState((product?.tags ?? []).join(", "));
-  const [pacing, setPacing] = useState(product?.pacing ?? "SelfPaced");
   const [enrollmentMode, setEnrollmentMode] = useState(product?.enrollmentMode ?? "Open");
   const [defaultLanguage, setDefaultLanguage] = useState(product?.defaultLanguage ?? "");
+  const [attempted, setAttempted] = useState(false);
 
   return (
     <form
-      className="lw-prod__form"
+      className="lw-prod__form" noValidate
       onSubmit={(e) => {
         e.preventDefault();
+        if (!title.trim()) { setAttempted(true); return; }
         onSubmit({
           title: title.trim(),
           description: description.trim() || null,
           category: category.trim() || null,
           tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-          pacing, enrollmentMode,
+          pacing: DEFAULT_PACING, enrollmentMode,
           defaultLanguage: defaultLanguage.trim() || null,
         });
       }}
     >
+      {attempted && !title.trim() && (
+        <div className="lw-prod__alert"><AlertCircle size={16} /> Title is required.</div>
+      )}
       <label>
-        <span>Title</span>
+        <span>Title<RequiredMark /></span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus
-               placeholder="Everyday Conversation A2" disabled={busy} />
+               placeholder="Everyday Conversation A2" disabled={busy}
+               style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
       </label>
       <label>
-        <span>Description <em>(optional)</em></span>
+        <span>Description</span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
                   placeholder="Who it's for and what they'll come away with." disabled={busy} />
       </label>
       <label>
-        <span>Pacing <InfoTip text={PACING.find((p) => p.value === pacing)?.help} /></span>
-        <select value={pacing} onChange={(e) => setPacing(e.target.value)} disabled={busy}>
-          {PACING.map((p) => <option key={p.value} value={p.value}>{human(p.value)}</option>)}
-        </select>
-      </label>
-      <label>
-        <span>How learners get in <InfoTip text={ENROLLMENT.find((m) => m.value === enrollmentMode)?.help} /></span>
+        <span>Who can join <InfoTip text={ENROLLMENT.find((m) => m.value === enrollmentMode)?.help} /></span>
         <select value={enrollmentMode} onChange={(e) => setEnrollmentMode(e.target.value)} disabled={busy}>
-          {ENROLLMENT.map((m) => <option key={m.value} value={m.value}>{human(m.value)}</option>)}
+          {ENROLLMENT.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
       </label>
       <label>
-        <span>Category <em>(optional)</em></span>
+        <span>Category</span>
         <input value={category} onChange={(e) => setCategory(e.target.value)}
                placeholder="Languages" disabled={busy} />
       </label>
       <label>
-        <span>Language <em>(optional)</em></span>
+        <span>Language</span>
         <input value={defaultLanguage} onChange={(e) => setDefaultLanguage(e.target.value)}
                placeholder="English" disabled={busy} />
       </label>
       <label>
-        <span>Tags <em>(comma separated, optional)</em></span>
+        <span>Tags <em>(comma separated)</em></span>
         <input value={tags} onChange={(e) => setTags(e.target.value)}
                placeholder="beginner, conversation, evenings" disabled={busy} />
       </label>
 
       <div className="lw-prod__formactions">
         <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !title.trim()}>
+        <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}>
           {busy ? <LoaderCircle size={14} className="lw-prod__spin" /> : product ? "Save changes" : "Create product"}
         </button>
       </div>
@@ -330,15 +332,24 @@ const CSS = `
   }
   .lw-prod__bar { display: flex; gap: 8px; margin-bottom: 18px; }
 
-  .lw-prod__form { display: grid; grid-template-columns: 1fr; gap: 14px; }
-  .lw-prod__form label span { display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 5px; }
+  /* UIC-003: every field is a property-name / value row in one shared grid,
+     rather than a label stacked above its control. */
+  .lw-prod__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 14px; column-gap: 16px; align-items: start; }
+  .lw-prod__form > label { display: contents; }
+  .lw-prod__form label > span:first-child { font-size: 0.78rem; font-weight: 600; padding-top: 9px; white-space: nowrap; }
   .lw-prod__form em { font-style: normal; font-weight: 400; color: var(--ink-soft); }
   .lw-prod__form input, .lw-prod__form textarea, .lw-prod__form select {
     width: 100%; font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
   }
+  .lw-prod__form > .lw-prod__alert { grid-column: 1 / -1; }
   .lw-prod__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+  @media (max-width: 560px) {
+    .lw-prod__form { grid-template-columns: 1fr; }
+    .lw-prod__form > label { display: flex; flex-direction: column; gap: 5px; }
+    .lw-prod__form label > span:first-child { padding-top: 0; white-space: normal; }
+  }
 
   .lw-prod__grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
@@ -387,7 +398,7 @@ const CSS = `
   }
   .lw-prod__panelclose { position: absolute; top: 18px; right: 18px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
   .lw-prod__panelclose:hover { color: var(--ink); }
-  .lw-prod__panelh2 { margin: 2px 0 18px; }
+  .lw-prod__panelh2 { margin: 2px 0 18px; text-align: center; }
 
   .lw-prod__pill {
     font-family: var(--font-mono); font-size: 10px; border-radius: 20px; padding: 3px 9px;

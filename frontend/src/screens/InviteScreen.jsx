@@ -120,7 +120,7 @@ export default function InviteScreen({ token, onAccepted }) {
           {" "}using <strong>{preview.email}</strong>.
         </p>
 
-        <form onSubmit={handleSubmit} noValidate>
+        <form className="pl-invite__form" onSubmit={handleSubmit} noValidate>
           {error && (
             <div className="pl-invite__alert" role="alert">
               <AlertCircle size={16} aria-hidden="true" />
@@ -215,11 +215,23 @@ const CSS = `
   .pl-invite__lead { color: var(--ink-soft); font-size: 0.93rem; line-height: 1.6; margin: 0 0 24px; }
   .pl-invite__lead strong { color: var(--ink); }
 
-  .pl-invite__field { display: block; text-align: left; margin-bottom: 16px; }
-  .pl-invite__field span { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; }
+  /* UIC-003: one property per row — label left, value right. */
+  .pl-invite__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 16px; column-gap: 14px; align-items: start; text-align: left; }
+  .pl-invite__form > .pl-invite__field { display: contents; }
+  .pl-invite__field span:first-child { font-size: 0.82rem; font-weight: 600; padding-top: 11px; white-space: nowrap; }
   .pl-invite__field input {
     width: 100%; font-family: inherit; font-size: 0.95rem; color: var(--ink);
     background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px;
+  }
+  .pl-invite__form > .pl-invite__alert,
+  .pl-invite__form > .pl-invite__note,
+  .pl-invite__form > .pl-invite__btn {
+    grid-column: 1 / -1;
+  }
+  @media (max-width: 480px) {
+    .pl-invite__form { grid-template-columns: 1fr; }
+    .pl-invite__form > .pl-invite__field { display: flex; flex-direction: column; gap: 6px; }
+    .pl-invite__field span:first-child { padding-top: 0; white-space: normal; }
   }
   .pl-invite__field input:focus-visible {
     outline: none; border-color: var(--accent);

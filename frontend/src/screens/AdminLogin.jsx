@@ -115,17 +115,19 @@ const CSS = `
   }
   .pl-alogin__back:hover { color: var(--ink); }
 
+  /* UIC-004: the page's own header (mark + eyebrow + h1) is centered. */
   .pl-alogin__mark {
-    width: 46px; height: 46px; border-radius: 12px; margin-bottom: 16px;
+    width: 46px; height: 46px; border-radius: 12px; margin: 0 auto 16px;
     display: flex; align-items: center; justify-content: center;
     background: var(--accent); color: #0B1220;
   }
   .pl-alogin__eyebrow {
     font-family: 'IBM Plex Mono', monospace; font-size: 11px;
     letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
+    text-align: center;
   }
-  .pl-alogin h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.55rem; font-weight: 600; margin: 0 0 6px; }
-  .pl-alogin__sub { color: var(--ink-soft); font-size: 0.88rem; margin: 0 0 26px; line-height: 1.55; }
+  .pl-alogin h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.55rem; font-weight: 600; margin: 0 0 6px; text-align: center; }
+  .pl-alogin__sub { color: var(--ink-soft); font-size: 0.88rem; margin: 0 0 26px; line-height: 1.55; text-align: center; }
 
   .pl-alogin__field { display: block; margin-bottom: 16px; }
   .pl-alogin__field span { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; }

@@ -35,14 +35,19 @@ public record LessonDetailResponse(
     LessonRevisionRow? DraftRevision,
     IReadOnlyList<LessonRevisionRow> History);
 
-/// <summary>DeliveryMode is "Recorded" or "LiveSession" (LessonDeliveryMode).</summary>
+/// <summary>
+/// DeliveryMode is "Recorded" or "LiveSession" (LessonDeliveryMode). Video and
+/// VideoUrl are mutually exclusive — at most one is populated at a time
+/// (LessonRevision.AttachVideo/SetVideoUrl each clear the other).
+/// </summary>
 public record LessonRevisionRow(
     Guid Id, int Version, string Title, string? Body,
     int? EstimatedMinutes, string DeliveryMode, string Status, DateTime UpdatedAt,
-    Guid? VideoAssetId, LearningAssetResponse? Video);
+    Guid? VideoAssetId, LearningAssetResponse? Video, string? VideoUrl);
 
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);
 public record CreateLessonRequest(string Title, Guid? UnitId);
 public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode);
 public record AttachVideoRequest(Guid LearningAssetId);
+public record SetVideoUrlRequest(string Url);

@@ -117,6 +117,12 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
         string slug, Guid lessonId, [FromBody] AttachVideoRequest request, CancellationToken ct)
         => Run(await studio.AttachVideoAsync(slug, Caller(), lessonId, request.LearningAssetId, ct));
 
+    /// <summary>Sets an externally-hosted video by direct link — the "URL" alternative to uploading.</summary>
+    [HttpPut("draft/video-url")]
+    public async Task<ActionResult<LessonDetailResponse>> SetVideoUrl(
+        string slug, Guid lessonId, [FromBody] SetVideoUrlRequest request, CancellationToken ct)
+        => Run(await studio.SetVideoUrlAsync(slug, Caller(), lessonId, request, ct));
+
     [HttpDelete("draft/video")]
     public async Task<ActionResult<LessonDetailResponse>> RemoveVideo(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.RemoveVideoAsync(slug, Caller(), lessonId, ct));

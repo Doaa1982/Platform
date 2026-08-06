@@ -317,19 +317,26 @@ const CSS = `
   .lw-setup__fieldvalue.is-mono { font-family: var(--font-mono); font-size: 0.85rem; }
   .lw-setup__fieldvalue.is-muted { color: var(--ink-soft); font-style: italic; }
 
+  /* UIC-003: one property per row — label left, value right — matching
+     .lw-setup__field's own read-only row layout above. */
   .lw-setup__form {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    display: grid; grid-template-columns: max-content 1fr; row-gap: 14px; column-gap: 16px; align-items: start;
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 16px 18px;
   }
-  .lw-setup__wide { grid-column: 1 / -1; }
-  .lw-setup__form label span { display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 5px; }
+  .lw-setup__form > label { display: contents; }
+  .lw-setup__form label > span:first-child { font-size: 0.78rem; font-weight: 600; padding-top: 9px; white-space: nowrap; }
   .lw-setup__form input, .lw-setup__form textarea {
     width: 100%; font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
   }
   .lw-setup__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+  @media (max-width: 560px) {
+    .lw-setup__form { grid-template-columns: 1fr; }
+    .lw-setup__form > label { display: flex; flex-direction: column; gap: 5px; }
+    .lw-setup__form label > span:first-child { padding-top: 0; white-space: normal; }
+  }
 
   .lw-setup__note {
     display: flex; align-items: center; gap: 7px;
@@ -340,6 +347,5 @@ const CSS = `
 
   .lw-setup__spin { animation: lwSetupSpin 0.9s linear infinite; }
   @keyframes lwSetupSpin { to { transform: rotate(360deg); } }
-  @media (max-width: 640px) { .lw-setup__form { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .lw-setup__spin { animation: none; } }
 `;

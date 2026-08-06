@@ -24,6 +24,9 @@ public class PlatformDbContext : DbContext
     public DbSet<Lesson> Lessons => Set<Lesson>();
     public DbSet<LearningAsset> LearningAssets => Set<LearningAsset>();
     public DbSet<Assessment> Assessments => Set<Assessment>();
+    public DbSet<Enrollment> Enrollments => Set<Enrollment>();
+    public DbSet<Submission> Submissions => Set<Submission>();
+    public DbSet<LessonProgress> LessonProgresses => Set<LessonProgress>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -334,6 +337,7 @@ public class PlatformDbContext : DbContext
             // deliberately not a foreign key, matching Workspace.OwnerMembershipId
             // above: the two aggregates evolve independently.
             entity.Property(e => e.VideoAssetId);
+            entity.Property(e => e.VideoUrl).HasMaxLength(2048);
 
             entity.Property(e => e.DeliveryMode).HasConversion<string>().HasMaxLength(32);
         });
@@ -395,6 +399,66 @@ public class PlatformDbContext : DbContext
             // Only one of the two is populated, depending on Type (Question.Apply).
             entity.PrimitiveCollection(e => e.Options);
             entity.PrimitiveCollection(e => e.AcceptedAnswers);
+        });
+
+        modelBuilder.Entity<Enrollment>(entity =>
+        {
+            entity.ToTable("enrollments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.LearningProductId).IsRequired();
+            entity.Property(e => e.MembershipId).IsRequired();
+
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // Auto-created on first open (Enrollment.cs remarks) — at most one per (product, membership)
+            entity.HasIndex(e => new { e.LearningProductId, e.MembershipId }).IsUnique();
+        });
+
+        modelBuilder.Entity<Submission>(entity =>
+        {
+            entity.ToTable("submissions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.AssessmentId).IsRequired();
+            entity.Property(e => e.MembershipId).IsRequired();
+            entity.Property(e => e.EnrollmentId).IsRequired();
+
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // A learner's attempts at one assessment are read together for "latest attempt"
+            entity.HasIndex(e => new { e.AssessmentId, e.MembershipId });
+
+            entity.HasMany(e => e.Answers).WithOne()
+                  .HasForeignKey(a => a.SubmissionId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.Answers).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<SubmissionAnswer>(entity =>
+        {
+            entity.ToTable("submission_answers");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.QuestionId).IsRequired();
+            entity.Property(e => e.TextAnswer).HasMaxLength(2000);
+        });
+
+        modelBuilder.Entity<LessonProgress>(entity =>
+        {
+            entity.ToTable("lesson_progress");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.EnrollmentId).IsRequired();
+            entity.Property(e => e.LessonId).IsRequired();
+
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // One progress row per (enrollment, lesson)
+            entity.HasIndex(e => new { e.EnrollmentId, e.LessonId }).IsUnique();
         });
 
         modelBuilder.Entity<PlatformOperator>(entity =>

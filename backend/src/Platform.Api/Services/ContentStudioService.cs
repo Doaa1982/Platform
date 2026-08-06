@@ -93,7 +93,8 @@ public class ContentStudioService(PlatformDbContext db)
         LessonRevisionRow? Rev(LessonRevision? r) => r is null ? null : new LessonRevisionRow(
             r.Id, r.Version, r.Title, r.Body, r.EstimatedMinutes, r.DeliveryMode.ToString(), r.Status.ToString(), r.UpdatedAt,
             r.VideoAssetId,
-            r.VideoAssetId is { } videoId && assets.TryGetValue(videoId, out var video) ? LearningAssetService.Describe(video) : null);
+            r.VideoAssetId is { } videoId && assets.TryGetValue(videoId, out var video) ? LearningAssetService.Describe(video) : null,
+            r.VideoUrl);
 
         return ProvisioningResult<LessonDetailResponse>.Success(new LessonDetailResponse(
             Id:              lesson.Id,
@@ -207,6 +208,16 @@ public class ContentStudioService(PlatformDbContext db)
         await db.SaveChangesAsync(ct);
         return await GetLessonAsync(slug, caller, lessonId, ct);
     }
+
+    /// <summary>Sets an externally-hosted video by direct link — the "URL" alternative to uploading (LessonRevision.SetVideoUrl clears any uploaded asset).</summary>
+    public Task<ProvisioningResult<LessonDetailResponse>> SetVideoUrlAsync(
+        string slug, Guid caller, Guid lessonId, SetVideoUrlRequest request, CancellationToken ct = default)
+        => MutateLessonAsync(slug, caller, lessonId, l =>
+        {
+            var draft = l.DraftRevision
+                ?? throw new InvalidOperationException("This lesson has no open draft.");
+            draft.SetVideoUrl(request.Url);
+        }, ct);
 
     public Task<ProvisioningResult<LessonDetailResponse>> RemoveVideoAsync(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)

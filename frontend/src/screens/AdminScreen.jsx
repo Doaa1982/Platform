@@ -118,7 +118,7 @@ export default function AdminScreen() {
   return (
     <Shell>
       <header className="pl-admin__head">
-        <div>
+        <div className="pl-admin__headtitle">
           <div className="pl-admin__eyebrow">Platform operations</div>
           <h1>Workspaces</h1>
         </div>
@@ -430,10 +430,13 @@ const CSS = `
   .pl-admin *, .pl-admin *::before, .pl-admin *::after { box-sizing: border-box; }
   .pl-admin__inner { max-width: 1080px; margin: 0 auto; }
 
-  .pl-admin__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  /* UIC-004: the page's own header (eyebrow + h1) is centered; its actions
+     sit in their own row underneath rather than beside it. */
+  .pl-admin__head { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 24px; }
+  .pl-admin__headtitle { text-align: center; }
   .pl-admin__eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
   .pl-admin h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.8rem; font-weight: 600; margin: 0; }
-  .pl-admin__headactions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pl-admin__headactions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
   .pl-admin__btn {
     display: inline-flex; align-items: center; gap: 6px;
@@ -457,8 +460,10 @@ const CSS = `
   }
 
   .pl-admin__form { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-  .pl-admin__formrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .pl-admin__form label span { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; }
+  /* UIC-003: one property per row — label left, value right. */
+  .pl-admin__formrow { display: grid; grid-template-columns: max-content 1fr; row-gap: 14px; column-gap: 16px; align-items: start; }
+  .pl-admin__formrow > label { display: contents; }
+  .pl-admin__form label > span:first-child { font-size: 0.8rem; font-weight: 600; padding-top: 9px; white-space: nowrap; }
   .pl-admin__form input {
     width: 100%; font-family: inherit; font-size: 0.9rem;
     background: #0F1215; color: var(--ink); border: 1px solid var(--line);
@@ -553,6 +558,10 @@ const CSS = `
   .pl-admin__spin { animation: plAdminSpin 0.9s linear infinite; }
   @keyframes plAdminSpin { to { transform: rotate(360deg); } }
 
-  @media (max-width: 720px) { .pl-admin__formrow { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) {
+    .pl-admin__formrow { grid-template-columns: 1fr; }
+    .pl-admin__formrow > label { display: flex; flex-direction: column; gap: 5px; }
+    .pl-admin__form label > span:first-child { padding-top: 0; white-space: normal; }
+  }
   @media (prefers-reduced-motion: reduce) { .pl-admin__spin { animation: none; } }
 `;

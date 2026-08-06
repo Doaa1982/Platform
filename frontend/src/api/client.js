@@ -367,6 +367,13 @@ export function removeLessonVideo(token, slug, lessonId) {
   });
 }
 
+/** PUT .../lessons/{lessonId}/draft/video-url — the "URL" alternative to uploading */
+export function setLessonVideoUrl(token, slug, lessonId, url) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/video-url`, {
+    method: "PUT", body: { url }, token,
+  });
+}
+
 /* ── Reference data ───────────────────────────────────────────────────── */
 
 /** GET .../reference/question-types — the QuestionType enum's values + display labels */
@@ -426,6 +433,37 @@ export function suggestQuestions(token, slug, lessonId, videoDurationSeconds) {
 /** POST .../assessment/preview — simulated AI grading against the authored answer key; nothing persisted */
 export function previewAssessment(token, slug, lessonId, answers) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/preview`, {
+    method: "POST", body: { answers }, token,
+  });
+}
+
+/* ── Learner delivery (watching a lesson, answering its questions for real) ── */
+
+/** GET .../learn/products — Published products this Learner can open */
+export function getLearnerProducts(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/products`, { token });
+}
+
+/** GET .../learn/products/{productId}/curriculum — auto-enrols on first open */
+export function getLearnerCurriculum(token, slug, productId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/products/${productId}/curriculum`, { token });
+}
+
+/** GET .../learn/lessons/{lessonId} — the Published revision + answer-key-stripped questions + progress */
+export function getLearnerLesson(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}`, { token });
+}
+
+/** POST .../learn/lessons/{lessonId}/video-watched */
+export function markVideoWatched(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/video-watched`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../learn/lessons/{lessonId}/submit — grades and persists a real Submission */
+export function submitLearnerAssessment(token, slug, lessonId, answers) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/submit`, {
     method: "POST", body: { answers }, token,
   });
 }

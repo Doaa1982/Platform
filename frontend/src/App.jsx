@@ -12,6 +12,8 @@ import NotBuiltYet from "./screens/NotBuiltYet";
 import ProductsScreen from "./screens/ProductsScreen";
 import ContentStudioScreen from "./screens/ContentStudioScreen";
 import LearnerHomeScreen from "./screens/LearnerHomeScreen";
+import LearnerCoursesScreen from "./screens/LearnerCoursesScreen";
+import LearnerLessonScreen from "./screens/LearnerLessonScreen";
 import * as api from "./api/client";
 
 /* =========================================================================
@@ -339,6 +341,10 @@ export default function App() {
   // screen, so a tutor can jump straight to a product's curriculum from its
   // row in Learning Products instead of picking it again from scratch.
   const [studioProductId, setStudioProductId] = useState(null);
+  // Same idea for the Learner side: which course Courses has open, and which
+  // lesson "Continue Lesson" is currently showing.
+  const [learnerProductId, setLearnerProductId] = useState(null);
+  const [learnerLessonId, setLearnerLessonId] = useState(null);
 
   /* The workspace description lives on the setup endpoint rather than in
      /api/me, so the shell fetches it once for the tagline. Absent is a normal
@@ -378,9 +384,20 @@ export default function App() {
     .map((r) => r.replace(/([a-z])([A-Z])/g, "$1 $2"))
     .join(", ") || "Member";
 
-  useEffect(() => { setLearnerScreen("dashboard"); setOwnerScreen("overview"); setStudioProductId(null); }, [role]);
+  useEffect(() => {
+    setLearnerScreen("dashboard"); setOwnerScreen("overview"); setStudioProductId(null);
+    setLearnerProductId(null); setLearnerLessonId(null);
+  }, [role]);
 
   const activeNavScreen = role === "learner" ? learnerScreen : (ownerScreen === "studio" ? "studio" : ownerScreen);
+
+  /* A sidebar link always goes to that section's top-level view, never a
+     stale drill-down someone left it in — studioProductId/learnerProductId/
+     learnerLessonId live here (not inside the screens) so a one-off "jump
+     straight to X" action from elsewhere (e.g. Products' "Build curriculum"
+     button) can preset them, but the nav itself must not inherit that. */
+  function goToOwnerScreen(id) { setStudioProductId(null); setOwnerScreen(id); }
+  function goToLearnerScreen(id) { setLearnerProductId(null); setLearnerLessonId(null); setLearnerScreen(id); }
 
   return (
     <div className="lw-root" style={theme}>
@@ -393,19 +410,25 @@ export default function App() {
       <div className="lw-shell">
         <Nav c={c} role={role} screen={activeNavScreen}
           personName={personName} personRole={personRole}
-          setScreen={role === "learner" ? setLearnerScreen : setOwnerScreen}
+          setScreen={role === "learner" ? goToLearnerScreen : goToOwnerScreen}
           onOpenProfile={() => setProfileOpen(true)} />
         <div className="lw-content">
           {/* Learner screens. Only the home is real; the rest describe a
               curriculum that does not exist yet. */}
           {role === "learner" && learnerScreen === "dashboard" && <LearnerHomeScreen />}
           {role === "learner" && learnerScreen === "courses" && (
-            <NotBuiltYet area="Learning Product Context" onNavigate={setLearnerScreen}
-              blurb="Courses aren’t built yet, so there is nothing published for you to open." />
+            <LearnerCoursesScreen
+              productId={learnerProductId}
+              onSelectProduct={setLearnerProductId}
+              onOpenLesson={(id) => { setLearnerLessonId(id); setLearnerScreen("lesson"); }}
+            />
           )}
           {role === "learner" && learnerScreen === "lesson" && (
-            <NotBuiltYet area="Lesson Delivery" onNavigate={setLearnerScreen}
-              blurb="Lessons aren’t built yet. When your tutor publishes one, it will appear here." />
+            learnerLessonId
+              ? <LearnerLessonScreen lessonId={learnerLessonId} onBack={() => setLearnerScreen("courses")} />
+              : <NotBuiltYet area="Lesson Delivery" onNavigate={setLearnerScreen}
+                  blurb="Open a lesson from Courses to continue it here."
+                  next={{ text: "Go to Courses", to: "courses" }} />
           )}
           {role === "learner" && learnerScreen === "assessments" && (
             <NotBuiltYet area="Assessment Context" onNavigate={setLearnerScreen}
@@ -513,9 +536,13 @@ const CSS = `
   @keyframes lwFade { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
   @media (prefers-reduced-motion: reduce) { .lw-page { animation: none; } }
 
-  h1 { font-family: var(--font-display); font-weight: 600; font-size: 2rem; margin: 2px 0 6px; line-height: 1.15; }
+  /* UIC-004: a page or panel's own title (its eyebrow + h1, or a panel's h2)
+     is centered — every such heading in this shared shell reads as one. Body
+     copy underneath (.lw-sub, section dividers like h2.lw-sectiontitle) stays
+     left-aligned; centering is for the header itself, not the page. */
+  h1 { font-family: var(--font-display); font-weight: 600; font-size: 2rem; margin: 2px 0 6px; line-height: 1.15; text-align: center; }
   h2.lw-sectiontitle { font-family: var(--font-display); font-size: 1.2rem; margin: 36px 0 14px; font-weight: 600; }
-  .lw-eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .lw-eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; text-align: center; }
   .lw-sub { color: var(--ink-soft); font-size: 0.94rem; max-width: 62ch; margin-bottom: 22px; }
 
   .lw-nav { width: 250px; flex-shrink: 0; background: var(--nav-bg); color: var(--nav-text); display: flex; flex-direction: column; padding: 22px 16px; }

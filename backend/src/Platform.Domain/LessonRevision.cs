@@ -37,6 +37,13 @@ public class LessonRevision
     /// </summary>
     public Guid? VideoAssetId { get; private set; }
 
+    /// <summary>
+    /// An externally-hosted video, given by direct link instead of uploaded
+    /// through Learning Asset. Mutually exclusive with <see cref="VideoAssetId"/> —
+    /// setting one clears the other, since a revision has exactly one video.
+    /// </summary>
+    public string? VideoUrl { get; private set; }
+
     public LessonRevisionStatus Status { get; private set; }
     public Guid AuthoredByMembershipId { get; private set; }
     public DateTime CreatedAt { get; private set; }
@@ -83,13 +90,24 @@ public class LessonRevision
         UpdatedAt = DateTime.UtcNow;
     }
 
-    /// <summary>Attaches a video by reference. Draft-only, same reasoning as <see cref="Edit"/>.</summary>
+    /// <summary>Attaches an uploaded video by reference. Draft-only, same reasoning as <see cref="Edit"/>. Clears any external URL — one video source at a time.</summary>
     public void AttachVideo(Guid learningAssetId)
     {
         RequireDraft();
         if (learningAssetId == Guid.Empty)
             throw new ArgumentException("A video reference cannot be empty.", nameof(learningAssetId));
         VideoAssetId = learningAssetId;
+        VideoUrl = null;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Sets an externally-hosted video by direct link. Draft-only. Clears any uploaded asset — one video source at a time.</summary>
+    public void SetVideoUrl(string url)
+    {
+        RequireDraft();
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        VideoUrl = url.Trim();
+        VideoAssetId = null;
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -97,6 +115,7 @@ public class LessonRevision
     {
         RequireDraft();
         VideoAssetId = null;
+        VideoUrl = null;
         UpdatedAt = DateTime.UtcNow;
     }
 

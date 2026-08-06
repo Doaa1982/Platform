@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 import InfoTip from "../components/InfoTip";
+import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 
 /* =========================================================================
    JOIN SCREEN — /join/{slug}
@@ -32,6 +33,7 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [attempted, setAttempted] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -45,6 +47,12 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
   async function handleSubmit(event) {
     event.preventDefault();
     if (submitting) return;
+
+    if (!fullName.trim() || !email.trim() || !password) {
+      setAttempted(true);
+      setError("Fill in your name, email and password before sending — all three are required.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -130,8 +138,6 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
     );
   }
 
-  const canSubmit = fullName.trim() && email.trim() && password && !submitting;
-
   return (
     <Shell>
       <div className="pl-join__card">
@@ -140,7 +146,7 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
         <h1>{preview.workspaceName}</h1>
         {preview.description && <p className="pl-join__lead">{preview.description}</p>}
 
-        <form onSubmit={handleSubmit} noValidate>
+        <form className="pl-join__form" onSubmit={handleSubmit} noValidate>
           {error && (
             <div className="pl-join__alert" role="alert">
               <AlertCircle size={16} aria-hidden="true" /> <span>{error}</span>
@@ -148,33 +154,36 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
           )}
 
           <label className="pl-join__field">
-            <span>Your name</span>
+            <span>Your name<RequiredMark /></span>
             <input type="text" autoComplete="name" required autoFocus
-                   value={fullName} onChange={(e) => setFullName(e.target.value)}
-                   placeholder="Alex Morgan" disabled={submitting} />
+                   value={fullName} onChange={(e) => { setFullName(e.target.value); setError(null); }}
+                   placeholder="Alex Morgan" disabled={submitting}
+                   style={attempted && !fullName.trim() ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-join__field">
-            <span>Email</span>
+            <span>Email<RequiredMark /></span>
             <input type="email" autoComplete="email" required
-                   value={email} onChange={(e) => setEmail(e.target.value)}
-                   placeholder="you@example.com" disabled={submitting} />
+                   value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }}
+                   placeholder="you@example.com" disabled={submitting}
+                   style={attempted && !email.trim() ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-join__field">
-            <span>Password <InfoTip text="If you already have an account with this email, enter its existing password." /></span>
+            <span>Password<RequiredMark /> <InfoTip text="If you already have an account with this email, enter its existing password." /></span>
             <input type="password" autoComplete="new-password" required
-                   value={password} onChange={(e) => setPassword(e.target.value)}
-                   placeholder="••••••••" disabled={submitting} />
+                   value={password} onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                   placeholder="••••••••" disabled={submitting}
+                   style={attempted && !password ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-join__field">
-            <span>Anything you'd like them to know <em>(optional)</em></span>
+            <span>Anything you'd like them to know</span>
             <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)}
                       placeholder="A little about why you'd like to join…" disabled={submitting} />
           </label>
 
-          <button type="submit" className="pl-join__btn" disabled={!canSubmit}>
+          <button type="submit" className="pl-join__btn" disabled={submitting}>
             {submitting
               ? (<><LoaderCircle size={16} className="pl-join__spin" aria-hidden="true" /> Sending…</>)
               : (<>Send request <ArrowRight size={16} aria-hidden="true" /></>)}
@@ -223,13 +232,23 @@ const CSS = `
   .pl-join h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.6rem; font-weight: 600; margin: 0 0 8px; line-height: 1.15; }
   .pl-join__lead { color: var(--ink-soft); font-size: 0.92rem; line-height: 1.6; margin: 0 0 22px; }
 
-  .pl-join__field { display: block; text-align: left; margin-bottom: 16px; }
-  .pl-join__field > span { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; }
+  /* UIC-003: one property per row — label left, value right. The card
+     around this form is text-align: center (for its centered header); this
+     grid overrides back to left, same override .pl-join__field always did. */
+  .pl-join__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 16px; column-gap: 14px; align-items: start; text-align: left; }
+  .pl-join__form > .pl-join__field { display: contents; }
+  .pl-join__field > span:first-child { font-size: 0.82rem; font-weight: 600; padding-top: 11px; white-space: nowrap; }
   .pl-join__field em { font-style: normal; font-weight: 400; color: var(--ink-soft); }
   .pl-join__field input, .pl-join__field textarea {
     width: 100%; font-family: inherit; font-size: 0.95rem; color: var(--ink);
     background: #fff; border: 1px solid var(--line); border-radius: 10px;
     padding: 11px 13px; resize: vertical;
+  }
+  .pl-join__form > .pl-join__alert, .pl-join__form > .pl-join__btn { grid-column: 1 / -1; }
+  @media (max-width: 480px) {
+    .pl-join__form { grid-template-columns: 1fr; }
+    .pl-join__form > .pl-join__field { display: flex; flex-direction: column; gap: 6px; }
+    .pl-join__field > span:first-child { padding-top: 0; white-space: normal; }
   }
   .pl-join__field input:focus-visible, .pl-join__field textarea:focus-visible {
     outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(45,91,209,0.16);

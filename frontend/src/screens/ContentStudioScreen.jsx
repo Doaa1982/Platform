@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LoaderCircle, AlertCircle, Plus, RefreshCw, ArrowLeft, X, Trash2,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
-  UploadCloud, Sparkles, Bot, PlayCircle, Radio, Type as TypeIcon,
+  UploadCloud, Sparkles, Bot, PlayCircle, Link as LinkIcon,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
+import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 
 /* =========================================================================
    CONTENT STUDIO — building the curriculum of one Learning Product.
@@ -312,12 +313,21 @@ function BackLink({ onBack }) {
 
 function NewUnitForm({ busy, onAdd }) {
   const [title, setTitle] = useState("");
+  const [attempted, setAttempted] = useState(false);
   return (
     <form className="lw-studio__newunit"
-          onSubmit={(e) => { e.preventDefault(); if (title.trim()) { onAdd(title.trim()); setTitle(""); } }}>
-      <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy}
-             placeholder="New unit — e.g. “Week 1: Getting started”" />
-      <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !title.trim()}>
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!title.trim()) { setAttempted(true); return; }
+            onAdd(title.trim()); setTitle(""); setAttempted(false);
+          }}>
+      <div style={{ flex: 1 }}>
+        <input value={title} onChange={(e) => { setTitle(e.target.value); setAttempted(false); }} disabled={busy}
+               placeholder="New unit — e.g. “Week 1: Getting started”"
+               style={{ width: "100%", ...(attempted ? invalidFieldStyle : {}) }} />
+        {attempted && <span className="lw-studio__fielderror">Enter a title first.</span>}
+      </div>
+      <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}>
         <Plus size={13} /> Add unit
       </button>
     </form>
@@ -326,12 +336,21 @@ function NewUnitForm({ busy, onAdd }) {
 
 function NewLessonOnlyForm({ busy, onAdd }) {
   const [title, setTitle] = useState("");
+  const [attempted, setAttempted] = useState(false);
   return (
     <form className="lw-studio__newunit"
-          onSubmit={(e) => { e.preventDefault(); if (title.trim()) { onAdd(title.trim()); setTitle(""); } }}>
-      <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy}
-             placeholder="Or start a lesson before you have units" />
-      <button type="submit" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy || !title.trim()}>
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!title.trim()) { setAttempted(true); return; }
+            onAdd(title.trim()); setTitle(""); setAttempted(false);
+          }}>
+      <div style={{ flex: 1 }}>
+        <input value={title} onChange={(e) => { setTitle(e.target.value); setAttempted(false); }} disabled={busy}
+               placeholder="Or start a lesson before you have units"
+               style={{ width: "100%", ...(attempted ? invalidFieldStyle : {}) }} />
+        {attempted && <span className="lw-studio__fielderror">Enter a title first.</span>}
+      </div>
+      <button type="submit" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}>
         <FileText size={13} /> New lesson
       </button>
     </form>
@@ -345,6 +364,7 @@ function UnitCard({
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(unit.title);
   const [newLessonTitle, setNewLessonTitle] = useState("");
+  const [lessonAttempted, setLessonAttempted] = useState(false);
 
   return (
     <div className="lw-studio__unit">
@@ -397,12 +417,17 @@ function UnitCard({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (newLessonTitle.trim()) { onCreateLesson(newLessonTitle.trim()); setNewLessonTitle(""); }
+              if (!newLessonTitle.trim()) { setLessonAttempted(true); return; }
+              onCreateLesson(newLessonTitle.trim()); setNewLessonTitle(""); setLessonAttempted(false);
             }}
           >
-            <input value={newLessonTitle} onChange={(e) => setNewLessonTitle(e.target.value)}
-                   placeholder="New lesson title" disabled={busy} />
-            <button type="submit" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy || !newLessonTitle.trim()}>
+            <div style={{ flex: 1 }}>
+              <input value={newLessonTitle} onChange={(e) => { setNewLessonTitle(e.target.value); setLessonAttempted(false); }}
+                     placeholder="New lesson title" disabled={busy}
+                     style={{ width: "100%", ...(lessonAttempted ? invalidFieldStyle : {}) }} />
+              {lessonAttempted && <span className="lw-studio__fielderror">Enter a title first.</span>}
+            </div>
+            <button type="submit" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}>
               <Plus size={12} /> Add lesson
             </button>
           </form>
@@ -453,6 +478,9 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
   const [minutes, setMinutes] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("Recorded");
   const [videoDuration, setVideoDuration] = useState(null);
+  const [attempted, setAttempted] = useState(false);
+  const [publishAttempted, setPublishAttempted] = useState(false);
+  const [activeTab, setActiveTab] = useState("content");
 
   const load = useCallback(
     () => api.getLesson(session.token, slug, lessonId).then((l) => {
@@ -480,6 +508,31 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
     finally { setBusy(false); }
   }
 
+  function draftPayload(overrides = {}) {
+    return {
+      title: title.trim(),
+      body: body.trim() || null,
+      estimatedMinutes: minutes === "" ? null : Number(minutes),
+      deliveryMode,
+      ...overrides,
+    };
+  }
+
+  function handleSaveDraft() {
+    if (!title.trim()) { setActiveTab("content"); setAttempted(true); return; }
+    run(() => api.saveLessonDraft(session.token, slug, lessonId, draftPayload())).then((l) => l && setLesson(l));
+  }
+
+  function handlePublish() {
+    if (!body.trim()) { setActiveTab("content"); setPublishAttempted(true); return; }
+    // Publish always saves first — otherwise it would publish whatever was
+    // last saved, silently dropping unsaved edits sitting in the form right now.
+    run(async () => {
+      await api.saveLessonDraft(session.token, slug, lessonId, draftPayload());
+      return api.lessonTransition(session.token, slug, lessonId, "publish");
+    }).then((l) => l && setLesson(l));
+  }
+
   return (
     <div className="lw-studio__overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="lw-studio__panel" onClick={(e) => e.stopPropagation()}>
@@ -505,66 +558,49 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
               </p>
             )}
 
-            {lesson.draftRevision ? (
-              <form
-                className="lw-studio__draftform"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  run(() => api.saveLessonDraft(session.token, slug, lessonId, {
-                    title: title.trim(),
-                    body: body.trim() || null,
-                    estimatedMinutes: minutes === "" ? null : Number(minutes),
-                    deliveryMode,
-                  })).then((l) => l && setLesson(l));
-                }}
-              >
+            <div className="lw-studio__tabs">
+              <button type="button" className={activeTab === "content" ? "active" : ""} onClick={() => setActiveTab("content")}>
+                <FileText size={13} /> Content
+              </button>
+              <button type="button" className={activeTab === "delivery" ? "active" : ""} onClick={() => setActiveTab("delivery")}>
+                <PlayCircle size={13} /> Delivery
+              </button>
+              <button type="button" className={activeTab === "questions" ? "active" : ""} onClick={() => setActiveTab("questions")}>
+                <Sparkles size={13} /> Interactive Questions
+              </button>
+            </div>
+
+            {activeTab === "content" && (lesson.draftRevision ? (
+              <div className="lw-studio__draftform">
+                {attempted && !title.trim() && (
+                  <div className="lw-studio__alert"><AlertCircle size={16} /> Title is required.</div>
+                )}
                 <label>
-                  <span>Title</span>
-                  <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} required />
+                  <span>Title<RequiredMark /></span>
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} required
+                         style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
                 </label>
 
                 <label>
-                  <span>Delivery</span>
-                  <div className="lw-segctrl" style={{ marginTop: 8 }}>
-                    <button type="button" className={deliveryMode === "Recorded" ? "active" : ""}
-                            disabled={busy} onClick={() => setDeliveryMode("Recorded")}>
-                      <PlayCircle size={13} /> Recorded video
-                    </button>
-                    <button type="button" className={deliveryMode === "LiveSession" ? "active" : ""}
-                            disabled={busy} onClick={() => setDeliveryMode("LiveSession")}>
-                      <Radio size={13} /> Live session
-                    </button>
-                  </div>
-                </label>
-
-                <label>
-                  <span>{deliveryMode === "LiveSession" ? "Session outline" : "Content"}</span>
+                  <span>Content<RequiredMark /></span>
                   <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)}
-                            placeholder={deliveryMode === "LiveSession"
-                              ? "What you'll cover in the live session — the predefined agenda a learner sees before joining."
-                              : "What this lesson actually teaches. Plain text or markdown."} disabled={busy} />
+                            placeholder="What this lesson teaches — the material itself for a recorded lesson, or the outline/agenda for a live session."
+                            disabled={busy}
+                            style={publishAttempted && !body.trim() ? invalidFieldStyle : undefined} />
                 </label>
                 <label className="lw-studio__minsfield">
-                  <span>Estimated minutes <em>(optional)</em></span>
+                  <span>Estimated minutes</span>
                   <input type="number" min="0" value={minutes}
                          onChange={(e) => setMinutes(e.target.value)} disabled={busy} />
                 </label>
                 <p className="muted" style={{ margin: 0 }}>
-                  <strong>Save draft</strong> keeps these changes private while you keep working.{" "}
-                  <strong>Publish</strong> makes this version visible to learners right away.
+                  <strong>Save draft</strong> and <strong>Publish</strong> are below, under the tabs — Save draft keeps
+                  changes private while you keep working; Publish makes this version visible to learners right away.
                 </p>
-                <div className="lw-studio__panelactions">
-                  <button type="submit" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}>
-                    Save draft
-                  </button>
-                  <button type="button" className="lw-btn lw-btn--accent lw-btn--sm"
-                          disabled={busy || !body.trim()}
-                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "publish")).then((l) => l && setLesson(l))}>
-                    <Globe size={13} /> Publish
-                  </button>
-                </div>
-                {!body.trim() && <p className="lw-studio__hint">Add some content above before you can publish.</p>}
-              </form>
+                {publishAttempted && !body.trim() && (
+                  <div className="lw-studio__alert"><AlertCircle size={16} /> Add some content above before you can publish.</div>
+                )}
+              </div>
             ) : (
               <div className="lw-studio__nodraft">
                 <p>
@@ -577,26 +613,68 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
                   <Plus size={13} /> Start a new revision
                 </button>
               </div>
+            ))}
+
+            {activeTab === "delivery" && (
+              (lesson.currentRevision || lesson.draftRevision) ? (
+                <>
+                  <div className="lw-studio__draftform" style={{ marginBottom: 20 }}>
+                    <label>
+                      <span>Delivery type</span>
+                      <select
+                        value={deliveryMode} disabled={busy || !lesson.draftRevision}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setDeliveryMode(next);
+                          run(() => api.saveLessonDraft(session.token, slug, lessonId, draftPayload({ deliveryMode: next })))
+                            .then((l) => l && setLesson(l));
+                        }}
+                      >
+                        <option value="Recorded">Recorded video</option>
+                        <option value="LiveSession">Live session</option>
+                      </select>
+                    </label>
+                  </div>
+                  <VideoSection
+                    lesson={lesson}
+                    hasDraft={!!lesson.draftRevision}
+                    deliveryMode={deliveryMode}
+                    onChanged={load}
+                    onDurationKnown={setVideoDuration}
+                  />
+                </>
+              ) : (
+                <p className="muted" style={{ marginTop: 14 }}>
+                  Start a revision in Content before setting up delivery.
+                </p>
+              )
             )}
 
-            {(lesson.currentRevision || lesson.draftRevision) && (
-              <>
-                <VideoSection
-                  lesson={lesson}
-                  hasDraft={!!lesson.draftRevision}
-                  deliveryMode={deliveryMode}
-                  onChanged={load}
-                  onDurationKnown={setVideoDuration}
-                />
+            {activeTab === "questions" && (
+              (lesson.currentRevision || lesson.draftRevision) ? (
                 <AssessmentSection
                   lessonId={lesson.id}
                   hasDraft={!!lesson.draftRevision}
                   videoDurationSeconds={videoDuration}
                 />
-              </>
+              ) : (
+                <p className="muted" style={{ marginTop: 14 }}>
+                  Start a revision in Content before adding interactive questions.
+                </p>
+              )
             )}
 
             <div className="lw-studio__panelfooter">
+              {lesson.draftRevision && (
+                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleSaveDraft}>
+                  Save draft
+                </button>
+              )}
+              {lesson.draftRevision && lesson.status !== "Archived" && (
+                <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handlePublish}>
+                  <Globe size={13} /> Publish
+                </button>
+              )}
               {lesson.status === "Published" && (
                 <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                         onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "unpublish")).then((l) => l && setLesson(l))}>
@@ -646,9 +724,14 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
+  const [sourceTab, setSourceTab] = useState("upload");
+  const [urlInput, setUrlInput] = useState("");
+  const [attachingUrl, setAttachingUrl] = useState(false);
 
   const revision = lesson.draftRevision ?? lesson.currentRevision;
   const video = revision?.video;
+  const videoUrl = revision?.videoUrl;
+  const hasVideo = !!video || !!videoUrl;
 
   async function handleFile(file) {
     if (!file) return;
@@ -663,6 +746,21 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
       setError(e.message);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleAttachUrl() {
+    if (!urlInput.trim()) return;
+    setAttachingUrl(true);
+    setError(null);
+    try {
+      await api.setLessonVideoUrl(session.token, slug, lesson.id, urlInput.trim());
+      setUrlInput("");
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setAttachingUrl(false);
     }
   }
 
@@ -683,37 +781,64 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
       <h2 className="lw-sectiontitle">{isLive ? "Recording" : "Video"}</h2>
       {isLive && (
         <p className="muted" style={{ marginTop: -8, marginBottom: 14 }}>
-          This lesson is a live session — the outline above is what learners see before joining.
+          This lesson is a live session — the content above is what learners see before joining.
           Add a recording afterward if you want one on file.
         </p>
       )}
       {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
 
-      {!video && hasDraft && (
-        uploading ? (
-          <div className="lw-dropzone lw-dropzone--compact">
-            <LoaderCircle size={24} className="lw-studio__spin" />
-            <span className="lw-dropzone__title">Uploading… {Math.round(progress * 100)}%</span>
+      {!hasVideo && hasDraft && (
+        <>
+          <div className="lw-segctrl" style={{ marginBottom: 14 }}>
+            <button type="button" className={sourceTab === "upload" ? "active" : ""} onClick={() => setSourceTab("upload")}>
+              <UploadCloud size={13} /> Upload
+            </button>
+            <button type="button" className={sourceTab === "url" ? "active" : ""} onClick={() => setSourceTab("url")}>
+              <LinkIcon size={13} /> URL
+            </button>
           </div>
-        ) : (
-          <div className="lw-dropzone" onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
-            <UploadCloud size={26} />
-            <span className="lw-dropzone__title">{isLive ? "Upload a recording (optional)" : "Upload a lesson video"}</span>
-            <span className="lw-dropzone__meta">
-              {isLive
-                ? "If you recorded this session, add it here — learners can rewatch it."
-                : "This becomes the interactive video learners watch — checkpoints get placed on its timeline below."}
-            </span>
-            <input
-              ref={fileInputRef} type="file" accept="video/*" style={{ display: "none" }}
-              onChange={(e) => handleFile(e.target.files?.[0])}
-            />
-          </div>
-        )
+
+          {sourceTab === "upload" ? (
+            uploading ? (
+              <div className="lw-dropzone lw-dropzone--compact">
+                <LoaderCircle size={24} className="lw-studio__spin" />
+                <span className="lw-dropzone__title">Uploading… {Math.round(progress * 100)}%</span>
+              </div>
+            ) : (
+              <div className="lw-dropzone" onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
+                <UploadCloud size={26} />
+                <span className="lw-dropzone__title">{isLive ? "Upload a recording (optional)" : "Upload a lesson video"}</span>
+                <span className="lw-dropzone__meta">
+                  {isLive
+                    ? "If you recorded this session, add it here — learners can rewatch it."
+                    : "This becomes the interactive video learners watch — checkpoints get placed on its timeline below."}
+                </span>
+                <input
+                  ref={fileInputRef} type="file" accept="video/*" style={{ display: "none" }}
+                  onChange={(e) => handleFile(e.target.files?.[0])}
+                />
+              </div>
+            )
+          ) : (
+            <div className="lw-studio__draftform">
+              <label>
+                <span>Video URL</span>
+                <input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
+                       placeholder="https://example.com/video.mp4" disabled={attachingUrl} />
+              </label>
+              <div className="lw-studio__panelactions">
+                <button type="button" className="lw-btn lw-btn--accent lw-btn--sm"
+                        disabled={attachingUrl || !urlInput.trim()} onClick={handleAttachUrl}>
+                  {attachingUrl ? <LoaderCircle size={13} className="lw-studio__spin" /> : <LinkIcon size={13} />} Attach
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {!video && !hasDraft && (
-        <p className="lw-studio__unitempty">No video yet. Start a new revision to upload one.</p>
+      {!hasVideo && !hasDraft && (
+        <p className="lw-studio__unitempty">No video yet. Start a new revision to add one.</p>
       )}
 
       {video && (
@@ -731,6 +856,28 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
             <span>
               {video.title} <span className="lw-tag lw-tag--source">{Math.round(video.fileSizeBytes / 1024 / 1024)} MB</span>
             </span>
+            {hasDraft && (
+              <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={handleRemove}>
+                <Trash2 size={13} /> Remove
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {videoUrl && (
+        <div className="lw-player">
+          <div className="lw-player__frame">
+            <video
+              key={videoUrl}
+              src={videoUrl}
+              controls
+              style={{ width: "100%", height: "100%" }}
+              onLoadedMetadata={(e) => onDurationKnown(Math.round(e.target.duration))}
+            />
+          </div>
+          <div className="lw-videosource" style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="lw-tag lw-tag--source" style={{ wordBreak: "break-all" }}>{videoUrl}</span>
             {hasDraft && (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={handleRemove}>
                 <Trash2 size={13} /> Remove
@@ -1039,6 +1186,7 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
   const [explanation, setExplanation] = useState(initial?.explanation ?? "");
   const [timestamp, setTimestamp] = useState(initial?.videoTimestampSeconds ?? "");
   const [points, setPoints] = useState(initial?.points ?? 1);
+  const [attempted, setAttempted] = useState(false);
 
   function selectType(next) {
     setType(next);
@@ -1058,18 +1206,19 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
   const addAcceptedAnswer = () => setAcceptedAnswers((prev) => [...prev, ""]);
   const removeAcceptedAnswer = (i) => setAcceptedAnswers((prev) => prev.filter((_, idx) => idx !== i));
 
-  const valid = !!prompt.trim() && (
-    type === "MultipleChoice" ? options.filter((o) => o.trim()).length >= 2 :
-    type === "CompleteTheSentence" ? acceptedAnswers.some((a) => a.trim()) :
-    true // TrueFalse and OpenAnswer need no further input
-  );
+  const validationMessages = [
+    !prompt.trim() && "Enter the question text.",
+    type === "MultipleChoice" && options.filter((o) => o.trim()).length < 2 && "Add at least 2 options.",
+    type === "CompleteTheSentence" && !acceptedAnswers.some((a) => a.trim()) && "Add at least one accepted answer.",
+  ].filter(Boolean);
+  const valid = validationMessages.length === 0;
 
   return (
     <form
-      className="lw-studio__draftform" style={{ marginTop: 14 }}
+      className="lw-studio__draftform" style={{ marginTop: 14 }} noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        if (!valid) return;
+        if (!valid) { setAttempted(true); return; }
         onSave({
           type,
           prompt: prompt.trim(),
@@ -1083,6 +1232,17 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
         });
       }}
     >
+      {attempted && validationMessages.length > 0 && (
+        <div className="lw-studio__alert">
+          <AlertCircle size={16} />
+          {validationMessages.length === 1 ? validationMessages[0] : (
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {validationMessages.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+
       <label>
         <span>Type</span>
         <div className="lw-segctrl" style={{ marginTop: 8, flexWrap: "wrap" }}>
@@ -1095,8 +1255,9 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
       </label>
 
       <label>
-        <span>Question</span>
-        <textarea rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={busy} required />
+        <span>Question<RequiredMark /></span>
+        <textarea rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={busy} required
+                   style={attempted && !prompt.trim() ? invalidFieldStyle : undefined} />
       </label>
 
       {type === "MultipleChoice" && (
@@ -1170,12 +1331,12 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
       )}
 
       <label>
-        <span>{type === "OpenAnswer" ? "Guidance " : "Explanation "}<em>(optional, shown after answering)</em></span>
+        <span>{type === "OpenAnswer" ? "Guidance " : "Explanation "}<em>(shown after answering)</em></span>
         <textarea rows={2} value={explanation} onChange={(e) => setExplanation(e.target.value)} disabled={busy} />
       </label>
 
       <div className="lw-studio__minsfield">
-        <span>Video timestamp <em>(seconds, optional)</em></span>
+        <span>Video timestamp <em>(seconds)</em></span>
         <input type="number" min="0" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} disabled={busy} />
       </div>
       <div className="lw-studio__minsfield">
@@ -1185,7 +1346,7 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
 
       <div className="lw-studio__panelactions">
         <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !valid}>
+        <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}>
           <Check size={13} /> Save question
         </button>
       </div>
@@ -1323,8 +1484,9 @@ const CSS = `
   }
   .lw-studio__back:hover { color: var(--ink); }
 
-  .lw-studio__heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .lw-studio__heading h1, .lw-studio__panelh2 { margin: 2px 0 6px; }
+  /* UIC-004: the title (h1/h2) and its status pill center as one row. */
+  .lw-studio__heading { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .lw-studio__heading h1, .lw-studio__panelh2 { margin: 2px 0 6px; text-align: center; }
 
   .lw-studio__pill {
     font-family: var(--font-mono); font-size: 10px; border-radius: 20px; padding: 3px 9px;
@@ -1466,18 +1628,38 @@ const CSS = `
   .lw-studio__panelclose:hover { color: var(--ink); }
   .lw-studio__panelnote { font-size: 0.83rem; color: var(--ink-soft); margin: 0 0 16px; line-height: 1.5; }
 
-  .lw-studio__draftform { display: flex; flex-direction: column; gap: 12px; }
-  .lw-studio__draftform label { display: flex; flex-direction: column; gap: 5px; }
-  .lw-studio__draftform label span { font-size: 0.78rem; font-weight: 600; }
+  /* UIC-003: one property per row — label left, value right — in a shared
+     grid per form. Multi-part editors (option lists, alerts, action rows)
+     are direct children too, so they get grid-column: 1 / -1 to span both
+     columns instead of being squeezed into the label/value layout. */
+  .lw-studio__draftform { display: grid; grid-template-columns: max-content 1fr; row-gap: 14px; column-gap: 16px; align-items: start; }
+  .lw-studio__draftform > label, .lw-studio__draftform > .lw-studio__minsfield { display: contents; }
+  .lw-studio__draftform label > span:first-child,
+  .lw-studio__draftform > .lw-studio__minsfield > span:first-child {
+    font-size: 0.78rem; font-weight: 600; padding-top: 9px; white-space: nowrap;
+  }
   .lw-studio__draftform em { font-style: normal; font-weight: 400; color: var(--ink-soft); }
-  .lw-studio__draftform input, .lw-studio__draftform textarea {
+  .lw-studio__draftform input, .lw-studio__draftform textarea, .lw-studio__draftform select {
     font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 9px 11px; resize: vertical;
   }
+  .lw-studio__draftform > .lw-studio__alert,
+  .lw-studio__draftform > p,
+  .lw-studio__draftform > .lw-options,
+  .lw-studio__draftform > button,
+  .lw-studio__draftform > .lw-studio__panelactions {
+    grid-column: 1 / -1;
+  }
   .lw-studio__minsfield input { max-width: 120px; }
   .lw-studio__panelactions { display: flex; justify-content: flex-end; gap: 8px; }
-  .lw-studio__hint { font-size: 0.78rem; color: var(--ink-soft); margin: -4px 0 0; text-align: right; }
+  .lw-studio__fielderror { display: block; color: #C0392B; font-size: 0.78rem; margin-top: 4px; }
+  @media (max-width: 560px) {
+    .lw-studio__draftform { grid-template-columns: 1fr; }
+    .lw-studio__draftform > label, .lw-studio__draftform > .lw-studio__minsfield { display: flex; flex-direction: column; gap: 5px; }
+    .lw-studio__draftform label > span:first-child,
+    .lw-studio__draftform > .lw-studio__minsfield > span:first-child { padding-top: 0; white-space: normal; }
+  }
 
   .lw-studio__nodraft {
     background: var(--surface-2); border-radius: var(--radius-sm);
@@ -1499,4 +1681,24 @@ const CSS = `
 
   .lw-studio__section { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
   .lw-option.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+
+  /* A darker track behind the pills is what makes this read as tabs to switch
+     between, rather than a row of independent buttons like .lw-segctrl's
+     other uses (a value picker sitting under a single label). */
+  .lw-studio__tabs {
+    display: flex; gap: 4px; flex-wrap: wrap;
+    background: var(--surface-2); padding: 4px; border-radius: 10px;
+    width: fit-content; margin: 14px 0 20px;
+  }
+  .lw-studio__tabs button {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 7px; border: none; background: transparent;
+    color: var(--ink-soft); font-family: var(--font-body); font-size: 0.85rem; cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .lw-studio__tabs button:hover:not(.active) { color: var(--ink); }
+  .lw-studio__tabs button.active {
+    background: var(--surface); color: var(--ink); font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  }
 `;
