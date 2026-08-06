@@ -111,6 +111,16 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     public async Task<ActionResult<LessonDetailResponse>> Archive(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.ArchiveLessonAsync(slug, Caller(), lessonId, ct));
 
+    /// <summary>Attaches an uploaded video (a Learning Asset) to the lesson's open draft.</summary>
+    [HttpPost("draft/video")]
+    public async Task<ActionResult<LessonDetailResponse>> AttachVideo(
+        string slug, Guid lessonId, [FromBody] AttachVideoRequest request, CancellationToken ct)
+        => Run(await studio.AttachVideoAsync(slug, Caller(), lessonId, request.LearningAssetId, ct));
+
+    [HttpDelete("draft/video")]
+    public async Task<ActionResult<LessonDetailResponse>> RemoveVideo(string slug, Guid lessonId, CancellationToken ct)
+        => Run(await studio.RemoveVideoAsync(slug, Caller(), lessonId, ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {
         ProvisioningError.None      => Ok(r.Value),

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   LoaderCircle, AlertCircle, Plus, RefreshCw, Send, Undo2,
-  Globe, Archive, Pencil, BookOpen,
+  Globe, Archive, Pencil, BookOpen, Layers, X,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
+import InfoTip from "../components/InfoTip";
 
 /* =========================================================================
    LEARNING PRODUCTS — what this workspace offers.
@@ -51,7 +52,15 @@ const ACTIONS = {
 
 const human = (s) => s.replace(/([a-z])([A-Z])/g, "$1 $2");
 
-export default function ProductsScreen() {
+/** A small, fixed palette so each product gets a stable "cover" color from its id — no image upload exists yet. */
+const COVER_VARIANTS = 5;
+function coverVariant(id) {
+  let hash = 0;
+  for (const ch of String(id)) hash = (hash * 31 + ch.charCodeAt(0)) % 9973;
+  return hash % COVER_VARIANTS;
+}
+
+export default function ProductsScreen({ onOpenStudio }) {
   const { session, workspace } = useAuth();
   const slug = workspace?.slug;
 
@@ -101,8 +110,8 @@ export default function ProductsScreen() {
       <h1>Learning products</h1>
       <p className="lw-sub">
         What {data.workspaceName} offers. A product is the thing a learner enrols
-        in — the teaching material inside it is a separate concern, and isn't
-        built yet.
+        in — its curriculum, the units and lessons a learner actually works
+        through, is built separately in Content Studio.
       </p>
 
       {error && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
@@ -119,20 +128,27 @@ export default function ProductsScreen() {
       )}
 
       {editing && (
-        <ProductForm
-          busy={busy}
-          product={editing === "new" ? null : editing}
-          onCancel={() => setEditing(null)}
-          onSubmit={async (body) => {
-            const saved = await run(() => editing === "new"
-              ? api.createProduct(session.token, slug, body)
-              : api.updateProduct(session.token, slug, editing.id, body));
-            if (saved) setEditing(null);
-          }}
-        />
+        <div className="lw-prod__overlay" role="dialog" aria-modal="true" onClick={() => setEditing(null)}>
+          <div className="lw-prod__panel" onClick={(e) => e.stopPropagation()}>
+            <button className="lw-prod__panelclose" onClick={() => setEditing(null)} aria-label="Close"><X size={16} /></button>
+            <div className="lw-eyebrow">{editing === "new" ? "New product" : "Edit product"}</div>
+            <h2 className="lw-prod__panelh2">{editing === "new" ? "Create a learning product" : editing.title}</h2>
+            <ProductForm
+              busy={busy}
+              product={editing === "new" ? null : editing}
+              onCancel={() => setEditing(null)}
+              onSubmit={async (body) => {
+                const saved = await run(() => editing === "new"
+                  ? api.createProduct(session.token, slug, body)
+                  : api.updateProduct(session.token, slug, editing.id, body));
+                if (saved) setEditing(null);
+              }}
+            />
+          </div>
+        </div>
       )}
 
-      {data.products.length === 0 && !editing && (
+      {data.products.length === 0 && (
         <div className="lw-prod__empty">
           <BookOpen size={26} />
           <h2>Nothing offered yet</h2>
@@ -144,47 +160,82 @@ export default function ProductsScreen() {
         </div>
       )}
 
-      <div className="lw-prod__list">
-        {data.products.map((p) => (
-          <div className={`lw-prod__row is-${p.status.toLowerCase()}`} key={p.id}>
-            <div className="lw-prod__body">
-              <div className="lw-prod__title">
-                {p.title}
+      <div className="lw-prod__grid">
+        {data.products.map((p) => {
+          return (
+            <div className={`lw-prod__card is-${p.status.toLowerCase()}`} key={p.id}>
+              <div className={`lw-prod__cover lw-cover--${coverVariant(p.id)}`}>
+                <span className="lw-prod__monogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
                 <span className={`lw-prod__pill is-${p.status.toLowerCase()}`}>{human(p.status)}</span>
               </div>
-              {p.description && <p className="lw-prod__desc">{p.description}</p>}
-              <div className="lw-prod__meta">
-                <span>{human(p.pacing)}</span>
-                <span>{human(p.enrollmentMode)}</span>
-                {p.category && <span>{p.category}</span>}
-                {p.tags.map((t) => <span className="lw-prod__tag" key={t}>{t}</span>)}
+
+              <div className="lw-prod__body">
+                <div className="lw-prod__title">{p.title}</div>
+
+                {/* Display only — one property per row, label in its own column. */}
+                <div className="lw-prod__proplist">
+                  <span className="lw-prod__proplabel">📝 Description</span>
+                  {p.description
+                    ? <span className="lw-prod__propvalue">{p.description}</span>
+                    : <span className="lw-prod__propvalue is-empty">No description yet</span>}
+
+                  <span className="lw-prod__proplabel">🕒 Pacing</span>
+                  <span className="lw-prod__propvalue">{human(p.pacing)}</span>
+
+                  <span className="lw-prod__proplabel">🔓 Enrollment</span>
+                  <span className="lw-prod__propvalue">{human(p.enrollmentMode)}</span>
+
+                  {p.category && (
+                    <>
+                      <span className="lw-prod__proplabel">🏷️ Category</span>
+                      <span className="lw-prod__propvalue">{p.category}</span>
+                    </>
+                  )}
+
+                  {p.defaultLanguage && (
+                    <>
+                      <span className="lw-prod__proplabel">🌐 Language</span>
+                      <span className="lw-prod__propvalue">{p.defaultLanguage}</span>
+                    </>
+                  )}
+
+                  {p.tags.length > 0 && (
+                    <>
+                      <span className="lw-prod__proplabel">🔖 Tags</span>
+                      <span className="lw-prod__propvalue">{p.tags.join(", ")}</span>
+                    </>
+                  )}
+
+                  <span className="lw-prod__proplabel">📚 Curriculum</span>
+                  {p.hasCurriculum
+                    ? <span className="lw-prod__propvalue is-ready">Published</span>
+                    : <span className="lw-prod__propvalue is-empty">Not published yet</span>}
+                </div>
               </div>
-              {/* The honest part: an offer with nothing behind it yet */}
-              {!p.hasCurriculum && (
-                <div className="lw-prod__nocurr">
-                  No teaching content — lessons and curriculum aren't built yet, so
-                  {p.status === "Published" ? " this is an announced offer rather than something a learner can take." : " there's nothing inside this product."}
+
+              {data.canAuthor && p.status !== "Archived" && (
+                <div className="lw-prod__actions">
+                  <button disabled={busy} onClick={() => setEditing(p)}><Pencil size={12} /> Edit</button>
+                  {onOpenStudio && (
+                    <button disabled={busy} onClick={() => onOpenStudio(p.id)}>
+                      <Layers size={12} /> {p.hasCurriculum ? "Curriculum" : "Build curriculum"}
+                    </button>
+                  )}
+                  {(ACTIONS[p.status] ?? []).map((a) => (
+                    <button key={a.key} disabled={busy}
+                            onClick={() => run(() => api.productTransition(session.token, slug, p.id, a.key))}>
+                      <a.icon size={12} /> {a.label}
+                    </button>
+                  ))}
+                  <button disabled={busy}
+                          onClick={() => run(() => api.productTransition(session.token, slug, p.id, "archive"))}>
+                    <Archive size={12} /> Archive
+                  </button>
                 </div>
               )}
             </div>
-
-            {data.canAuthor && p.status !== "Archived" && (
-              <div className="lw-prod__actions">
-                <button disabled={busy} onClick={() => setEditing(p)}><Pencil size={12} /> Edit</button>
-                {(ACTIONS[p.status] ?? []).map((a) => (
-                  <button key={a.key} disabled={busy}
-                          onClick={() => run(() => api.productTransition(session.token, slug, p.id, a.key))}>
-                    <a.icon size={12} /> {a.label}
-                  </button>
-                ))}
-                <button disabled={busy}
-                        onClick={() => run(() => api.productTransition(session.token, slug, p.id, "archive"))}>
-                  <Archive size={12} /> Archive
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {!data.canAuthor && data.products.length > 0 && (
@@ -220,32 +271,27 @@ function ProductForm({ product, onSubmit, onCancel, busy }) {
         });
       }}
     >
-      <label className="lw-prod__wide">
+      <label>
         <span>Title</span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus
                placeholder="Everyday Conversation A2" disabled={busy} />
       </label>
-      <label className="lw-prod__wide">
+      <label>
         <span>Description <em>(optional)</em></span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
                   placeholder="Who it's for and what they'll come away with." disabled={busy} />
       </label>
-      {/* The help text follows the selection rather than sitting in a tooltip:
-          this is a choice a tutor makes once and lives with, so the meaning
-          should be readable without hunting for it. */}
       <label>
-        <span>Pacing — what decides when a learner moves on</span>
+        <span>Pacing <InfoTip text={PACING.find((p) => p.value === pacing)?.help} /></span>
         <select value={pacing} onChange={(e) => setPacing(e.target.value)} disabled={busy}>
           {PACING.map((p) => <option key={p.value} value={p.value}>{human(p.value)}</option>)}
         </select>
-        <small>{PACING.find((p) => p.value === pacing)?.help}</small>
       </label>
       <label>
-        <span>How learners get in</span>
+        <span>How learners get in <InfoTip text={ENROLLMENT.find((m) => m.value === enrollmentMode)?.help} /></span>
         <select value={enrollmentMode} onChange={(e) => setEnrollmentMode(e.target.value)} disabled={busy}>
           {ENROLLMENT.map((m) => <option key={m.value} value={m.value}>{human(m.value)}</option>)}
         </select>
-        <small>{ENROLLMENT.find((m) => m.value === enrollmentMode)?.help}</small>
       </label>
       <label>
         <span>Category <em>(optional)</em></span>
@@ -257,7 +303,7 @@ function ProductForm({ product, onSubmit, onCancel, busy }) {
         <input value={defaultLanguage} onChange={(e) => setDefaultLanguage(e.target.value)}
                placeholder="English" disabled={busy} />
       </label>
-      <label className="lw-prod__wide">
+      <label>
         <span>Tags <em>(comma separated, optional)</em></span>
         <input value={tags} onChange={(e) => setTags(e.target.value)}
                placeholder="beginner, conversation, evenings" disabled={busy} />
@@ -284,12 +330,7 @@ const CSS = `
   }
   .lw-prod__bar { display: flex; gap: 8px; margin-bottom: 18px; }
 
-  .lw-prod__form {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 18px; margin-bottom: 18px;
-  }
-  .lw-prod__wide { grid-column: 1 / -1; }
+  .lw-prod__form { display: grid; grid-template-columns: 1fr; gap: 14px; }
   .lw-prod__form label span { display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 5px; }
   .lw-prod__form em { font-style: normal; font-weight: 400; color: var(--ink-soft); }
   .lw-prod__form input, .lw-prod__form textarea, .lw-prod__form select {
@@ -297,28 +338,56 @@ const CSS = `
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
   }
-  .lw-prod__form small {
-    display: block; margin-top: 6px; font-size: 0.76rem;
-    color: var(--ink-soft); line-height: 1.5;
-  }
   .lw-prod__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 
-  .lw-prod__list { display: flex; flex-direction: column; gap: 9px; }
-  .lw-prod__row {
-    display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;
+  .lw-prod__grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+  }
+  .lw-prod__card {
+    display: flex; flex-direction: column;
     background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 15px 17px;
+    border-radius: var(--radius); overflow: hidden;
   }
-  .lw-prod__row.is-archived { opacity: 0.55; }
-  .lw-prod__body { flex: 1; min-width: 240px; }
-  .lw-prod__title { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-weight: 600; font-size: 0.98rem; }
-  .lw-prod__desc { font-size: 0.86rem; color: var(--ink-soft); margin: 6px 0 0; max-width: 62ch; line-height: 1.55; }
-  .lw-prod__meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
-  .lw-prod__meta span {
-    font-family: var(--font-mono); font-size: 10px;
-    background: var(--surface-2); color: var(--ink-soft); border-radius: 20px; padding: 3px 8px;
+  .lw-prod__card.is-archived { opacity: 0.55; }
+
+  .lw-prod__cover {
+    height: 64px; flex-shrink: 0; position: relative;
+    display: flex; align-items: center; justify-content: center;
   }
-  .lw-prod__tag { background: color-mix(in srgb, var(--accent) 12%, transparent) !important; color: var(--accent) !important; }
+  .lw-prod__monogram { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: rgba(255,255,255,0.92); }
+  .lw-prod__cover .lw-prod__pill { position: absolute; top: 9px; right: 9px; background: rgba(10,12,15,0.4); color: #fff; }
+  .lw-cover--0 { background: linear-gradient(135deg, #2D5BD1, #6D3FC4); }
+  .lw-cover--1 { background: linear-gradient(135deg, #1E7F63, #5B8DEF); }
+  .lw-cover--2 { background: linear-gradient(135deg, #E0A83E, #C4533F); }
+  .lw-cover--3 { background: linear-gradient(135deg, #0EA5A5, #6D3FC4); }
+  .lw-cover--4 { background: linear-gradient(135deg, #D1477A, #E0A83E); }
+
+  .lw-prod__body { flex: 1; padding: 13px 15px 4px; }
+  .lw-prod__title { font-weight: 600; font-size: 0.98rem; }
+
+  /* Display only, one property per row: label (with its emoji) in the left
+     column, value in the right — never two properties sharing a line. */
+  .lw-prod__proplist {
+    display: grid; grid-template-columns: max-content 1fr;
+    row-gap: 7px; column-gap: 12px; margin-top: 11px; font-size: 0.82rem;
+  }
+  .lw-prod__proplabel { color: var(--ink-soft); white-space: nowrap; }
+  .lw-prod__propvalue { color: var(--ink); line-height: 1.5; word-break: break-word; }
+  .lw-prod__propvalue.is-empty { color: var(--ink-soft); font-style: italic; }
+  .lw-prod__propvalue.is-ready { color: var(--accent-2); font-weight: 600; }
+
+  .lw-prod__overlay {
+    position: fixed; inset: 0; background: rgba(10,12,15,0.55);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 40px 20px; z-index: 50; overflow-y: auto;
+  }
+  .lw-prod__panel {
+    background: var(--surface); color: var(--ink); border-radius: var(--radius);
+    max-width: 640px; width: 100%; padding: 30px 32px 34px; position: relative;
+  }
+  .lw-prod__panelclose { position: absolute; top: 18px; right: 18px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
+  .lw-prod__panelclose:hover { color: var(--ink); }
+  .lw-prod__panelh2 { margin: 2px 0 18px; }
 
   .lw-prod__pill {
     font-family: var(--font-mono); font-size: 10px; border-radius: 20px; padding: 3px 9px;
@@ -327,12 +396,7 @@ const CSS = `
   .lw-prod__pill.is-published { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
   .lw-prod__pill.is-underreview { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 
-  .lw-prod__nocurr {
-    font-size: 0.8rem; color: var(--ink-soft); font-style: italic;
-    margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--line); max-width: 66ch; line-height: 1.5;
-  }
-
-  .lw-prod__actions { display: flex; gap: 5px; flex-wrap: wrap; flex-shrink: 0; }
+  .lw-prod__actions { display: flex; gap: 5px; flex-wrap: wrap; padding: 12px 15px 15px; }
   .lw-prod__actions button {
     display: inline-flex; align-items: center; gap: 4px;
     font-family: var(--font-body); font-size: 11px;
@@ -353,6 +417,5 @@ const CSS = `
 
   .lw-prod__spin { animation: lwProdSpin 0.9s linear infinite; }
   @keyframes lwProdSpin { to { transform: rotate(360deg); } }
-  @media (max-width: 640px) { .lw-prod__form { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .lw-prod__spin { animation: none; } }
 `;

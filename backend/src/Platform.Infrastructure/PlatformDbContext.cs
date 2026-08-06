@@ -22,6 +22,8 @@ public class PlatformDbContext : DbContext
     public DbSet<LearningProduct> LearningProducts => Set<LearningProduct>();
     public DbSet<Curriculum> Curricula => Set<Curriculum>();
     public DbSet<Lesson> Lessons => Set<Lesson>();
+    public DbSet<LearningAsset> LearningAssets => Set<LearningAsset>();
+    public DbSet<Assessment> Assessments => Set<Assessment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -327,6 +329,72 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
             // Version numbers are unique per lesson and never reused
             entity.HasIndex(e => new { e.LessonId, e.Version }).IsUnique();
+
+            // Reference by identifier only (Learning Asset Aggregate Design INV-003) —
+            // deliberately not a foreign key, matching Workspace.OwnerMembershipId
+            // above: the two aggregates evolve independently.
+            entity.Property(e => e.VideoAssetId);
+
+            entity.Property(e => e.DeliveryMode).HasConversion<string>().HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<LearningAsset>(entity =>
+        {
+            entity.ToTable("learning_assets");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.UploadedByMembershipId).IsRequired();
+
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(512);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.StorageProvider).IsRequired().HasMaxLength(32);
+            entity.Property(e => e.ObjectKey).IsRequired().HasMaxLength(1024);
+
+            entity.Property(e => e.Category).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // The picker in Content Studio lists every asset in the Workspace
+            entity.HasIndex(e => e.WorkspaceId);
+        });
+
+        modelBuilder.Entity<Assessment>(entity =>
+        {
+            entity.ToTable("assessments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.LessonId).IsRequired();
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // One interactive-quiz Assessment per Lesson, scoped down from
+            // Assessment Context's broader shape (Assessment.cs remarks)
+            entity.HasIndex(e => e.LessonId).IsUnique();
+
+            entity.HasMany(e => e.Questions).WithOne()
+                  .HasForeignKey(q => q.AssessmentId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.Questions).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<Question>(entity =>
+        {
+            entity.ToTable("assessment_questions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.Prompt).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.Explanation).HasMaxLength(2000);
+            entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(32);
+
+            // Small ordered lists owned entirely by this entity — same
+            // reasoning as LearningProduct.Tags above, a join table buys nothing.
+            // Only one of the two is populated, depending on Type (Question.Apply).
+            entity.PrimitiveCollection(e => e.Options);
+            entity.PrimitiveCollection(e => e.AcceptedAnswers);
         });
 
         modelBuilder.Entity<PlatformOperator>(entity =>

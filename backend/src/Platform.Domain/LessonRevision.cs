@@ -27,6 +27,16 @@ public class LessonRevision
     /// <summary>Roughly how long this takes a learner, in minutes. The tutor's estimate.</summary>
     public int? EstimatedMinutes { get; private set; }
 
+    /// <summary>Recorded (self-paced video) or a live session the tutor runs. Descriptive only — see <see cref="LessonDeliveryMode"/>.</summary>
+    public LessonDeliveryMode DeliveryMode { get; private set; } = LessonDeliveryMode.Recorded;
+
+    /// <summary>
+    /// The video this revision teaches with, if any — a reference by identifier
+    /// only (Learning Asset Aggregate Design INV-003). This revision never owns
+    /// the file; the Learning Asset it points at does.
+    /// </summary>
+    public Guid? VideoAssetId { get; private set; }
+
     public LessonRevisionStatus Status { get; private set; }
     public Guid AuthoredByMembershipId { get; private set; }
     public DateTime CreatedAt { get; private set; }
@@ -59,12 +69,9 @@ public class LessonRevision
     /// what learners are currently reading, so changing it under them would
     /// make "revision" meaningless.
     /// </summary>
-    public void Edit(string title, string? body, int? estimatedMinutes)
+    public void Edit(string title, string? body, int? estimatedMinutes, LessonDeliveryMode deliveryMode)
     {
-        if (Status != LessonRevisionStatus.Draft)
-            throw new InvalidOperationException(
-                "Only a draft revision can be edited. Create a new revision to change published content.");
-
+        RequireDraft();
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         if (estimatedMinutes is < 0)
             throw new ArgumentException("Estimated minutes cannot be negative.", nameof(estimatedMinutes));
@@ -72,7 +79,32 @@ public class LessonRevision
         Title = title.Trim();
         Body = string.IsNullOrWhiteSpace(body) ? null : body.Trim();
         EstimatedMinutes = estimatedMinutes;
+        DeliveryMode = deliveryMode;
         UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Attaches a video by reference. Draft-only, same reasoning as <see cref="Edit"/>.</summary>
+    public void AttachVideo(Guid learningAssetId)
+    {
+        RequireDraft();
+        if (learningAssetId == Guid.Empty)
+            throw new ArgumentException("A video reference cannot be empty.", nameof(learningAssetId));
+        VideoAssetId = learningAssetId;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void RemoveVideo()
+    {
+        RequireDraft();
+        VideoAssetId = null;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    private void RequireDraft()
+    {
+        if (Status != LessonRevisionStatus.Draft)
+            throw new InvalidOperationException(
+                "Only a draft revision can be edited. Create a new revision to change published content.");
     }
 
     internal void Publish()

@@ -84,6 +84,17 @@ public class ContentStudioService(PlatformDbContext db)
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
         if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
 
+        var assetIds = lesson.Revisions.Where(r => r.VideoAssetId is not null)
+            .Select(r => r.VideoAssetId!.Value).Distinct().ToList();
+        var assets = assetIds.Count == 0
+            ? new Dictionary<Guid, LearningAsset>()
+            : await db.LearningAssets.AsNoTracking().Where(a => assetIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, ct);
+
+        LessonRevisionRow? Rev(LessonRevision? r) => r is null ? null : new LessonRevisionRow(
+            r.Id, r.Version, r.Title, r.Body, r.EstimatedMinutes, r.DeliveryMode.ToString(), r.Status.ToString(), r.UpdatedAt,
+            r.VideoAssetId,
+            r.VideoAssetId is { } videoId && assets.TryGetValue(videoId, out var video) ? LearningAssetService.Describe(video) : null);
+
         return ProvisioningResult<LessonDetailResponse>.Success(new LessonDetailResponse(
             Id:              lesson.Id,
             Title:           lesson.Title,
@@ -92,9 +103,6 @@ public class ContentStudioService(PlatformDbContext db)
             DraftRevision:   Rev(lesson.DraftRevision),
             History:         lesson.Revisions.OrderByDescending(r => r.Version).Select(r => Rev(r)!).ToList()));
     }
-
-    private static LessonRevisionRow? Rev(LessonRevision? r) => r is null ? null : new LessonRevisionRow(
-        r.Id, r.Version, r.Title, r.Body, r.EstimatedMinutes, r.Status.ToString(), r.UpdatedAt);
 
     // ── Curriculum structure ─────────────────────────────────────────────────
 
@@ -148,7 +156,8 @@ public class ContentStudioService(PlatformDbContext db)
         {
             var draft = l.DraftRevision
                 ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
-            draft.Edit(request.Title, request.Body, request.EstimatedMinutes);
+            var deliveryMode = Enum.TryParse<LessonDeliveryMode>(request.DeliveryMode, out var parsed) ? parsed : LessonDeliveryMode.Recorded;
+            draft.Edit(request.Title, request.Body, request.EstimatedMinutes, deliveryMode);
         }, ct);
 
     public Task<ProvisioningResult<LessonDetailResponse>> StartRevisionAsync(
@@ -166,6 +175,47 @@ public class ContentStudioService(PlatformDbContext db)
     public Task<ProvisioningResult<LessonDetailResponse>> ArchiveLessonAsync(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
         => MutateLessonAsync(slug, caller, lessonId, l => l.Archive(), ct);
+
+    /// <summary>
+    /// Attaches an uploaded video to the lesson's open draft (Learning Asset
+    /// Aggregate Design INV-003: by identifier only). Cross-aggregate, so it
+    /// cannot go through MutateLessonAsync's single-aggregate mutate delegate.
+    /// </summary>
+    public async Task<ProvisioningResult<LessonDetailResponse>> AttachVideoAsync(
+        string slug, Guid caller, Guid lessonId, Guid learningAssetId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var asset = await db.LearningAssets
+            .FirstOrDefaultAsync(a => a.Id == learningAssetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (asset is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such learning asset."));
+
+        try
+        {
+            asset.RequireAttachable();
+            var draft = lesson.DraftRevision
+                ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
+            draft.AttachVideo(asset.Id);
+        }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    public Task<ProvisioningResult<LessonDetailResponse>> RemoveVideoAsync(
+        string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
+        => MutateLessonAsync(slug, caller, lessonId, l =>
+        {
+            var draft = l.DraftRevision
+                ?? throw new InvalidOperationException("This lesson has no open draft.");
+            draft.RemoveVideo();
+        }, ct);
 
     // ── Plumbing ─────────────────────────────────────────────────────────────
 

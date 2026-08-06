@@ -88,6 +88,31 @@ function safeJson(text) {
   }
 }
 
+/** Like request(), but for multipart/form-data (file uploads) — no JSON body, no Content-Type override. */
+async function requestForm(path, { method = "POST", form, token } = {}) {
+  let response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+  } catch {
+    throw new ApiError(0, "Could not reach the server. Is the API running?");
+  }
+
+  if (response.status === 204) return null;
+
+  const text = await response.text();
+  const payload = text ? safeJson(text) : null;
+
+  if (!response.ok) {
+    throw new ApiError(response.status, payload?.message ?? `Request failed (${response.status}).`);
+  }
+
+  return payload;
+}
+
 /* ── Endpoints ────────────────────────────────────────────────────────────── */
 
 /** POST /api/auth/login → { token, expiresAt, fullName } */
@@ -193,6 +218,216 @@ export function updateProduct(token, slug, id, body) {
 /** POST .../products/{id}/{transition} — submit | return | publish | unpublish | archive */
 export function productTransition(token, slug, id, transition) {
   return request(`/workspaces/${encodeURIComponent(slug)}/products/${id}/${transition}`, { method: "POST", token });
+}
+
+/* ── Content Studio (curriculum, units, lessons) ───────────────────────────
+   A Curriculum is created lazily by the API the first time a tutor adds a
+   unit or a lesson — there is no separate "create curriculum" call.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/workspaces/{slug}/products/{productId}/curriculum */
+export function getCurriculum(token, slug, productId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum`, { token });
+}
+
+/** POST .../curriculum/units */
+export function addUnit(token, slug, productId, title) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/units`, {
+    method: "POST", body: { title }, token,
+  });
+}
+
+/** PUT .../curriculum/units/{unitId} */
+export function renameUnit(token, slug, productId, unitId, title) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/units/${unitId}`, {
+    method: "PUT", body: { title }, token,
+  });
+}
+
+/** DELETE .../curriculum/units/{unitId} */
+export function removeUnit(token, slug, productId, unitId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/units/${unitId}`, {
+    method: "DELETE", token,
+  });
+}
+
+/** POST .../curriculum/lessons — creates a lesson, optionally placed straight into a unit */
+export function createLesson(token, slug, productId, title, unitId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/lessons`, {
+    method: "POST", body: { title, unitId: unitId ?? null }, token,
+  });
+}
+
+/** POST .../curriculum/units/{unitId}/lessons/{lessonId} — place an existing (unplaced) lesson */
+export function placeLesson(token, slug, productId, unitId, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/units/${unitId}/lessons/${lessonId}`, {
+    method: "POST", token,
+  });
+}
+
+/** DELETE .../curriculum/units/{unitId}/lessons/{lessonId} — unplace, does not delete the lesson */
+export function unplaceLesson(token, slug, productId, unitId, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/units/${unitId}/lessons/${lessonId}`, {
+    method: "DELETE", token,
+  });
+}
+
+/** POST .../curriculum/{transition} — publish | unpublish */
+export function curriculumTransition(token, slug, productId, transition) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/${transition}`, {
+    method: "POST", token,
+  });
+}
+
+/* ── Lessons (the content behind one lesson's identity) ────────────────── */
+
+/** GET /api/workspaces/{slug}/lessons/{lessonId} → identity + current/draft revisions + history */
+export function getLesson(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}`, { token });
+}
+
+/** PUT .../lessons/{lessonId}/draft — saves the open draft revision */
+export function saveLessonDraft(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft`, {
+    method: "PUT", body, token,
+  });
+}
+
+/** POST .../lessons/{lessonId}/revisions — opens a new draft on top of the published content */
+export function startLessonRevision(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/revisions`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../lessons/{lessonId}/{transition} — publish | unpublish | archive */
+export function lessonTransition(token, slug, lessonId, transition) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/${transition}`, {
+    method: "POST", token,
+  });
+}
+
+/* ── Learning assets (video upload) ──────────────────────────────────────
+   A Learning Asset is a reusable resource a Lesson Revision references by
+   id only (Learning Asset Aggregate Design) — this is where the file itself
+   goes.
+   ------------------------------------------------------------------------ */
+
+/** POST /api/workspaces/{slug}/learning-assets — multipart upload, returns the asset */
+export function uploadLearningAsset(token, slug, file, title, onProgress) {
+  const form = new FormData();
+  form.append("file", file);
+  if (title) form.append("title", title);
+
+  // Plain fetch (via requestForm) has no upload-progress event, so an actual
+  // learner-facing progress bar needs XHR. Kept simple here since this only
+  // ever runs from the tutor's own authoring flow.
+  if (!onProgress) {
+    return requestForm(`/workspaces/${encodeURIComponent(slug)}/learning-assets`, { form, token });
+  }
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/workspaces/${encodeURIComponent(slug)}/learning-assets`);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      const payload = xhr.responseText ? safeJson(xhr.responseText) : null;
+      if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
+      else reject(new ApiError(xhr.status, payload?.message ?? `Upload failed (${xhr.status}).`));
+    };
+    xhr.onerror = () => reject(new ApiError(0, "Could not reach the server. Is the API running?"));
+    xhr.send(form);
+  });
+}
+
+/** GET /api/workspaces/{slug}/learning-assets/{assetId}/download — the URL a <video> element points at */
+export function learningAssetDownloadUrl(token, slug, assetId) {
+  return `/api/workspaces/${encodeURIComponent(slug)}/learning-assets/${assetId}/download?access_token=${encodeURIComponent(token)}`;
+}
+
+/** DELETE .../learning-assets/{assetId} — archives it */
+export function archiveLearningAsset(token, slug, assetId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learning-assets/${assetId}`, { method: "DELETE", token });
+}
+
+/* ── Lesson video (attaching an uploaded asset to a lesson's draft) ─────── */
+
+/** POST .../lessons/{lessonId}/draft/video */
+export function attachLessonVideo(token, slug, lessonId, learningAssetId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/video`, {
+    method: "POST", body: { learningAssetId }, token,
+  });
+}
+
+/** DELETE .../lessons/{lessonId}/draft/video */
+export function removeLessonVideo(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/video`, {
+    method: "DELETE", token,
+  });
+}
+
+/* ── Reference data ───────────────────────────────────────────────────── */
+
+/** GET .../reference/question-types — the QuestionType enum's values + display labels */
+export function getQuestionTypes(token) {
+  return request(`/reference/question-types`, { token });
+}
+
+/* ── Interactive assessment (the quiz attached to a lesson's video) ─────── */
+
+/** GET .../lessons/{lessonId}/assessment */
+export function getAssessment(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment`, { token });
+}
+
+/** PUT .../lessons/{lessonId}/assessment — title + passing threshold; creates lazily */
+export function saveAssessment(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment`, {
+    method: "PUT", body, token,
+  });
+}
+
+/** POST .../assessment/questions */
+export function addQuestion(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/questions`, {
+    method: "POST", body, token,
+  });
+}
+
+/** PUT .../assessment/questions/{questionId} */
+export function updateQuestion(token, slug, lessonId, questionId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/questions/${questionId}`, {
+    method: "PUT", body, token,
+  });
+}
+
+/** DELETE .../assessment/questions/{questionId} */
+export function removeQuestion(token, slug, lessonId, questionId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/questions/${questionId}`, {
+    method: "DELETE", token,
+  });
+}
+
+/** POST .../assessment/{transition} — publish | unpublish */
+export function assessmentTransition(token, slug, lessonId, transition) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/${transition}`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../assessment/ai-suggest — simulated AI: proposes timestamped checkpoints, nothing persisted */
+export function suggestQuestions(token, slug, lessonId, videoDurationSeconds) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/ai-suggest`, {
+    method: "POST", body: { videoDurationSeconds }, token,
+  });
+}
+
+/** POST .../assessment/preview — simulated AI grading against the authored answer key; nothing persisted */
+export function previewAssessment(token, slug, lessonId, answers) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/preview`, {
+    method: "POST", body: { answers }, token,
+  });
 }
 
 /* ── Workspace setup (the owner's own lifecycle) ───────────────────────── */

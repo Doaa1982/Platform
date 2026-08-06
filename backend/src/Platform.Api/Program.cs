@@ -54,6 +54,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience            = builder.Configuration["Jwt:Audience"] ?? "platform-client",
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
+
+        // A <video> element cannot set an Authorization header, so the one
+        // streaming endpoint that a browser addresses directly (not via
+        // fetch) also accepts the bearer token as a query parameter.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.Request.Path.StartsWithSegments("/api/workspaces", out var remainder)
+                    && remainder.Value?.Contains("/learning-assets/", StringComparison.Ordinal) == true
+                    && context.Request.Query.TryGetValue("access_token", out var token))
+                {
+                    context.Token = token;
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 
 // Platform Administrator authority (Platform Administrator Business Analysis,
@@ -78,6 +95,9 @@ builder.Services.AddScoped<JoinRequestService>();
 builder.Services.AddScoped<SignupRequestService>();
  builder.Services.AddScoped<LearningProductService>();
 builder.Services.AddScoped<ContentStudioService>();
+builder.Services.AddSingleton<ILearningAssetStorage, LocalLearningAssetStorage>();
+builder.Services.AddScoped<LearningAssetService>();
+builder.Services.AddScoped<AssessmentService>();
 
 // Guards the one endpoint a stranger can reach that creates an Identity
 builder.Services.AddPlatformRateLimiting(builder.Configuration);

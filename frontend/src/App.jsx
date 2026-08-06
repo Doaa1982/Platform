@@ -10,6 +10,7 @@ import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
 import NotBuiltYet from "./screens/NotBuiltYet";
 import ProductsScreen from "./screens/ProductsScreen";
+import ContentStudioScreen from "./screens/ContentStudioScreen";
 import LearnerHomeScreen from "./screens/LearnerHomeScreen";
 import * as api from "./api/client";
 
@@ -334,6 +335,10 @@ export default function App() {
   const [learnerScreen, setLearnerScreen] = useState("dashboard");
   const [ownerScreen, setOwnerScreen] = useState("overview");
   const [profileOpen, setProfileOpen] = useState(false);
+  // Which product Content Studio has open. Lives here, not inside the
+  // screen, so a tutor can jump straight to a product's curriculum from its
+  // row in Learning Products instead of picking it again from scratch.
+  const [studioProductId, setStudioProductId] = useState(null);
 
   /* The workspace description lives on the setup endpoint rather than in
      /api/me, so the shell fetches it once for the tagline. Absent is a normal
@@ -373,7 +378,7 @@ export default function App() {
     .map((r) => r.replace(/([a-z])([A-Z])/g, "$1 $2"))
     .join(", ") || "Member";
 
-  useEffect(() => { setLearnerScreen("dashboard"); setOwnerScreen("overview"); }, [role]);
+  useEffect(() => { setLearnerScreen("dashboard"); setOwnerScreen("overview"); setStudioProductId(null); }, [role]);
 
   const activeNavScreen = role === "learner" ? learnerScreen : (ownerScreen === "studio" ? "studio" : ownerScreen);
 
@@ -434,10 +439,11 @@ export default function App() {
           {role === "owner" && ownerScreen === "members" && <MembersScreen />}
           {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
 
-          {role === "owner" && ownerScreen === "products" && <ProductsScreen />}
+          {role === "owner" && ownerScreen === "products" && (
+            <ProductsScreen onOpenStudio={(id) => { setStudioProductId(id); setOwnerScreen("studio"); }} />
+          )}
           {role === "owner" && ownerScreen === "studio" && (
-            <NotBuiltYet area="Content Authoring" onNavigate={setOwnerScreen}
-              blurb="Lesson authoring — uploads, AI-drafted questions, publishing — isn't built yet. It arrives with Learning Products." />
+            <ContentStudioScreen productId={studioProductId} onSelectProduct={setStudioProductId} />
           )}
           {role === "owner" && ownerScreen === "scheduling" && (
             <NotBuiltYet area="Scheduling Context" onNavigate={setOwnerScreen}

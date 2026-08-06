@@ -3,6 +3,7 @@ import { LoaderCircle, AlertCircle, CheckCircle2, ArrowRight, Building2, Clock }
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
+import InfoTip from "../components/InfoTip";
 
 /* =========================================================================
    JOIN SCREEN — /join/{slug}
@@ -161,13 +162,10 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
           </label>
 
           <label className="pl-join__field">
-            <span>Password</span>
+            <span>Password <InfoTip text="If you already have an account with this email, enter its existing password." /></span>
             <input type="password" autoComplete="new-password" required
                    value={password} onChange={(e) => setPassword(e.target.value)}
                    placeholder="••••••••" disabled={submitting} />
-            <small>
-              If you already have an account with this email, enter its existing password.
-            </small>
           </label>
 
           <label className="pl-join__field">
@@ -236,7 +234,6 @@ const CSS = `
   .pl-join__field input:focus-visible, .pl-join__field textarea:focus-visible {
     outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(45,91,209,0.16);
   }
-  .pl-join__field small { display: block; margin-top: 6px; font-size: 0.76rem; color: var(--ink-soft); line-height: 1.5; }
 
   .pl-join__btn {
     width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px;

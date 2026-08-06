@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, ArrowRight, LoaderCircle, AlertCircle, CheckCircle2, Copy, Check } from "lucide-react";
 import * as api from "../api/client";
 import { useFonts } from "../hooks/useFonts";
+import InfoTip from "../components/InfoTip";
 
 /* =========================================================================
    APPLY — /apply
@@ -120,11 +121,10 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
           </label>
 
           <label className="pl-apply__field">
-            <span>Email</span>
+            <span>Email <InfoTip text="We'll send your application link here." /></span>
             <input type="email" autoComplete="email" required
                    value={email} onChange={(e) => setEmail(e.target.value)}
                    placeholder="you@example.com" disabled={submitting} />
-            <small>We'll send your application link here.</small>
           </label>
 
           <label className="pl-apply__field">
@@ -209,7 +209,6 @@ const CSS = `
   .pl-apply__field input:focus-visible, .pl-apply__field textarea:focus-visible {
     outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,141,239,0.2);
   }
-  .pl-apply__field small { display: block; margin-top: 6px; font-size: 0.75rem; color: var(--ink-soft); }
 
   .pl-apply__primary {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
