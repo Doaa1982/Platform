@@ -99,6 +99,7 @@ builder.Services.AddSingleton<ILearningAssetStorage, LocalLearningAssetStorage>(
 builder.Services.AddScoped<LearningAssetService>();
 builder.Services.AddScoped<AssessmentService>();
 builder.Services.AddScoped<LearningDeliveryService>();
+builder.Services.AddScoped<NotificationService>();
 
 // Guards the one endpoint a stranger can reach that creates an Identity
 builder.Services.AddPlatformRateLimiting(builder.Configuration);

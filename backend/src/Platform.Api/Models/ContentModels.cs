@@ -39,11 +39,18 @@ public record LessonDetailResponse(
 /// DeliveryMode is "Recorded" or "LiveSession" (LessonDeliveryMode). Video and
 /// VideoUrl are mutually exclusive — at most one is populated at a time
 /// (LessonRevision.AttachVideo/SetVideoUrl each clear the other).
+///
+/// QuestionCount/SubmissionCount describe this revision's own Assessment
+/// (Assessment.cs — one Assessment per Lesson Revision) — so revision history
+/// shows, at a glance, that an older revision's interactive questions and the
+/// learner Submissions graded against them are still there, not lost when a
+/// newer revision superseded it.
 /// </summary>
 public record LessonRevisionRow(
     Guid Id, int Version, string Title, string? Body,
     int? EstimatedMinutes, string DeliveryMode, string Status, DateTime UpdatedAt,
-    Guid? VideoAssetId, LearningAssetResponse? Video, string? VideoUrl);
+    Guid? VideoAssetId, LearningAssetResponse? Video, string? VideoUrl,
+    int QuestionCount, int SubmissionCount);
 
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);

@@ -21,3 +21,6 @@ public enum SubmissionStatus { InProgress, Graded }
 /// concrete completion rule actually needs; see LessonProgress.cs).
 /// </summary>
 public enum LessonProgressStatus { NotStarted, Completed }
+
+/// <summary>What a Notification is about (Notification.cs). One kind exists so far — as many more get added as trigger real learner-facing events.</summary>
+public enum NotificationKind { LessonQuestionsUpdated }

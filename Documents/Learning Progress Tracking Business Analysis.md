@@ -497,6 +497,8 @@ The following decisions remain under analysis.
 - Which Lesson Revision determines learner progress?
 - How should progress behave when a learner changes to a newer Lesson Revision?
 
+**Resolved 2026-08-06** — see Learning Publication & Version Management §19 (Rules 11–15). A Lesson's current published revision is always the one that determines progress; there is no per-learner pinning to an older revision. A tutor preparing a replacement (e.g. a new video) works in a Draft that does not affect any learner until it is published, so nothing "changes to a newer revision" out from under an in-progress learner — the cutover is a single deliberate publish action, not a migration a learner is individually moved through.
+
 ---
 
 ## Optional Learning

@@ -649,6 +649,47 @@ This bounded context is designed to support future capabilities including:
 
 ---
 
+# 19. Applied Decision — Editing a Published Lesson
+
+**Decided:** 2026-08-06
+
+Sections 8 and 11–13 describe a general-purpose engine that classifies each edit by analyzing what changed (Impact Analysis), scores how safely learners can migrate (Compatibility Analysis), and recommends a Release Type and Migration Policy per publication. That engine is not built, and is not being built now — it is genuinely future-scale work (§18 already lists it there). Instead, the platform has adopted a simpler, concrete rule: each field of a Lesson is classified once, in advance, rather than analyzed per edit.
+
+## Field classification
+
+| Field | Classification | Effect of editing it on a Published Lesson Version |
+|---|---|---|
+| Title | Patch | Edited directly on the current published Lesson Version. No new version, no republish. |
+| Body / instructional content | Patch | Same as Title. |
+| Estimated Duration | Patch | Same as Title. |
+| Interactive Learning Events (questions) | Patch, with notice | Edited directly on the current published Lesson Version's Assessment, regardless of the Assessment's own publish state. No new Lesson Version is created. Every learner whose Learning Progress on this lesson is Started or Completed receives a Notification that the questions changed. |
+| Video | Major | Requires a new Lesson Version (Draft). The tutor is told this before the edit proceeds. |
+| Delivery Mode (Recorded / Live Session) | Major | Same as Video — it changes what the lesson fundamentally is, not a detail of it. |
+
+## Rule 11
+
+A Patch-classified field may be edited on the current published Lesson Version directly. This does not create a new Lesson Version and does not require republishing.
+
+## Rule 12
+
+A Major-classified field may only be changed by creating a new Lesson Version (Draft). The currently published Lesson Version — and every learner currently assigned to it — is unaffected until the tutor explicitly publishes the new one.
+
+## Rule 13
+
+A new Lesson Version's Draft is pre-filled from the Lesson Version it was started from — every field except the video. A tutor starting a new version because the video needs replacing is not asked to re-author content that didn't change.
+
+## Rule 14
+
+Editing Interactive Learning Events on a Published Lesson Version produces a Notification for every learner whose Learning Progress on that lesson is Started or Completed. A learner who has Not Started the lesson is not notified — there is nothing for them to reconsider yet.
+
+## Rule 15
+
+There is no per-learner "pinned to their original version" mechanism, and none is needed. Only one Lesson Version is ever a Lesson's current published one, and a new Draft never affects what is being served to anyone until the tutor explicitly publishes it. "Existing learners keep seeing the old version while a replacement is prepared" already holds for free in the gap between starting a new Draft and publishing it — Rule 9's "retired versions remain available to assigned learners until migration occurs" is satisfied without a distinct migration step, because until publication there is nothing to migrate away from.
+
+This closes the question Learning Progress Tracking Business Analysis §16 left open under "Lesson Revision": which revision determines learner progress is always the Lesson's current published one — there is no scenario, under this decision, where two learners are served a different Lesson Version at the same moment.
+
+---
+
 # Summary
 
 Learning Publication & Version Management ensures that educational content can continuously evolve without compromising learner trust, progress, grades, certificates, or historical records.

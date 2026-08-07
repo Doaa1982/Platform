@@ -5,6 +5,14 @@ public record LearnerProductRow(Guid Id, string Title, string? Description, stri
 
 public record LearnerProductListResponse(IReadOnlyList<LearnerProductRow> Products);
 
+/// <summary>Aggregate counts across all of this Learner's enrollments — Certificates has no backing data yet, so it isn't included here; the frontend renders that card as a static "not built" placeholder.</summary>
+public record LearnerStatsResponse(
+    int EnrolledProductsCount, int CompletedLessonsCount, int TotalLessonsCount, int PassedAssessmentsCount,
+    int CompletedProductsCount, int TimeInvestedMinutes, LearnerContinueLearningRow? ContinueLearning);
+
+/// <summary>The lesson most recently begun and not yet finished — null if there is none (every enrolled lesson is either untouched or already Completed).</summary>
+public record LearnerContinueLearningRow(Guid ProductId, string ProductTitle, Guid LessonId, string LessonTitle);
+
 /// <summary>The published curriculum of one product, as a Learner sees it — never a draft, never an unpublished unit or lesson.</summary>
 public record LearnerCurriculumResponse(
     Guid ProductId, string ProductTitle,

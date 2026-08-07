@@ -27,6 +27,7 @@ public class PlatformDbContext : DbContext
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<Submission> Submissions => Set<Submission>();
     public DbSet<LessonProgress> LessonProgresses => Set<LessonProgress>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -372,12 +373,13 @@ public class PlatformDbContext : DbContext
 
             entity.Property(e => e.WorkspaceId).IsRequired();
             entity.Property(e => e.LessonId).IsRequired();
+            entity.Property(e => e.LessonRevisionId).IsRequired();
             entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
 
-            // One interactive-quiz Assessment per Lesson, scoped down from
-            // Assessment Context's broader shape (Assessment.cs remarks)
-            entity.HasIndex(e => e.LessonId).IsUnique();
+            // One interactive-quiz Assessment per Lesson Revision (Assessment.cs
+            // remarks) — LessonId is a denormalized convenience, not unique.
+            entity.HasIndex(e => e.LessonRevisionId).IsUnique();
 
             entity.HasMany(e => e.Questions).WithOne()
                   .HasForeignKey(q => q.AssessmentId).OnDelete(DeleteBehavior.Cascade);
@@ -459,6 +461,23 @@ public class PlatformDbContext : DbContext
 
             // One progress row per (enrollment, lesson)
             entity.HasIndex(e => new { e.EnrollmentId, e.LessonId }).IsUnique();
+        });
+
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.ToTable("notifications");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.MembershipId).IsRequired();
+            entity.Property(e => e.LessonId).IsRequired();
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.Kind).HasConversion<string>().HasMaxLength(64);
+
+            // A learner's own inbox, newest first, and "how many unread" — both read together
+            entity.HasIndex(e => new { e.MembershipId, e.CreatedAt });
         });
 
         modelBuilder.Entity<PlatformOperator>(entity =>

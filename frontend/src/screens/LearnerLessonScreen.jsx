@@ -17,7 +17,7 @@ import { useAuth } from "../auth/authContext";
    tutor's preview; only the *reveal* is deferred here, not the collection.
    ========================================================================= */
 
-export default function LearnerLessonScreen({ lessonId, onBack }) {
+export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
   const { session, workspace } = useAuth();
   const slug = workspace?.slug;
   const videoRef = useRef(null);
@@ -33,8 +33,24 @@ export default function LearnerLessonScreen({ lessonId, onBack }) {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
 
+  // Once a lesson is already Completed, it's just a video to rewatch — no
+  // re-answering the checkpoints, no re-grading. Free playback, scrubbing
+  // included.
+  const completed = lesson?.progressStatus === "Completed";
+
   useEffect(() => {
     let cancelled = false;
+    // A fresh lesson: reset every bit of the previous lesson's local
+    // progress (answers, active checkpoint, grading result) — this effect
+    // now re-runs whenever the sidebar swaps lessonId on an already-mounted
+    // screen, not just on first mount.
+    setLesson(null);
+    setAnswers({});
+    setAnsweredIds(new Set());
+    setActiveQuestion(null);
+    setVideoEnded(false);
+    setSubmitting(false);
+    setResult(null);
     api.getLearnerLesson(session.token, slug, lessonId)
       .then((l) => {
         if (cancelled) return;
@@ -48,10 +64,18 @@ export default function LearnerLessonScreen({ lessonId, onBack }) {
     return () => { cancelled = true; };
   }, [session.token, slug, lessonId]);
 
+  // Tells App's LessonSidebar (a sibling, not a child, of this screen) to
+  // re-fetch — auto-complete on open, video watched, or a passing
+  // submission all change this lesson's row/unit-count there.
+  useEffect(() => {
+    onProgress?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson?.progressStatus, result]);
+
   // Once the video has ended (or there was none), work through whatever
   // questions remain one at a time; once none remain, submit the whole set.
   useEffect(() => {
-    if (!lesson || activeQuestion || result || submitting) return;
+    if (!lesson || activeQuestion || result || submitting || completed) return;
     if ((lesson.video || lesson.videoUrl) && !videoEnded) return; // timeupdate handles in-video checkpoints
 
     const remaining = lesson.questions.filter((q) => !answeredIds.has(q.id));
@@ -63,10 +87,10 @@ export default function LearnerLessonScreen({ lessonId, onBack }) {
 
     if (lesson.questions.length > 0) handleSubmit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lesson, activeQuestion, answeredIds, videoEnded, result, submitting]);
+  }, [lesson, activeQuestion, answeredIds, videoEnded, result, submitting, completed]);
 
   function handleTimeUpdate() {
-    if (activeQuestion || videoEnded || !lesson) return;
+    if (activeQuestion || videoEnded || !lesson || completed) return;
     const video = videoRef.current;
     if (!video) return;
     const next = lesson.questions
@@ -81,7 +105,7 @@ export default function LearnerLessonScreen({ lessonId, onBack }) {
 
   function handleVideoEnded() {
     setVideoEnded(true);
-    api.markVideoWatched(session.token, slug, lessonId).catch(() => {});
+    if (!completed) api.markVideoWatched(session.token, slug, lessonId).catch(() => {});
   }
 
   function recordAnswer(questionId, answer) {
@@ -108,108 +132,96 @@ export default function LearnerLessonScreen({ lessonId, onBack }) {
     }
   }
 
-  if (error && !lesson) {
-    return (
-      <div className="lw-page">
-        <style>{CSS}</style>
-        <BackLink onBack={onBack} />
-        <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>
-      </div>
-    );
-  }
-  if (!lesson) {
-    return (
-      <div className="lw-page">
-        <style>{CSS}</style>
-        <BackLink onBack={onBack} />
-        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> Loading…</div>
-      </div>
-    );
-  }
-
-  const done = result ? true : lesson.progressStatus === "Completed";
-  const isLive = lesson.deliveryMode === "LiveSession";
+  const done = result ? true : lesson?.progressStatus === "Completed";
+  const isLive = lesson?.deliveryMode === "LiveSession";
 
   return (
     <div className="lw-page">
       <style>{CSS}</style>
       <BackLink onBack={onBack} />
 
-      <div className="lw-eyebrow">Lesson</div>
-      <div className="lw-learn__heading">
-        <h1>{lesson.title}</h1>
-        {done && <span className="lw-learn__donepill"><CheckCircle2 size={12} /> Completed</span>}
-      </div>
-
-      {error && <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>}
-
-      {isLive && (
-        <p className="muted" style={{ marginBottom: 14 }}>
-          <Radio size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />
-          This lesson is a live session. Below is what to expect{(lesson.video || lesson.videoUrl) ? " and the recording, if you missed it." : "."}
-        </p>
+      {error && !lesson && <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>}
+      {!lesson && !error && (
+        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> Loading…</div>
       )}
 
-      {lesson.body && <p className="lw-learn__body">{lesson.body}</p>}
+      {lesson && <>
+        <div className="lw-eyebrow">Lesson</div>
+        <div className="lw-learn__heading">
+          <h1>{lesson.title}</h1>
+          {done && <span className="lw-learn__donepill"><CheckCircle2 size={12} /> Completed</span>}
+        </div>
 
-      {(lesson.video || lesson.videoUrl) && (
-        <div className="lw-learn__playerframe">
-          <video
-            ref={videoRef}
-            src={lesson.video ? api.learningAssetDownloadUrl(session.token, slug, lesson.video.id) : lesson.videoUrl}
-            controls={!activeQuestion}
-            onTimeUpdate={handleTimeUpdate}
-            onEnded={handleVideoEnded}
-            style={{ width: "100%", display: "block" }}
-          />
-          {activeQuestion && (
-            <div className="lw-learn__checkpoint">
-              <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
+        {error && <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>}
+
+        {isLive && (
+          <p className="muted" style={{ marginBottom: 14 }}>
+            <Radio size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />
+            This lesson is a live session. Below is what to expect{(lesson.video || lesson.videoUrl) ? " and the recording, if you missed it." : "."}
+          </p>
+        )}
+
+        {lesson.body && <p className="lw-learn__body">{lesson.body}</p>}
+
+        {(lesson.video || lesson.videoUrl) && (
+          <div className="lw-learn__playerframe">
+            <video
+              ref={videoRef}
+              src={lesson.video ? api.learningAssetDownloadUrl(session.token, slug, lesson.video.id) : lesson.videoUrl}
+              controls={!activeQuestion}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleVideoEnded}
+              style={{ width: "100%", display: "block" }}
+            />
+            {activeQuestion && (
+              <div className="lw-learn__checkpoint">
+                <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {!(lesson.video || lesson.videoUrl) && activeQuestion && (
+          <div className="lw-learn__standalone">
+            <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
+          </div>
+        )}
+
+        {submitting && (
+          <div className="lw-learn__grading"><LoaderCircle size={16} className="lw-learn__spin" /> Grading your answers…</div>
+        )}
+
+        {result && (
+          <div className="lw-aicard" style={{ marginTop: 18, flexDirection: "column", alignItems: "stretch" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <Bot size={16} />
+              <div className="lw-aicard__body">
+                <strong>{result.passed ? "Passed" : "Not yet passing"} — {result.scorePercent}%</strong>
+                <p style={{ margin: "4px 0 0" }}>{result.aiFeedback}</p>
+              </div>
             </div>
-          )}
-        </div>
-      )}
-
-      {!(lesson.video || lesson.videoUrl) && activeQuestion && (
-        <div className="lw-learn__standalone">
-          <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
-        </div>
-      )}
-
-      {submitting && (
-        <div className="lw-learn__grading"><LoaderCircle size={16} className="lw-learn__spin" /> Grading your answers…</div>
-      )}
-
-      {result && (
-        <div className="lw-aicard" style={{ marginTop: 18, flexDirection: "column", alignItems: "stretch" }}>
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-            <Bot size={16} />
-            <div className="lw-aicard__body">
-              <strong>{result.passed ? "Passed" : "Not yet passing"} — {result.scorePercent}%</strong>
-              <p style={{ margin: "4px 0 0" }}>{result.aiFeedback}</p>
+            <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+              {lesson.questions.map((q) => {
+                const pq = result.perQuestion.find((p) => p.questionId === q.id);
+                const reviewed = pq?.correct == null;
+                return (
+                  <div key={q.id} className="lw-feedback" style={{ margin: 0 }}>
+                    {reviewed ? <Sparkles size={14} /> : pq?.correct ? <Check size={14} /> : <X size={14} />}
+                    <span>
+                      {q.prompt}{" "}
+                      {reviewed ? "— reviewed, not scored" : pq?.correct ? "— correct" : `— correct answer: ${pq?.correctAnswerDisplay ?? "n/a"}`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
-            {lesson.questions.map((q) => {
-              const pq = result.perQuestion.find((p) => p.questionId === q.id);
-              const reviewed = pq?.correct == null;
-              return (
-                <div key={q.id} className="lw-feedback" style={{ margin: 0 }}>
-                  {reviewed ? <Sparkles size={14} /> : pq?.correct ? <Check size={14} /> : <X size={14} />}
-                  <span>
-                    {q.prompt}{" "}
-                    {reviewed ? "— reviewed, not scored" : pq?.correct ? "— correct" : `— correct answer: ${pq?.correctAnswerDisplay ?? "n/a"}`}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        )}
 
-      {!(lesson.video || lesson.videoUrl) && lesson.questions.length === 0 && (
-        <p className="lw-learn__donebanner"><CheckCircle2 size={15} /> Nothing else to do here — this lesson is marked complete.</p>
-      )}
+        {!(lesson.video || lesson.videoUrl) && lesson.questions.length === 0 && (
+          <p className="lw-learn__donebanner"><CheckCircle2 size={15} /> Nothing else to do here — this lesson is marked complete.</p>
+        )}
+      </>}
     </div>
   );
 }

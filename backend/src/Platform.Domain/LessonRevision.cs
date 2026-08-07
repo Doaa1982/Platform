@@ -126,6 +126,29 @@ public class LessonRevision
                 "Only a draft revision can be edited. Create a new revision to change published content.");
     }
 
+    /// <summary>
+    /// Lesson Editing &amp; Publication UX, Scenario 3: Title, Body and
+    /// EstimatedMinutes are classified as safe metadata — a tutor may correct
+    /// them on the currently published revision directly, no new revision, no
+    /// republish (Learning Publication &amp; Version Management §19, Rule 11).
+    /// DeliveryMode and the video are deliberately excluded — either one
+    /// changes what the lesson fundamentally is (Rule 12's "Major" class),
+    /// so those still go through <see cref="Lesson.StartRevision"/>.
+    /// </summary>
+    public void QuickEditPublished(string title, string? body, int? estimatedMinutes)
+    {
+        if (Status != LessonRevisionStatus.Published)
+            throw new InvalidOperationException("Only the currently published revision can be edited this way.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        if (estimatedMinutes is < 0)
+            throw new ArgumentException("Estimated minutes cannot be negative.", nameof(estimatedMinutes));
+
+        Title = title.Trim();
+        Body = string.IsNullOrWhiteSpace(body) ? null : body.Trim();
+        EstimatedMinutes = estimatedMinutes;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     internal void Publish()
     {
         if (Status != LessonRevisionStatus.Draft)

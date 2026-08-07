@@ -43,6 +43,93 @@ public class LearningDeliveryService(PlatformDbContext db)
         return ProvisioningResult<LearnerProductListResponse>.Success(new LearnerProductListResponse(rows));
     }
 
+    /// <summary>
+    /// Aggregate counts for the dashboard — across every Enrollment this
+    /// Learner holds in the Workspace, not just one product. Certificates has
+    /// no backing data yet (no Certificate aggregate exists), so it is
+    /// deliberately absent here rather than reported as zero.
+    /// </summary>
+    public async Task<ProvisioningResult<LearnerStatsResponse>> GetStatsAsync(
+        string slug, Guid caller, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, ct);
+        if (ctx.Error is not null) return Fail<LearnerStatsResponse>(ctx.Error.Value);
+
+        var enrollments = await db.Enrollments.AsNoTracking()
+            .Where(e => e.WorkspaceId == ctx.Workspace!.Id && e.MembershipId == ctx.MembershipId)
+            .Select(e => new { e.Id, e.LearningProductId })
+            .ToListAsync(ct);
+
+        var enrollmentIds = enrollments.Select(e => e.Id).ToList();
+        var productIds = enrollments.Select(e => e.LearningProductId).Distinct().ToList();
+
+        var completedLessonIds = await db.LessonProgresses.AsNoTracking()
+            .Where(p => enrollmentIds.Contains(p.EnrollmentId) && p.Status == LessonProgressStatus.Completed)
+            .Select(p => p.LessonId)
+            .ToListAsync(ct);
+
+        var curricula = await db.Curricula.Include(c => c.Units).ThenInclude(u => u.Lessons).AsNoTracking()
+            .Where(c => productIds.Contains(c.LearningProductId) && c.Status == CurriculumStatus.Published)
+            .ToListAsync(ct);
+
+        var totalLessons = curricula.SelectMany(c => c.Units).SelectMany(u => u.Lessons)
+            .Select(l => l.LessonId).Distinct().Count();
+
+        // A product counts as completed only once every one of its published
+        // lessons has been — an empty curriculum (no lessons yet) is not
+        // "completed", just empty.
+        var completedLessonIdSet = completedLessonIds.ToHashSet();
+        var completedProducts = curricula.GroupBy(c => c.LearningProductId)
+            .Count(g =>
+            {
+                var lessonIds = g.SelectMany(c => c.Units).SelectMany(u => u.Lessons)
+                    .Select(l => l.LessonId).Distinct().ToList();
+                return lessonIds.Count > 0 && lessonIds.All(completedLessonIdSet.Contains);
+            });
+
+        // Time invested only counts what's actually finished — a lesson
+        // half-watched hasn't been "spent" yet, it's still in progress.
+        var timeInvestedMinutes = completedLessonIds.Count == 0 ? 0 :
+            (await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+                .Where(l => completedLessonIds.Contains(l.Id))
+                .ToListAsync(ct))
+            .Sum(l => l.CurrentRevision?.EstimatedMinutes ?? 0);
+
+        // Distinct Assessments, not attempts — retaking one you've already
+        // passed shouldn't inflate the count.
+        var passedAssessments = await db.Submissions.AsNoTracking()
+            .Where(s => s.MembershipId == ctx.MembershipId && s.Passed)
+            .Select(s => s.AssessmentId).Distinct()
+            .CountAsync(ct);
+
+        // The lesson most recently begun that isn't finished yet — StartedAt
+        // is set once, the first time a lesson is opened, so this points at
+        // the newest thing the Learner started, not necessarily the last one
+        // they viewed (LessonProgress carries no "last viewed" timestamp).
+        var openProgress = await db.LessonProgresses.AsNoTracking()
+            .Where(p => enrollmentIds.Contains(p.EnrollmentId) && p.Status != LessonProgressStatus.Completed)
+            .OrderByDescending(p => p.StartedAt)
+            .FirstOrDefaultAsync(ct);
+
+        LearnerContinueLearningRow? continueLearning = null;
+        if (openProgress is not null)
+        {
+            var lesson = await db.Lessons.AsNoTracking()
+                .FirstOrDefaultAsync(l => l.Id == openProgress.LessonId && l.Status == LessonStatus.Published, ct);
+            if (lesson is not null)
+            {
+                var product = await db.LearningProducts.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.Id == lesson.LearningProductId, ct);
+                if (product is not null)
+                    continueLearning = new LearnerContinueLearningRow(product.Id, product.Title, lesson.Id, lesson.Title);
+            }
+        }
+
+        return ProvisioningResult<LearnerStatsResponse>.Success(new LearnerStatsResponse(
+            productIds.Count, completedLessonIds.Count, totalLessons, passedAssessments,
+            completedProducts, timeInvestedMinutes, continueLearning));
+    }
+
     // ── Curriculum ───────────────────────────────────────────────────────────
 
     public async Task<ProvisioningResult<LearnerCurriculumResponse>> GetCurriculumAsync(
@@ -119,7 +206,7 @@ public class LearningDeliveryService(PlatformDbContext db)
         }
 
         var assessment = await db.Assessments.Include(a => a.Questions).AsNoTracking()
-            .FirstOrDefaultAsync(a => a.LessonId == lessonId && a.Status == AssessmentStatus.Published, ct);
+            .FirstOrDefaultAsync(a => a.LessonRevisionId == lesson.CurrentRevisionId && a.Status == AssessmentStatus.Published, ct);
 
         var questions = assessment is null ? [] : assessment.Questions.OrderBy(q => q.Position)
             .Select(q => new LearnerQuestionRow(q.Id, q.Type.ToString(), q.Prompt, q.Options, q.VideoTimestampSeconds, q.Points))
@@ -157,7 +244,7 @@ public class LearningDeliveryService(PlatformDbContext db)
         var progress = await EnsureProgressAsync(enrollment.Id, lessonId, ct);
 
         var assessment = await db.Assessments.Include(a => a.Questions).AsNoTracking()
-            .FirstOrDefaultAsync(a => a.LessonId == lessonId && a.Status == AssessmentStatus.Published, ct);
+            .FirstOrDefaultAsync(a => a.LessonRevisionId == lesson.CurrentRevisionId && a.Status == AssessmentStatus.Published, ct);
         var hasGradableAssessment = assessment is not null && assessment.Questions.Count > 0;
         var hasPassing = hasGradableAssessment && await HasPassingSubmissionAsync(assessment!.Id, ctx.MembershipId, ct);
 
@@ -186,7 +273,7 @@ public class LearningDeliveryService(PlatformDbContext db)
         if (lesson is null) return Fail<PreviewResult>((ProvisioningError.NotFound, "No such lesson."));
 
         var assessment = await db.Assessments.Include(a => a.Questions)
-            .FirstOrDefaultAsync(a => a.LessonId == lessonId && a.Status == AssessmentStatus.Published, ct);
+            .FirstOrDefaultAsync(a => a.LessonRevisionId == lesson.CurrentRevisionId && a.Status == AssessmentStatus.Published, ct);
         if (assessment is null || assessment.Questions.Count == 0)
             return Fail<PreviewResult>((ProvisioningError.Conflict, "This lesson has no questions to answer."));
 

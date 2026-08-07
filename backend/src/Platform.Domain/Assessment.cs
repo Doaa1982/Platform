@@ -129,14 +129,42 @@ public readonly record struct QuestionGradeResult(Guid QuestionId, bool? Correct
 ///
 /// "What does it take to demonstrate this achievement?" — a reusable,
 /// design-time definition owned by the tutor authoring a Lesson. Scoped here
-/// to one Assessment per Lesson (the interactive questions that lesson's
-/// video carries); Assessment Context's broader shape (standalone exams,
-/// rubrics) is future evolution, not needed for lesson-embedded checkpoints.
+/// to one Assessment per Lesson Revision (the interactive questions that
+/// revision's video carries); Assessment Context's broader shape (standalone
+/// exams, rubrics) is future evolution, not needed for lesson-embedded
+/// checkpoints.
+///
+/// <see cref="LessonRevisionId"/> — not <see cref="LessonId"/> alone — is
+/// what an Assessment is actually scoped to. This refines Assessment and
+/// Submission Aggregate Design §19, which lists Assessment's only aggregate
+/// reference as LessonId: that was written before this codebase had to
+/// answer what happens to a Submission once its lesson gets a new revision.
+/// Two other documents settle it in the other direction. Lesson Revision
+/// Aggregate Design §7 models the timestamped questions a lesson's video
+/// carries as an "Interactive Learning Event" that "belongs to exactly one
+/// Lesson Revision... versioned together with it" — the same rule already
+/// governing every other entity on that aggregate. And Learning Publication
+/// & Version Management's Rule 4 ("Student progress references LessonVersion.
+/// Never Lesson.") and Rule 5 ("Grades belong to LessonVersion.") both name
+/// the version, not the lesson, as what a grade is permanently anchored to.
+/// A Submission's grade traces to this Assessment, which is why this
+/// Assessment has to be the version's, not the lesson's: otherwise a tutor
+/// editing/republishing the same lesson-wide Assessment could silently
+/// change what a past Submission was actually graded against. LessonId is
+/// kept too, as a denormalized convenience for lesson-level lookups — it is
+/// not the ownership key.
 ///
 /// Invariants enforced here:
-///   INV-002: cannot receive submissions (be graded against) until Published —
-///            enforced by refusing structural edits once Published, mirroring
-///            Curriculum's RequireEditable.
+///   INV-002: cannot receive submissions (be graded against) until Published.
+///
+/// This used to also mean "cannot be structurally edited once Published,"
+/// mirroring Curriculum's RequireEditable — Lesson Editing & Publication UX,
+/// Scenario 4 (and Learning Publication & Version Management §19, Rule 11)
+/// deliberately lifts that second part: a tutor may keep improving questions
+/// on a Published Assessment directly (see AddQuestion/UpdateQuestion/
+/// RemoveQuestion), with affected learners notified instead of the edit
+/// being blocked. Publish/Unpublish still exist, and INV-002 above still
+/// holds — they just no longer double as an editability gate.
 /// </summary>
 public class Assessment
 {
@@ -145,6 +173,7 @@ public class Assessment
     public Guid Id { get; private set; }
     public Guid WorkspaceId { get; private set; }
     public Guid LessonId { get; private set; }
+    public Guid LessonRevisionId { get; private set; }
     public string Title { get; private set; } = string.Empty;
     public int PassingThresholdPercent { get; private set; } = 70;
     public AssessmentStatus Status { get; private set; }
@@ -155,12 +184,14 @@ public class Assessment
 
     private Assessment() { }
 
-    public static Assessment Create(Guid workspaceId, Guid lessonId, string title)
+    public static Assessment Create(Guid workspaceId, Guid lessonId, Guid lessonRevisionId, string title)
     {
         if (workspaceId == Guid.Empty)
             throw new ArgumentException("An Assessment belongs to exactly one Workspace.", nameof(workspaceId));
         if (lessonId == Guid.Empty)
             throw new ArgumentException("An Assessment belongs to exactly one Lesson.", nameof(lessonId));
+        if (lessonRevisionId == Guid.Empty)
+            throw new ArgumentException("An Assessment belongs to exactly one Lesson Revision.", nameof(lessonRevisionId));
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
 
         var now = DateTime.UtcNow;
@@ -169,6 +200,7 @@ public class Assessment
             Id = Guid.NewGuid(),
             WorkspaceId = workspaceId,
             LessonId = lessonId,
+            LessonRevisionId = lessonRevisionId,
             Title = title.Trim(),
             Status = AssessmentStatus.Draft,
             CreatedAt = now,
@@ -178,7 +210,6 @@ public class Assessment
 
     public void Rename(string title)
     {
-        RequireEditable();
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         Title = title.Trim();
         Touch();
@@ -186,19 +217,28 @@ public class Assessment
 
     public void SetPassingThreshold(int percent)
     {
-        RequireEditable();
         if (percent is < 0 or > 100)
             throw new ArgumentException("A passing threshold must be between 0 and 100.", nameof(percent));
         PassingThresholdPercent = percent;
         Touch();
     }
 
+    /// <summary>
+    /// Lesson Editing &amp; Publication UX, Scenario 4: interactive questions may
+    /// be edited whether this Assessment is Draft or Published — no unpublish
+    /// step, no new Lesson Version. This supersedes the original INV-002
+    /// remark below, which used to gate all structural edits on Draft status;
+    /// the platform now allows the edit and relies on notifying affected
+    /// learners (AssessmentService) instead of blocking the tutor outright.
+    /// Publish/Unpublish remain exactly what they were — the switch for
+    /// whether a learner can see/attempt these questions at all — just no
+    /// longer a precondition for changing them.
+    /// </summary>
     public Question AddQuestion(
         QuestionType type, string prompt,
         IReadOnlyList<string>? options, int? correctOptionIndex, IReadOnlyList<string>? acceptedAnswers,
         string? explanation = null, int? videoTimestampSeconds = null, int points = 1)
     {
-        RequireEditable();
         var question = Question.Create(Id, type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds, points, _questions.Count);
         _questions.Add(question);
         Touch();
@@ -210,14 +250,12 @@ public class Assessment
         IReadOnlyList<string>? options, int? correctOptionIndex, IReadOnlyList<string>? acceptedAnswers,
         string? explanation, int? videoTimestampSeconds, int points)
     {
-        RequireEditable();
         FindQuestion(questionId).Edit(type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds, points);
         Touch();
     }
 
     public void RemoveQuestion(Guid questionId)
     {
-        RequireEditable();
         _questions.RemoveAll(q => q.Id == questionId);
         var ordered = _questions.OrderBy(q => q.Position).ToList();
         for (var i = 0; i < ordered.Count; i++) ordered[i].MoveTo(i);
@@ -230,7 +268,8 @@ public class Assessment
 
     public void Publish()
     {
-        RequireEditable();
+        if (Status != AssessmentStatus.Draft)
+            throw new InvalidOperationException("Only a draft assessment can be published.");
         var blocker = PublicationBlocker();
         if (blocker is not null) throw new InvalidOperationException(blocker);
         Status = AssessmentStatus.Published;
@@ -310,13 +349,6 @@ public class Assessment
     private Question FindQuestion(Guid questionId) =>
         _questions.FirstOrDefault(q => q.Id == questionId)
         ?? throw new InvalidOperationException("No such question in this assessment.");
-
-    private void RequireEditable()
-    {
-        if (Status != AssessmentStatus.Draft)
-            throw new InvalidOperationException(
-                "A published assessment cannot be edited. Unpublish it first — a learner mid-attempt should not have questions change beneath them.");
-    }
 
     private void Touch() => UpdatedAt = DateTime.UtcNow;
 }

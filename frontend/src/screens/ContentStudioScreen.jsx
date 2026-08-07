@@ -294,9 +294,11 @@ function CurriculumBuilder({ productId, onBack }) {
 
       {openLessonId && (
         <LessonEditor
+          key={openLessonId}
           lessonId={openLessonId}
           onClose={() => setOpenLessonId(null)}
           onChanged={load}
+          onDuplicated={setOpenLessonId}
         />
       )}
     </div>
@@ -465,7 +467,7 @@ function LessonRowView({ lesson, onOpen, onRemove }) {
 
 /* ── Lesson editor overlay ─────────────────────────────────────────────── */
 
-function LessonEditor({ lessonId, onClose, onChanged }) {
+function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
   const { session, workspace } = useAuth();
   const slug = workspace?.slug;
 
@@ -482,14 +484,25 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
   const [publishAttempted, setPublishAttempted] = useState(false);
   const [activeTab, setActiveTab] = useState("content");
 
+  // Lesson Editing & Publication UX, Scenario 5: replacing the video or
+  // changing delivery mode on a published lesson (no open draft) starts a new
+  // version — this dialog is the "choose how to continue" step. Null when
+  // closed; "video" | "delivery" records which action opened it, purely to
+  // pick the right copy.
+  const [versionDialogTrigger, setVersionDialogTrigger] = useState(null);
+  const [pendingDeliveryMode, setPendingDeliveryMode] = useState(null);
+
   const load = useCallback(
     () => api.getLesson(session.token, slug, lessonId).then((l) => {
       setLesson(l);
-      const draft = l.draftRevision;
-      setTitle(draft?.title ?? l.title);
-      setBody(draft?.body ?? "");
-      setMinutes(draft?.estimatedMinutes ?? "");
-      setDeliveryMode(draft?.deliveryMode ?? "Recorded");
+      // No open draft doesn't mean nothing to show — a Published lesson with
+      // no draft is exactly the quick-edit case (Scenario 3), so the form
+      // falls back to the current revision's own values, not blanks.
+      const source = l.draftRevision ?? l.currentRevision;
+      setTitle(source?.title ?? l.title);
+      setBody(source?.body ?? "");
+      setMinutes(source?.estimatedMinutes ?? "");
+      setDeliveryMode(source?.deliveryMode ?? "Recorded");
       setError(null);
       return l;
     }).catch((e) => { setError(e.message); return null; }),
@@ -533,6 +546,63 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
     }).then((l) => l && setLesson(l));
   }
 
+  /** Lesson Editing & Publication UX, Scenario 3 — no new revision, no republish. */
+  function handleQuickSave() {
+    if (!title.trim() || !body.trim()) { setAttempted(true); return; }
+    run(() => api.quickEditPublishedLesson(session.token, slug, lessonId, {
+      title: title.trim(), body: body.trim() || null, estimatedMinutes: minutes === "" ? null : Number(minutes),
+    })).then((l) => l && setLesson(l));
+  }
+
+  function applyDraftToForm(l) {
+    const draft = l.draftRevision;
+    setTitle(draft?.title ?? l.title);
+    setBody(draft?.body ?? "");
+    setMinutes(draft?.estimatedMinutes ?? "");
+    setDeliveryMode(draft?.deliveryMode ?? "Recorded");
+  }
+
+  /**
+   * "Create new version" — a new draft revision of this SAME lesson. Stays
+   * on this same editor, lands on Delivery so the new video can be uploaded
+   * right away; nothing navigates away. If the dialog was opened from the
+   * delivery-type select, the chosen mode is applied to the fresh draft
+   * immediately, since a real draft now exists to save it onto.
+   */
+  async function confirmSameLessonNewVersion() {
+    setVersionDialogTrigger(null);
+    const started = await run(() => api.startLessonRevision(session.token, slug, lessonId));
+    if (!started) return;
+
+    let finalLesson = started;
+    if (pendingDeliveryMode && started.draftRevision && started.draftRevision.deliveryMode !== pendingDeliveryMode) {
+      const draft = started.draftRevision;
+      const updated = await run(() => api.saveLessonDraft(session.token, slug, lessonId, {
+        title: draft.title, body: draft.body, estimatedMinutes: draft.estimatedMinutes, deliveryMode: pendingDeliveryMode,
+      }));
+      if (updated) finalLesson = updated;
+    }
+
+    setLesson(finalLesson);
+    applyDraftToForm(finalLesson);
+    setPendingDeliveryMode(null);
+    setActiveTab("delivery");
+  }
+
+  /**
+   * "Create new draft" — a genuinely separate new Lesson, cloned from this
+   * one's current content (no video). This lesson is left exactly as it is;
+   * the tutor is redirected to the new lesson's own editor via onDuplicated,
+   * which swaps which lesson is open in the parent (CurriculumBuilder keys
+   * LessonEditor by lessonId, so that's a clean remount, not a state patch).
+   */
+  async function confirmDuplicateAsNewLesson() {
+    setVersionDialogTrigger(null);
+    setPendingDeliveryMode(null);
+    const clone = await run(() => api.duplicateLesson(session.token, slug, lessonId));
+    if (clone) onDuplicated(clone.id);
+  }
+
   return (
     <div className="lw-studio__overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="lw-studio__panel" onClick={(e) => e.stopPropagation()}>
@@ -547,14 +617,16 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
           <>
             <div className="lw-eyebrow">Lesson</div>
             <div className="lw-studio__heading">
-              <h2 className="lw-studio__panelh2">{lesson.title}</h2>
+              <h2 className="lw-studio__panelh2">{title || lesson.title}</h2>
               <span className={`lw-studio__pill is-${lesson.status.toLowerCase()}`}>{human(lesson.status)}</span>
             </div>
 
             {lesson.currentRevision && (
               <p className="lw-studio__panelnote">
-                Published as revision {lesson.currentRevision.version}. Learners currently
-                see that content — editing below only changes the draft.
+                Published as revision {lesson.currentRevision.version}.{" "}
+                {lesson.draftRevision
+                  ? "Learners see that content — editing below changes the open draft, not it."
+                  : "Title, Content and Estimated minutes below update it directly; replacing the video starts a new revision."}
               </p>
             )}
 
@@ -601,13 +673,45 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
                   <div className="lw-studio__alert"><AlertCircle size={16} /> Add some content above before you can publish.</div>
                 )}
               </div>
+            ) : lesson.currentRevision ? (
+              // Lesson Editing & Publication UX, Scenario 3: Title, Content and
+              // Estimated minutes are safe to change on the published revision
+              // directly — no draft, no republish, just Save changes.
+              <div className="lw-studio__draftform">
+                {attempted && (!title.trim() || !body.trim()) && (
+                  <div className="lw-studio__alert"><AlertCircle size={16} /> Title and content are both required.</div>
+                )}
+                <label>
+                  <span>Title<RequiredMark /></span>
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} required
+                         style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
+                </label>
+                <label>
+                  <span>Content<RequiredMark /></span>
+                  <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} disabled={busy}
+                            style={attempted && !body.trim() ? invalidFieldStyle : undefined} />
+                </label>
+                <label className="lw-studio__minsfield">
+                  <span>Estimated minutes</span>
+                  <input type="number" min="0" value={minutes}
+                         onChange={(e) => setMinutes(e.target.value)} disabled={busy} />
+                </label>
+                <p className="muted" style={{ margin: 0 }}>
+                  This lesson is published — <strong>Save changes</strong> updates it directly. No new revision, nothing to republish.
+                </p>
+                <div className="lw-studio__panelactions">
+                  <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
+                          onClick={() => run(() => api.startLessonRevision(session.token, slug, lessonId)).then((l) => l && setLesson(l))}>
+                    Start a full new revision instead
+                  </button>
+                  <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handleQuickSave}>
+                    Save changes
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="lw-studio__nodraft">
-                <p>
-                  {lesson.currentRevision
-                    ? "No draft is open. Start a new revision to change this lesson's content."
-                    : "This lesson has no content yet."}
-                </p>
+                <p>This lesson has no content yet.</p>
                 <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}
                         onClick={() => run(() => api.startLessonRevision(session.token, slug, lessonId)).then((l) => l && setLesson(l))}>
                   <Plus size={13} /> Start a new revision
@@ -622,12 +726,21 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
                     <label>
                       <span>Delivery type</span>
                       <select
-                        value={deliveryMode} disabled={busy || !lesson.draftRevision}
+                        value={deliveryMode} disabled={busy}
                         onChange={(e) => {
                           const next = e.target.value;
-                          setDeliveryMode(next);
-                          run(() => api.saveLessonDraft(session.token, slug, lessonId, draftPayload({ deliveryMode: next })))
-                            .then((l) => l && setLesson(l));
+                          if (lesson.draftRevision) {
+                            setDeliveryMode(next);
+                            run(() => api.saveLessonDraft(session.token, slug, lessonId, draftPayload({ deliveryMode: next })))
+                              .then((l) => l && setLesson(l));
+                          } else {
+                            // Lesson Editing & Publication UX, Scenario 5: delivery
+                            // mode changes what the lesson fundamentally is, same
+                            // as the video — starts a new version instead of
+                            // saving in place.
+                            setPendingDeliveryMode(next);
+                            setVersionDialogTrigger("delivery");
+                          }
                         }}
                       >
                         <option value="Recorded">Recorded video</option>
@@ -641,6 +754,7 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
                     deliveryMode={deliveryMode}
                     onChanged={load}
                     onDurationKnown={setVideoDuration}
+                    onRequestNewVersion={() => setVersionDialogTrigger("video")}
                   />
                 </>
               ) : (
@@ -650,11 +764,20 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
               )
             )}
 
+            {versionDialogTrigger && (
+              <ReplaceVersionDialog
+                trigger={versionDialogTrigger}
+                busy={busy}
+                onCancel={() => { setVersionDialogTrigger(null); setPendingDeliveryMode(null); }}
+                onChooseNewVersion={confirmSameLessonNewVersion}
+                onChooseNewDraft={confirmDuplicateAsNewLesson}
+              />
+            )}
+
             {activeTab === "questions" && (
               (lesson.currentRevision || lesson.draftRevision) ? (
                 <AssessmentSection
                   lessonId={lesson.id}
-                  hasDraft={!!lesson.draftRevision}
                   videoDurationSeconds={videoDuration}
                 />
               ) : (
@@ -697,6 +820,12 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
                     <li key={r.id}>
                       v{r.version} — {r.title}
                       <span className={`lw-studio__pill is-${r.status.toLowerCase()}`}>{human(r.status)}</span>
+                      {r.questionCount > 0 && (
+                        <span className="lw-studio__historymeta">
+                          {r.questionCount} question{r.questionCount === 1 ? "" : "s"}
+                          {r.submissionCount > 0 && ` · ${r.submissionCount} submission${r.submissionCount === 1 ? "" : "s"}`}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -709,6 +838,59 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
   );
 }
 
+/**
+ * Lesson Editing & Publication UX, Scenario 5's "Replace Video Dialog" —
+ * shown before replacing the video or changing delivery mode on a published
+ * lesson, since both start a new version. Both options here call the same
+ * backend action (a new draft, carried forward, video cleared); the
+ * difference is purely which tab the tutor lands on afterward.
+ */
+function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onChooseNewDraft }) {
+  return (
+    <div className="lw-studio__overlay" role="dialog" aria-modal="true" onClick={onCancel}>
+      <div className="lw-studio__panel" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+        <button className="lw-studio__panelclose" onClick={onCancel} aria-label="Close"><X size={16} /></button>
+        <div className="lw-eyebrow">New version</div>
+        <h2 className="lw-studio__panelh2">
+          {trigger === "video" ? "You're replacing the lesson video" : "You're changing how this lesson is delivered"}
+        </h2>
+        <p className="lw-studio__panelnote">
+          {trigger === "video"
+            ? "Replacing the video creates a new learning version. Choose how you'd like to continue."
+            : "Changing delivery type creates a new learning version. Choose how you'd like to continue."}
+        </p>
+
+        <div className="lw-studio__versionoptions">
+          <div className="lw-studio__versionoption">
+            <h3>Create new version</h3>
+            <ul>
+              <li>Copy current lesson</li>
+              <li>Upload the new video right away</li>
+              <li>Existing students remain on the current version</li>
+              <li>New students get the new version once you publish it</li>
+            </ul>
+            <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={onChooseNewVersion}>
+              Create new version
+            </button>
+          </div>
+          <div className="lw-studio__versionoption">
+            <h3>Create new draft</h3>
+            <ul>
+              <li>Creates a separate new lesson, copied from this one</li>
+              <li>Video-related assets are not copied</li>
+              <li>You're redirected to the new lesson's own editor</li>
+              <li>This lesson is left exactly as it is</li>
+            </ul>
+            <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onChooseNewDraft}>
+              Create new draft
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Video ─────────────────────────────────────────────────────────────
    Uploads a real file to a real Learning Asset (Learning Asset Aggregate
    Design) — not a data URL. Attaching it to the lesson's draft is what
@@ -716,7 +898,7 @@ function LessonEditor({ lessonId, onClose, onChanged }) {
    checkpoints against this video's own timeline.
    ========================================================================= */
 
-function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKnown }) {
+function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKnown, onRequestNewVersion }) {
   const { session, workspace } = useAuth();
   const slug = workspace?.slug;
   const fileInputRef = useRef(null);
@@ -838,7 +1020,12 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
       )}
 
       {!hasVideo && !hasDraft && (
-        <p className="lw-studio__unitempty">No video yet. Start a new revision to add one.</p>
+        <div className="lw-studio__unitempty" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span>No video yet. Adding one starts a new version of this lesson.</span>
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
+            <UploadCloud size={13} /> Add a video
+          </button>
+        </div>
       )}
 
       {video && (
@@ -856,9 +1043,13 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
             <span>
               {video.title} <span className="lw-tag lw-tag--source">{Math.round(video.fileSizeBytes / 1024 / 1024)} MB</span>
             </span>
-            {hasDraft && (
+            {hasDraft ? (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={handleRemove}>
                 <Trash2 size={13} /> Remove
+              </button>
+            ) : (
+              <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
+                <UploadCloud size={13} /> Replace video
               </button>
             )}
           </div>
@@ -878,9 +1069,13 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
           </div>
           <div className="lw-videosource" style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <span className="lw-tag lw-tag--source" style={{ wordBreak: "break-all" }}>{videoUrl}</span>
-            {hasDraft && (
+            {hasDraft ? (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={handleRemove}>
                 <Trash2 size={13} /> Remove
+              </button>
+            ) : (
+              <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
+                <UploadCloud size={13} /> Replace video
               </button>
             )}
           </div>
@@ -900,7 +1095,7 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
 
 const ANALYZE_STEPS = ["Watching the video…", "Detecting explanations and examples…", "Placing knowledge checkpoints…"];
 
-function AssessmentSection({ lessonId, hasDraft, videoDurationSeconds }) {
+function AssessmentSection({ lessonId, videoDurationSeconds }) {
   const { session, workspace } = useAuth();
   const slug = workspace?.slug;
 
@@ -986,7 +1181,10 @@ function AssessmentSection({ lessonId, hasDraft, videoDurationSeconds }) {
     );
   }
 
-  const editable = hasDraft || data.status !== "Published";
+  // Lesson Editing & Publication UX, Scenario 4: interactive questions are
+  // always editable for an author, whether this Assessment is Draft or
+  // Published — Publish/Unpublish below stay purely about learner visibility.
+  const editable = true;
 
   return (
     <div className="lw-studio__section">
@@ -1667,12 +1865,25 @@ const CSS = `
   }
   .lw-studio__nodraft p { font-size: 0.86rem; color: var(--ink-soft); margin: 0; line-height: 1.5; }
 
+  .lw-studio__versionoptions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+  .lw-studio__versionoption {
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px;
+  }
+  .lw-studio__versionoption h3 { font-size: 0.88rem; margin: 0; }
+  .lw-studio__versionoption ul { margin: 0; padding-left: 18px; font-size: 0.78rem; color: var(--ink-soft); line-height: 1.6; flex: 1; }
+  .lw-studio__versionoption button { width: 100%; justify-content: center; }
+  @media (max-width: 480px) { .lw-studio__versionoptions { grid-template-columns: 1fr; } }
+
   .lw-studio__panelfooter { display: flex; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 
   .lw-studio__history { margin-top: 16px; font-size: 0.82rem; color: var(--ink-soft); }
   .lw-studio__history summary { cursor: pointer; font-weight: 600; }
   .lw-studio__history ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-  .lw-studio__history li { display: flex; align-items: center; gap: 8px; }
+  .lw-studio__history li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  /* Proof that superseding a revision keeps its questions and graded
+     submissions — not just the content itself (Assessment.cs remarks). */
+  .lw-studio__historymeta { font-size: 0.76rem; color: var(--ink-soft); }
 
   .lw-studio__spin { animation: lwStudioSpin 0.9s linear infinite; }
   @keyframes lwStudioSpin { to { transform: rotate(360deg); } }

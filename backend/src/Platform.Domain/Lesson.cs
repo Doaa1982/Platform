@@ -27,7 +27,12 @@ public class Lesson
     public Guid WorkspaceId { get; private set; }
     public Guid LearningProductId { get; private set; }
 
-    /// <summary>The lesson's own name. A revision may title itself differently as it evolves.</summary>
+    /// <summary>
+    /// The lesson's own name, shown everywhere a lesson is listed. Kept in
+    /// sync with whichever revision is currently being written or published
+    /// (draft edits, quick-edits and publishing all rename the Lesson too) so
+    /// a list of lessons never shows a stale title next to the one being edited.
+    /// </summary>
     public string Title { get; private set; } = string.Empty;
 
     public LessonStatus Status { get; private set; }
@@ -122,6 +127,7 @@ public class Lesson
         draft.Publish();
 
         CurrentRevisionId = draft.Id;
+        Title = draft.Title;
         Status = LessonStatus.Published;
         Touch();
     }

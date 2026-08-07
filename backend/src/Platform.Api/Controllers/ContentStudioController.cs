@@ -88,16 +88,30 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     public async Task<ActionResult<LessonDetailResponse>> Get(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.GetLessonAsync(slug, Caller(), lessonId, ct));
 
-    /// <summary>Saves the open draft. A published revision is never edited in place.</summary>
+    /// <summary>Saves the open draft.</summary>
     [HttpPut("draft")]
     public async Task<ActionResult<LessonDetailResponse>> SaveDraft(
         string slug, Guid lessonId, [FromBody] SaveRevisionRequest request, CancellationToken ct)
         => Run(await studio.SaveDraftAsync(slug, Caller(), lessonId, request, ct));
 
+    /// <summary>
+    /// Title/Body/EstimatedMinutes only, applied straight to the currently
+    /// published revision — Lesson Editing &amp; Publication UX, Scenario 3.
+    /// </summary>
+    [HttpPut("current/quick-edit")]
+    public async Task<ActionResult<LessonDetailResponse>> QuickEditPublished(
+        string slug, Guid lessonId, [FromBody] SaveRevisionRequest request, CancellationToken ct)
+        => Run(await studio.QuickEditPublishedAsync(slug, Caller(), lessonId, request, ct));
+
     /// <summary>Opens a new draft on top of the published content.</summary>
     [HttpPost("revisions")]
     public async Task<ActionResult<LessonDetailResponse>> StartRevision(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.StartRevisionAsync(slug, Caller(), lessonId, ct));
+
+    /// <summary>Clones this lesson's current content into a brand-new, separate Lesson — Lesson Editing &amp; Publication UX, Scenario 5's "Create new draft".</summary>
+    [HttpPost("duplicate")]
+    public async Task<ActionResult<LessonDetailResponse>> Duplicate(string slug, Guid lessonId, CancellationToken ct)
+        => Run(await studio.DuplicateLessonAsync(slug, Caller(), lessonId, ct));
 
     [HttpPost("publish")]
     public async Task<ActionResult<LessonDetailResponse>> Publish(string slug, Guid lessonId, CancellationToken ct)

@@ -300,9 +300,27 @@ export function startLessonRevision(token, slug, lessonId) {
   });
 }
 
+/**
+ * PUT .../lessons/{lessonId}/current/quick-edit — Title/Body/EstimatedMinutes
+ * only, applied straight to the currently published revision (Lesson Editing
+ * & Publication UX, Scenario 3). No new revision, no republish.
+ */
+export function quickEditPublishedLesson(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/current/quick-edit`, {
+    method: "PUT", body, token,
+  });
+}
+
 /** POST .../lessons/{lessonId}/{transition} — publish | unpublish | archive */
 export function lessonTransition(token, slug, lessonId, transition) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/${transition}`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../lessons/{lessonId}/duplicate — clones this lesson's content into a brand-new, separate Lesson */
+export function duplicateLesson(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/duplicate`, {
     method: "POST", token,
   });
 }
@@ -444,6 +462,11 @@ export function getLearnerProducts(token, slug) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/products`, { token });
 }
 
+/** GET .../learn/stats — aggregate counts across all this Learner's enrollments */
+export function getLearnerStats(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/stats`, { token });
+}
+
 /** GET .../learn/products/{productId}/curriculum — auto-enrols on first open */
 export function getLearnerCurriculum(token, slug, productId) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/products/${productId}/curriculum`, { token });
@@ -465,6 +488,23 @@ export function markVideoWatched(token, slug, lessonId) {
 export function submitLearnerAssessment(token, slug, lessonId, answers) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/submit`, {
     method: "POST", body: { answers }, token,
+  });
+}
+
+/* ── Notifications (a member's own in-app inbox) ─────────────────────────
+   Lesson Editing & Publication UX, Scenario 4 — the one kind that exists so
+   far tells a learner their lesson's questions were improved in place.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/workspaces/{slug}/notifications */
+export function getMyNotifications(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/notifications`, { token });
+}
+
+/** POST .../notifications/{id}/read */
+export function markNotificationRead(token, slug, notificationId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/notifications/${notificationId}/read`, {
+    method: "POST", token,
   });
 }
 

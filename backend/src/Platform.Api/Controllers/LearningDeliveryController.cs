@@ -21,6 +21,10 @@ public class LearningDeliveryController(LearningDeliveryService delivery) : Cont
     public async Task<ActionResult<LearnerCurriculumResponse>> GetCurriculum(string slug, Guid productId, CancellationToken ct)
         => Run(await delivery.GetCurriculumAsync(slug, Caller(), productId, ct));
 
+    [HttpGet("stats")]
+    public async Task<ActionResult<LearnerStatsResponse>> GetStats(string slug, CancellationToken ct)
+        => Run(await delivery.GetStatsAsync(slug, Caller(), ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {
         ProvisioningError.None      => Ok(r.Value),

@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bot, Building2, Calendar, ClipboardCheck, CreditCard, LayoutDashboard, Megaphone, MessageCircle, MessageSquare, PlayCircle, Rocket, Settings, UserCircle, Users, Wand2, X
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, CreditCard, LayoutDashboard, Megaphone, MessageCircle, MessageSquare, PlayCircle, Rocket, Settings, UserCircle, Users, Wand2, X
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -129,7 +129,76 @@ function BrandMark({ c, size = 34 }) {
    between fictional academies, this bar reports the real session.
    ========================================================================= */
 
-function AccountBar() {
+/**
+ * A member's own in-app inbox (Notification.cs). Lesson Editing &
+ * Publication UX, Scenario 4 — the one kind that exists so far tells a
+ * learner their lesson's questions were improved in place, without a new
+ * version. Polled on an interval rather than pushed — there is no realtime
+ * transport in this app, and a notice a few seconds late costs nothing here.
+ */
+function NotificationBell() {
+  const { session, workspace } = useAuth();
+  const slug = workspace?.slug;
+
+  const [items, setItems] = useState([]);
+  const [unread, setUnread] = useState(0);
+  const [open, setOpen] = useState(false);
+
+  const load = useCallback(() => {
+    if (!slug) return;
+    api.getMyNotifications(session.token, slug)
+      .then((d) => { setItems(d.notifications); setUnread(d.unreadCount); })
+      .catch(() => {});
+  }, [session?.token, slug]);
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 60000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  function handleItemClick(n) {
+    if (n.readAt) return;
+    api.markNotificationRead(session.token, slug, n.id).then(load).catch(() => {});
+  }
+
+  if (!slug) return null;
+
+  return (
+    <div className="lw-notifbell">
+      <button
+        className="lw-notifbell__trigger" onClick={() => setOpen((v) => !v)}
+        aria-label={unread > 0 ? `Notifications (${unread} unread)` : "Notifications"}
+      >
+        <Bell size={15} />
+        {unread > 0 && <span className="lw-notifbell__badge">{unread}</span>}
+      </button>
+      {open && (
+        <>
+          <div className="lw-notifbell__scrim" onClick={() => setOpen(false)} />
+          <div className="lw-notifbell__panel">
+            <div className="lw-notifbell__head">Notifications</div>
+            {items.length === 0 ? (
+              <p className="lw-notifbell__empty">Nothing yet.</p>
+            ) : (
+              <ul className="lw-notifbell__list">
+                {items.map((n) => (
+                  <li key={n.id} className={n.readAt ? "" : "is-unread"} onClick={() => handleItemClick(n)}>
+                    <strong>{n.title}</strong>
+                    <p>{n.message}</p>
+                    <span className="lw-notifbell__time">{new Date(n.createdAt).toLocaleDateString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AccountBar({ role, screen, onNavigate, aiLabel }) {
   const { me, side, workspace, workspaces, eligibleWorkspaces, leaveWorkspace, signOut } = useAuth();
   if (!workspace) return null;
 
@@ -146,15 +215,24 @@ function AccountBar() {
   return (
     <div className="lw-accountbar" style={{ "--side-accent": config.login.accent }}>
       <span className="lw-accountbar__side">{config.label}</span>
-      <span className="lw-accountbar__ws">
-        <Building2 size={13} /> {workspace.name}
-      </span>
-      <span className="lw-accountbar__roles">
-        {workspace.roles.map((r) => (
-          <span className="lw-accountbar__role" key={r}>{r.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>
-        ))}
-      </span>
+      {role === "owner" && (
+        <>
+          <span className="lw-accountbar__ws">
+            <Building2 size={13} /> {workspace.name}
+          </span>
+          <span className="lw-accountbar__roles">
+            {workspace.roles.map((r) => (
+              <span className="lw-accountbar__role" key={r}>{r.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>
+            ))}
+          </span>
+        </>
+      )}
+      {/* The workspace's own name/branding already reads immediately below,
+          in AcademyHeader's banner — repeating it here would just be the
+          same claim twice. Primary navigation lives here instead. */}
+      {role === "learner" && <LearnerTopNav screen={screen} onNavigate={onNavigate} aiLabel={aiLabel} />}
       <span className="lw-accountbar__spacer" />
+      <NotificationBell />
       <span className="lw-accountbar__who">{me?.fullName}</span>
       {canSwitchSide && (
         <button onClick={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}>
@@ -166,6 +244,55 @@ function AccountBar() {
       )}
       <button onClick={signOut}>Sign out</button>
     </div>
+  );
+}
+
+/* Dashboard and My Learnings as direct links; everything else (Assessments,
+   Certificates, Schedule, Messages, Community, AI) behind "More" — keeps the
+   top bar uncluttered while still giving every section a reachable home,
+   now that the left sidebar is reserved for in-lesson Course content. */
+function LearnerTopNav({ screen, onNavigate, aiLabel }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const primary = LEARNER_NAV.filter((it) => PRIMARY_LEARNER_NAV.includes(it.id));
+  const more = LEARNER_NAV.filter((it) => !PRIMARY_LEARNER_NAV.includes(it.id));
+  const moreActive = more.some((it) => it.id === screen);
+
+  return (
+    <span className="lw-accountbar__navlinks">
+      {primary.map((it) => (
+        <button
+          key={it.id}
+          className={`lw-accountbar__navlink ${screen === it.id ? "is-active" : ""}`}
+          onClick={() => onNavigate(it.id)}
+        >
+          {it.id === "courses" ? "My Learnings" : it.label}
+        </button>
+      ))}
+      <span className="lw-accountbar__more">
+        <button
+          className={`lw-accountbar__navlink ${moreActive ? "is-active" : ""}`}
+          onClick={() => setMoreOpen((v) => !v)}
+        >
+          More <ChevronDown size={12} />
+        </button>
+        {moreOpen && (
+          <>
+            <div className="lw-notifbell__scrim" onClick={() => setMoreOpen(false)} />
+            <div className="lw-accountbar__morepanel">
+              {more.map((it) => (
+                <button
+                  key={it.id}
+                  className={`lw-accountbar__moreitem ${screen === it.id ? "is-active" : ""}`}
+                  onClick={() => { onNavigate(it.id); setMoreOpen(false); }}
+                >
+                  <it.icon size={14} /> {it.label === "__AI__" ? aiLabel : it.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </span>
+    </span>
   );
 }
 
@@ -201,10 +328,15 @@ function AcademyHeader({ c }) {
    NAV
    ========================================================================= */
 
+/* Lives in the top bar now (AccountBar/LearnerTopNav), not a left sidebar —
+   Dashboard and My Learnings (PRIMARY_LEARNER_NAV) render as direct links,
+   the rest behind "More". No "Continue Lesson" entry: it never reliably
+   resumed a specific lesson (jumping here always cleared productId/
+   lessonId first) and is redundant now that My Learnings and the in-lesson
+   sidebar both reach any lesson directly. */
 const LEARNER_NAV = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "courses", label: "Courses", icon: BookOpen },
-  { id: "lesson", label: "Continue Lesson", icon: PlayCircle },
   { id: "assessments", label: "Assessments", icon: ClipboardCheck, capability: "assessments" },
   { id: "certificates", label: "Certificates", icon: Award, capability: "certificates" },
   { id: "schedule", label: "Schedule", icon: Calendar, capability: "schedule" },
@@ -212,10 +344,11 @@ const LEARNER_NAV = [
   { id: "community", label: "Community", icon: MessageCircle, capability: "community" },
   { id: "ai", label: "__AI__", icon: Bot, capability: "aiTutor" },
 ];
+const PRIMARY_LEARNER_NAV = ["dashboard", "courses"];
 
 /* Maps a Learner nav id to the Workspace capability that gates it — the
-   single source of truth used by both Nav (to hide items) and App (to
-   redirect away from a screen an Owner just turned off). */
+   single source of truth used by both LearnerTopNav (to hide items) and App
+   (to redirect away from a screen an Owner just turned off). */
 
 const OWNER_NAV = [
   { divider: "Grow" },
@@ -235,10 +368,11 @@ const OWNER_NAV = [
   { id: "settings", label: "Workspace Settings", icon: Settings },
 ];
 
-function Nav({ c, role, screen, setScreen, onOpenProfile, personName, personRole }) {
-  // Capability gating came from fixture flags. Capabilities are not implemented
-  // (TD-006), so every item is shown and each says for itself what is not built.
-  const items = role === "learner" ? LEARNER_NAV : OWNER_NAV;
+/* Owner/tutor side only now — the Learner side's primary nav lives in the
+   top bar (LearnerTopNav) and its left-sidebar slot is reserved for the
+   in-lesson Course content menu (LessonSidebar) while viewing a lesson,
+   and empty everywhere else. */
+function Nav({ c, screen, setScreen, onOpenProfile, personName, personRole }) {
   return (
     <div className="lw-nav">
       <div className="lw-nav__brand">
@@ -249,7 +383,7 @@ function Nav({ c, role, screen, setScreen, onOpenProfile, personName, personRole
         </div>
       </div>
       <div className="lw-nav__items">
-        {items.map((it, i) =>
+        {OWNER_NAV.map((it, i) =>
           it.divider ? (
             <div className="lw-nav__divider" key={`d${i}`}>{it.divider}</div>
           ) : (
@@ -259,7 +393,7 @@ function Nav({ c, role, screen, setScreen, onOpenProfile, personName, personRole
               onClick={() => setScreen(it.id)}
             >
               <it.icon size={16} />
-              {it.label === "__AI__" ? c.aiName : it.label}
+              {it.label}
             </button>
           )
         )}
@@ -273,6 +407,89 @@ function Nav({ c, role, screen, setScreen, onOpenProfile, personName, personRole
           <div className="lw-nav__personname">{personName}</div>
           <div className="lw-nav__personrole">{personRole}</div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* The left-sidebar slot, while a Learner is viewing a lesson: the "Course
+   content" units/lessons accordion, occupying the exact column Nav does for
+   the owner side — everywhere else on the Learner side this slot is simply
+   absent (see App's .lw-shell render), not this component collapsed empty.
+   Self-contained (fetches its own curriculum via useAuth, same pattern as
+   NotificationBell) since it now renders as LearnerLessonScreen's sibling,
+   not its child. */
+function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
+  const { session, workspace } = useAuth();
+  const slug = workspace?.slug;
+
+  const [curriculum, setCurriculum] = useState(null);
+  const [openUnits, setOpenUnits] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!productId) return;
+    let cancelled = false;
+    api.getLearnerCurriculum(session.token, slug, productId)
+      .then((d) => { if (!cancelled) setCurriculum(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [session.token, slug, productId, refreshToken]);
+
+  // Default-open the unit that holds the current lesson, without closing any
+  // unit the learner opened themselves.
+  useEffect(() => {
+    if (!curriculum) return;
+    const unit = curriculum.units.find((u) => u.lessons.some((l) => l.id === lessonId));
+    if (unit) setOpenUnits((prev) => (prev.has(unit.position) ? prev : new Set(prev).add(unit.position)));
+  }, [curriculum, lessonId]);
+
+  function toggleUnit(position) {
+    setOpenUnits((prev) => {
+      const next = new Set(prev);
+      if (next.has(position)) next.delete(position); else next.add(position);
+      return next;
+    });
+  }
+
+  if (!curriculum) return <div className="lw-lessonnav" />;
+
+  return (
+    <div className="lw-lessonnav">
+      <div className="lw-lessonnav__head">Course content</div>
+      <div className="lw-lessonnav__units">
+        {curriculum.units.map((u, i) => {
+          const open = openUnits.has(u.position);
+          const doneCount = u.lessons.filter((l) => l.progressStatus === "Completed").length;
+          const mins = u.lessons.reduce((sum, l) => sum + (l.estimatedMinutes ?? 0), 0);
+          return (
+            <div className="lw-lessonnav__unit" key={u.position}>
+              <button type="button" className="lw-lessonnav__unithead" onClick={() => toggleUnit(u.position)}>
+                <ChevronDown size={14} className={`lw-lessonnav__chevron ${open ? "is-open" : ""}`} />
+                <span className="lw-lessonnav__unittitle">{i + 1}. {u.title}</span>
+                <span className="lw-lessonnav__unitmeta">{doneCount}/{u.lessons.length}{mins > 0 ? ` · ${mins}min` : ""}</span>
+              </button>
+              {open && (
+                <div className="lw-lessonnav__lessons">
+                  {u.lessons.map((l) => {
+                    const active = l.id === lessonId;
+                    const lessonDone = l.progressStatus === "Completed";
+                    return (
+                      <button
+                        type="button" key={l.id}
+                        className={`lw-lessonnav__lessonrow ${active ? "is-active" : ""}`}
+                        onClick={() => !active && onOpenLesson?.(l.id)}
+                      >
+                        {lessonDone ? <CheckCircle2 size={14} className="is-done" /> : <PlayCircle size={14} />}
+                        <span className="lw-lessonnav__lessontitle">{l.title}</span>
+                        {l.estimatedMinutes != null && <span className="lw-lessonnav__lessonmins">{l.estimatedMinutes}min</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -341,10 +558,14 @@ export default function App() {
   // screen, so a tutor can jump straight to a product's curriculum from its
   // row in Learning Products instead of picking it again from scratch.
   const [studioProductId, setStudioProductId] = useState(null);
-  // Same idea for the Learner side: which course Courses has open, and which
-  // lesson "Continue Lesson" is currently showing.
+  // Same idea for the Learner side: which course My Learnings has open, and
+  // which lesson is currently open.
   const [learnerProductId, setLearnerProductId] = useState(null);
   const [learnerLessonId, setLearnerLessonId] = useState(null);
+  // Bumped whenever the open lesson's completion status changes, so
+  // LessonSidebar (a sibling, not a child, of LearnerLessonScreen) knows to
+  // re-fetch and reflect it — see LearnerLessonScreen's onProgress prop.
+  const [lessonProgressTick, setLessonProgressTick] = useState(0);
 
   /* The workspace description lives on the setup endpoint rather than in
      /api/me, so the shell fetches it once for the tagline. Absent is a normal
@@ -402,20 +623,38 @@ export default function App() {
   return (
     <div className="lw-root" style={theme}>
       <style>{CSS}</style>
-      <AccountBar />
+      <AccountBar role={role} screen={learnerScreen} onNavigate={goToLearnerScreen} aiLabel={c.aiName || "AI Assistant"} />
       {/* The academy switcher and workspace wizard are gone: they moved between
           two fictional academies, which cannot coexist with a real signed-in
           workspace. */}
       {role === "learner" && <AcademyHeader c={c} />}
       <div className="lw-shell">
-        <Nav c={c} role={role} screen={activeNavScreen}
-          personName={personName} personRole={personRole}
-          setScreen={role === "learner" ? goToLearnerScreen : goToOwnerScreen}
-          onOpenProfile={() => setProfileOpen(true)} />
+        {role === "owner" && (
+          <Nav c={c} screen={activeNavScreen}
+            personName={personName} personRole={personRole}
+            setScreen={goToOwnerScreen}
+            onOpenProfile={() => setProfileOpen(true)} />
+        )}
+        {/* Nothing occupies this slot for a Learner outside a lesson — primary
+            navigation lives in the top bar (AccountBar/LearnerTopNav) now. */}
+        {role === "learner" && learnerScreen === "lesson" && learnerLessonId && (
+          <LessonSidebar
+            productId={learnerProductId} lessonId={learnerLessonId}
+            onOpenLesson={setLearnerLessonId} refreshToken={lessonProgressTick}
+          />
+        )}
         <div className="lw-content">
           {/* Learner screens. Only the home is real; the rest describe a
               curriculum that does not exist yet. */}
-          {role === "learner" && learnerScreen === "dashboard" && <LearnerHomeScreen />}
+          {role === "learner" && learnerScreen === "dashboard" && (
+            <LearnerHomeScreen
+              onContinueLesson={(productId, lessonId) => {
+                setLearnerProductId(productId);
+                setLearnerLessonId(lessonId);
+                setLearnerScreen("lesson");
+              }}
+            />
+          )}
           {role === "learner" && learnerScreen === "courses" && (
             <LearnerCoursesScreen
               productId={learnerProductId}
@@ -425,10 +664,14 @@ export default function App() {
           )}
           {role === "learner" && learnerScreen === "lesson" && (
             learnerLessonId
-              ? <LearnerLessonScreen lessonId={learnerLessonId} onBack={() => setLearnerScreen("courses")} />
+              ? <LearnerLessonScreen
+                  lessonId={learnerLessonId}
+                  onBack={() => setLearnerScreen("courses")}
+                  onProgress={() => setLessonProgressTick((t) => t + 1)}
+                />
               : <NotBuiltYet area="Lesson Delivery" onNavigate={setLearnerScreen}
-                  blurb="Open a lesson from Courses to continue it here."
-                  next={{ text: "Go to Courses", to: "courses" }} />
+                  blurb="Open a lesson from My Learnings to continue it here."
+                  next={{ text: "Go to My Learnings", to: "courses" }} />
           )}
           {role === "learner" && learnerScreen === "assessments" && (
             <NotBuiltYet area="Assessment Context" onNavigate={setLearnerScreen}
@@ -511,9 +754,62 @@ const CSS = `
   .lw-accountbar__roles { display: inline-flex; gap: 4px; flex-wrap: wrap; }
   .lw-accountbar__role { font-family: var(--font-mono); font-size: 10px; background: #EDF1FB; color: #2449AC; border-radius: 20px; padding: 2px 8px; }
   .lw-accountbar__spacer { flex: 1; }
-  .lw-accountbar__who { color: #6A7383; }
   .lw-accountbar button { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid #E1DED7; color: #6A7383; border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
   .lw-accountbar button:hover { color: #1B2430; border-color: #C9C5BC; }
+  .lw-accountbar__who { color: #6A7383; }
+
+  .lw-accountbar__navlinks { display: inline-flex; align-items: center; gap: 4px; }
+  .lw-accountbar .lw-accountbar__navlink { border-color: transparent; }
+  .lw-accountbar .lw-accountbar__navlink.is-active { color: #2D5BD1; border-color: #DAE3FA; background: #EDF1FB; }
+  .lw-accountbar__more { position: relative; }
+  .lw-accountbar__morepanel {
+    position: absolute; top: calc(100% + 8px); left: 0; z-index: 41;
+    width: 200px; overflow: hidden;
+    background: #fff; color: #1B2430; border: 1px solid #E1DED7; border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(10,12,15,0.14);
+    display: flex; flex-direction: column; padding: 6px;
+  }
+  .lw-accountbar .lw-accountbar__moreitem {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    background: transparent; border: none; color: #1B2430; border-radius: 7px;
+    padding: 8px 9px; font-family: var(--font-body); font-size: 12px; cursor: pointer;
+  }
+  .lw-accountbar__moreitem svg { color: #6A7383; flex-shrink: 0; }
+  .lw-accountbar .lw-accountbar__moreitem:hover { background: #F7F5F1; border-color: transparent; }
+  .lw-accountbar .lw-accountbar__moreitem.is-active { background: #EDF1FB; color: #2449AC; border-color: transparent; }
+
+  .lw-notifbell { position: relative; }
+  .lw-accountbar .lw-notifbell__trigger {
+    position: relative; padding: 5px; border-radius: 50%; border: 1px solid transparent;
+  }
+  .lw-accountbar .lw-notifbell__trigger:hover { border-color: #E1DED7; }
+  .lw-notifbell__badge {
+    position: absolute; top: -3px; right: -3px;
+    min-width: 15px; height: 15px; padding: 0 3px; border-radius: 50%;
+    background: #B3382B; color: #fff;
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .lw-notifbell__scrim { position: fixed; inset: 0; z-index: 40; }
+  .lw-notifbell__panel {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 41;
+    width: 320px; max-height: 380px; overflow-y: auto;
+    background: #fff; color: #1B2430; border: 1px solid #E1DED7; border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(10,12,15,0.14);
+  }
+  .lw-notifbell__head {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: #6A7383; padding: 12px 14px 8px;
+  }
+  .lw-notifbell__empty { font-size: 0.83rem; color: #6A7383; padding: 6px 14px 16px; }
+  .lw-notifbell__list { list-style: none; margin: 0; padding: 0 6px 6px; display: flex; flex-direction: column; gap: 2px; }
+  .lw-notifbell__list li { padding: 9px 8px; border-radius: 8px; cursor: pointer; }
+  .lw-notifbell__list li:hover { background: #F7F5F1; }
+  .lw-notifbell__list li.is-unread { background: #EDF1FB; }
+  .lw-notifbell__list li.is-unread:hover { background: #E3EAFB; }
+  .lw-notifbell__list strong { display: block; font-size: 0.85rem; }
+  .lw-notifbell__list p { font-size: 0.8rem; color: #4A5261; margin: 3px 0 5px; line-height: 1.45; }
+  .lw-notifbell__time { font-family: var(--font-mono); font-size: 9.5px; color: #6A7383; }
 
   .lw-controlstrip { background: #0D0F12; color: #C9CDD3; font-family: var(--font-mono); font-size: 11px; display: flex; align-items: center; gap: 20px; padding: 8px 18px; flex-wrap: wrap; border-bottom: 1px solid #000; }
   .lw-controlstrip__label { opacity: 0.65; letter-spacing: 0.04em; }
@@ -564,6 +860,44 @@ const CSS = `
   .lw-nav__avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-2); display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 600; flex-shrink: 0; }
   .lw-nav__personname { font-size: 0.8rem; font-weight: 600; }
   .lw-nav__personrole { font-size: 0.7rem; opacity: 0.6; }
+
+  /* The Learner side's left-sidebar slot, in-lesson only — fills the same
+     .lw-shell column Nav does for the owner side, but light (a distinct
+     "you're inside a lesson now" surface) rather than the dark app chrome. */
+  .lw-lessonnav {
+    width: 300px; flex-shrink: 0; overflow-y: auto;
+    background: var(--surface); border-right: 1px solid var(--line);
+  }
+  .lw-lessonnav__head {
+    font-family: var(--font-display); font-weight: 600; font-size: 0.95rem;
+    padding: 18px 16px 14px; border-bottom: 1px solid var(--line);
+  }
+  .lw-lessonnav__unit { border-bottom: 1px solid var(--line); }
+  .lw-lessonnav__unithead {
+    width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
+    background: transparent; border: none; cursor: pointer; padding: 12px 16px;
+    font-family: var(--font-body); color: var(--ink);
+  }
+  .lw-lessonnav__unithead:hover { background: var(--surface-2); }
+  .lw-lessonnav__chevron { flex-shrink: 0; color: var(--ink-soft); transition: transform 0.15s ease; }
+  .lw-lessonnav__chevron.is-open { transform: rotate(180deg); }
+  .lw-lessonnav__unittitle { flex: 1; font-weight: 600; font-size: 0.85rem; }
+  .lw-lessonnav__unitmeta { font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft); white-space: nowrap; }
+  .lw-lessonnav__lessons { display: flex; flex-direction: column; background: var(--bg); }
+  .lw-lessonnav__lessonrow {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    background: transparent; border: none; border-top: 1px solid var(--line); cursor: pointer;
+    padding: 10px 16px 10px 34px; font-family: var(--font-body); color: var(--ink);
+  }
+  .lw-lessonnav__lessonrow:hover { background: var(--surface-2); }
+  .lw-lessonnav__lessonrow.is-active {
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+    border-left: 3px solid var(--accent); padding-left: 31px; cursor: default;
+  }
+  .lw-lessonnav__lessonrow svg { flex-shrink: 0; color: var(--ink-soft); }
+  .lw-lessonnav__lessonrow svg.is-done { color: var(--accent-2); }
+  .lw-lessonnav__lessontitle { flex: 1; font-size: 0.82rem; }
+  .lw-lessonnav__lessonmins { font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft); }
 
   .lw-btn { font-family: var(--font-body); font-weight: 600; font-size: 0.85rem; border-radius: var(--radius-sm); padding: 10px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: transform .12s, box-shadow .12s; }
   .lw-btn:hover { transform: translateY(-1px); }

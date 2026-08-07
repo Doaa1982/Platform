@@ -37,7 +37,7 @@ public class AssessmentService(PlatformDbContext db)
         var ctx = await ResolveAsync(slug, caller, lessonId, requireAuthor: false, ct);
         if (ctx.Error is not null) return Fail<AssessmentResponse>(ctx.Error.Value);
 
-        var assessment = await LoadAsync(lessonId, ct);
+        var assessment = await LoadAsync(ctx.TargetRevisionId, ct);
         return ProvisioningResult<AssessmentResponse>.Success(Describe(lessonId, assessment));
     }
 
@@ -56,20 +56,20 @@ public class AssessmentService(PlatformDbContext db)
         => MutateAsync(slug, caller, lessonId, (a, _) =>
             a.AddQuestion(ParseType(request.Type), request.Prompt, request.Options, request.CorrectOptionIndex, request.AcceptedAnswers,
                            request.Explanation, request.VideoTimestampSeconds, request.Points),
-            ct, createIfMissing: true, defaultTitle: true);
+            ct, createIfMissing: true, defaultTitle: true, notifyOnLiveEdit: true);
 
     public Task<ProvisioningResult<AssessmentResponse>> UpdateQuestionAsync(
         string slug, Guid caller, Guid lessonId, Guid questionId, SaveQuestionRequest request, CancellationToken ct = default)
         => MutateAsync(slug, caller, lessonId, (a, _) =>
             a.UpdateQuestion(questionId, ParseType(request.Type), request.Prompt, request.Options, request.CorrectOptionIndex, request.AcceptedAnswers,
-                              request.Explanation, request.VideoTimestampSeconds, request.Points), ct);
+                              request.Explanation, request.VideoTimestampSeconds, request.Points), ct, notifyOnLiveEdit: true);
 
     private static QuestionType ParseType(string type) =>
         Enum.TryParse<QuestionType>(type, out var parsed) ? parsed : QuestionType.MultipleChoice;
 
     public Task<ProvisioningResult<AssessmentResponse>> RemoveQuestionAsync(
         string slug, Guid caller, Guid lessonId, Guid questionId, CancellationToken ct = default)
-        => MutateAsync(slug, caller, lessonId, (a, _) => a.RemoveQuestion(questionId), ct);
+        => MutateAsync(slug, caller, lessonId, (a, _) => a.RemoveQuestion(questionId), ct, notifyOnLiveEdit: true);
 
     public Task<ProvisioningResult<AssessmentResponse>> PublishAsync(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
@@ -149,7 +149,7 @@ public class AssessmentService(PlatformDbContext db)
         var ctx = await ResolveAsync(slug, caller, lessonId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<PreviewResult>(ctx.Error.Value);
 
-        var assessment = await LoadAsync(lessonId, ct);
+        var assessment = await LoadAsync(ctx.TargetRevisionId, ct);
         if (assessment is null || assessment.Questions.Count == 0)
             return Fail<PreviewResult>((ProvisioningError.Conflict, "This lesson has no questions to preview yet."));
 
@@ -179,9 +179,10 @@ public class AssessmentService(PlatformDbContext db)
 
     // ── Plumbing ─────────────────────────────────────────────────────────────
 
-    private async Task<Assessment?> LoadAsync(Guid lessonId, CancellationToken ct, bool tracked = false)
+    private async Task<Assessment?> LoadAsync(Guid? lessonRevisionId, CancellationToken ct, bool tracked = false)
     {
-        var q = db.Assessments.Include(a => a.Questions).Where(a => a.LessonId == lessonId);
+        if (lessonRevisionId is null) return null;
+        var q = db.Assessments.Include(a => a.Questions).Where(a => a.LessonRevisionId == lessonRevisionId);
         return tracked ? await q.FirstOrDefaultAsync(ct) : await q.AsNoTracking().FirstOrDefaultAsync(ct);
     }
 
@@ -200,19 +201,22 @@ public class AssessmentService(PlatformDbContext db)
 
     private async Task<ProvisioningResult<AssessmentResponse>> MutateAsync(
         string slug, Guid caller, Guid lessonId, Action<Assessment, Guid> mutate, CancellationToken ct,
-        bool createIfMissing = false, bool defaultTitle = false)
+        bool createIfMissing = false, bool defaultTitle = false, bool notifyOnLiveEdit = false)
     {
         var ctx = await ResolveAsync(slug, caller, lessonId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssessmentResponse>(ctx.Error.Value);
+        if (ctx.TargetRevisionId is null)
+            return Fail<AssessmentResponse>((ProvisioningError.Conflict, "This lesson has no revision to attach questions to yet."));
 
-        var assessment = await LoadAsync(lessonId, ct, tracked: true);
+        var assessment = await LoadAsync(ctx.TargetRevisionId, ct, tracked: true);
 
         if (assessment is null)
         {
             if (!createIfMissing)
                 return Fail<AssessmentResponse>((ProvisioningError.Conflict, "This lesson has no interactive questions yet."));
 
-            assessment = Assessment.Create(ctx.Workspace!.Id, lessonId, defaultTitle ? $"{ctx.LessonTitle} — Interactive Questions" : ctx.LessonTitle!);
+            assessment = Assessment.Create(ctx.Workspace!.Id, lessonId, ctx.TargetRevisionId.Value,
+                defaultTitle ? $"{ctx.LessonTitle} — Interactive Questions" : ctx.LessonTitle!);
             db.Assessments.Add(assessment);
         }
 
@@ -220,32 +224,72 @@ public class AssessmentService(PlatformDbContext db)
         catch (InvalidOperationException ex) { return Fail<AssessmentResponse>((ProvisioningError.Conflict, ex.Message)); }
         catch (ArgumentException ex) { return Fail<AssessmentResponse>((ProvisioningError.Invalid, ex.Message)); }
 
+        // Lesson Editing & Publication UX, Scenario 4: editing questions on the
+        // lesson's currently PUBLISHED revision, whose Assessment is itself
+        // already Published (i.e. learners can already see it — this isn't a
+        // separate draft revision nobody's been served yet), notifies every
+        // learner who has engaged with this lesson at all.
+        if (notifyOnLiveEdit && ctx.TargetRevisionId == ctx.CurrentRevisionId && assessment.Status == AssessmentStatus.Published)
+            await NotifyQuestionsUpdatedAsync(ctx.Workspace!.Id, lessonId, ct);
+
         await db.SaveChangesAsync(ct);
         return await GetAsync(slug, caller, lessonId, ct);
     }
 
-    private record Context(Workspace? Workspace, Guid MembershipId, string? LessonTitle, (ProvisioningError Error, string Message)? Error);
+    /// <summary>
+    /// One Notification per learner whose LessonProgress row exists for this
+    /// lesson — that row is only ever created the moment a learner opens the
+    /// lesson (LearningDeliveryService.EnsureProgressAsync), so its mere
+    /// existence already means "started or completed" (Lesson Editing &amp;
+    /// Publication UX, Scenario 4); a learner who never opened it has no row
+    /// and is correctly left out.
+    /// </summary>
+    private async Task NotifyQuestionsUpdatedAsync(Guid workspaceId, Guid lessonId, CancellationToken ct)
+    {
+        var membershipIds = await (
+            from progress in db.LessonProgresses.AsNoTracking()
+            join enrollment in db.Enrollments.AsNoTracking() on progress.EnrollmentId equals enrollment.Id
+            where progress.LessonId == lessonId
+            select enrollment.MembershipId
+        ).Distinct().ToListAsync(ct);
 
+        const string title = "Lesson Updated";
+        const string message = "The interactive questions for this lesson have been improved. Your learning progress has not changed.";
+
+        foreach (var membershipId in membershipIds)
+            db.Notifications.Add(Notification.Create(workspaceId, membershipId, NotificationKind.LessonQuestionsUpdated, lessonId, title, message));
+    }
+
+    private record Context(Workspace? Workspace, Guid MembershipId, string? LessonTitle, Guid? TargetRevisionId, Guid? CurrentRevisionId, (ProvisioningError Error, string Message)? Error);
+
+    /// <summary>
+    /// Resolves which revision's Assessment a request is about: the lesson's
+    /// open draft if one exists (a new revision is being prepared), else its
+    /// current published revision (a tutor may still be refining/publishing
+    /// its quiz without having started a new content revision yet) — matching
+    /// exactly what the frontend already gates editability on.
+    /// </summary>
     private async Task<Context> ResolveAsync(string slug, Guid caller, Guid lessonId, bool requireAuthor, CancellationToken ct)
     {
         var normalised = slug.ToLowerInvariant().Trim();
 
         var workspace = await db.Workspaces.AsNoTracking().FirstOrDefaultAsync(w => w.Slug == normalised, ct);
-        if (workspace is null) return new Context(null, Guid.Empty, null, (ProvisioningError.NotFound, "No such workspace."));
+        if (workspace is null) return new Context(null, Guid.Empty, null, null, null, (ProvisioningError.NotFound, "No such workspace."));
 
         var member = await db.Memberships.Include(m => m.Roles).AsNoTracking()
             .FirstOrDefaultAsync(m => m.WorkspaceId == workspace.Id && m.IdentityId == caller
                                    && m.Status == MembershipStatus.Active, ct);
-        if (member is null) return new Context(null, Guid.Empty, null, (ProvisioningError.NotFound, "No such workspace."));
+        if (member is null) return new Context(null, Guid.Empty, null, null, null, (ProvisioningError.NotFound, "No such workspace."));
 
         if (requireAuthor && !member.Roles.Any(r => AuthorRoles.Contains(r.Name)))
-            return new Context(null, member.Id, null, (ProvisioningError.Forbidden, "Only an owner, administrator or teacher can author content."));
+            return new Context(null, member.Id, null, null, null, (ProvisioningError.Forbidden, "Only an owner, administrator or teacher can author content."));
 
-        var lesson = await db.Lessons.AsNoTracking()
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == workspace.Id, ct);
-        if (lesson is null) return new Context(null, member.Id, null, (ProvisioningError.NotFound, "No such lesson."));
+        if (lesson is null) return new Context(null, member.Id, null, null, null, (ProvisioningError.NotFound, "No such lesson."));
 
-        return new Context(workspace, member.Id, lesson.Title, null);
+        var targetRevisionId = lesson.DraftRevision?.Id ?? lesson.CurrentRevisionId;
+        return new Context(workspace, member.Id, lesson.Title, targetRevisionId, lesson.CurrentRevisionId, null);
     }
 
     private static ProvisioningResult<T> Fail<T>((ProvisioningError Error, string Message) e)

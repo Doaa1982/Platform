@@ -112,13 +112,13 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
 
       {/* ── Measured facts only ──────────────────────────────────────── */}
       <div className="lw-home__stats">
-        <Stat icon={Users} label="Teaching" value={teachers.length}
+        <Stat icon={Users} color={CARD_COLORS.teaching} label="Teaching" value={teachers.length}
               note={teachers.length === 1 ? "just you so far" : "including you"} />
-        <Stat icon={Users} label="Learners" value={learners.length}
+        <Stat icon={Users} color={CARD_COLORS.learners} label="Learners" value={learners.length}
               note={learners.length === 0 ? "none yet" : "active members"} />
-        <Stat icon={UserPlus} label="Invitations out" value={pendingInvites.length}
+        <Stat icon={UserPlus} color={CARD_COLORS.invites} label="Invitations out" value={pendingInvites.length}
               note={pendingInvites.length === 0 ? "none pending" : "awaiting acceptance"} />
-        <Stat icon={Inbox} label="Requests to join" value={pendingRequests.length}
+        <Stat icon={Inbox} color={CARD_COLORS.requests} label="Requests to join" value={pendingRequests.length}
               note={pendingRequests.length > 0 ? "waiting on you" : setup.acceptsJoinRequests ? "none yet" : "not accepting"}
               urgent={pendingRequests.length > 0} />
       </div>
@@ -156,10 +156,18 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   );
 }
 
-function Stat({ icon: Icon, label, value, note, urgent }) {
+const CARD_COLORS = {
+  teaching: { bg: "#E9F0FE", icon: "#3E6FE0" },
+  learners: { bg: "#E4F7EE", icon: "#1FA971" },
+  invites: { bg: "#FFF1DF", icon: "#E0912E" },
+  requests: { bg: "#FDEAF0", icon: "#E0537B" },
+};
+
+function Stat({ icon: Icon, color, label, value, note, urgent }) {
   return (
-    <div className={`lw-home__stat ${urgent ? "is-urgent" : ""}`}>
-      <div className="lw-home__statlabel"><Icon size={13} /> {label}</div>
+    <div className={`lw-home__stat ${urgent ? "is-urgent" : ""}`} style={{ "--card-bg": color.bg, "--card-icon": color.icon }}>
+      <div className="lw-home__staticon"><Icon size={17} /></div>
+      <div className="lw-home__statlabel">{label}</div>
       <div className="lw-home__statvalue">{value}</div>
       <div className="lw-home__statnote">{note}</div>
     </div>
@@ -206,18 +214,25 @@ const CSS = `
     border-radius: var(--radius-sm); padding: 13px 16px; margin-bottom: 20px;
   }
 
-  .lw-home__stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
+  .lw-home__stats {
+    display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px;
+  }
   .lw-home__stat {
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 14px 15px;
+    background: var(--card-bg, var(--surface-2)); border: 1px solid transparent;
+    border-radius: 16px; padding: 16px 18px; width: 160px; flex: 1 1 160px; max-width: 220px;
+    display: flex; flex-direction: column; align-items: flex-start;
   }
-  .lw-home__stat.is-urgent { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .lw-home__stat.is-urgent { border-color: var(--card-icon); }
+  .lw-home__staticon {
+    width: 34px; height: 34px; border-radius: 9px; margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--card-icon, var(--ink-soft)); color: #fff;
+  }
   .lw-home__statlabel {
-    display: flex; align-items: center; gap: 5px;
-    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.05em;
-    text-transform: uppercase; color: var(--ink-soft);
+    font-family: var(--font-display); font-size: 0.98rem; font-weight: 700;
+    line-height: 1.25; margin-bottom: 6px;
   }
-  .lw-home__statvalue { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600; margin: 6px 0 2px; }
+  .lw-home__statvalue { font-size: 1.3rem; font-weight: 700; color: var(--card-icon, var(--ink-soft)); margin-bottom: 2px; }
   .lw-home__statnote { font-size: 0.76rem; color: var(--ink-soft); }
 
   .lw-home__steps { list-style: none; padding: 0; margin: 0; }
@@ -253,6 +268,5 @@ const CSS = `
 
   .lw-home__spin { animation: lwHomeSpin 0.9s linear infinite; }
   @keyframes lwHomeSpin { to { transform: rotate(360deg); } }
-  @media (max-width: 720px) { .lw-home__stats { grid-template-columns: repeat(2, 1fr); } }
   @media (prefers-reduced-motion: reduce) { .lw-home__spin { animation: none; } }
 `;
