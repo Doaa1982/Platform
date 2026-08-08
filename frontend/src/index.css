@@ -62,6 +62,16 @@ body {
   transform: scaleX(-1);
 }
 
+/* Letter-spacing is a Latin-typography convention used throughout this app's
+   mono-font eyebrows/pills/tags — under Arabic (or any RTL script) it forces
+   gaps between letters that are supposed to stay visually joined. Reset it
+   wherever it'd otherwise apply, rather than hunting down every eyebrow/pill/
+   tag class by hand. text-transform: uppercase is left alone — it's a no-op
+   on Arabic text but still does its job on Latin names/labels mixed in. */
+[dir="rtl"] * {
+  letter-spacing: normal !important;
+}
+
 #root {
   width: 1126px;
   max-width: 100%;

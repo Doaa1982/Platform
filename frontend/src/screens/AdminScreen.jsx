@@ -6,6 +6,7 @@ import {
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    ADMIN SCREEN — the Platform Administrator's console.
@@ -36,6 +37,7 @@ function humanStatus(status) {
 export default function AdminScreen() {
   useFonts();
   const { session, me, signOut } = useAuth();
+  const { t } = useLanguage();
 
   const [rows, setRows] = useState(null);
   const [applications, setApplications] = useState([]);
@@ -104,12 +106,9 @@ export default function AdminScreen() {
       <Shell>
         <div className="pl-admin__denied">
           <ShieldAlert size={28} aria-hidden="true" />
-          <h1>Not a platform administrator</h1>
-          <p>
-            You're signed in as {me?.email}, but this account doesn't hold platform
-            operator access. If that's wrong, ask an existing administrator to grant it.
-          </p>
-          <button className="pl-admin__btn" onClick={signOut}>Sign out</button>
+          <h1>{t("admin.notAdminTitle")}</h1>
+          <p>{t("admin.notAdminBody", { email: me?.email })}</p>
+          <button className="pl-admin__btn" onClick={signOut}>{t("admin.signOut")}</button>
         </div>
       </Shell>
     );
@@ -119,18 +118,18 @@ export default function AdminScreen() {
     <Shell>
       <header className="pl-admin__head">
         <div className="pl-admin__headtitle">
-          <div className="pl-admin__eyebrow">Platform operations</div>
-          <h1>Workspaces</h1>
+          <div className="pl-admin__eyebrow">{t("admin.eyebrow")}</div>
+          <h1>{t("admin.workspaces")}</h1>
         </div>
         <div className="pl-admin__headactions">
           <button className="pl-admin__ghost" onClick={load} disabled={busy}>
-            <RefreshCw size={14} aria-hidden="true" /> Refresh
+            <RefreshCw size={14} aria-hidden="true" /> {t("admin.refresh")}
           </button>
           <button className="pl-admin__btn" onClick={() => setShowForm((v) => !v)}>
-            <Plus size={15} aria-hidden="true" /> Provision workspace
+            <Plus size={15} aria-hidden="true" /> {t("admin.provisionWorkspace")}
           </button>
           <button className="pl-admin__ghost" onClick={signOut}>
-            <LogOut size={14} aria-hidden="true" /> Sign out
+            <LogOut size={14} aria-hidden="true" /> {t("admin.signOut")}
           </button>
         </div>
       </header>
@@ -159,7 +158,7 @@ export default function AdminScreen() {
           work: nothing else can happen for that person until it's decided. */}
       {applications.length > 0 && (
         <section className="pl-admin__apps">
-          <h2 className="pl-admin__h2">Tutor applications</h2>
+          <h2 className="pl-admin__h2">{t("admin.tutorApplications")}</h2>
           <div className="pl-admin__applist">
             {applications.map((a) => (
               <div key={a.id} className={`pl-admin__app ${AWAITING.has(a.status) ? "is-attention" : ""}`}>
@@ -172,27 +171,27 @@ export default function AdminScreen() {
                   <span className={`pl-admin__pill ${AWAITING.has(a.status) ? "is-warn" : a.status === "Paid" ? "is-ok" : ""}`}>
                     {humanStatus(a.status)}
                   </span>
-                  {a.payment !== "NotStarted" && <span className="pl-admin__pill">Payment: {a.payment}</span>}
+                  {a.payment !== "NotStarted" && <span className="pl-admin__pill">{t("admin.payment")} {a.payment}</span>}
                 </div>
                 <div className="pl-admin__actions">
                   {AWAITING.has(a.status) && (
                     <>
                       <button disabled={busy} onClick={() => run(() => api.approveSignup(session.token, a.id))}>
-                        <Check size={12} /> Approve
+                        <Check size={12} /> {t("admin.approve")}
                       </button>
                       <button disabled={busy}
                               onClick={() => run(() => api.rejectSignup(session.token, a.id, { reason: null, reasonVisible: false }))}>
-                        <X size={12} /> Reject
+                        <X size={12} /> {t("admin.reject")}
                       </button>
                     </>
                   )}
                   {/* Paid but not yet provisioned — §7.2 stays admin-initiated (BA-004) */}
                   {a.status === "Paid" && !a.provisionedWorkspaceId && (
                     <button disabled={busy} onClick={() => setProvisionFor(a)}>
-                      <Plus size={12} /> Provision workspace
+                      <Plus size={12} /> {t("admin.provisionWorkspace")}
                     </button>
                   )}
-                  {a.provisionedWorkspaceId && <span className="pl-admin__muted">Provisioned</span>}
+                  {a.provisionedWorkspaceId && <span className="pl-admin__muted">{t("admin.provisioned")}</span>}
                 </div>
               </div>
             ))}
@@ -214,14 +213,14 @@ export default function AdminScreen() {
 
       {rows === null && (
         <div className="pl-admin__loading">
-          <LoaderCircle size={20} className="pl-admin__spin" aria-hidden="true" /> Loading workspaces…
+          <LoaderCircle size={20} className="pl-admin__spin" aria-hidden="true" /> {t("admin.loadingWorkspaces")}
         </div>
       )}
 
       {rows?.length === 0 && (
         <div className="pl-admin__empty">
           <Building2 size={26} aria-hidden="true" />
-          <p>No workspaces yet. Provision one to invite its first owner.</p>
+          <p>{t("admin.noWorkspacesYet")}</p>
         </div>
       )}
 
@@ -230,12 +229,12 @@ export default function AdminScreen() {
           <table className="pl-admin__table">
             <thead>
               <tr>
-                <th>Workspace</th>
-                <th>Lifecycle</th>
-                <th>Provisioning</th>
-                <th>Members</th>
-                <th>Invitation</th>
-                <th aria-label="Actions" />
+                <th>{t("admin.colWorkspace")}</th>
+                <th>{t("admin.colLifecycle")}</th>
+                <th>{t("admin.colProvisioning")}</th>
+                <th>{t("admin.colMembers")}</th>
+                <th>{t("admin.colInvitation")}</th>
+                <th aria-label={t("admin.colActions")} />
               </tr>
             </thead>
             <tbody>
@@ -272,31 +271,31 @@ export default function AdminScreen() {
                             if (res) setIssued(res);
                           }}
                         >
-                          <RefreshCw size={12} aria-hidden="true" /> Resend
+                          <RefreshCw size={12} aria-hidden="true" /> {t("admin.resend")}
                         </button>
                         {r.invitation.status === "Sent" && (
                           <button
                             disabled={busy}
                             onClick={() => run(() => api.cancelInvitation(session.token, r.invitation.id))}
                           >
-                            <X size={12} aria-hidden="true" /> Cancel
+                            <X size={12} aria-hidden="true" /> {t("admin.cancel")}
                           </button>
                         )}
                       </>
                     )}
                     {r.workspaceStatus === "Active" && (
                       <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "suspend"))}>
-                        <PauseCircle size={12} aria-hidden="true" /> Suspend
+                        <PauseCircle size={12} aria-hidden="true" /> {t("admin.suspend")}
                       </button>
                     )}
                     {r.workspaceStatus === "Suspended" && (
                       <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "reinstate"))}>
-                        <PlayCircle size={12} aria-hidden="true" /> Reinstate
+                        <PlayCircle size={12} aria-hidden="true" /> {t("admin.reinstate")}
                       </button>
                     )}
                     {!["Archived", "Deleted"].includes(r.workspaceStatus) && (
                       <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "archive"))}>
-                        <Archive size={12} aria-hidden="true" /> Archive
+                        <Archive size={12} aria-hidden="true" /> {t("admin.archive")}
                       </button>
                     )}
                   </td>
@@ -313,6 +312,7 @@ export default function AdminScreen() {
 /* ── Provision form ──────────────────────────────────────────────────────── */
 
 function ProvisionForm({ onSubmit, onCancel, busy, applicant }) {
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   // Prefilled when provisioning for a specific applicant, so their email is
@@ -333,33 +333,30 @@ function ProvisionForm({ onSubmit, onCancel, busy, applicant }) {
     >
       <div className="pl-admin__formrow">
         <label>
-          <span>Workspace name</span>
+          <span>{t("admin.workspaceNameLabel")}</span>
           <input value={name} onChange={(e) => setName(e.target.value)}
-                 placeholder="Northwind Tutoring" required autoFocus disabled={busy} />
+                 placeholder={t("admin.workspaceNamePlaceholder")} required autoFocus disabled={busy} />
         </label>
         <label>
-          <span>Slug</span>
+          <span>{t("admin.slugLabel")}</span>
           <input value={effectiveSlug}
                  onChange={(e) => { setSlugTouched(true); setSlug(slugify(e.target.value)); }}
-                 placeholder="northwind-tutoring" required disabled={busy} />
+                 placeholder={t("admin.slugPlaceholder")} required disabled={busy} />
         </label>
         <label>
-          <span>Owner's email</span>
+          <span>{t("admin.ownerEmailLabel")}</span>
           <input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)}
-                 placeholder="tutor@example.com" required disabled={busy} />
+                 placeholder={t("admin.ownerEmailPlaceholder")} required disabled={busy} />
         </label>
       </div>
       <p className="pl-admin__formnote">
-        {applicant
-          ? `Provisioning for ${applicant.fullName}'s approved and paid application. `
-          : ""}
-        The workspace is created unowned. Ownership transfers when the invited
-        tutor accepts — nothing else claims it in the meantime.
+        {applicant ? `${t("admin.provisioningForApplicant", { name: applicant.fullName })} ` : ""}
+        {t("admin.workspaceCreatedUnowned")}
       </p>
       <div className="pl-admin__formactions">
-        <button type="button" className="pl-admin__ghost" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="button" className="pl-admin__ghost" onClick={onCancel} disabled={busy}>{t("admin.cancel")}</button>
         <button type="submit" className="pl-admin__btn" disabled={busy || !name.trim() || !ownerEmail.trim()}>
-          {busy ? <><LoaderCircle size={15} className="pl-admin__spin" /> Working…</> : "Create and invite"}
+          {busy ? <><LoaderCircle size={15} className="pl-admin__spin" /> {t("admin.working")}</> : t("admin.createAndInvite")}
         </button>
       </div>
     </form>
@@ -373,6 +370,7 @@ function slugify(value) {
 /* ── The one moment the raw token is visible ─────────────────────────────── */
 
 function IssuedLink({ issued, onDismiss }) {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const absolute = `${window.location.origin}${issued.invitationLink}`;
 
@@ -381,15 +379,13 @@ function IssuedLink({ issued, onDismiss }) {
       <div>
         <strong>
           {issued.delivered
-            ? `Invitation emailed to ${issued.email}`
-            : `Invitation ready for ${issued.email} — not delivered`}
+            ? t("admin.emailedTo", { email: issued.email })
+            : t("admin.readyNotDelivered", { email: issued.email })}
         </strong>
         <p>
-          {issued.delivered
-            ? "The link is below as a fallback in case the email doesn't arrive. It's shown once — reopening this page won't show it again, and resending replaces it."
-            : "Sending failed, so send this link yourself. The invitation itself is valid either way. It's shown once — reopening this page won't show it again."}
+          {issued.delivered ? t("admin.linkBelowFallback") : t("admin.sendingFailedSelf")}
           {!issued.delivered && issued.deliveryDetail && (
-            <><br /><span className="pl-admin__why">Reason: {issued.deliveryDetail}</span></>
+            <><br /><span className="pl-admin__why">{t("admin.reason")} {issued.deliveryDetail}</span></>
           )}
         </p>
         <code>{absolute}</code>
@@ -407,9 +403,9 @@ function IssuedLink({ issued, onDismiss }) {
             }
           }}
         >
-          {copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy link</>}
+          {copied ? <><Check size={14} /> {t("admin.copied")}</> : <><Copy size={14} /> {t("admin.copyLink")}</>}
         </button>
-        <button className="pl-admin__ghost" onClick={onDismiss}>Dismiss</button>
+        <button className="pl-admin__ghost" onClick={onDismiss}>{t("admin.dismiss")}</button>
       </div>
     </div>
   );

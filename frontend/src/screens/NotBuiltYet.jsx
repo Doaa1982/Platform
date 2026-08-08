@@ -1,4 +1,5 @@
 import { Hammer, ArrowRight } from "lucide-react";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    NOT BUILT YET — for workspace areas whose domain does not exist.
@@ -14,21 +15,19 @@ import { Hammer, ArrowRight } from "lucide-react";
    ========================================================================= */
 
 export default function NotBuiltYet({ area, blurb, next, onNavigate }) {
+  const { t } = useLanguage();
   return (
     <div className="lw-page">
       <style>{CSS}</style>
 
       <div className="lw-eyebrow">{area}</div>
-      <h1>Not built yet</h1>
+      <h1>{t("notBuiltYet.heading")}</h1>
 
       <div className="lw-nby">
         <span className="lw-nby__icon" aria-hidden="true"><Hammer size={20} /></span>
         <div>
           <p className="lw-nby__lead">{blurb}</p>
-          <p className="lw-nby__note">
-            Nothing here is measured yet, so rather than show you zeros — or worse,
-            numbers belonging to nobody — this page says what's actually true.
-          </p>
+          <p className="lw-nby__note">{t("notBuiltYet.note")}</p>
           {next && (
             <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={() => onNavigate(next.to)}>
               {next.text} <ArrowRight size={14} />

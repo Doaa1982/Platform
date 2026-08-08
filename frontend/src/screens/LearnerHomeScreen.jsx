@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    LEARNER HOME — what a learner sees in a workspace they belong to.
@@ -20,12 +21,12 @@ import { useAuth } from "../auth/authContext";
    ========================================================================= */
 
 /** "0 min" / "45 min" / "2h" / "2h 15m" — minutes alone past the first hour reads worse than the split. */
-function formatMinutes(total) {
-  if (!total) return "0 min";
-  if (total < 60) return `${total} min`;
+function formatMinutes(t, total) {
+  if (!total) return t("learnerHome.zeroMin");
+  if (total < 60) return `${total} ${t("learnerHome.min")}`;
   const h = Math.floor(total / 60);
   const m = total % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+  return m === 0 ? `${h}${t("learnerHome.hour")}` : `${h}${t("learnerHome.hour")} ${m}${t("learnerHome.minShort")}`;
 }
 
 /** A stat card reads as "what is this measuring" first, the number second — title carries the weight, the value is a colored accent underneath it, not the headline. */
@@ -51,6 +52,7 @@ const CARD_COLORS = {
 
 export default function LearnerHomeScreen({ onContinueLesson }) {
   const { session, workspace, me } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [setup, setSetup] = useState(null);
@@ -77,7 +79,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
   if (!setup || !stats) {
     return (
       <div className="lw-page">
-        <div className="lw-lh__loading"><LoaderCircle size={18} className="lw-lh__spin" /> Loading…</div>
+        <div className="lw-lh__loading"><LoaderCircle size={18} className="lw-lh__spin" /> {t("learnerHome.loading")}</div>
       </div>
     );
   }
@@ -89,13 +91,13 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
       <style>{CSS}</style>
 
       <div className="lw-eyebrow">{setup.name}</div>
-      <h1>Welcome{firstName ? `, ${firstName}` : ""}.</h1>
-     
+      <h1>{firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")}</h1>
+
 
       {stats.continueLearning && (
         <button className="lw-lh__continue" onClick={() => onContinueLesson?.(stats.continueLearning.productId, stats.continueLearning.lessonId)}>
           <div className="lw-lh__continuetext">
-            <div className="lw-lh__continuelabel">Continue learning</div>
+            <div className="lw-lh__continuelabel">{t("learnerHome.continueLearning")}</div>
             <div className="lw-lh__continuetitle">{stats.continueLearning.lessonTitle}</div>
             <div className="lw-lh__continuesub">{stats.continueLearning.productTitle}</div>
           </div>
@@ -105,35 +107,35 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
 
       <div className="lw-lh__cards">
         <StatCard
-          icon={BookOpen} color={CARD_COLORS.courses} title="Enrolled courses"
-          value={stats.enrolledProductsCount} 
+          icon={BookOpen} color={CARD_COLORS.courses} title={t("learnerHome.enrolledCourses")}
+          value={stats.enrolledProductsCount}
         />
 
         <StatCard
-          icon={Trophy} color={CARD_COLORS.completedCourses} title="Courses completed"
-          value={enrolled ? <>{stats.completedProductsCount} <span className="lw-lh__cardof">of {stats.enrolledProductsCount}</span></> : "—"}
-         
+          icon={Trophy} color={CARD_COLORS.completedCourses} title={t("learnerHome.coursesCompleted")}
+          value={enrolled ? <>{stats.completedProductsCount} <span className="lw-lh__cardof">{t("learnerHome.of")} {stats.enrolledProductsCount}</span></> : "—"}
+
         />
 
         <StatCard
-          icon={CheckCircle2} color={CARD_COLORS.lessons} title="Lessons completed"
-          value={enrolled ? <>{stats.completedLessonsCount} <span className="lw-lh__cardof">of {stats.totalLessonsCount}</span></> : "—"}
-          
+          icon={CheckCircle2} color={CARD_COLORS.lessons} title={t("learnerHome.lessonsCompleted")}
+          value={enrolled ? <>{stats.completedLessonsCount} <span className="lw-lh__cardof">{t("learnerHome.of")} {stats.totalLessonsCount}</span></> : "—"}
+
         />
 
         <StatCard
-          icon={Clock} color={CARD_COLORS.time} title="Time invested"
-          value={enrolled ? formatMinutes(stats.timeInvestedMinutes) : "—"}
-          
+          icon={Clock} color={CARD_COLORS.time} title={t("learnerHome.timeInvested")}
+          value={enrolled ? formatMinutes(t, stats.timeInvestedMinutes) : "—"}
+
         />
 
         <StatCard
-          icon={ClipboardCheck} color={CARD_COLORS.assessments} title="Assessments passed"
+          icon={ClipboardCheck} color={CARD_COLORS.assessments} title={t("learnerHome.assessmentsPassed")}
           value={enrolled ? stats.passedAssessmentsCount : "—"}
-          
+
         />
 
-        <StatCard icon={Award} color={CARD_COLORS.certificates} title="Certificates" value="—" note="not built yet" />
+        <StatCard icon={Award} color={CARD_COLORS.certificates} title={t("learnerHome.certificates")} value="—" note={t("learnerHome.notBuiltYet")} />
       </div>
     </div>
   );

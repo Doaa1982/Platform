@@ -7,6 +7,7 @@ import {
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    CONTENT STUDIO — building the curriculum of one Learning Product.
@@ -25,7 +26,8 @@ import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
    way back in.
    ========================================================================= */
 
-const human = (s) => (s ?? "").replace(/([a-z])([A-Z])/g, "$1 $2");
+const STATUS_KEY = { Draft: "products.statusDraft", UnderReview: "products.statusUnderReview", Published: "products.statusPublished", Archived: "products.statusArchived", Closed: "products.statusClosed" };
+const human = (t, s) => (t(STATUS_KEY[s] ?? "") || s || "");
 
 const formatTime = (seconds) => {
   if (seconds == null) return null;
@@ -47,6 +49,7 @@ export default function ContentStudioScreen({ productId, onSelectProduct }) {
 
 function ProductPicker({ onSelect }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
@@ -67,7 +70,7 @@ function ProductPicker({ onSelect }) {
     return (
       <div className="lw-page">
         <style>{CSS}</style>
-        <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> Loading…</div>
+        <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> {t("studio.loading")}</div>
       </div>
     );
   }
@@ -75,18 +78,15 @@ function ProductPicker({ onSelect }) {
   return (
     <div className="lw-page">
       <style>{CSS}</style>
-      <div className="lw-eyebrow">Content Studio</div>
-      <h1>What do you want to build?</h1>
-      <p className="lw-sub">
-        Pick a learning product to open its curriculum — the units and lessons
-        that make up what it actually teaches.
-      </p>
+      <div className="lw-eyebrow">{t("studio.eyebrow")}</div>
+      <h1>{t("studio.pickTitle")}</h1>
+      <p className="lw-sub">{t("studio.pickLead")}</p>
 
       {data.products.length === 0 && (
         <div className="lw-studio__empty">
           <BookOpen size={26} />
-          <h2>No learning products yet</h2>
-          <p>Create one in Learning Products first — a curriculum belongs to a product.</p>
+          <h2>{t("studio.noProductsTitle")}</h2>
+          <p>{t("studio.noProductsBody")}</p>
         </div>
       )}
 
@@ -95,13 +95,13 @@ function ProductPicker({ onSelect }) {
           <button className="lw-studio__card" key={p.id} onClick={() => onSelect(p.id)}>
             <div className={`lw-studio__cardcover lw-cover--${coverVariant(p.id)}`}>
               <span className="lw-studio__cardmonogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
-              <span className={`lw-studio__pill is-${p.status.toLowerCase()}`}>{human(p.status)}</span>
+              <span className={`lw-studio__pill is-${p.status.toLowerCase()}`}>{human(t, p.status)}</span>
             </div>
             <div className="lw-studio__cardbody">
               <div className="lw-studio__cardtitle">{p.title}</div>
               {p.hasCurriculum
-                ? <span className="lw-studio__pickhas"><Layers size={11} /> Has a published curriculum</span>
-                : <span className="lw-studio__picknone">Nothing built yet</span>}
+                ? <span className="lw-studio__pickhas"><Layers size={11} /> {t("studio.hasCurriculum")}</span>
+                : <span className="lw-studio__picknone">{t("studio.nothingBuilt")}</span>}
             </div>
           </button>
         ))}
@@ -122,6 +122,7 @@ function coverVariant(id) {
 
 function CurriculumBuilder({ productId, onBack }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
@@ -187,7 +188,7 @@ function CurriculumBuilder({ productId, onBack }) {
       <div className="lw-page">
         <style>{CSS}</style>
         <BackLink onBack={onBack} />
-        <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> Loading…</div>
+        <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> {t("studio.loading")}</div>
       </div>
     );
   }
@@ -199,15 +200,12 @@ function CurriculumBuilder({ productId, onBack }) {
       <style>{CSS}</style>
       <BackLink onBack={onBack} />
 
-      <div className="lw-eyebrow">Content Studio · {data.productTitle} ({human(data.productStatus)})</div>
+      <div className="lw-eyebrow">{t("studio.eyebrowWithProduct", { product: data.productTitle, status: human(t, data.productStatus) })}</div>
       <div className="lw-studio__heading">
-        <h1>{data.title ?? "Curriculum"}</h1>
-        <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(data.status)}</span>
+        <h1>{data.title ?? t("studio.curriculumFallback")}</h1>
+        <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(t, data.status)}</span>
       </div>
-      <p className="lw-sub">
-        What {data.productTitle} teaches, organized into units in the order a
-        learner moves through them.
-      </p>
+      <p className="lw-sub">{t("studio.lead", { product: data.productTitle })}</p>
 
       {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
 
@@ -216,12 +214,12 @@ function CurriculumBuilder({ productId, onBack }) {
           {data.status === "Published" ? (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                     onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "unpublish")).then(load)}>
-              <Undo2 size={13} /> Edit Mode
+              <Undo2 size={13} /> {t("studio.editMode")}
             </button>
           ) : data.status !== "Archived" && (
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
                     onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "publish")).then(load)}>
-              <Globe size={13} /> Publish curriculum
+              <Globe size={13} /> {t("studio.publishCurriculum")}
             </button>
           )}
         </div>
@@ -233,16 +231,12 @@ function CurriculumBuilder({ productId, onBack }) {
 
       {data.canAuthor && data.status === "Published" && (
         <p className="muted" style={{ margin: "-6px 0 16px" }}>
-          This curriculum is live — enrolled students can see it, so it's view only here.
-          Turning on <strong>Edit Mode</strong> hides its content from them until you publish again.
+          {t("studio.publishedNoticePrefix")} <strong>{t("studio.editMode")}</strong> {t("studio.publishedNoticeSuffix")}
         </p>
       )}
 
       {editable && !data.publicationBlocker && data.status !== "Published" && (
-        <p className="muted" style={{ margin: "-6px 0 16px" }}>
-          Publishing makes the curriculum's current units and lessons visible to learners. You
-          can unpublish anytime to keep editing — nothing is locked in.
-        </p>
+        <p className="muted" style={{ margin: "-6px 0 16px" }}>{t("studio.publishHint")}</p>
       )}
 
 
@@ -256,17 +250,17 @@ function CurriculumBuilder({ productId, onBack }) {
           <Layers size={26} />
           {editable ? (
             <>
-              <h2>Let's build your curriculum</h2>
+              <h2>{t("studio.buildTitle")}</h2>
               <ol className="lw-studio__steps">
-                <li><strong>Add a unit</strong> above — a module, week or chapter a learner moves through in order.</li>
-                <li><strong>Add lessons</strong> inside that unit.</li>
-                <li><strong>Open a lesson</strong> to write its content. Save a draft while you work; publish when it's ready for learners.</li>
+                <li><strong>{t("studio.stepAddUnit")}</strong> {t("studio.stepAddUnitRest")}</li>
+                <li><strong>{t("studio.stepAddLessons")}</strong> {t("studio.stepAddLessonsRest")}</li>
+                <li><strong>{t("studio.stepOpenLesson")}</strong> {t("studio.stepOpenLessonRest")}</li>
               </ol>
             </>
           ) : (
             <>
-              <h2>No units yet</h2>
-              <p>This curriculum has no units.</p>
+              <h2>{t("studio.noUnitsTitle")}</h2>
+              <p>{t("studio.noUnitsBody")}</p>
             </>
           )}
         </div>
@@ -292,11 +286,8 @@ function CurriculumBuilder({ productId, onBack }) {
 
       {data.unplacedLessons.length > 0 && (
         <>
-          <h2 className="lw-sectiontitle">Not yet in a unit</h2>
-          <p className="lw-sub" style={{ marginTop: -8 }}>
-            Lessons that belong to this product but aren't placed anywhere in the
-            curriculum yet — a learner following the curriculum won't reach these.
-          </p>
+          <h2 className="lw-sectiontitle">{t("studio.notInUnit")}</h2>
+          <p className="lw-sub" style={{ marginTop: -8 }}>{t("studio.notInUnitLead")}</p>
           <div className="lw-studio__lessonlist">
             {data.unplacedLessons.map((l) => (
               <LessonRowView key={l.id} lesson={l} onOpen={() => setOpenLessonId(l.id)} />
@@ -307,19 +298,14 @@ function CurriculumBuilder({ productId, onBack }) {
 
       {editable && data.units.length === 0 && (
         <>
-          <p className="muted" style={{ marginTop: 14 }}>
-            Prefer to start writing before you've organized units? You can create a lesson now
-            and place it in a unit later.
-          </p>
+          <p className="muted" style={{ marginTop: 14 }}>{t("studio.preferWriting")}</p>
           <NewLessonOnlyForm busy={busy}
             onAdd={(title) => run(() => api.createLesson(session.token, slug, productId, title, null)).then(load)} />
         </>
       )}
 
       {!data.canAuthor && (
-        <p className="lw-studio__readonly">
-          You're viewing this curriculum. Only an owner, administrator or teacher can change it.
-        </p>
+        <p className="lw-studio__readonly">{t("studio.readonlyNote")}</p>
       )}
 
       {openLessonId && (
@@ -337,14 +323,16 @@ function CurriculumBuilder({ productId, onBack }) {
 }
 
 function BackLink({ onBack }) {
+  const { t } = useLanguage();
   return (
     <button className="lw-studio__back" onClick={onBack}>
-      <ArrowLeft size={13} /> All products
+      <ArrowLeft size={13} /> {t("studio.backAllProducts")}
     </button>
   );
 }
 
 function NewUnitForm({ busy, onAdd }) {
+  const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [attempted, setAttempted] = useState(false);
   return (
@@ -356,18 +344,19 @@ function NewUnitForm({ busy, onAdd }) {
           }}>
       <div style={{ flex: 1 }}>
         <input value={title} onChange={(e) => { setTitle(e.target.value); setAttempted(false); }} disabled={busy}
-               placeholder="New unit — e.g. “Week 1: Getting started”"
+               placeholder={t("studio.unitPlaceholder")}
                style={{ width: "100%", ...(attempted ? invalidFieldStyle : {}) }} />
-        {attempted && <span className="lw-studio__fielderror">Enter a title first.</span>}
+        {attempted && <span className="lw-studio__fielderror">{t("studio.enterTitleFirst")}</span>}
       </div>
       <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}>
-        <Plus size={13} /> Add unit
+        <Plus size={13} /> {t("studio.addUnit")}
       </button>
     </form>
   );
 }
 
 function NewLessonOnlyForm({ busy, onAdd }) {
+  const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [attempted, setAttempted] = useState(false);
   return (
@@ -379,12 +368,12 @@ function NewLessonOnlyForm({ busy, onAdd }) {
           }}>
       <div style={{ flex: 1 }}>
         <input value={title} onChange={(e) => { setTitle(e.target.value); setAttempted(false); }} disabled={busy}
-               placeholder="Or start a lesson before you have units"
+               placeholder={t("studio.lessonOnlyPlaceholder")}
                style={{ width: "100%", ...(attempted ? invalidFieldStyle : {}) }} />
-        {attempted && <span className="lw-studio__fielderror">Enter a title first.</span>}
+        {attempted && <span className="lw-studio__fielderror">{t("studio.enterTitleFirst")}</span>}
       </div>
       <button type="submit" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}>
-        <FileText size={13} /> New lesson
+        <FileText size={13} /> {t("studio.newLesson")}
       </button>
     </form>
   );
@@ -394,6 +383,7 @@ function UnitCard({
   unit, editable, busy, isFirst, isLast, unplacedLessons, onOpenLesson,
   onRename, onRemove, onCreateLesson, onPlaceExisting, onUnplace, onMoveUnit, onMoveLesson,
 }) {
+  const { t } = useLanguage();
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(unit.title);
   const [newLessonTitle, setNewLessonTitle] = useState("");
@@ -417,7 +407,7 @@ function UnitCard({
                      if (title.trim() && title.trim() !== unit.title) onRename(title.trim());
                      setRenaming(false);
                    }} />
-            <button type="submit" aria-label="Save"><Check size={13} /></button>
+            <button type="submit" aria-label={t("studio.save")}><Check size={13} /></button>
           </form>
         ) : (
           <span className="lw-studio__unittitle">
@@ -426,17 +416,17 @@ function UnitCard({
         )}
         {editable && !renaming && (
           <div className="lw-studio__unitactions">
-            <button aria-label="Move unit up" disabled={isFirst} onClick={() => onMoveUnit(-1)}><ChevronUp size={12} /></button>
-            <button aria-label="Move unit down" disabled={isLast} onClick={() => onMoveUnit(1)}><ChevronDown size={12} /></button>
-            <button aria-label="Rename unit" onClick={() => { setTitle(unit.title); setRenaming(true); }}><Pencil size={12} /></button>
-            <button aria-label="Remove unit" onClick={onRemove}><Trash2 size={12} /></button>
+            <button aria-label={t("studio.moveUnitUp")} disabled={isFirst} onClick={() => onMoveUnit(-1)}><ChevronUp size={12} /></button>
+            <button aria-label={t("studio.moveUnitDown")} disabled={isLast} onClick={() => onMoveUnit(1)}><ChevronDown size={12} /></button>
+            <button aria-label={t("studio.renameUnit")} onClick={() => { setTitle(unit.title); setRenaming(true); }}><Pencil size={12} /></button>
+            <button aria-label={t("studio.removeUnit")} onClick={onRemove}><Trash2 size={12} /></button>
           </div>
         )}
       </div>
 
       {unit.lessons.length === 0 && (
         <div className="lw-studio__unitempty">
-          {editable ? "No lessons in this unit yet — add one below." : "No lessons in this unit yet."}
+          {editable ? t("studio.noLessonsEditable") : t("studio.noLessonsReadonly")}
         </div>
       )}
 
@@ -462,18 +452,18 @@ function UnitCard({
           >
             <div style={{ flex: 1 }}>
               <input value={newLessonTitle} onChange={(e) => { setNewLessonTitle(e.target.value); setLessonAttempted(false); }}
-                     placeholder="New lesson title" disabled={busy}
+                     placeholder={t("studio.newLessonTitlePlaceholder")} disabled={busy}
                      style={{ width: "100%", ...(lessonAttempted ? invalidFieldStyle : {}) }} />
-              {lessonAttempted && <span className="lw-studio__fielderror">Enter a title first.</span>}
+              {lessonAttempted && <span className="lw-studio__fielderror">{t("studio.enterTitleFirst")}</span>}
             </div>
             <button type="submit" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}>
-              <Plus size={12} /> Add lesson
+              <Plus size={12} /> {t("studio.addLesson")}
             </button>
           </form>
           {unplacedLessons.length > 0 && (
             <select disabled={busy} defaultValue=""
                     onChange={(e) => { if (e.target.value) { onPlaceExisting(e.target.value); e.target.value = ""; } }}>
-              <option value="" disabled>Place an existing lesson…</option>
+              <option value="" disabled>{t("studio.placeExisting")}</option>
               {unplacedLessons.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
             </select>
           )}
@@ -484,23 +474,24 @@ function UnitCard({
 }
 
 function LessonRowView({ lesson, onOpen, onRemove, editable, isFirst, isLast, onMove }) {
+  const { t } = useLanguage();
   return (
     <div className="lw-studio__lessonrow">
       {editable && onMove && (
         <div className="lw-studio__lessonmove">
-          <button aria-label="Move lesson up" disabled={isFirst} onClick={() => onMove(-1)}><ChevronUp size={12} /></button>
-          <button aria-label="Move lesson down" disabled={isLast} onClick={() => onMove(1)}><ChevronDown size={12} /></button>
+          <button aria-label={t("studio.moveLessonUp")} disabled={isFirst} onClick={() => onMove(-1)}><ChevronUp size={12} /></button>
+          <button aria-label={t("studio.moveLessonDown")} disabled={isLast} onClick={() => onMove(1)}><ChevronDown size={12} /></button>
         </div>
       )}
       <button className="lw-studio__lessonopen" onClick={onOpen}>
         <FileText size={13} />
         <span className="lw-studio__lessontitle">{lesson.title}</span>
-        <span className={`lw-studio__pill is-${lesson.status.toLowerCase()}`}>{human(lesson.status)}</span>
-        {lesson.hasOpenDraft && <span className="lw-studio__pill is-draftopen">Draft open</span>}
-        {lesson.estimatedMinutes != null && <span className="lw-studio__mins">{lesson.estimatedMinutes} min</span>}
+        <span className={`lw-studio__pill is-${lesson.status.toLowerCase()}`}>{human(t, lesson.status)}</span>
+        {lesson.hasOpenDraft && <span className="lw-studio__pill is-draftopen">{t("studio.draftOpen")}</span>}
+        {lesson.estimatedMinutes != null && <span className="lw-studio__mins">{lesson.estimatedMinutes} {t("studio.min")}</span>}
       </button>
       {onRemove && (
-        <button className="lw-studio__lessonremove" aria-label="Remove from unit" onClick={onRemove}>
+        <button className="lw-studio__lessonremove" aria-label={t("studio.removeFromUnit")} onClick={onRemove}>
           <X size={13} />
         </button>
       )}
@@ -512,6 +503,7 @@ function LessonRowView({ lesson, onOpen, onRemove, editable, isFirst, isLast, on
 
 function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [lesson, setLesson] = useState(null);
@@ -649,80 +641,74 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
   return (
     <div className="lw-studio__overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="lw-studio__panel" onClick={(e) => e.stopPropagation()}>
-        <button className="lw-studio__panelclose" onClick={onClose} aria-label="Close"><X size={16} /></button>
+        <button className="lw-studio__panelclose" onClick={onClose} aria-label={t("studio.close")}><X size={16} /></button>
 
         {!lesson && !error && (
-          <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> Loading…</div>
+          <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> {t("studio.loading")}</div>
         )}
         {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
 
         {lesson && (
           <>
-            <div className="lw-eyebrow">Lesson</div>
+            <div className="lw-eyebrow">{t("studio.lessonEyebrow")}</div>
             <div className="lw-studio__heading">
               <h2 className="lw-studio__panelh2">{title || lesson.title}</h2>
-              <span className={`lw-studio__pill is-${lesson.status.toLowerCase()}`}>{human(lesson.status)}</span>
+              <span className={`lw-studio__pill is-${lesson.status.toLowerCase()}`}>{human(t, lesson.status)}</span>
             </div>
 
             {!editable && (
-              <p className="lw-studio__panelnote">
-                View only — this curriculum is published. Turn on Edit Mode from the curriculum
-                page to change this lesson.
-              </p>
+              <p className="lw-studio__panelnote">{t("studio.viewOnlyNote")}</p>
             )}
 
             {editable && lesson.currentRevision && (
               <p className="lw-studio__panelnote">
-                Published as revision {lesson.currentRevision.version}.{" "}
-                {lesson.draftRevision
-                  ? "Learners see that content — editing below changes the open draft, not it."
-                  : "Title, Content and Estimated minutes below update it directly; replacing the video starts a new revision."}
+                {t("studio.publishedAsRevision", { version: lesson.currentRevision.version })}{" "}
+                {lesson.draftRevision ? t("studio.learnersSeeThat") : t("studio.directEditNote")}
               </p>
             )}
 
             <div className="lw-studio__tabs">
               <button type="button" className={activeTab === "content" ? "active" : ""} onClick={() => setActiveTab("content")}>
-                <FileText size={13} /> Content
+                <FileText size={13} /> {t("studio.tabContent")}
               </button>
               <button type="button" className={activeTab === "delivery" ? "active" : ""} onClick={() => setActiveTab("delivery")}>
-                <PlayCircle size={13} /> Delivery
+                <PlayCircle size={13} /> {t("studio.tabDelivery")}
               </button>
               <button type="button" className={activeTab === "questions" ? "active" : ""} onClick={() => setActiveTab("questions")}>
-                <Sparkles size={13} /> Interactive Questions
+                <Sparkles size={13} /> {t("studio.tabQuestions")}
               </button>
             </div>
 
             {activeTab === "content" && (lesson.draftRevision ? (
               <div className="lw-studio__draftform">
                 {attempted && !title.trim() && (
-                  <div className="lw-studio__alert"><AlertCircle size={16} /> Title is required.</div>
+                  <div className="lw-studio__alert"><AlertCircle size={16} /> {t("studio.titleRequired")}</div>
                 )}
                 <label>
-                  <span>Title<RequiredMark /></span>
+                  <span>{t("studio.titleLabel")}<RequiredMark /></span>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy || !editable} required
                          style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
                 </label>
 
                 <label>
-                  <span>Content<RequiredMark /></span>
+                  <span>{t("studio.contentLabel")}<RequiredMark /></span>
                   <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)}
-                            placeholder="What this lesson teaches — the material itself for a recorded lesson, or the outline/agenda for a live session."
+                            placeholder={t("studio.contentPlaceholder")}
                             disabled={busy || !editable}
                             style={publishAttempted && !body.trim() ? invalidFieldStyle : undefined} />
                 </label>
                 <label className="lw-studio__minsfield">
-                  <span>Estimated minutes</span>
+                  <span>{t("studio.estimatedMinutes")}</span>
                   <input type="number" min="0" value={minutes}
                          onChange={(e) => setMinutes(e.target.value)} disabled={busy || !editable} />
                 </label>
                 {editable && (
                   <p className="muted" style={{ margin: 0 }}>
-                    <strong>Save draft</strong> and <strong>Publish</strong> are below, under the tabs — Save draft keeps
-                    changes private while you keep working; Publish makes this version visible to learners right away.
+                    <strong>{t("studio.saveDraftHintPrefix")}</strong> {t("studio.saveDraftHintMid")} <strong>{t("studio.saveDraftHintPublish")}</strong> {t("studio.saveDraftHintSuffix")}
                   </p>
                 )}
                 {publishAttempted && !body.trim() && (
-                  <div className="lw-studio__alert"><AlertCircle size={16} /> Add some content above before you can publish.</div>
+                  <div className="lw-studio__alert"><AlertCircle size={16} /> {t("studio.addContentBeforePublish")}</div>
                 )}
               </div>
             ) : lesson.currentRevision ? (
@@ -731,31 +717,31 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
               // directly — no draft, no republish, just Save changes.
               <div className="lw-studio__draftform">
                 {attempted && (!title.trim() || !body.trim()) && (
-                  <div className="lw-studio__alert"><AlertCircle size={16} /> Title and content are both required.</div>
+                  <div className="lw-studio__alert"><AlertCircle size={16} /> {t("studio.titleContentRequired")}</div>
                 )}
                 <label>
-                  <span>Title<RequiredMark /></span>
+                  <span>{t("studio.titleLabel")}<RequiredMark /></span>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy || !editable} required
                          style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
                 </label>
                 <label>
-                  <span>Content<RequiredMark /></span>
+                  <span>{t("studio.contentLabel")}<RequiredMark /></span>
                   <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} disabled={busy || !editable}
                             style={attempted && !body.trim() ? invalidFieldStyle : undefined} />
                 </label>
                 <label className="lw-studio__minsfield">
-                  <span>Estimated minutes</span>
+                  <span>{t("studio.estimatedMinutes")}</span>
                   <input type="number" min="0" value={minutes}
                          onChange={(e) => setMinutes(e.target.value)} disabled={busy || !editable} />
                 </label>
                 {editable && (
                   <>
                     <p className="muted" style={{ margin: 0 }}>
-                      This lesson is published — <strong>Save changes</strong> updates it directly. No new revision, nothing to republish.
+                      {t("studio.publishedDirectNotePrefix")} <strong>{t("studio.publishedDirectNoteBold")}</strong> {t("studio.publishedDirectNoteSuffix")}
                     </p>
                     <div className="lw-studio__panelactions">
                       <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handleQuickSave}>
-                        Save changes
+                        {t("studio.saveChanges")}
                       </button>
                     </div>
                   </>
@@ -763,11 +749,11 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
               </div>
             ) : (
               <div className="lw-studio__nodraft">
-                <p>This lesson has no content yet.</p>
+                <p>{t("studio.noContentYet")}</p>
                 {editable && (
                   <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}
                           onClick={() => run(() => api.startLessonRevision(session.token, slug, lessonId)).then((l) => l && setLesson(l))}>
-                    <Plus size={13} /> Start a new revision
+                    <Plus size={13} /> {t("studio.startNewRevision")}
                   </button>
                 )}
               </div>
@@ -778,7 +764,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                 <>
                   <div className="lw-studio__draftform" style={{ marginBottom: 20 }}>
                     <label>
-                      <span>Delivery type</span>
+                      <span>{t("studio.deliveryType")}</span>
                       <select
                         value={deliveryMode} disabled={busy || !editable}
                         onChange={(e) => {
@@ -797,8 +783,8 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                           }
                         }}
                       >
-                        <option value="Recorded">Recorded video</option>
-                        <option value="LiveSession">Live session</option>
+                        <option value="Recorded">{t("studio.recordedVideo")}</option>
+                        <option value="LiveSession">{t("studio.liveSession")}</option>
                       </select>
                     </label>
                   </div>
@@ -813,9 +799,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                   />
                 </>
               ) : (
-                <p className="muted" style={{ marginTop: 14 }}>
-                  Start a revision in Content before setting up delivery.
-                </p>
+                <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForDelivery")}</p>
               )
             )}
 
@@ -837,9 +821,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                   videoDurationSeconds={videoDuration}
                 />
               ) : (
-                <p className="muted" style={{ marginTop: 14 }}>
-                  Start a revision in Content before adding interactive questions.
-                </p>
+                <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForQuestions")}</p>
               )
             )}
 
@@ -847,24 +829,24 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
               <div className="lw-studio__panelfooter">
                 {lesson.draftRevision && (
                   <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleSaveDraft}>
-                    Save draft
+                    {t("studio.saveDraft")}
                   </button>
                 )}
                 {lesson.draftRevision && lesson.status !== "Archived" && (
                   <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handlePublish}>
-                    <Globe size={13} /> Publish
+                    <Globe size={13} /> {t("studio.publish")}
                   </button>
                 )}
                 {lesson.status === "Published" && (
                   <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                           onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "unpublish")).then((l) => l && setLesson(l))}>
-                    <Undo2 size={13} /> Unpublish
+                    <Undo2 size={13} /> {t("studio.unpublish")}
                   </button>
                 )}
                 {lesson.status !== "Archived" && (
                   <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                           onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "archive")).then((l) => l && setLesson(l))}>
-                    <Archive size={13} /> Archive lesson
+                    <Archive size={13} /> {t("studio.archiveLesson")}
                   </button>
                 )}
               </div>
@@ -872,16 +854,16 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
             {lesson.history.length > 1 && (
               <details className="lw-studio__history">
-                <summary>Revision history ({lesson.history.length})</summary>
+                <summary>{t("studio.revisionHistory", { count: lesson.history.length })}</summary>
                 <ul>
                   {lesson.history.map((r) => (
                     <li key={r.id}>
                       v{r.version} — {r.title}
-                      <span className={`lw-studio__pill is-${r.status.toLowerCase()}`}>{human(r.status)}</span>
+                      <span className={`lw-studio__pill is-${r.status.toLowerCase()}`}>{human(t, r.status)}</span>
                       {r.questionCount > 0 && (
                         <span className="lw-studio__historymeta">
-                          {r.questionCount} question{r.questionCount === 1 ? "" : "s"}
-                          {r.submissionCount > 0 && ` · ${r.submissionCount} submission${r.submissionCount === 1 ? "" : "s"}`}
+                          {r.questionCount} {r.questionCount === 1 ? t("studio.question") : t("studio.questions")}
+                          {r.submissionCount > 0 && ` · ${r.submissionCount} ${r.submissionCount === 1 ? t("studio.submission") : t("studio.submissions")}`}
                         </span>
                       )}
                     </li>
@@ -904,43 +886,42 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
  * difference is purely which tab the tutor lands on afterward.
  */
 function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onChooseNewDraft }) {
+  const { t } = useLanguage();
   return (
     <div className="lw-studio__overlay" role="dialog" aria-modal="true" onClick={onCancel}>
       <div className="lw-studio__panel" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-        <button className="lw-studio__panelclose" onClick={onCancel} aria-label="Close"><X size={16} /></button>
-        <div className="lw-eyebrow">New version</div>
+        <button className="lw-studio__panelclose" onClick={onCancel} aria-label={t("studio.close")}><X size={16} /></button>
+        <div className="lw-eyebrow">{t("studio.newVersionEyebrow")}</div>
         <h2 className="lw-studio__panelh2">
-          {trigger === "video" ? "You're replacing the lesson video" : "You're changing how this lesson is delivered"}
+          {trigger === "video" ? t("studio.replacingVideoTitle") : t("studio.changingDeliveryTitle")}
         </h2>
         <p className="lw-studio__panelnote">
-          {trigger === "video"
-            ? "Replacing the video creates a new learning version. Choose how you'd like to continue."
-            : "Changing delivery type creates a new learning version. Choose how you'd like to continue."}
+          {trigger === "video" ? t("studio.replacingVideoNote") : t("studio.changingDeliveryNote")}
         </p>
 
         <div className="lw-studio__versionoptions">
           <div className="lw-studio__versionoption">
-            <h3>Create new version</h3>
+            <h3>{t("studio.createNewVersion")}</h3>
             <ul>
-              <li>Copy current lesson</li>
-              <li>Upload the new video right away</li>
-              <li>Students already partway through this lesson keep watching the current video until they finish it</li>
-              <li>Students who haven't started yet, and new students, get the new version once you publish it</li>
+              <li>{t("studio.newVersionLi1")}</li>
+              <li>{t("studio.newVersionLi2")}</li>
+              <li>{t("studio.newVersionLi3")}</li>
+              <li>{t("studio.newVersionLi4")}</li>
             </ul>
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={onChooseNewVersion}>
-              Create new version
+              {t("studio.createNewVersion")}
             </button>
           </div>
           <div className="lw-studio__versionoption">
-            <h3>Create new draft</h3>
+            <h3>{t("studio.createNewDraft")}</h3>
             <ul>
-              <li>Creates a separate new lesson, copied from this one</li>
-              <li>Video-related assets are not copied</li>
-              <li>You're redirected to the new lesson's own editor</li>
-              <li>This lesson is left exactly as it is</li>
+              <li>{t("studio.newDraftLi1")}</li>
+              <li>{t("studio.newDraftLi2")}</li>
+              <li>{t("studio.newDraftLi3")}</li>
+              <li>{t("studio.newDraftLi4")}</li>
             </ul>
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onChooseNewDraft}>
-              Create new draft
+              {t("studio.createNewDraft")}
             </button>
           </div>
         </div>
@@ -958,6 +939,7 @@ function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onC
 
 function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onDurationKnown, onRequestNewVersion }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
   const fileInputRef = useRef(null);
 
@@ -1018,12 +1000,9 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
 
   return (
     <div className="lw-studio__section">
-      <h2 className="lw-sectiontitle">{isLive ? "Recording" : "Video"}</h2>
+      <h2 className="lw-sectiontitle">{isLive ? t("studio.recordingTitle") : t("studio.videoTitle")}</h2>
       {isLive && (
-        <p className="muted" style={{ marginTop: -8, marginBottom: 14 }}>
-          This lesson is a live session — the content above is what learners see before joining.
-          Add a recording afterward if you want one on file.
-        </p>
+        <p className="muted" style={{ marginTop: -8, marginBottom: 14 }}>{t("studio.liveNote")}</p>
       )}
       {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
 
@@ -1031,10 +1010,10 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
         <>
           <div className="lw-segctrl" style={{ marginBottom: 14 }}>
             <button type="button" className={sourceTab === "upload" ? "active" : ""} onClick={() => setSourceTab("upload")}>
-              <UploadCloud size={13} /> Upload
+              <UploadCloud size={13} /> {t("studio.upload")}
             </button>
             <button type="button" className={sourceTab === "url" ? "active" : ""} onClick={() => setSourceTab("url")}>
-              <LinkIcon size={13} /> URL
+              <LinkIcon size={13} /> {t("studio.url")}
             </button>
           </div>
 
@@ -1042,17 +1021,13 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
             uploading ? (
               <div className="lw-dropzone lw-dropzone--compact">
                 <LoaderCircle size={24} className="lw-studio__spin" />
-                <span className="lw-dropzone__title">Uploading… {Math.round(progress * 100)}%</span>
+                <span className="lw-dropzone__title">{t("studio.uploadingPct", { pct: Math.round(progress * 100) })}</span>
               </div>
             ) : (
               <div className="lw-dropzone" onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
                 <UploadCloud size={26} />
-                <span className="lw-dropzone__title">{isLive ? "Upload a recording (optional)" : "Upload a lesson video"}</span>
-                <span className="lw-dropzone__meta">
-                  {isLive
-                    ? "If you recorded this session, add it here — learners can rewatch it."
-                    : "This becomes the interactive video learners watch — checkpoints get placed on its timeline below."}
-                </span>
+                <span className="lw-dropzone__title">{isLive ? t("studio.uploadRecordingOptional") : t("studio.uploadLessonVideo")}</span>
+                <span className="lw-dropzone__meta">{isLive ? t("studio.recordingHint") : t("studio.videoHint")}</span>
                 <input
                   ref={fileInputRef} type="file" accept="video/*" style={{ display: "none" }}
                   onChange={(e) => handleFile(e.target.files?.[0])}
@@ -1062,14 +1037,14 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
           ) : (
             <div className="lw-studio__draftform">
               <label>
-                <span>Video URL</span>
+                <span>{t("studio.videoUrlLabel")}</span>
                 <input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
-                       placeholder="https://example.com/video.mp4" disabled={attachingUrl} />
+                       placeholder={t("studio.videoUrlPlaceholder")} disabled={attachingUrl} />
               </label>
               <div className="lw-studio__panelactions">
                 <button type="button" className="lw-btn lw-btn--accent lw-btn--sm"
                         disabled={attachingUrl || !urlInput.trim()} onClick={handleAttachUrl}>
-                  {attachingUrl ? <LoaderCircle size={13} className="lw-studio__spin" /> : <LinkIcon size={13} />} Attach
+                  {attachingUrl ? <LoaderCircle size={13} className="lw-studio__spin" /> : <LinkIcon size={13} />} {t("studio.attach")}
                 </button>
               </div>
             </div>
@@ -1078,14 +1053,14 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
       )}
 
       {!hasVideo && !editable && (
-        <div className="lw-studio__unitempty">No video.</div>
+        <div className="lw-studio__unitempty">{t("studio.noVideo")}</div>
       )}
 
       {!hasVideo && !hasDraft && editable && (
         <div className="lw-studio__unitempty" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <span>No video yet. Adding one starts a new version of this lesson.</span>
+          <span>{t("studio.noVideoYet")}</span>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
-            <UploadCloud size={13} /> Add a video
+            <UploadCloud size={13} /> {t("studio.addVideo")}
           </button>
         </div>
       )}
@@ -1107,11 +1082,11 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
             </span>
             {editable && (hasDraft ? (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={handleRemove}>
-                <Trash2 size={13} /> Remove
+                <Trash2 size={13} /> {t("studio.remove")}
               </button>
             ) : (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
-                <UploadCloud size={13} /> Replace video
+                <UploadCloud size={13} /> {t("studio.replaceVideo")}
               </button>
             ))}
           </div>
@@ -1133,11 +1108,11 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
             <span className="lw-tag lw-tag--source" style={{ wordBreak: "break-all" }}>{videoUrl}</span>
             {editable && (hasDraft ? (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={handleRemove}>
-                <Trash2 size={13} /> Remove
+                <Trash2 size={13} /> {t("studio.remove")}
               </button>
             ) : (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
-                <UploadCloud size={13} /> Replace video
+                <UploadCloud size={13} /> {t("studio.replaceVideo")}
               </button>
             ))}
           </div>
@@ -1155,10 +1130,11 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
    Design §10, "AI Evaluation").
    ========================================================================= */
 
-const ANALYZE_STEPS = ["Watching the video…", "Detecting explanations and examples…", "Placing knowledge checkpoints…"];
+const ANALYZE_STEP_KEYS = ["studio.analyzeStep0", "studio.analyzeStep1", "studio.analyzeStep2"];
 
 function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
@@ -1192,7 +1168,7 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
     if (!videoDurationSeconds) return;
     setSuggesting(true);
     setError(null);
-    for (let i = 0; i < ANALYZE_STEPS.length; i++) {
+    for (let i = 0; i < ANALYZE_STEP_KEYS.length; i++) {
       setAnalyzeStep(i);
       await new Promise((resolve) => setTimeout(resolve, 550));
     }
@@ -1237,8 +1213,8 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
   if (!data) {
     return (
       <div className="lw-studio__section">
-        <h2 className="lw-sectiontitle">Interactive questions</h2>
-        <div className="lw-studio__loading"><LoaderCircle size={16} className="lw-studio__spin" /> Loading…</div>
+        <h2 className="lw-sectiontitle">{t("studio.interactiveQuestions")}</h2>
+        <div className="lw-studio__loading"><LoaderCircle size={16} className="lw-studio__spin" /> {t("studio.loading")}</div>
       </div>
     );
   }
@@ -1252,39 +1228,36 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
   return (
     <div className="lw-studio__section">
       <div className="lw-studio__heading">
-        <h2 className="lw-sectiontitle" style={{ margin: 0 }}>Interactive questions</h2>
-        <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(data.status)}</span>
+        <h2 className="lw-sectiontitle" style={{ margin: 0 }}>{t("studio.interactiveQuestions")}</h2>
+        <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(t, data.status)}</span>
       </div>
-      <p className="muted" style={{ marginTop: 4 }}>
-        Multiple choice, true/false, complete-the-sentence or open questions, placed on the video's
-        timeline. AI grades every attempt instantly — open questions are reviewed, not scored.
-      </p>
+      <p className="muted" style={{ marginTop: 4 }}>{t("studio.assessmentLead")}</p>
 
       {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
 
       {editable && (
         <div className="lw-studio__bar">
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy || suggesting || !videoDurationSeconds}
-                  onClick={handleAiSuggest} title={!videoDurationSeconds ? "Upload a video first" : undefined}>
-            <Sparkles size={13} /> Ask AI to suggest checkpoints
+                  onClick={handleAiSuggest} title={!videoDurationSeconds ? t("studio.uploadVideoFirst") : undefined}>
+            <Sparkles size={13} /> {t("studio.askAiSuggest")}
           </button>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setFormMode("new")}>
-            <Plus size={13} /> Add question
+            <Plus size={13} /> {t("studio.addQuestion")}
           </button>
           {data.questions.length > 0 && (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setPreviewOpen(true)}>
-              <Bot size={13} /> Preview AI grading
+              <Bot size={13} /> {t("studio.previewAiGrading")}
             </button>
           )}
           {data.status === "Published" ? (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                     onClick={() => run(() => api.assessmentTransition(session.token, slug, lessonId, "unpublish")).then((r) => r && setData(r))}>
-              <Undo2 size={13} /> Unpublish
+              <Undo2 size={13} /> {t("studio.unpublish")}
             </button>
           ) : (
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
                     onClick={() => run(() => api.assessmentTransition(session.token, slug, lessonId, "publish")).then((r) => r && setData(r))}>
-              <Globe size={13} /> Publish questions
+              <Globe size={13} /> {t("studio.publishQuestions")}
             </button>
           )}
         </div>
@@ -1298,10 +1271,10 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
         <div className="lw-analyzing">
           <div className="lw-spinner" />
           <ul className="lw-analyzing__steps">
-            {ANALYZE_STEPS.map((step, i) => (
-              <li key={step} className={i < analyzeStep ? "done" : i === analyzeStep ? "active" : ""}>
+            {ANALYZE_STEP_KEYS.map((stepKey, i) => (
+              <li key={stepKey} className={i < analyzeStep ? "done" : i === analyzeStep ? "active" : ""}>
                 {i < analyzeStep ? <Check size={13} /> : <LoaderCircle size={13} className={i === analyzeStep ? "lw-studio__spin" : ""} />}
-                {step}
+                {t(stepKey)}
               </li>
             ))}
           </ul>
@@ -1329,7 +1302,7 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
 
       {data.questions.length === 0 && suggestions.length === 0 && !formMode && (
         <div className="lw-empty">
-          {editable ? "No questions yet — ask AI to suggest some, or add one by hand." : "This lesson has no interactive questions."}
+          {editable ? t("studio.noQuestionsEditable") : t("studio.noQuestionsReadonly")}
         </div>
       )}
 
@@ -1375,6 +1348,7 @@ const typeLabel = (types, value) => types.find((t) => t.value === value)?.label 
 
 /** Renders a question's answer key the way its type calls for — options, accepted phrasings, or nothing at all. */
 function AnswerKeyDisplay({ type, options, correctOptionIndex, acceptedAnswers }) {
+  const { t } = useLanguage();
   if (type === "CompleteTheSentence") {
     return (
       <div className="discover-tag-row" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -1385,7 +1359,7 @@ function AnswerKeyDisplay({ type, options, correctOptionIndex, acceptedAnswers }
     );
   }
   if (type === "OpenAnswer") {
-    return <p className="muted" style={{ margin: 0, fontStyle: "italic" }}>Reviewed for participation, not auto-scored.</p>;
+    return <p className="muted" style={{ margin: 0, fontStyle: "italic" }}>{t("studio.reviewedForParticipation")}</p>;
   }
   return (
     <div className="lw-options">
@@ -1400,6 +1374,7 @@ function AnswerKeyDisplay({ type, options, correctOptionIndex, acceptedAnswers }
 
 function SuggestionRow({ s, onAccept, onReject, busy }) {
   const types = useQuestionTypes();
+  const { t } = useLanguage();
   return (
     <div className="lw-studio__unit">
       <div style={{ marginBottom: 8 }}>
@@ -1410,8 +1385,8 @@ function SuggestionRow({ s, onAccept, onReject, busy }) {
       <AnswerKeyDisplay type={s.type} options={s.options} correctOptionIndex={s.correctOptionIndex} acceptedAnswers={s.acceptedAnswers} />
       {s.explanation && <p className="lw-rationale"><Sparkles size={12} /> {s.explanation}</p>}
       <div className="lw-rowactions" style={{ marginTop: 12 }}>
-        <button className="active" disabled={busy} aria-label="Accept" onClick={() => onAccept(s)}><Check size={13} /></button>
-        <button className="active danger" disabled={busy} aria-label="Remove suggestion" onClick={() => onReject(s.key)}><X size={13} /></button>
+        <button className="active" disabled={busy} aria-label={t("studio.accept")} onClick={() => onAccept(s)}><Check size={13} /></button>
+        <button className="active danger" disabled={busy} aria-label={t("studio.removeSuggestion")} onClick={() => onReject(s.key)}><X size={13} /></button>
       </div>
     </div>
   );
@@ -1419,6 +1394,7 @@ function SuggestionRow({ s, onAccept, onReject, busy }) {
 
 function QuestionRow({ q, editable, onEdit, onRemove }) {
   const types = useQuestionTypes();
+  const { t } = useLanguage();
   return (
     <div className="lw-studio__unit">
       <div style={{ marginBottom: 8 }}>
@@ -1430,8 +1406,8 @@ function QuestionRow({ q, editable, onEdit, onRemove }) {
       {q.explanation && <p className="lw-rationale"><Sparkles size={12} /> {q.explanation}</p>}
       {editable && (
         <div className="lw-rowactions" style={{ marginTop: 12 }}>
-          <button aria-label="Edit question" onClick={() => onEdit(q)}><Pencil size={13} /></button>
-          <button aria-label="Remove question" onClick={() => onRemove(q.id)}><Trash2 size={13} /></button>
+          <button aria-label={t("studio.editQuestion")} onClick={() => onEdit(q)}><Pencil size={13} /></button>
+          <button aria-label={t("studio.removeQuestion")} onClick={() => onRemove(q.id)}><Trash2 size={13} /></button>
         </div>
       )}
     </div>
@@ -1440,6 +1416,7 @@ function QuestionRow({ q, editable, onEdit, onRemove }) {
 
 function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, videoDurationSeconds }) {
   const types = useQuestionTypes();
+  const { t } = useLanguage();
   const [type, setType] = useState(initial?.type ?? types[0]?.value ?? "MultipleChoice");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [options, setOptions] = useState(initial?.type === "MultipleChoice" && initial.options.length ? initial.options : ["", ""]);
@@ -1477,12 +1454,12 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
   const removeAcceptedAnswer = (i) => setAcceptedAnswers((prev) => prev.filter((_, idx) => idx !== i));
 
   const validationMessages = [
-    !prompt.trim() && "Enter the question text.",
-    type === "MultipleChoice" && options.filter((o) => o.trim()).length < 2 && "Add at least 2 options.",
-    type === "CompleteTheSentence" && !acceptedAnswers.some((a) => a.trim()) && "Add at least one accepted answer.",
-    String(timestamp).trim() === "" && "Enter the question time.",
+    !prompt.trim() && t("studio.enterQuestionText"),
+    type === "MultipleChoice" && options.filter((o) => o.trim()).length < 2 && t("studio.addAtLeast2Options"),
+    type === "CompleteTheSentence" && !acceptedAnswers.some((a) => a.trim()) && t("studio.addAtLeastOneAcceptedAnswer"),
+    String(timestamp).trim() === "" && t("studio.enterQuestionTime"),
     timestamp !== "" && videoDurationSeconds != null && Number(timestamp) >= videoDurationSeconds
-      && "Question time must be less than the video length.",
+      && t("studio.questionTimeLess"),
   ].filter(Boolean);
   const valid = validationMessages.length === 0;
 
@@ -1522,14 +1499,14 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
       )}
 
       <label>
-        <span>Type</span>
+        <span>{t("studio.type")}</span>
         <select value={type} onChange={(e) => selectType(e.target.value)} disabled={busy}>
-          {types.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          {types.map((qt) => <option key={qt.value} value={qt.value}>{qt.label}</option>)}
         </select>
       </label>
 
       <label>
-        <span>Question<RequiredMark /></span>
+        <span>{t("studio.questionLabel")}<RequiredMark /></span>
         <textarea rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={busy} required
                    style={attempted && !prompt.trim() ? invalidFieldStyle : undefined} />
       </label>
@@ -1544,10 +1521,10 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
                 <input
                   style={{ flex: 1, border: 0, background: "transparent", font: "inherit", color: "inherit", outline: "none", margin: "0 8px" }}
                   value={opt} onChange={(e) => updateOption(i, e.target.value)}
-                  placeholder={`Option ${i + 1}`} disabled={busy}
+                  placeholder={t("studio.optionPlaceholder", { n: i + 1 })} disabled={busy}
                 />
                 {options.length > 2 && (
-                  <button type="button" onClick={() => removeOption(i)} aria-label="Remove option" style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)" }}>
+                  <button type="button" onClick={() => removeOption(i)} aria-label={t("studio.removeOption")} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)" }}>
                     <X size={13} />
                   </button>
                 )}
@@ -1555,7 +1532,7 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
             ))}
           </div>
           <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={addOption} disabled={busy} style={{ width: "fit-content" }}>
-            <Plus size={12} /> Add option
+            <Plus size={12} /> {t("studio.addOption")}
           </button>
         </>
       )}
@@ -1574,17 +1551,17 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
 
       {type === "CompleteTheSentence" && (
         <>
-          <p className="muted" style={{ margin: "0 0 4px" }}>Any one of these phrasings counts as correct.</p>
+          <p className="muted" style={{ margin: "0 0 4px" }}>{t("studio.anyPhraseCorrect")}</p>
           <div className="lw-options">
             {acceptedAnswers.map((a, i) => (
               <div key={i} className="lw-option" style={{ cursor: "default" }}>
                 <input
                   style={{ flex: 1, border: 0, background: "transparent", font: "inherit", color: "inherit", outline: "none" }}
                   value={a} onChange={(e) => updateAcceptedAnswer(i, e.target.value)}
-                  placeholder={`Accepted answer ${i + 1}`} disabled={busy}
+                  placeholder={t("studio.acceptedAnswerPlaceholder", { n: i + 1 })} disabled={busy}
                 />
                 {acceptedAnswers.length > 1 && (
-                  <button type="button" onClick={() => removeAcceptedAnswer(i)} aria-label="Remove accepted answer" style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)" }}>
+                  <button type="button" onClick={() => removeAcceptedAnswer(i)} aria-label={t("studio.removeAcceptedAnswer")} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)" }}>
                     <X size={13} />
                   </button>
                 )}
@@ -1592,43 +1569,40 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
             ))}
           </div>
           <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={addAcceptedAnswer} disabled={busy} style={{ width: "fit-content" }}>
-            <Plus size={12} /> Add accepted phrasing
+            <Plus size={12} /> {t("studio.addAcceptedPhrasing")}
           </button>
         </>
       )}
 
       {type === "OpenAnswer" && (
-        <p className="muted" style={{ margin: 0 }}>
-          No answer key — a learner's response is reviewed for participation, not auto-scored.
-          Use the field below for guidance on what a good answer covers.
-        </p>
+        <p className="muted" style={{ margin: 0 }}>{t("studio.openAnswerNote")}</p>
       )}
 
       <label>
-        <span>{type === "OpenAnswer" ? "Guidance " : "Explanation "}<em>(shown after answering)</em></span>
+        <span>{type === "OpenAnswer" ? t("studio.guidance") : t("studio.explanation")} <em>{t("studio.shownAfterAnswering")}</em></span>
         <textarea rows={2} value={explanation} onChange={(e) => setExplanation(e.target.value)} disabled={busy} />
       </label>
 
       <div className="lw-studio__minsfield">
-        <span>Question time <em>(seconds)</em><RequiredMark /></span>
+        <span>{t("studio.questionTime")} <em>{t("studio.seconds")}</em><RequiredMark /></span>
         <input type="number" min="0" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} disabled={busy} required
                style={attempted && (String(timestamp).trim() === "" || (videoDurationSeconds != null && Number(timestamp) >= videoDurationSeconds)) ? invalidFieldStyle : undefined} />
       </div>
       {sameTimeQuestion && (
         <div className="lw-studio__blocker">
           <AlertCircle size={14} />
-          Another question is already set at this time ({formatTime(Number(timestamp))}) — learners will see both together.
+          {t("studio.sameTimeWarning", { time: formatTime(Number(timestamp)) })}
         </div>
       )}
       <div className="lw-studio__minsfield">
-        <span>Points</span>
+        <span>{t("studio.points")}</span>
         <input type="number" min="1" value={points} onChange={(e) => setPoints(e.target.value)} disabled={busy} />
       </div>
 
       <div className="lw-studio__panelactions">
-        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>{t("studio.cancel")}</button>
         <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}>
-          <Check size={13} /> Save question
+          <Check size={13} /> {t("studio.saveQuestion")}
         </button>
       </div>
     </form>
@@ -1637,6 +1611,7 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
 
 function PreviewPanel({ questions, onClose, onSubmit }) {
   const types = useQuestionTypes();
+  const { t } = useLanguage();
   const [answers, setAnswers] = useState({});
   const [grading, setGrading] = useState(false);
   const [error, setError] = useState(null);
@@ -1668,9 +1643,9 @@ function PreviewPanel({ questions, onClose, onSubmit }) {
   return (
     <div className="lw-studio__overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="lw-studio__panel" onClick={(e) => e.stopPropagation()}>
-        <button className="lw-studio__panelclose" onClick={onClose} aria-label="Close"><X size={16} /></button>
-        <div className="lw-eyebrow">Preview · Simulated AI grading</div>
-        <h2 className="lw-studio__panelh2">Take the questions as a learner would</h2>
+        <button className="lw-studio__panelclose" onClick={onClose} aria-label={t("studio.close")}><X size={16} /></button>
+        <div className="lw-eyebrow">{t("studio.previewEyebrow")}</div>
+        <h2 className="lw-studio__panelh2">{t("studio.previewTitle")}</h2>
 
         {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
 
@@ -1697,7 +1672,7 @@ function PreviewPanel({ questions, onClose, onSubmit }) {
                 className="studio-text-input" style={{ width: "100%" }}
                 value={answers[q.id]?.textAnswer ?? ""}
                 onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: { textAnswer: e.target.value } }))}
-                placeholder={q.type === "CompleteTheSentence" ? "Your answer…" : "Your response…"}
+                placeholder={q.type === "CompleteTheSentence" ? t("studio.yourAnswerPlaceholder") : t("studio.yourResponsePlaceholder")}
               />
             )}
           </div>
@@ -1711,8 +1686,8 @@ function PreviewPanel({ questions, onClose, onSubmit }) {
               onClick={handleSubmit}
             >
               {grading
-                ? <><LoaderCircle size={13} className="lw-studio__spin" /> AI is grading…</>
-                : <><Bot size={13} /> Submit for AI grading</>}
+                ? <><LoaderCircle size={13} className="lw-studio__spin" /> {t("studio.aiGrading")}</>
+                : <><Bot size={13} /> {t("studio.submitForGrading")}</>}
             </button>
           </div>
         )}
@@ -1722,7 +1697,7 @@ function PreviewPanel({ questions, onClose, onSubmit }) {
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <Bot size={16} />
               <div className="lw-aicard__body">
-                <strong>{result.passed ? "Passed" : "Not yet passing"} — {result.scorePercent}%</strong>
+                <strong>{result.passed ? t("studio.passed") : t("studio.notYetPassing")} — {result.scorePercent}%</strong>
                 <p style={{ margin: "4px 0 0" }}>{result.aiFeedback}</p>
               </div>
             </div>
@@ -1735,7 +1710,7 @@ function PreviewPanel({ questions, onClose, onSubmit }) {
                     {reviewed ? <Sparkles size={14} /> : pq?.correct ? <Check size={14} /> : <X size={14} />}
                     <span>
                       {q.prompt}{" "}
-                      {reviewed ? "— reviewed, not scored" : pq?.correct ? "— correct" : `— correct answer: ${pq?.correctAnswerDisplay ?? "n/a"}`}
+                      {reviewed ? t("studio.reviewedNotScored") : pq?.correct ? t("studio.correct") : t("studio.correctAnswerIs", { answer: pq?.correctAnswerDisplay ?? t("studio.notAvailable") })}
                     </span>
                   </div>
                 );

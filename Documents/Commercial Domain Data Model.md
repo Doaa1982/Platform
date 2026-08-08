@@ -279,11 +279,11 @@ These weren't specified by any source document; they're reasonable defaults chos
 
 # 8. Explicitly Not Modeled in This Pass
 
-* Billing (`Invoice`, `Payment`, `CreditLedgerEntry`, `BillingAccount` internals)
-* Usage & Metering (`Meter`, `UsageEvent`, `UsageCounter` internals)
-* Promotion & Discounts (`Promotion`, `Coupon`, `Redemption`, `AppliedPromotion` internals)
+* Billing (`Invoice`, `Payment`, `CreditLedgerEntry`, `BillingAccount` internals) — now modeled in `Commercial Domain Data Model — Billing.md`
+* Usage & Metering (`Meter`, `UsageEvent`, `UsageCounter` internals) — now modeled in `Commercial Domain Data Model — Usage & Metering.md`
+* Promotion & Discounts (`Promotion`, `Coupon`, `Redemption`, `AppliedPromotion` internals) — now modeled in `Commercial Domain Data Model — Promotion & Discounts.md`
 
-Each should be modeled as its own document, following this same pattern (diagram + entity tables + boundary FKs + open items), once this core spine has been reviewed. Modeling them now, before this pass is validated, risks compounding the same unreviewed assumption across four more documents instead of one.
+All four documents independently arrived at the same modeling question — a polymorphic foreign key for "this entitlement/ledger-entry/scope came from one of several possible source types" (`Entitlement.source_ref_id`, `FinancialLedgerEntry.related_ref_id`, `InvoiceLine.component_ref_id`, `PromotionScope`'s generic join). That recurrence across four independently modeled contexts is a signal, not a coincidence — it should be resolved once, as a shared data-modeling convention, rather than reviewed separately in each document.
 
 ---
 

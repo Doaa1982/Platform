@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    COURSES — a Learner's Published products and their Published curriculum.
@@ -13,8 +14,6 @@ import { useAuth } from "../auth/authContext";
    drafts, no unpublished units or lessons — only what a Learner may actually
    see (Learning Delivery Context's ownership boundary).
    ========================================================================= */
-
-const human = (s) => (s ?? "").replace(/([a-z])([A-Z])/g, "$1 $2");
 
 /** A small, fixed palette so each product gets a stable "cover" color from its id — matches ProductsScreen/ContentStudioScreen. */
 const COVER_VARIANTS = 5;
@@ -32,6 +31,7 @@ export default function LearnerCoursesScreen({ productId, onSelectProduct, onOpe
 
 function ProductPicker({ onSelect }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
@@ -52,7 +52,7 @@ function ProductPicker({ onSelect }) {
     return (
       <div className="lw-page">
         <style>{CSS}</style>
-        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> Loading…</div>
+        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> {t("learnerCourses.loading")}</div>
       </div>
     );
   }
@@ -60,15 +60,15 @@ function ProductPicker({ onSelect }) {
   return (
     <div className="lw-page">
       <style>{CSS}</style>
-      <div className="lw-eyebrow">Courses</div>
-      <h1>What do you want to learn?</h1>
-      <p className="lw-sub">Everything published here that you can open.</p>
+      <div className="lw-eyebrow">{t("learnerCourses.eyebrowCourses")}</div>
+      <h1>{t("learnerCourses.learnTitle")}</h1>
+      <p className="lw-sub">{t("learnerCourses.learnLead")}</p>
 
       {data.products.length === 0 && (
         <div className="lw-learn__empty">
           <BookOpen size={26} />
-          <h2>Nothing published yet</h2>
-          <p>When your tutor publishes a course, it will appear here.</p>
+          <h2>{t("learnerCourses.nothingPublishedTitle")}</h2>
+          <p>{t("learnerCourses.nothingPublishedBody")}</p>
         </div>
       )}
 
@@ -85,7 +85,7 @@ function ProductPicker({ onSelect }) {
             <div className="lw-learn__cardbody">
               <div className="lw-learn__cardtitle">{p.title}</div>
               {p.description && <p className="lw-learn__carddesc">{p.description}</p>}
-              {!p.hasContent && <span className="lw-learn__cardnote">Nothing published inside yet</span>}
+              {!p.hasContent && <span className="lw-learn__cardnote">{t("learnerCourses.nothingInsideYet")}</span>}
             </div>
           </button>
         ))}
@@ -96,6 +96,7 @@ function ProductPicker({ onSelect }) {
 
 function CurriculumView({ productId, onBack, onOpenLesson }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
@@ -123,7 +124,7 @@ function CurriculumView({ productId, onBack, onOpenLesson }) {
       <div className="lw-page">
         <style>{CSS}</style>
         <BackLink onBack={onBack} />
-        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> Loading…</div>
+        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> {t("learnerCourses.loading")}</div>
       </div>
     );
   }
@@ -132,17 +133,17 @@ function CurriculumView({ productId, onBack, onOpenLesson }) {
     <div className="lw-page">
       <style>{CSS}</style>
       <BackLink onBack={onBack} />
-      <div className="lw-eyebrow">Course</div>
+      <div className="lw-eyebrow">{t("learnerCourses.eyebrowCourse")}</div>
       <h1>{data.productTitle}</h1>
       {data.requiresSequentialCompletion && (
-        <p className="lw-learn__seqhint"><Lock size={12} /> Complete each lesson to unlock the next</p>
+        <p className="lw-learn__seqhint"><Lock size={12} /> {t("lessonSidebar.seqHint")}</p>
       )}
 
       {data.units.length === 0 && (
         <div className="lw-learn__empty">
           <BookOpen size={26} />
-          <h2>Nothing here yet</h2>
-          <p>This course doesn't have any published lessons yet — check back later.</p>
+          <h2>{t("learnerCourses.nothingHereTitle")}</h2>
+          <p>{t("learnerCourses.nothingHereBody")}</p>
         </div>
       )}
 
@@ -159,15 +160,15 @@ function CurriculumView({ productId, onBack, onOpenLesson }) {
                   <button
                     className={`lw-learn__lessonrow ${l.locked ? "is-locked" : ""}`} key={l.id}
                     disabled={l.locked}
-                    title={l.locked ? "Complete the previous lesson first" : undefined}
+                    title={l.locked ? t("lessonSidebar.lockedTitle") : undefined}
                     onClick={() => onOpenLesson(l.id)}
                   >
                     {done
                       ? <CheckCircle2 size={15} className="is-done" />
                       : l.locked ? <Lock size={15} /> : <PlayCircle size={15} />}
                     <span className="lw-learn__lessontitle">{l.title}</span>
-                    {l.estimatedMinutes != null && <span className="lw-learn__mins">{l.estimatedMinutes} min</span>}
-                    {done && <span className="lw-learn__donepill">{human("Completed")}</span>}
+                    {l.estimatedMinutes != null && <span className="lw-learn__mins">{l.estimatedMinutes} {t("lessonSidebar.min")}</span>}
+                    {done && <span className="lw-learn__donepill">{t("learnerCourses.completed")}</span>}
                   </button>
                 );
               })}
@@ -180,9 +181,10 @@ function CurriculumView({ productId, onBack, onOpenLesson }) {
 }
 
 function BackLink({ onBack }) {
+  const { t } = useLanguage();
   return (
     <button className="lw-learn__back" onClick={onBack}>
-      <ArrowLeft size={13} /> All courses
+      <ArrowLeft size={13} /> {t("learnerCourses.allCourses")}
     </button>
   );
 }

@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    LESSON — watch the video, answer its questions, get graded for real.
@@ -19,6 +20,7 @@ import { useAuth } from "../auth/authContext";
 
 export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
   const videoRef = useRef(null);
 
@@ -142,14 +144,14 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
 
       {error && !lesson && <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>}
       {!lesson && !error && (
-        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> Loading…</div>
+        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> {t("learnerLesson.loading")}</div>
       )}
 
       {lesson && <>
-        <div className="lw-eyebrow">Lesson</div>
+        <div className="lw-eyebrow">{t("studio.lessonEyebrow")}</div>
         <div className="lw-learn__heading">
           <h1>{lesson.title}</h1>
-          {done && <span className="lw-learn__donepill"><CheckCircle2 size={12} /> Completed</span>}
+          {done && <span className="lw-learn__donepill"><CheckCircle2 size={12} /> {t("learnerCourses.completed")}</span>}
         </div>
 
         {error && <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>}
@@ -157,7 +159,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
         {isLive && (
           <p className="muted" style={{ marginBottom: 14 }}>
             <Radio size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />
-            This lesson is a live session. Below is what to expect{(lesson.video || lesson.videoUrl) ? " and the recording, if you missed it." : "."}
+            {t("learnerLesson.liveSessionPrefix")}{(lesson.video || lesson.videoUrl) ? ` ${t("learnerLesson.liveSessionWithRecording")}` : "."}
           </p>
         )}
 
@@ -188,7 +190,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
         )}
 
         {submitting && (
-          <div className="lw-learn__grading"><LoaderCircle size={16} className="lw-learn__spin" /> Grading your answers…</div>
+          <div className="lw-learn__grading"><LoaderCircle size={16} className="lw-learn__spin" /> {t("learnerLesson.grading")}</div>
         )}
 
         {result && (
@@ -196,7 +198,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <Bot size={16} />
               <div className="lw-aicard__body">
-                <strong>{result.passed ? "Passed" : "Not yet passing"} — {result.scorePercent}%</strong>
+                <strong>{result.passed ? t("studio.passed") : t("studio.notYetPassing")} — {result.scorePercent}%</strong>
                 <p style={{ margin: "4px 0 0" }}>{result.aiFeedback}</p>
               </div>
             </div>
@@ -209,7 +211,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
                     {reviewed ? <Sparkles size={14} /> : pq?.correct ? <Check size={14} /> : <X size={14} />}
                     <span>
                       {q.prompt}{" "}
-                      {reviewed ? "— reviewed, not scored" : pq?.correct ? "— correct" : `— correct answer: ${pq?.correctAnswerDisplay ?? "n/a"}`}
+                      {reviewed ? t("studio.reviewedNotScored") : pq?.correct ? t("studio.correct") : t("studio.correctAnswerIs", { answer: pq?.correctAnswerDisplay ?? t("studio.notAvailable") })}
                     </span>
                   </div>
                 );
@@ -219,7 +221,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
         )}
 
         {!(lesson.video || lesson.videoUrl) && lesson.questions.length === 0 && (
-          <p className="lw-learn__donebanner"><CheckCircle2 size={15} /> Nothing else to do here — this lesson is marked complete.</p>
+          <p className="lw-learn__donebanner"><CheckCircle2 size={15} /> {t("learnerLesson.doneBanner")}</p>
         )}
       </>}
     </div>
@@ -227,6 +229,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
 }
 
 function QuestionPrompt({ question, onAnswer }) {
+  const { t } = useLanguage();
   const [selected, setSelected] = useState(null);
   const [text, setText] = useState("");
 
@@ -235,7 +238,7 @@ function QuestionPrompt({ question, onAnswer }) {
 
   return (
     <div className="lw-learn__checkpointcard">
-      <div className="lw-learn__checkpointkicker"><Sparkles size={13} /> Checkpoint</div>
+      <div className="lw-learn__checkpointkicker"><Sparkles size={13} /> {t("learnerLesson.checkpoint")}</div>
       <p className="lw-learn__checkpointprompt">{question.prompt}</p>
       {isChoice ? (
         <div className="lw-options">
@@ -252,23 +255,24 @@ function QuestionPrompt({ question, onAnswer }) {
       ) : (
         <input
           className="lw-learn__checkpointinput" value={text} onChange={(e) => setText(e.target.value)} autoFocus
-          placeholder={question.type === "CompleteTheSentence" ? "Your answer…" : "Your response…"}
+          placeholder={question.type === "CompleteTheSentence" ? t("studio.yourAnswerPlaceholder") : t("studio.yourResponsePlaceholder")}
         />
       )}
       <button
         type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={!canSubmit}
         onClick={() => onAnswer(isChoice ? { selectedOptionIndex: selected, textAnswer: null } : { selectedOptionIndex: null, textAnswer: text.trim() })}
       >
-        <Check size={13} /> Continue
+        <Check size={13} /> {t("learnerLesson.continue")}
       </button>
     </div>
   );
 }
 
 function BackLink({ onBack }) {
+  const { t } = useLanguage();
   return (
     <button className="lw-learn__back" onClick={onBack}>
-      <ArrowLeft size={13} /> Back to course
+      <ArrowLeft size={13} /> {t("learnerLesson.backToCourse")}
     </button>
   );
 }
