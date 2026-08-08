@@ -26,6 +26,23 @@ For each row: accept the recommended default, propose an alternative, or flag as
 
 ---
 
+## Addendum — Technical Items (raised during data-model drafting)
+
+| # | Decision | Recommended Default | Status |
+| - | --- | --- | :-: |
+| 10 | Accept polymorphic foreign keys (Entitlement.source_ref_id, FinancialLedgerEntry.related_ref_id, InvoiceLine.component_ref_id, PromotionScope) or require separate typed FK columns? | Accept polymorphic FKs for V1; revisit if they cause real integrity issues | ✅ Approved |
+| 11 | Usage & Metering throughput/latency target (every AI operation writes a usage event) | ~5 events/sec sustained peak (headroom to ~20/sec), <1–2s reservation check, ~60s counter freshness — derived from "hundreds of workspaces" + the heaviest documented usage scenario | 🟡 Provisional placeholder set 2026-08-09 |
+
+Item 11 is now unblocked for design purposes with an explicit, sourced placeholder (see `Commercial Domain Data Model — Usage & Metering.md` §6) — not a measured figure. Replace with real telemetry once available.
+
+## Addendum 2 — Foundational Correction (2026-08-09)
+
+| # | Correction | Resolution |
+| - | --- | --- |
+| 12 | This platform does not collect payment. Billing was originally modeled as a full in-house payment system. | **Billing narrowed to Invoice generation only** — no payment method, gateway, or automated refund. An authorized actor manually marks an Invoice Paid, which triggers Subscription Management's Manual Commercial Activation (`SubscriptionManagementArchitecture.md` §27a) instead of a payment-provider webhook. |
+
+This wasn't a policy choice among alternatives (unlike items 1–10) — it's a correction of a wrong assumption baked into the original architecture. Affected documents: `CommercialDomainReferenceArchitecture.md` §28, `SubscriptionManagementArchitecture.md` §27a/§29/§39–40/§52, `BillingArchitecture.md` (scope banner added), `Commercial Domain Data Model — Billing.md` (rewritten), `Commercial Domain Data Model.md` (`SUBSCRIPTION_EVENT` extended), `Commercial Domain V1 Scope.md` §2.6 and §3.
+
 ## What proceeds regardless of this sign-off
 
 The core commercial data model (Product → Configuration → Subscription → License → Entitlement) can be drafted in parallel, since its shape doesn't depend on how these nine items resolve — only certain fields and enum values do. Those fields will be marked as pending confirmation in the model itself.

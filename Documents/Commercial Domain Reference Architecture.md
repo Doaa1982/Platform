@@ -778,10 +778,12 @@ The Commercial Domain is divided into the following bounded contexts.
 | **Product Configuration**         | Validate and compose customer-selected configurations                  |
 | **Licensing & Entitlements**      | Translate commercial decisions into workspace entitlements             |
 | **Usage & Metering**              | Measure variable resource consumption                                  |
-| **Subscription Management**       | Manage commercial subscription lifecycle                               |
-| **Billing**                       | Payments, invoices, taxes, and financial transactions                  |
-| **Promotion & Discounts**         | Coupons, campaigns, discounts, and promotional policies                |
+| **Subscription Management**       | Manage commercial subscription lifecycle, **including manual commercial activation** |
+| **Billing**                       | **Invoice generation and issuance only** — amount owed, line items, pricing/tax shown on the invoice, invoice status. Does **not** collect payment. |
+| **Promotion & Discounts**         | Coupons, campaigns, discounts, and promotional policies, applied to the invoice as a line item — not to an automated payment |
 | **Commercial Analytics**          | Analyze commercial behavior, adoption, churn, and optimization         |
+
+> **Correction — 2026-08-09: This platform does not process payment.** Billing is narrowed to **Invoice generation only** — it produces the bill (amount owed, line items, tax) but owns no payment method, payment gateway, payment transaction, or automated refund. Payment happens entirely outside this platform (bank transfer, cash, external means). An authorized actor manually marks an Invoice as **Paid**, and that manual action — not a payment-provider webhook — is what triggers Subscription Management's activation (see `SubscriptionManagementArchitecture.md` §27a, "Manual Commercial Activation"). `BillingArchitecture.md` and its data model describe a full in-house payment system (payment methods, gateway abstraction, webhooks, refund transactions) that will not be built here; the Invoice-related portions remain applicable, the Payment-related portions are marked **Not Applicable**. Every other document's insistence that "Billing must never become the source of truth for Workspace access" turned out to be exactly the right boundary to have already drawn — narrowing Billing to invoice-only required no change to Licensing's resolution logic at all, only to what triggers Subscription state.
 
 ---
 
@@ -807,9 +809,12 @@ The Commercial Domain is divided into the following bounded contexts.
                                │
                                ▼
                     Subscription Management
+                               ▲
+                               │ manually marked Paid
                                │
-                               ▼
-                           Billing
+                            Billing
+                        (Invoice only —
+                       no payment collection)
 
 Promotion & Discounts ────────┐
                               │
@@ -880,7 +885,17 @@ Owns:
 
 Owns:
 
-> Has the customer paid, and what financial transactions occurred?
+> What does this workspace owe, and has that invoice been marked paid?
+
+Does **not** own payment collection, payment methods, or financial transaction processing — see the correction note in §28. "Has been marked paid" is a manually recorded fact, not a payment confirmation.
+
+## Subscription Management — Manual Commercial Activation
+
+Owns:
+
+> Who authorized this subscription's current commercial state, and on what basis?
+
+This is the actual trigger for Active/Past Due/Suspended/Cancelled transitions in this platform — see `SubscriptionManagementArchitecture.md` §27a.
 
 ---
 
@@ -1094,10 +1109,10 @@ The following documents provide detailed definitions for this domain.
 4. Licensing & Entitlement Architecture — `LicensingAndEntitlementArchitecture.md`
 5. Usage & Metering Architecture — `UsageAndMeteringArchitecture.md`
 6. Subscription Management Architecture — `SubscriptionManagementArchitecture.md`
-7. Billing Architecture — `BillingArchitecture.md`
+7. Billing Architecture — `BillingArchitecture.md` — **scope narrowed 2026-08-09 to Invoice generation only; see the correction banner at the top of that document**
 8. Promotion & Discount Architecture — `PromotionAndDiscountArchitecture.md`
 9. Commercial Domain Integration Architecture — `CommercialDomainIntegrationArchitecture.md` (cross-context integration, events, sagas, and the complete customer journey — the primary companion to this document)
-10. Commercial Domain V1 Scope & Release Boundary — `Commercial Domain V1 Scope.md` (consolidates each bounded context's stated V1/Future boundary into one cross-context release scope; draft, pending business sign-off — see §37 below)
+10. Commercial Domain V1 Scope & Release Boundary — `Commercial Domain V1 Scope.md` (consolidates each bounded context's stated V1/Future boundary into one cross-context release scope; approved 2026-08-09 — see §37 below)
 
 ## Planned, Not Yet Written
 
@@ -1115,27 +1130,33 @@ The following documents provide detailed definitions for this domain.
 
 The following commercial-policy questions are referenced by one or more bounded-context documents but are not yet resolved. They are listed here so they are tracked at the domain level instead of being silently assumed by whichever document happens to touch them first.
 
-A related, now-drafted artifact is `Commercial Domain V1 Scope.md`, which consolidates each bounded context's stated V1/Future boundary into one release scope. It is pending the same business sign-off as the items below and should be reviewed alongside them before detailed design begins.
+A related artifact is `Commercial Domain V1 Scope.md`, which consolidates each bounded context's stated V1/Future boundary into one release scope.
 
-## OD-001 — Entitlement Conflict Resolution
+**All five items below were reviewed and approved by the domain owner on 2026-08-09** (see `Commercial Domain Decision Brief.md`). They are retained here, marked Resolved, for traceability — the reasoning stays useful even after the decision is made.
 
-When multiple configuration components (base product, capability pack, promotion, manual override) target the same capability domain, resolution must be deterministic. A precedence order and a same-domain scoping rule are now proposed in `LicensingAndEntitlementArchitecture.md` §12–13; this should be formally reviewed and ratified as domain-level policy rather than left as one context's implementation choice.
+## OD-001 — Entitlement Conflict Resolution — ✅ Resolved
 
-## OD-002 — Downgrade / Capacity Reduction Data Impact
+When multiple configuration components (base product, capability pack, promotion, manual override) target the same capability domain, resolution must be deterministic. **Approved:** precedence order `Override > Promotion > Pack/Capacity > Base Product`, plus the same-domain scoping rule that a pack may only affect the capability domains it explicitly lists. Ratified as domain-level policy; implemented in `LicensingAndEntitlementArchitecture.md` §12–13.
 
-When a workspace loses capacity or a capability (e.g., Tutor Capacity drops from 2 to 1, or AI Assessment is removed), Licensing guarantees access is restricted rather than data deleted (see `LicensingAndEntitlementArchitecture.md` §15), but the actual reassignment/read-only behavior for the affected user's content is a Workspace/Learning-domain decision that has not yet been made. This is a cross-domain coordination gap, not just a documentation gap.
+## OD-002 — Downgrade / Capacity Reduction Data Impact — ✅ Resolved (Commercial Domain portion)
 
-## OD-003 — Enterprise Custom Contract Handling
+When a workspace loses capacity or a capability (e.g., Tutor Capacity drops from 2 to 1, or AI Assessment is removed), Licensing guarantees access is restricted rather than data deleted. **Approved.** The Commercial Domain's obligation ends there; the specific reassignment/read-only UX for the affected user's content remains a Workspace/Learning-domain follow-up, tracked in that domain, not this one.
 
-The product family table includes "Enterprise = Custom," and the Product Configuration Engine explicitly forbids clients from injecting arbitrary entitlements (`Product Configuration Engine Architecture.md` §48). The operational process by which a negotiated Enterprise contract produces entitlements outside the standard catalog — without violating that safeguard — has not been defined.
+## OD-003 — Enterprise Custom Contract Handling — ✅ Resolved
 
-## OD-004 — Governance Ownership of the Catalog Change Process
+**Approved:** Enterprise/custom negotiated contracts are explicitly out of V1 scope. The catalog and Configuration Engine should not be designed in a way that precludes adding Enterprise support later, but no operational process for it will be built in this phase.
 
-`CommercialProductManagementArchitecture.md` §37 defines a catalog change lifecycle (Draft → Business Review → Pricing Review → Architecture Review → Product Approval → Publish) but does not name accountable roles for each gate. This should be assigned before the process is relied upon operationally.
+## OD-004 — Governance Ownership of the Catalog Change Process — ✅ Resolved (action assigned)
 
-## OD-005 — Internationalization
+**Approved:** named owners must be assigned to each gate of the catalog change lifecycle (Draft → Business Review → Pricing Review → Architecture Review → Product Approval → Publish) before the process is relied upon operationally. Assigning the actual names is an outstanding action item, not an open question.
 
-Multi-currency, tax, and per-market pricing are acknowledged as future work in `CommercialDomainIntegrationArchitecture.md` §98–101, but this reference architecture does not yet mention internationalization at all. A placeholder principle should be added here once a target market list exists.
+## OD-005 — Internationalization — ✅ Resolved
+
+**Approved:** single currency, no dedicated Tax bounded context for V1. The data model remains currency-aware (`Money = amount + currency`, not a bare decimal) so this doesn't require a schema rewrite when multi-currency is eventually built.
+
+## OD-006 — Usage & Metering Throughput/Latency Target — 🟡 Provisional (placeholder set 2026-08-09)
+
+Raised during data-model drafting (`Commercial Domain Data Model — Usage & Metering.md`). No default existed to fall back on, so unlike OD-001–005 this was not approved against a recommendation — instead, a placeholder was derived from stated launch scale ("hundreds" of workspaces) and the heaviest usage scenario already documented in `Product Advisory Architecture.md`: ~5 events/second sustained peak (headroom to ~20/sec), sub-1–2-second reservation checks, ~60-second counter freshness. This unblocks design work but is explicitly **not** a validated commitment — it should be revisited against real telemetry before or shortly after launch.
 
 ---
 

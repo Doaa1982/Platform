@@ -109,7 +109,7 @@ erDiagram
 
 **`UsageEvent` is insert-only.** Nothing about a usage event is ever updated after creation — corrections are separate rows in `UsageCorrection`, never in-place edits (USG-004, USG-005, §33: "Corrections should never silently modify historical events").
 
-**`UsageEvent.correlation_id` requires a database-level unique constraint.** USG-003 mandates idempotency; §16 states "the same event should never be counted twice." As with Billing's `Payment.provider_reference`, this should be a structural guarantee, not an application-level check.
+**`UsageEvent.correlation_id` requires a database-level unique constraint.** USG-003 mandates idempotency; §16 states "the same event should never be counted twice." This should be a structural guarantee, not an application-level check — the same reasoning applied to `Entitlement.source` precedence and the other domain-wide invariants ratified in the Decision Brief.
 
 **`UsageEvent.meter_version`** is stored on every row, denormalized from `Meter.version` at write time, per §35–36 — historical events must remain reprocessable under the meter-conversion rule that was active when they occurred, even after `Meter.version` advances.
 
@@ -140,9 +140,24 @@ erDiagram
 
 ---
 
-# 6. Fields Pending Decision Brief Sign-off
+# 6. Fields Resolved / Still Open (Decision Brief, 2026-08-09)
 
-None of this document's structure is blocked by an open Decision Brief item. What's genuinely open is **which `Meter` rows are seeded at launch** — `UsageAndMeteringArchitecture.md` §7 already answers this at P0/P1/P2 granularity (AI Credits = P0; Video Processing, Storage, Student/Tutor Seats = P1/optional; Email, SMS = P2/deferred), and `Commercial Domain V1 Scope.md` §2.5 carries the same table forward. This is a **resolved scope question, not an open decision** — listed here only so it's not mistaken for a gap.
+**Which `Meter` rows are seeded at launch** was never actually open — `UsageAndMeteringArchitecture.md` §7 already answers this at P0/P1/P2 granularity (AI Credits = P0; Video Processing, Storage, Student/Tutor Seats = P1/optional; Email, SMS = P2/deferred), carried forward unchanged into `Commercial Domain V1 Scope.md` §2.5.
+
+**Throughput/latency target — provisional placeholder set 2026-08-09 (Decision Brief #11 / OD-006).**
+
+> ⚠️ **This is a derived placeholder, not measured traffic data. Replace once real signup/usage numbers exist (e.g., after a beta cohort or shortly after launch).**
+
+**Basis:** launch scale of "hundreds" of workspaces (200–500 used for this calculation) × the heaviest usage scenario already documented in `Product Advisory Architecture.md` §30/§77 (up to ~60 lesson/assessment creations per month for one active tutor), expanded to ~5–10 AI usage events per workspace per day to account for correlated child operations (§46–48 — a single "generate lesson from video" request produces several usage events, not one).
+
+| Target | Value | Derivation |
+| --- | --- | --- |
+| Sustained write volume | ~1,000–5,000 usage events/day platform-wide | 200–500 workspaces × 5–10 events/workspace/day |
+| Peak write throughput (design target) | ~5 events/second sustained, headroom to ~20/second | Accounts for traffic bunching into active hours and correlated multi-event bursts from a single AI workflow; 20/sec headroom covers 5–10x growth without redesign |
+| Reservation/pre-check latency | Under ~1–2 seconds | Short delay acceptable; the AI operation itself (generation, transcription) already takes several seconds, so the eligibility check isn't the bottleneck |
+| Usage counter freshness | Eventual consistency within ~60 seconds | Async usage counting approved — supports ingest-then-aggregate rather than synchronous per-event counter updates |
+
+**Engineering implication:** at this scale, a simple async pipeline (append `UsageEvent` rows, aggregate into `UsageCounter` on a short interval, e.g. every 30–60 seconds) is sufficient. Nothing here justifies a high-throughput streaming platform at launch — but nothing in the schema should hard-code an assumption that would block scaling to thousands of workspaces later.
 
 ---
 
@@ -156,4 +171,4 @@ None of this document's structure is blocked by an open Decision Brief item. Wha
 
 # 8. Status
 
-**Draft — First Pass.** Given this context's write volume, recommend this document specifically gets an engineering throughput/latency review (see the non-functional-requirements gap noted earlier in this project) before implementation — a correct schema with an unvalidated write path is still a production risk.
+**Draft — provisional throughput/latency target set 2026-08-09 (see §6). Not blocked, but not final.** This document is now clear to proceed to implementation planning using the placeholder in §6. Treat the placeholder as a working assumption, not a validated commitment — revisit it against real telemetry before or shortly after launch, since this context handles every AI operation in the platform and is the most sensitive to being wrong about scale.

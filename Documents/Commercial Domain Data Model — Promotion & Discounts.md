@@ -125,7 +125,7 @@ erDiagram
 | --- | --- | --- | --- |
 | `AppliedPromotion.subscription_id` | Subscription | Core spine | The commercial relationship the promotion is attached to |
 | `Redemption.workspace_id` / `customer_id` | Workspace / Customer | Workspace / Identity Domain | Not modeled here |
-| `Referral.reward_credit_id` | CreditLedgerEntry | Billing data model | Referral rewards become financial credits, not entitlement or configuration changes (§36) |
+| `Referral.reward_credit_id` | CreditLedgerEntry | Billing data model | Referral rewards become bookkeeping credits (invoice-reducing), not entitlement or configuration changes (§36). **Unaffected by the 2026-08-09 no-payment correction** — a credit was always an invoice adjustment, never a money transaction, so this relationship needed no change. |
 | Referenced *from* elsewhere: `ConfigurationSnapshot.promotion_id`, `Entitlement.source_ref_id` (when `source = Promotion`), `CreditLedgerEntry.source` (when `Promotion`) | `AppliedPromotion` (this document) | Core spine / Billing | This document is the target of those foreign keys, not the source |
 
 ---
@@ -138,9 +138,13 @@ erDiagram
 
 ---
 
-# 6. Fields Pending Decision Brief Sign-off
+# 6. Fields Resolved by Decision Brief (2026-08-09)
 
-None. Every V1-relevant item in this document (which promotion types, which rules, no-stacking-by-default) is already explicitly resolved in `PromotionAndDiscountArchitecture.md` §73 and carried into `Commercial Domain V1 Scope.md` §2.7. This is the one context of the four modeled so far with no open scope questions — worth noting as a positive signal about how well-specified that source document already was.
+| Field / Entity | Resolution | Decision Brief Item |
+| --- | --- | --- |
+| `PromotionScope` generic join (polymorphic) | **Accepted for V1**, consistent with the same decision applied across all four data models | #10 |
+
+Everything else in this document was already resolved before the Decision Brief existed: which promotion types, which rules, and no-stacking-by-default are explicit in `PromotionAndDiscountArchitecture.md` §73 and carried into `Commercial Domain V1 Scope.md` §2.7. This remains the one context of the four with no business-policy items in question — only the shared technical convention (#10) applied to it.
 
 ---
 
@@ -154,4 +158,4 @@ None. Every V1-relevant item in this document (which promotion types, which rule
 
 # 8. Status
 
-**Draft — First Pass.** This completes the first modeling pass across all four contexts identified in the core spine document (`Commercial Domain Data Model.md` §8: Billing, Usage & Metering, Promotion & Discounts, now all drafted). Recommend a single consolidated review across all four data-model documents together, since three of them independently raised the same polymorphic-foreign-key question — that pattern should be resolved once, as a shared convention, rather than three times.
+**Draft — decisions approved 2026-08-09.** This completes the first modeling pass across all four contexts identified in the core spine document. The shared polymorphic-foreign-key question raised independently across four documents was resolved once, as a single convention (Decision Brief #10), rather than four times. The only remaining open item across the entire Commercial Domain design-readiness pass is OD-006 (Usage & Metering throughput/latency target) — this document is not affected by it and is clear to proceed.

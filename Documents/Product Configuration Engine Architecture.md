@@ -57,7 +57,7 @@ The engine does not own:
 | --------------------------- | ----------------------------- |
 | Product definitions         | Commercial Product Management |
 | Customer needs              | Product Advisory              |
-| Payment                     | Billing                       |
+| Invoice (bill only — no payment collection, see 2026-08-09 correction) | Billing                       |
 | Subscription lifecycle      | Subscription Management       |
 | Runtime authorization       | Licensing & Entitlements      |
 | Actual resource consumption | Usage & Metering              |

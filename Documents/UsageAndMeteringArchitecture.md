@@ -108,7 +108,7 @@ Usage & Metering owns:
 | Entitlements            | Licensing                       |
 | Subscription            | Subscription Management         |
 | Price definition        | Product Configuration / Pricing |
-| Payment                 | Billing                         |
+| Invoice (bill only — no payment collection, see 2026-08-09 correction) | Billing                         |
 | Feature authorization   | Licensing                       |
 | Workspace functionality | Learning Workspace              |
 

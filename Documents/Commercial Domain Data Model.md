@@ -1,8 +1,10 @@
 # Commercial Domain Data Model — Core Commercial Spine
 
-**Version:** 0.1
+**Version:** 0.2 — Updated 2026-08-09 (Manual Commercial Activation, see note below)
 **Status:** Draft — First Pass, Not Yet Reviewed
 **Scope:** Product Management → Product Configuration → Subscription → Licensing & Entitlements
+
+> **2026-08-09 update:** This platform does not process payment. `SUBSCRIPTION_EVENT` (§4) gained `triggered_by` and `reference_note` fields to support Manual Commercial Activation — an authorized actor recording that commercial terms were satisfied outside this platform. See `SubscriptionManagementArchitecture.md` §27a and `Commercial Domain Data Model — Billing.md` for the full correction.
 **Out of scope for this pass:** Billing, Usage & Metering, and Promotion & Discounts are shown only as referenced boundary entities (enough to complete the foreign keys below). Each deserves its own data-model document; modeling all eight contexts in one pass would make this unreviewable.
 
 ---
@@ -189,6 +191,8 @@ erDiagram
         uuid subscription_id FK
         string event_type
         datetime occurred_at
+        uuid triggered_by FK
+        string reference_note
     }
     WORKSPACE_LICENSE {
         uuid id PK
@@ -260,26 +264,30 @@ These weren't specified by any source document; they're reasonable defaults chos
 1. **`Entitlement.source_ref_id` is polymorphic** (its meaning depends on `source`: a Product Version, a Capability Pack, a Promotion, or an Entitlement Override). This is the simplest way to model "one of several possible sources," but polymorphic associations are harder to enforce referential integrity on in most relational databases. An alternative is four nullable FK columns instead of one polymorphic pair — worth a decision before implementation, not a modeling detail to skip past.
 2. **`CapabilityProfile.ordinal` is scoped per domain, not global**, because the Reference Architecture explicitly states profiles "do not necessarily need identical names across domains" (§9) — Collaboration's `Solo → Solo+ → Team → Organization` and Assessment's `Foundation → Professional → AI+` are different ordinal scales that must never be compared to each other.
 3. **`ConfigurationSnapshot` and `SubscriptionVersion` are insert-only tables**, not soft-deleted/updated rows, to satisfy the immutability invariants (CPR-008, SUB-003) without relying on application code to enforce it.
-4. **Capacity is stored as a string `default_value`/`selected_value`** rather than a strict integer, to accommodate the `"Unlimited"` sentinel used throughout the catalog (e.g., Academy tutor capacity) without a separate nullable "is unlimited" flag. This is a minor call but affects every capacity-reading query, so it's flagged rather than hidden.
+4. **`SUBSCRIPTION_EVENT` doubles as the Manual Commercial Activation record** rather than introducing a separate `ManualActivation` entity. It already existed as an append-only event log; adding `triggered_by` (actor) and `reference_note` (free-text reason/invoice reference) was cheaper than a parallel entity, and keeps one place to answer "why does this subscription have this state" instead of two.
+5. **Capacity is stored as a string `default_value`/`selected_value`** rather than a strict integer, to accommodate the `"Unlimited"` sentinel used throughout the catalog (e.g., Academy tutor capacity) without a separate nullable "is unlimited" flag. This is a minor call but affects every capacity-reading query, so it's flagged rather than hidden.
 
 ---
 
-# 7. Fields Pending Decision Brief Sign-off
+# 7. Fields Resolved by Decision Brief (2026-08-09)
 
-| Field / Entity | Depends On | Decision Brief Item |
+| Field / Entity | Resolution | Decision Brief Item |
 | --- | --- | --- |
-| `Entitlement.source` precedence logic (Override > Promotion > Pack > Base) | Ratification of the precedence rule | #1 |
-| Whether `PRODUCT_FAMILY` needs `Studio`/`Academy` rows populated at launch vs. structurally present but unpublished | Studio/Academy V1 inclusion | #2 |
-| Which `CAPABILITY_PACK` rows are seeded at launch | Capability Pack launch list | #3 |
-| Whether `Subscription.status` needs to support `Paused`/`Resume` transitions in V1 | Pause/Resume scope | #4 |
-| Whether `ENTITLEMENT_OVERRIDE` ships in V1 or is deferred | Entitlement Overrides scope | #5 |
-| Whether `Subscription.billing_cycle` enum includes `Quarterly`/`Custom` at launch | Billing cycle scope | (V1 Scope §2.3) |
+| `Entitlement.source` precedence logic | **Override > Promotion > Pack/Capacity > Base Product**, ratified | #1 |
+| `PRODUCT_FAMILY` — Studio/Academy rows | Present structurally, **not published/sellable in V1** | #2 |
+| `CAPABILITY_PACK` seed data | **Seed AI Author, AI Assessment, AI Mentor, Branding, Collaboration only**; the other five rows exist in the schema but are not published | #3 |
+| `Subscription.status` — Paused/Resume | **Deferred to Phase 2** — omit Paused-related transitions from the V1 state machine implementation | #4 |
+| `ENTITLEMENT_OVERRIDE` | **In scope for V1** — build alongside the core resolution engine | #5 |
+| `Subscription.billing_cycle` enum scope | **Monthly, Annual only for V1** — Quarterly/Custom remain future enum values, not implemented | V1 Scope §2.3 |
+| `Entitlement.source_ref_id`, and the equivalent polymorphic fields in the other three data models | **Polymorphic FKs accepted for V1** | #10 |
+
+No fields in this document remain open. (Usage & Metering's throughput target, item #11/OD-006, affects that document, not this one.)
 
 ---
 
 # 8. Explicitly Not Modeled in This Pass
 
-* Billing (`Invoice`, `Payment`, `CreditLedgerEntry`, `BillingAccount` internals) — now modeled in `Commercial Domain Data Model — Billing.md`
+* Billing (`Invoice`, `CreditLedgerEntry`, `BillingAccount` internals — no `Payment` entity, this platform doesn't process payment) — now modeled in `Commercial Domain Data Model — Billing.md`
 * Usage & Metering (`Meter`, `UsageEvent`, `UsageCounter` internals) — now modeled in `Commercial Domain Data Model — Usage & Metering.md`
 * Promotion & Discounts (`Promotion`, `Coupon`, `Redemption`, `AppliedPromotion` internals) — now modeled in `Commercial Domain Data Model — Promotion & Discounts.md`
 

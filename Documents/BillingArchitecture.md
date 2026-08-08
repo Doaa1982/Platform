@@ -1,9 +1,25 @@
 # Billing Architecture
 
 **Version:** 1.0
-**Status:** Draft
+**Status:** Draft — Scope Narrowed 2026-08-09 (see notice below)
 **Bounded Context:** Billing
 **Parent Domain:** Commercial Domain
+
+---
+
+> ## ⚠️ Scope Correction — 2026-08-09
+>
+> **This platform does not collect payment.** Billing's actual scope here is **Invoice generation only** — producing the bill (amount owed, line items, tax, currency) and tracking its status. There is no payment method storage, no payment gateway integration, no automated payment lifecycle, and no automated refund transaction. An Invoice is marked **Paid** by an authorized human, and that manual action is what triggers Subscription Management's activation (`SubscriptionManagementArchitecture.md` §27a) — not a payment-provider webhook.
+>
+> This document was written assuming an in-house payment system and was **not rewritten section-by-section** after the correction, to avoid introducing errors across 70 sections without corresponding value. Use this map to know what still applies:
+>
+> **Still applies (Invoice-only concerns):** §9–15 (Invoice, Invoice Lifecycle, Invoice States, Invoice Line, Invoice Snapshot Principle, Pricing Snapshot, Currency), §25–29 (Proration, Upgrade/Downgrade Billing), §30–31 (Credits, Credit Ledger — as bookkeeping adjustments to a future invoice, not money movement), §34–37 (Tax, Discount, Billing Calculation), §38–44 (Billing Preview, Design Your Plan/Fixed Plan Billing examples), §48–50 (Financial Ledger, Invoice/Ledger distinction, Account Balance), §66 (Recommended Invoice Structure).
+>
+> **Does NOT apply — describes payment processing this platform will not build:** §16–21 (Payment Method, Payment Providers, Payment Lifecycle, Payment States, Payment Retry), §32–33 (Refunds as money movement — a "Refund" here becomes a credit/invoice adjustment instead, per §30–31), §51–54 (Payment Security, Payment Provider Webhooks, Webhook Idempotency, Reconciliation with a payment provider).
+>
+> **Needs reinterpretation — same intent, different trigger:** §20 (Payment Failure → read as "Invoice overdue, not marked Paid"), §22–24 (Renewal Flow — "Attempt Payment" becomes "await manual payment confirmation"), §45–47 (Billing Events — `PaymentSucceeded`/`PaymentFailed` don't exist; `InvoiceCreated`, `InvoicePaid` (now a manual-trigger event), `InvoicePastDue` do), §56–58 (Billing Matrix, Subscription↔Billing Matrix — "Payment" rows should read as "Invoice marked Paid"), §64 (Billing Invariants — BIL-002/BIL-003/BIL-009, which assume a payment provider, don't apply as written), §65 (Recommended Initial Billing Model — drop Card Payment/Automatic Renewal, keep the invoicing and proration items).
+>
+> Full reasoning: `CommercialDomainReferenceArchitecture.md` §28 correction note. Corrected data model: `Commercial Domain Data Model — Billing.md`.
 
 ---
 

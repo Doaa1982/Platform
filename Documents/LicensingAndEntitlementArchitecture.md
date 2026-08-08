@@ -46,7 +46,7 @@ The context is responsible for:
 | Product configuration   | Product Configuration         |
 | Customer recommendation | Product Advisory              |
 | Subscription            | Subscription Management       |
-| Payment                 | Billing                       |
+| Invoice (bill only — no payment collection, see 2026-08-09 correction) | Billing                       |
 | Actual usage            | Usage & Metering              |
 | Workspace identity      | Identity                      |
 | Workspace business data | Learning Workspace            |
@@ -274,7 +274,9 @@ This directly enforces the principle already stated in `ProductConfigurationEngi
 
 # 13. Entitlement Source Precedence
 
-When two sources disagree about the same entitlement (rather than simply combining), resolution must be deterministic. Recommended precedence, highest to lowest:
+**Approved — 2026-08-09 (see `Commercial Domain Decision Brief.md` #1).**
+
+When two sources disagree about the same entitlement (rather than simply combining), resolution must be deterministic. Ratified precedence, highest to lowest:
 
 ```text
 1. Manual Override            (explicit, time-bound, audited exception)
@@ -347,13 +349,15 @@ Tutor B's authored content is NOT deleted.
 Content ownership/visibility follows Workspace/Learning domain retention policy.
 ```
 
-Licensing is responsible for guaranteeing that a capacity or capability reduction never triggers deletion as a side effect. It is not responsible for deciding what happens to the affected user's ongoing role in the Workspace — that decision belongs to the Workspace/Identity and Learning domains, which must consume the `EntitlementRevoked` event (§18) to apply their own reassignment or read-only policy. This boundary should be treated as an explicit open coordination point between the Commercial Domain and the Workspace domain, not something Licensing decides unilaterally.
+**Approved — 2026-08-09 (see `Commercial Domain Decision Brief.md` #6).** Licensing is responsible for guaranteeing that a capacity or capability reduction never triggers deletion as a side effect. It is not responsible for deciding what happens to the affected user's ongoing role in the Workspace — that decision belongs to the Workspace/Identity and Learning domains, which must consume the `EntitlementRevoked` event (§18) to apply their own reassignment or read-only policy. The Commercial Domain's obligation here is now settled; the cross-domain UX decision remains an open item for the Workspace/Learning domains to resolve on their own track.
 
 The same principle applies to capability removal (e.g., disabling AI Assessment): access is revoked; previously generated content remains subject to normal data-retention policy, not immediate deletion.
 
 ---
 
 # 16. Entitlement Overrides
+
+**In scope for V1 — approved 2026-08-09 (see `Commercial Domain Decision Brief.md` #5).**
 
 Commercial exceptions (goodwill access during a support case, a temporarily extended trial, a manually corrected entitlement) are modeled explicitly rather than by mutating the base configuration.
 
@@ -427,8 +431,8 @@ License History
 Aug 08 — License Created — Source: Subscription Activated
 Aug 08 — Entitlement Granted — Learning = AI+ (Base Product)
 Aug 20 — Entitlement Changed — AI Credits 75K → 100K (Pack Added)
-Sep 08 — License State Changed — Active → Grace (Payment Failed)
-Sep 12 — License State Changed — Grace → Active (Payment Recovered)
+Sep 08 — License State Changed — Active → Grace (Invoice Overdue — not marked Paid by due date)
+Sep 12 — License State Changed — Grace → Active (Invoice Manually Marked Paid — see SubscriptionManagementArchitecture.md §27a)
 ```
 
 This history is what allows support and audit to reconstruct "why is this Workspace entitled to this, as of this date" — the same discipline already required of Subscription history and Usage events elsewhere in the domain.
@@ -539,4 +543,4 @@ AI Credits = 100,000 (75,000 included + 25,000 promotional)
 
 This document now defines Licensing & Entitlements as the runtime authority of the Commercial Domain: the single place where a Configuration Snapshot, capacity, usage allowances, promotions, and manual overrides are resolved into one effective, source-attributed, auditable Entitlement Set.
 
-Two decisions remain explicitly open and are tracked in the Reference Architecture's Open Decisions appendix rather than resolved here: the exact Workspace/Learning-domain behavior when a reduced entitlement affects a specific user's content (§15), and the operational process for Enterprise custom/negotiated entitlements that fall outside the standard catalog.
+The entitlement precedence rule (§13), the downgrade/data-retention policy (§15), and inclusion of Entitlement Overrides (§16) were all approved by the domain owner on 2026-08-09 — see `Commercial Domain Decision Brief.md`. One cross-domain item remains genuinely open outside this document's control: the Workspace/Learning-domain UX for reassigning a user's content after a capacity reduction (§15) — the Commercial Domain's obligation there (restrict, never delete) is settled; the receiving domain's response is not.

@@ -1,7 +1,7 @@
 # Commercial Domain V1 Scope & Release Boundary
 
-**Version:** 1.0
-**Status:** Draft — Pending Business Sign-off
+**Version:** 1.1
+**Status:** Approved — 2026-08-09 (see `Commercial Domain Decision Brief.md`)
 **Domain:** Commercial
 **Audience:** Business Architects, Product Owners, Solution Architects, Engineering Leads
 
@@ -13,7 +13,7 @@ Every bounded-context document in the Commercial Domain independently states its
 
 This document exists to give engineering, product, and design one shared answer to: **"What are we actually building first?"** — so that Product Configuration, Licensing, Billing, Promotion, and Advisory are designed against the same boundary instead of each team inferring its own.
 
-This is a **compilation and reconciliation**, not a new set of decisions. Every item below is traced to the document that stated it. Where no document explicitly states a boundary and one has been inferred from stated priorities (e.g., the Solo-first customer evolution in the Reference Architecture), it is marked **Inferred — Needs Confirmation** rather than presented as settled.
+This was originally a **compilation and reconciliation**, not a new set of decisions: every item was traced to the document that stated it, and anywhere no document explicitly stated a boundary, it was marked *Inferred — Needs Confirmation* rather than presented as settled. All such items were reviewed and confirmed by the domain owner on 2026-08-09 (see `Commercial Domain Decision Brief.md`) and are now marked **✅ Confirmed** throughout this document rather than inferred.
 
 ---
 
@@ -28,8 +28,8 @@ This is a **compilation and reconciliation**, not a new set of decisions. Every 
 | AI Assistance Levels: Manual, Assist, Co-Pilot | In scope | §16 |
 | AI Assistance Level: Autonomous | **Deferred** | Reference Architecture §11 marks every capability "Future" for Autonomous |
 | Capability Packs: AI Author, AI Assessment, AI Mentor, Branding, Collaboration | Inferred in scope (aligned with Solo/AI+ focus) | §19 — needs product confirmation |
-| Capability Packs: Marketing, Commerce, Live Teaching, Parent Engagement, Integration | **Inferred — Needs Confirmation** | Not tied to stated Solo priority; Integration Pack specifically overlaps with Academy/Enterprise-only capabilities (API Access, SSO) |
-| Studio, Academy product families | **Inferred — Needs Confirmation** | Reference Architecture §5 frames these as later stages in the customer evolution, not the initial target |
+| Capability Packs: Marketing, Commerce, Live Teaching, Parent Engagement, Integration | **✅ Confirmed deferred** (2026-08-09) | Not tied to stated Solo priority; Integration Pack specifically overlaps with Academy/Enterprise-only capabilities (API Access, SSO) |
+| Studio, Academy product families | **✅ Confirmed deferred** (2026-08-09) | Reference Architecture §5 frames these as later stages in the customer evolution, not the initial target |
 | Enterprise / Custom | **Explicitly deferred** | `BillingArchitecture.md` §65: "Avoid implementing complex enterprise billing until there is a real business requirement" |
 | Integration & Organization capability domains (API Access, SSO, Departments, Branches) | **Explicitly deferred** | `CommercialProductManagementArchitecture.md` §14 shows these as unavailable until Academy tier |
 
@@ -50,7 +50,7 @@ This is a **compilation and reconciliation**, not a new set of decisions. Every 
 | Billing cycles: Monthly, Annual | In scope | `SubscriptionManagementArchitecture.md` §23; confirmed by `BillingArchitecture.md` §65 |
 | Core lifecycle: Draft, Pending, Active, Past Due, Grace, Suspended, Cancelled, Expired | In scope | §8 |
 | Trial subscriptions | In scope | §24–25; confirmed as a V1 promotion type in `PromotionAndDiscountArchitecture.md` §73 |
-| Pause / Resume | **Inferred — Needs Confirmation** | Defined in §30–31, but not listed in Billing's explicit V1 support list (§65). Recommend confirming before building. |
+| Pause / Resume | **✅ Confirmed deferred** (2026-08-09) | Defined in §30–31, but not listed in Billing's explicit V1 support list (§65) |
 | Quarterly / Custom billing cycles | **Deferred** | §23 explicitly frames these as post-V1 expansion |
 
 ## 2.4 Licensing & Entitlements
@@ -60,7 +60,7 @@ This is a **compilation and reconciliation**, not a new set of decisions. Every 
 | Effective Entitlement Resolution (profiles, AI levels, capacity, usage allowances) | In scope — foundational | `LicensingAndEntitlementArchitecture.md` §11 |
 | License state derivation from Subscription state | In scope | §8 |
 | Entitlement source precedence (Override > Promotion > Pack/Capacity > Base) | In scope, **pending ratification** — see OD-001 | §13 |
-| Entitlement Overrides (support exceptions) | **Inferred in scope** | Not explicitly listed as V1 by any document, but operationally necessary from day one for support to function |
+| Entitlement Overrides (support exceptions) | **✅ Confirmed in scope** (2026-08-09) | Not explicitly listed as V1 by any document, but operationally necessary from day one for support to function |
 
 ## 2.5 Usage & Metering
 
@@ -77,15 +77,19 @@ This is a **compilation and reconciliation**, not a new set of decisions. Every 
 
 ## 2.6 Billing
 
+> **Corrected 2026-08-09: this platform does not collect payment.** Billing is scoped to Invoice generation only. See `CommercialDomainReferenceArchitecture.md` §28 and `BillingArchitecture.md`'s scope-correction banner.
+
 | Item | Status | Source |
 | --- | --- | --- |
-| Monthly, Annual billing | In scope | `BillingArchitecture.md` §65 |
-| Fixed Plans, Design Your Plan billing | In scope | §65 |
-| Card payment, automatic renewal | In scope | §65 |
-| Upgrade (immediate, prorated) | In scope | §65 |
-| Downgrade (next billing period, no automatic refund) | In scope | §65 |
-| Credits, refunds | In scope | §65 |
-| Grace period for failed payments | In scope | §65 |
+| Invoice generation (amount owed, line items, tax, currency) | In scope | `BillingArchitecture.md` §9–15 (still applicable portion) |
+| Monthly, Annual billing periods | In scope | §65 (invoicing portion) |
+| Fixed Plans, Design Your Plan invoicing | In scope | §65 |
+| Upgrade (immediate, prorated invoice) | In scope | §25–27 |
+| Downgrade (next billing period, reflected on next invoice) | In scope | §28–29 |
+| Credits (bookkeeping adjustment to a future invoice) | In scope | §30–31 |
+| Manual Commercial Activation (marking an invoice Paid, triggering Subscription activation) | In scope — this is the actual V1 mechanism | `SubscriptionManagementArchitecture.md` §27a |
+| Grace period for overdue invoices | In scope | `SubscriptionManagementArchitecture.md` §29 |
+| Card payment, payment gateway integration, automated refunds | **Out of scope entirely — no payment collection in this platform** | 2026-08-09 correction |
 | Complex enterprise billing (negotiated terms, custom invoicing) | **Explicitly deferred** | §65 |
 | Multi-currency | **Explicitly deferred** | `CommercialDomainIntegrationArchitecture.md` §98 — "designed for but not necessarily implemented in V1" |
 | Dedicated Tax bounded context | **Explicitly deferred** | §99 |
@@ -122,6 +126,7 @@ Not yet written (see Reference Architecture §36). Out of design scope for V1 by
 
 These apply across every bounded context and are called out once here rather than repeated per-context:
 
+* **Payment collection of any kind** — no payment methods, no gateway integration, no automated payment lifecycle, no automated refunds. Billing produces an invoice; a human marks it paid. Corrected 2026-08-09.
 * Multi-currency pricing — single currency for V1.
 * Dedicated Tax bounded context — tax handled via integration/manual process, not a first-class domain.
 * Localization / per-market pricing (Price Books).
@@ -135,16 +140,18 @@ These apply across every bounded context and are called out once here rather tha
 
 # 4. Items Requiring Sign-off Before Design Starts
 
-1. **OD-001 (entitlement precedence rule)** — must be ratified regardless of scope, since it shapes the Licensing data model.
-2. **Studio/Academy inclusion** — confirm whether these are truly out of V1 or whether the catalog needs to support them structurally even if not sold at launch.
-3. **Capability Pack list** — confirm which of the ten defined packs are actually sellable at launch.
-4. **Pause/Resume** — confirm whether Subscription needs this at launch or can defer it without breaking the Grace/Suspension flow design.
-5. **Entitlement Overrides** — confirm this is in scope; if support will need manual exceptions from day one, it should be designed alongside the core resolution engine, not bolted on after.
+**All five resolved 2026-08-09** — see `Commercial Domain Decision Brief.md`.
+
+1. ✅ **OD-001 (entitlement precedence rule)** — ratified: Override > Promotion > Pack/Capacity > Base Product.
+2. ✅ **Studio/Academy inclusion** — confirmed out of V1; catalog remains structurally capable of supporting them later.
+3. ✅ **Capability Pack list** — confirmed: AI Author, AI Assessment, AI Mentor, Branding, Collaboration ship at launch; the other five are deferred.
+4. ✅ **Pause/Resume** — confirmed deferred to Phase 2.
+5. ✅ **Entitlement Overrides** — confirmed in scope for V1, designed alongside the core resolution engine (`LicensingAndEntitlementArchitecture.md` §16).
+
+One additional item surfaced later, during data-model drafting: the Usage & Metering throughput/latency target (tracked as OD-006 in `CommercialDomainReferenceArchitecture.md` §37). A provisional placeholder was derived and set on 2026-08-09 (~5 events/sec sustained peak, sub-1–2s reservation checks, ~60s counter freshness) — not blocking, but flagged for replacement with real telemetry before or shortly after launch.
 
 ---
 
 # 5. Status
 
-**Draft — Pending Business Sign-off.**
-
-This document should be reviewed by the same stakeholders who own the Open Decisions in `CommercialDomainReferenceArchitecture.md` §37. Once ratified, this becomes the scope boundary that `CommercialDomainReferenceArchitecture.md` §37 currently flags as missing.
+**Approved — 2026-08-09.** Reviewed and signed off by the domain owner alongside the Open Decisions in `CommercialDomainReferenceArchitecture.md` §37 (see `Commercial Domain Decision Brief.md`). This is now the ratified scope boundary for V1.

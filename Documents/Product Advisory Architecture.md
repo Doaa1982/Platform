@@ -132,8 +132,7 @@ Product Advisory owns:
 | Product definitions      | Product Management              |
 | Pricing                  | Product Configuration / Pricing |
 | Subscription             | Subscription Management         |
-| Invoice                  | Billing                         |
-| Payment                  | Billing                         |
+| Invoice (bill only — no payment collection, see 2026-08-09 correction) | Billing                         |
 | Entitlements             | Licensing                       |
 | Usage measurement        | Usage & Metering                |
 | Learning activity source | Learning Workspace              |
@@ -366,7 +365,7 @@ Promotion
 
 Billing
    │
-   ├── Payment state
+   ├── Invoice state (Paid / Overdue — marked manually, no payment processing)
    └── Account status
 ```
 
@@ -1968,9 +1967,9 @@ Configuration
       ↓
 Subscription
       ↓
-Billing
+Billing (Invoice Issued)
       ↓
-Payment
+Manually Marked Paid (§27a, SubscriptionManagementArchitecture.md)
       ↓
 Licensing
       ↓

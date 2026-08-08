@@ -1,9 +1,19 @@
 # Commercial Domain Integration Architecture
 
 **Version:** 1.0
-**Status:** Draft
+**Status:** Draft — Scope Correction Noted 2026-08-09
 **Domain:** Commercial Domain
 **Audience:** Business Architects, Solution Architects, Backend Engineers, Product Engineers
+
+---
+
+> ## ⚠️ Scope Correction — 2026-08-09
+>
+> **This platform does not collect payment.** This document was written assuming an in-house payment system and references `Payment`, `PaymentSucceeded`, `PaymentFailed`, and a `Payment` bounded context extensively throughout its sagas, event flows, and diagrams (e.g. §3–4, §13, §18–19, §38–39, §41, §51–52, §67, §85–87, §111). It was **not rewritten section-by-section**, to avoid introducing errors across ~113 sections without corresponding value.
+>
+> Read every reference to `Payment`/`PaymentSucceeded`/`PaymentFailed` in this document as: **"Invoice marked Paid by an authorized human"** — a manual action recorded by Subscription Management (`SubscriptionManagementArchitecture.md` §27a), not an automated payment-provider event. The distributed-transaction, saga, and eventual-consistency reasoning throughout this document remains structurally valid; only the specific trigger event changes from automated to manual.
+>
+> Full correction: `CommercialDomainReferenceArchitecture.md` §28. Corrected data model: `Commercial Domain Data Model — Billing.md`.
 
 ---
 

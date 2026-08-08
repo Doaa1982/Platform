@@ -677,6 +677,44 @@ Workspace License
 
 ---
 
+# 27a. Manual Commercial Activation
+
+**Added 2026-08-09 — this is the actual state-change trigger in this platform.** There is no in-system payment collection (see `CommercialDomainReferenceArchitecture.md` §28 correction note). Transitions that a payment-provider webhook would trigger elsewhere are instead triggered by an authorized actor manually recording that commercial terms were satisfied outside this platform.
+
+```text
+Invoice Issued (Billing — see §39)
+      │
+      ▼
+Payment Occurs Externally
+(bank transfer, cash, or other means — outside this platform)
+      │
+      ▼
+Authorized Actor Marks Invoice = Paid
+      │
+      ▼
+Subscription Management
+      │
+      ▼
+Subscription State Updated
+```
+
+Every manual activation must record:
+
+```text
+ManualActivation
+│
+├── Subscription ID
+├── Invoice Reference (if applicable)
+├── New Status
+├── Actor (who performed the action)
+├── Reason / Reference Note
+└── Timestamp
+```
+
+This preserves the auditability a financial ledger would otherwise provide ("why does this subscription have this state") without any payment processing. Who is authorized to perform this action is governed by §36, Subscription Actor Model. This does not change the state machine itself (§7–8, §46) — only what triggers a transition.
+
+---
+
 # 28. Subscription → License Rules
 
 | Subscription State | License Recommendation        |
@@ -693,9 +731,11 @@ Workspace License
 
 ---
 
-# 29. Payment Failure
+# 29. Overdue Invoice (formerly "Payment Failure")
 
-Payment failure must not immediately mean:
+**Revised 2026-08-09** — there is no automated payment, so there is no automated payment failure. The equivalent event is an invoice reaching its due date without being manually marked Paid. The protective principle is unchanged:
+
+An overdue invoice must not immediately mean:
 
 ```text
 License = Revoked
@@ -704,7 +744,8 @@ License = Revoked
 Instead:
 
 ```text
-Payment Failure
+Invoice Overdue
+(due date passed, not marked Paid)
       ↓
 Subscription = Past Due
       ↓
@@ -712,12 +753,12 @@ Grace Policy
       ↓
 License = Active
       ↓
-Payment succeeds
+Invoice Manually Marked Paid (§27a)
       ↓
 Subscription = Active
 ```
 
-This protects the customer's learning workspace.
+This protects the customer's learning workspace on a manual/administrative timeline instead of an automated retry schedule.
 
 ---
 
@@ -942,7 +983,7 @@ SubscriptionTerminated
 
 # 39. Billing Integration
 
-Subscription Management requests billing actions.
+**Revised 2026-08-09.** Subscription Management requests invoice generation from Billing. It does not request or receive payment processing — Billing performs none.
 
 ```text
 Subscription
@@ -950,21 +991,19 @@ Subscription
       ▼
 Billing
       │
-      ├── Invoice
-      ├── Payment
-      └── Payment Result
+      └── Invoice (amount owed, line items)
 ```
 
-Billing does not decide whether a subscription should exist.
+An Invoice being marked **Paid** is a manual action (§27a), not a result Billing computes. Billing does not decide whether a subscription should exist, and does not decide when an invoice is paid — only that one exists and what it says.
 
 ---
 
-# 40. Billing Failure Integration
+# 40. Overdue Invoice Integration
 
 ```text
 Billing
    │
-   │ PaymentFailed
+   │ Invoice due date passed, not marked Paid
    ▼
 Subscription Management
    │
@@ -1344,10 +1383,13 @@ Additional Tutor slot available
 
 ---
 
-# 52. Example: Payment Failure
+# 52. Example: Overdue Invoice
+
+**Revised 2026-08-09.**
 
 ```text
-Payment Failed
+Invoice Due Date Passes
+Not Marked Paid
       ↓
 Subscription = Past Due
       ↓
@@ -1355,14 +1397,14 @@ Grace Period
       ↓
 License = Active
       ↓
-Payment Retry
+Admin Follow-up
       │
-      ├── Success → Active
+      ├── Invoice Marked Paid (§27a) → Active
       │
-      └── Failure → Suspended
+      └── Grace Period Ends, Still Unpaid → Suspended
 ```
 
-The tutor should not immediately lose their Workspace.
+The tutor should not immediately lose their Workspace over an invoice that simply hasn't been reconciled yet.
 
 ---
 

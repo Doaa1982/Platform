@@ -76,9 +76,12 @@ It changes the **commercial terms**.
                            │
                            ▼
                        Billing
+                        (Invoice)
                            │
                            ▼
-                       Payment
+              Manually Marked Paid
+       (§27a, SubscriptionManagementArchitecture.md —
+          no payment processing in this platform)
 ```
 
 At the same time:
@@ -124,8 +127,7 @@ Promotion & Discounts owns:
 | Product definition      | Product Management      |
 | Product configuration   | Configuration Engine    |
 | Subscription lifecycle  | Subscription Management |
-| Invoice                 | Billing                 |
-| Payment                 | Billing                 |
+| Invoice (bill only — no payment collection, see 2026-08-09 correction) | Billing                 |
 | Workspace authorization | Licensing               |
 | Usage                   | Usage & Metering        |
 | AI consumption          | Usage & Metering        |
@@ -1351,11 +1353,13 @@ Active
 Trial Ends
    │
    ▼
-Billing
+Billing (Invoice Issued)
    │
-   ├── Payment Success → Paid
-   └── Payment Failure → Past Due
+   ├── Manually Marked Paid → Active
+   └── Overdue (not marked Paid) → Past Due
 ```
+
+No automated payment processing occurs — see the 2026-08-09 correction note in `CommercialDomainReferenceArchitecture.md` §28.
 
 ---
 
@@ -1883,9 +1887,10 @@ The Commercial Domain now becomes:
 │          │               │                                 │
 │          ▼               ▼                                 │
 │       Billing         Workspace                            │
+│    (Invoice)                                                │
 │          │                                                 │
 │          ▼                                                 │
-│       Payment                                              │
+│  Manually Marked Paid (no payment processing)                │
 │                                                            │
 │  Usage & Metering ───────────────► Billing / Analytics      │
 │                                                            │
