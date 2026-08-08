@@ -3,6 +3,8 @@ import { LoaderCircle, AlertCircle, CheckCircle2, ArrowRight, Building2 } from "
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
+import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 
 /* =========================================================================
    INVITE SCREEN — /invite/{token}
@@ -20,6 +22,7 @@ import { useFonts } from "../hooks/useFonts";
 export default function InviteScreen({ token, onAccepted }) {
   useFonts();
   const { adoptSession } = useAuth();
+  const { t } = useLanguage();
 
   const [preview, setPreview] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -71,12 +74,9 @@ export default function InviteScreen({ token, onAccepted }) {
       <Shell>
         <div className="pl-invite__card pl-invite__card--bad">
           <AlertCircle size={26} aria-hidden="true" />
-          <h1>This invitation can't be opened</h1>
+          <h1>{t("invite.cantOpenTitle")}</h1>
           <p>{loadError}</p>
-          <p className="pl-invite__muted">
-            Invitation links expire, and can be withdrawn by whoever sent them.
-            Ask for a fresh one.
-          </p>
+          <p className="pl-invite__muted">{t("invite.cantOpenHint")}</p>
         </div>
       </Shell>
     );
@@ -87,7 +87,7 @@ export default function InviteScreen({ token, onAccepted }) {
       <Shell>
         <div className="pl-invite__card">
           <LoaderCircle size={22} className="pl-invite__spin" aria-hidden="true" />
-          <p className="pl-invite__muted">Checking your invitation…</p>
+          <p className="pl-invite__muted">{t("invite.checking")}</p>
         </div>
       </Shell>
     );
@@ -98,8 +98,8 @@ export default function InviteScreen({ token, onAccepted }) {
       <Shell>
         <div className="pl-invite__card pl-invite__card--good">
           <CheckCircle2 size={26} aria-hidden="true" />
-          <h1>You're in</h1>
-          <p>Welcome to {preview.workspaceName}. Taking you there…</p>
+          <h1>{t("invite.doneTitle")}</h1>
+          <p>{t("invite.doneBody", { workspace: preview.workspaceName })}</p>
         </div>
       </Shell>
     );
@@ -113,11 +113,11 @@ export default function InviteScreen({ token, onAccepted }) {
     <Shell>
       <div className="pl-invite__card">
         <div className="pl-invite__mark" aria-hidden="true"><Building2 size={22} /></div>
-        <div className="pl-invite__eyebrow">Invitation</div>
-        <h1>Join {preview.workspaceName}</h1>
+        <div className="pl-invite__eyebrow">{t("invite.eyebrow")}</div>
+        <h1>{t("invite.joinTitle", { workspace: preview.workspaceName })}</h1>
         <p className="pl-invite__lead">
-          You've been invited as <strong>{humanise(preview.intendedRole)}</strong>
-          {" "}using <strong>{preview.email}</strong>.
+          {t("invite.leadPrefix")} <strong>{humanise(preview.intendedRole)}</strong>
+          {" "}{t("invite.leadUsing")} <strong>{preview.email}</strong>.
         </p>
 
         <form className="pl-invite__form" onSubmit={handleSubmit} noValidate>
@@ -130,17 +130,17 @@ export default function InviteScreen({ token, onAccepted }) {
 
           {!preview.accountExists && (
             <label className="pl-invite__field">
-              <span>Your name</span>
+              <span>{t("invite.nameLabel")}</span>
               <input
                 type="text" autoComplete="name" required autoFocus
                 value={fullName} onChange={(e) => setFullName(e.target.value)}
-                placeholder="Alex Morgan" disabled={submitting}
+                placeholder={t("invite.namePlaceholder")} disabled={submitting}
               />
             </label>
           )}
 
           <label className="pl-invite__field">
-            <span>{preview.accountExists ? "Your existing password" : "Choose a password"}</span>
+            <span>{preview.accountExists ? t("invite.existingPasswordLabel") : t("invite.newPasswordLabel")}</span>
             <input
               type="password"
               autoComplete={preview.accountExists ? "current-password" : "new-password"}
@@ -151,9 +151,7 @@ export default function InviteScreen({ token, onAccepted }) {
           </label>
 
           {preview.accountExists && (
-            <p className="pl-invite__note">
-              You already have an account for this email — sign in with it to accept.
-            </p>
+            <p className="pl-invite__note">{t("invite.existingAccountNote")}</p>
           )}
 
           <button
@@ -162,12 +160,12 @@ export default function InviteScreen({ token, onAccepted }) {
             disabled={submitting || !password || (!preview.accountExists && !fullName.trim())}
           >
             {submitting
-              ? (<><LoaderCircle size={16} className="pl-invite__spin" aria-hidden="true" /> Accepting…</>)
-              : (<>Accept invitation <ArrowRight size={16} aria-hidden="true" /></>)}
+              ? (<><LoaderCircle size={16} className="pl-invite__spin" aria-hidden="true" /> {t("invite.accepting")}</>)
+              : (<>{t("invite.acceptInvitation")} <ArrowRight size={16} aria-hidden="true" /></>)}
           </button>
         </form>
 
-        <p className="pl-invite__muted">This invitation is valid until {expires}.</p>
+        <p className="pl-invite__muted">{t("invite.validUntil", { date: expires })}</p>
       </div>
     </Shell>
   );
@@ -178,17 +176,24 @@ function humanise(role) {
 }
 
 function Shell({ children }) {
-  return <div className="pl-invite"><style>{CSS}</style>{children}</div>;
+  return (
+    <div className="pl-invite">
+      <style>{CSS}</style>
+      <div className="pl-invite__langtoggle"><LanguageToggle /></div>
+      {children}
+    </div>
+  );
 }
 
 const CSS = `
   .pl-invite {
     --ink: #1B2430; --ink-soft: #6A7383; --line: #E1DED7; --accent: #2D5BD1;
     font-family: 'Karla', system-ui, sans-serif; color: var(--ink);
-    background: #F7F5F1; min-height: 100vh;
+    background: #F7F5F1; min-height: 100vh; position: relative;
     display: flex; align-items: center; justify-content: center; padding: 40px 22px;
   }
   .pl-invite *, .pl-invite *::before, .pl-invite *::after { box-sizing: border-box; }
+  .pl-invite__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; }
 
   .pl-invite__card {
     width: 100%; max-width: 440px; background: #fff;
@@ -216,7 +221,7 @@ const CSS = `
   .pl-invite__lead strong { color: var(--ink); }
 
   /* UIC-003: one property per row — label left, value right. */
-  .pl-invite__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 16px; column-gap: 14px; align-items: start; text-align: left; }
+  .pl-invite__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 16px; column-gap: 14px; align-items: start; text-align: start; }
   .pl-invite__form > .pl-invite__field { display: contents; }
   .pl-invite__field span:first-child { font-size: 0.82rem; font-weight: 600; padding-top: 11px; white-space: nowrap; }
   .pl-invite__field input {
@@ -239,7 +244,7 @@ const CSS = `
   }
 
   .pl-invite__note {
-    font-size: 0.8rem; color: var(--ink-soft); text-align: left;
+    font-size: 0.8rem; color: var(--ink-soft); text-align: start;
     margin: -6px 0 16px; line-height: 1.5;
   }
 
@@ -253,7 +258,7 @@ const CSS = `
   .pl-invite__btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
   .pl-invite__alert {
-    display: flex; align-items: flex-start; gap: 9px; text-align: left;
+    display: flex; align-items: flex-start; gap: 9px; text-align: start;
     background: #FDF1EF; border: 1px solid rgba(179,56,43,0.28); color: #B3382B;
     border-radius: 10px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.87rem;
   }
@@ -264,4 +269,6 @@ const CSS = `
   .pl-invite__spin { animation: plInvSpin 0.9s linear infinite; }
   @keyframes plInvSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .pl-invite__spin { animation: none; } }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;

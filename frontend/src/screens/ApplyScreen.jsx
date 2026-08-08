@@ -4,6 +4,8 @@ import * as api from "../api/client";
 import { useFonts } from "../hooks/useFonts";
 import InfoTip from "../components/InfoTip";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
+import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 
 /* =========================================================================
    APPLY — /apply
@@ -21,6 +23,7 @@ import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 
 export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
   useFonts();
+  const { t } = useLanguage();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -37,7 +40,7 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
 
     if (!fullName.trim() || !email.trim()) {
       setAttempted(true);
-      setError("Fill in your name and email before sending — both are required.");
+      setError(t("apply.errBothRequired"));
       return;
     }
 
@@ -61,18 +64,13 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
       <Shell>
         <div className="pl-apply__card">
           <div className="pl-apply__mark is-good" aria-hidden="true"><CheckCircle2 size={22} /></div>
-          <h1>Application received</h1>
-          <p className="pl-apply__lead">
-            We'll review it and get back to you. Nothing to pay yet — that comes
-            only if you're approved.
-          </p>
+          <h1>{t("apply.resultTitle")}</h1>
+          <p className="pl-apply__lead">{t("apply.resultLead")}</p>
 
           {/* No account exists yet, so this link is the only way back in */}
           <div className="pl-apply__linkbox">
             <span className="pl-apply__linklabel">
-              {result.delivered
-                ? "We've emailed you this link. Keep it — it's how you check your application."
-                : "Save this link — it's the only way to check your application, and we can't send it again."}
+              {result.delivered ? t("apply.linkEmailed") : t("apply.linkSaveOnly")}
             </span>
             <code>{absolute}</code>
             <div className="pl-apply__linkactions">
@@ -86,10 +84,10 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
                   } catch { setCopied(false); }
                 }}
               >
-                {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy link</>}
+                {copied ? <><Check size={13} /> {t("apply.copied")}</> : <><Copy size={13} /> {t("apply.copyLink")}</>}
               </button>
               <button className="pl-apply__primary" onClick={() => onStatus(result.statusLink)}>
-                Check status <ArrowRight size={14} />
+                {t("apply.checkStatus")} <ArrowRight size={14} />
               </button>
             </div>
           </div>
@@ -102,15 +100,12 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
     <Shell>
       <div className="pl-apply__card">
         <button type="button" className="pl-apply__back" onClick={onBack}>
-          <ArrowLeft size={14} aria-hidden="true" /> Back
+          <ArrowLeft size={14} aria-hidden="true" /> {t("apply.back")}
         </button>
 
-        <div className="pl-apply__eyebrow">Become a tutor</div>
-        <h1>Apply to teach</h1>
-        <p className="pl-apply__lead">
-          Tell us who you are and what you teach. We review every application,
-          and there's nothing to pay unless we approve yours.
-        </p>
+        <div className="pl-apply__eyebrow">{t("apply.eyebrow")}</div>
+        <h1>{t("apply.title")}</h1>
+        <p className="pl-apply__lead">{t("apply.lead")}</p>
 
         <form className="pl-apply__form" onSubmit={handleSubmit} noValidate>
           {error && (
@@ -120,47 +115,47 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
           )}
 
           <label className="pl-apply__field">
-            <span>Your name<RequiredMark /></span>
+            <span>{t("apply.nameLabel")}<RequiredMark /></span>
             <input type="text" autoComplete="name" required autoFocus
                    value={fullName} onChange={(e) => { setFullName(e.target.value); setError(null); }}
-                   placeholder="Nadia Haddad" disabled={submitting}
+                   placeholder={t("apply.namePlaceholder")} disabled={submitting}
                    style={attempted && !fullName.trim() ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-apply__field">
-            <span>Email<RequiredMark /> <InfoTip text="We'll send your application link here." /></span>
+            <span>{t("apply.emailLabel")}<RequiredMark /> <InfoTip text={t("apply.emailInfoTip")} /></span>
             <input type="email" autoComplete="email" required
                    value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                   placeholder="you@example.com" disabled={submitting}
+                   placeholder={t("apply.emailPlaceholder")} disabled={submitting}
                    style={attempted && !email.trim() ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-apply__field">
-            <span>What do you teach?</span>
+            <span>{t("apply.teachLabel")}</span>
             <textarea rows={3} value={about} onChange={(e) => setAbout(e.target.value)}
-                      placeholder="A-level physics, small groups, mostly exam preparation…"
+                      placeholder={t("apply.teachPlaceholder")}
                       disabled={submitting} />
           </label>
 
           <button type="submit" className="pl-apply__primary is-full" disabled={submitting}>
             {submitting
-              ? (<><LoaderCircle size={16} className="pl-apply__spin" aria-hidden="true" /> Sending…</>)
-              : (<>Send application <ArrowRight size={16} aria-hidden="true" /></>)}
+              ? (<><LoaderCircle size={16} className="pl-apply__spin" aria-hidden="true" /> {t("apply.sending")}</>)
+              : (<>{t("apply.sendApplication")} <ArrowRight size={16} aria-hidden="true" /></>)}
           </button>
         </form>
 
         <div className="pl-apply__how">
-          <h2>What happens next</h2>
+          <h2>{t("apply.howTitle")}</h2>
           <ol>
-            <li>We review your application.</li>
-            <li>If approved, you complete your subscription payment.</li>
-            <li>We set up your workspace and invite you to own it.</li>
-            <li>You invite your learners and start publishing.</li>
+            <li>{t("apply.step1")}</li>
+            <li>{t("apply.step2")}</li>
+            <li>{t("apply.step3")}</li>
+            <li>{t("apply.step4")}</li>
           </ol>
         </div>
 
         <button className="pl-apply__ghost is-full" onClick={onSignIn}>
-          Already have an account? Sign in
+          {t("apply.alreadyHaveAccount")}
         </button>
       </div>
     </Shell>
@@ -168,17 +163,24 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
 }
 
 function Shell({ children }) {
-  return <div className="pl-apply"><style>{CSS}</style>{children}</div>;
+  return (
+    <div className="pl-apply">
+      <style>{CSS}</style>
+      <div className="pl-apply__langtoggle"><LanguageToggle /></div>
+      {children}
+    </div>
+  );
 }
 
 const CSS = `
   .pl-apply {
     --ink: #F2F5FA; --ink-soft: #98A2B5; --accent: #5B8DEF;
     font-family: 'Karla', system-ui, sans-serif; color: var(--ink);
-    background: #0B0F16; min-height: 100vh;
+    background: #0B0F16; min-height: 100vh; position: relative;
     display: flex; align-items: center; justify-content: center; padding: 40px 22px;
   }
   .pl-apply *, .pl-apply *::before, .pl-apply *::after { box-sizing: border-box; }
+  .pl-apply__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; }
 
   .pl-apply__card {
     width: 100%; max-width: 480px;
@@ -257,7 +259,7 @@ const CSS = `
     letter-spacing: 0.09em; text-transform: uppercase; font-weight: 500;
     color: var(--ink-soft); margin: 0 0 10px;
   }
-  .pl-apply__how ol { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 0.85rem; line-height: 1.7; }
+  .pl-apply__how ol { margin: 0; padding-inline-start: 18px; color: var(--ink-soft); font-size: 0.85rem; line-height: 1.7; }
   .pl-apply__how li::marker { color: var(--accent); }
 
   .pl-apply__linkbox {
@@ -283,4 +285,6 @@ const CSS = `
   .pl-apply__spin { animation: plApplySpin 0.9s linear infinite; }
   @keyframes plApplySpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .pl-apply__spin { animation: none; } }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;

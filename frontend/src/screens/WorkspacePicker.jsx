@@ -2,6 +2,8 @@ import { Building2, ArrowRight, ArrowLeftRight, LogOut, Clock, PauseCircle } fro
 import { useAuth } from "../auth/authContext";
 import { SIDES, rolesMatchSide } from "../auth/sides";
 import { useFonts } from "../hooks/useFonts";
+import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 
 /* =========================================================================
    WORKSPACE PICKER — the bridge between "who you are" and "where you work".
@@ -17,36 +19,41 @@ import { useFonts } from "../hooks/useFonts";
 
 /** Non-Active Memberships are listed but not enterable, with the reason shown. */
 const BLOCKED = {
-  Pending:   { icon: Clock,       note: "Invitation not accepted yet" },
-  Suspended: { icon: PauseCircle, note: "Access suspended" },
-  Archived:  { icon: PauseCircle, note: "Archived" },
+  Pending:   { icon: Clock,       noteKey: "picker.blockedPending" },
+  Suspended: { icon: PauseCircle, noteKey: "picker.blockedSuspended" },
+  Archived:  { icon: PauseCircle, noteKey: "picker.blockedArchived" },
 };
 
 export default function WorkspacePicker({ side, onSwitchSide }) {
   useFonts();
   const { me, workspaces, selectWorkspace, signOut } = useAuth();
+  const { t } = useLanguage();
+  const otherKey = side === "teach" ? "learn" : "teach";
 
   const config = SIDES[side];
-  const other = SIDES[side === "teach" ? "learn" : "teach"];
+  const other = SIDES[otherKey];
 
   const active = workspaces.filter((w) => w.membershipStatus === "Active");
   const mine = active.filter((w) => rolesMatchSide(w.roles, side));
   const otherSide = active.filter((w) => !rolesMatchSide(w.roles, side) && rolesMatchSide(w.roles, other.key));
   const blocked = workspaces.filter((w) => w.membershipStatus !== "Active");
+  const sideLabel = t(`sides.${side}.label`);
+  const otherLabel = t(`sides.${otherKey}.label`);
 
   return (
     <div className="pl-picker" style={{ "--accent": config.login.accent }}>
       <style>{CSS}</style>
+      <div className="pl-picker__langtoggle"><LanguageToggle /></div>
 
       <header className="pl-picker__head">
         <div>
           <div className="pl-picker__eyebrow">
-            {config.label} · signed in as {me?.email}
+            {t("picker.signedInAs", { side: sideLabel, email: me?.email })}
           </div>
-          <h1 className="pl-picker__title">Choose a workspace</h1>
+          <h1 className="pl-picker__title">{t("picker.title")}</h1>
         </div>
         <button className="pl-picker__signout" onClick={signOut}>
-          <LogOut size={15} aria-hidden="true" /> Sign out
+          <LogOut size={15} aria-hidden="true" /> {t("picker.signOut")}
         </button>
       </header>
 
@@ -76,17 +83,17 @@ export default function WorkspacePicker({ side, onSwitchSide }) {
           <Building2 size={28} aria-hidden="true" />
           <h2>
             {otherSide.length > 0
-              ? `No ${config.label.toLowerCase()} workspaces on this account`
-              : "You don't belong to any workspace yet"}
+              ? t("picker.emptyOtherTitle", { side: sideLabel })
+              : t("picker.emptyNoneTitle")}
           </h2>
           <p>
             {otherSide.length > 0
-              ? `You're a member of ${plural(otherSide.length, "workspace")}, but only on the ${other.label.toLowerCase()} side.`
-              : "Workspaces are joined by invitation. Once someone invites you — or you create your own — it will appear here."}
+              ? t("picker.emptyOtherBody", { count: plural(otherSide.length, "workspace"), side: otherLabel })
+              : t("picker.emptyNoneBody")}
           </p>
           {otherSide.length > 0 && (
             <button className="pl-picker__switch" onClick={() => onSwitchSide(other.path)}>
-              <ArrowLeftRight size={15} aria-hidden="true" /> Switch to {other.label.toLowerCase()}
+              <ArrowLeftRight size={15} aria-hidden="true" /> {t("picker.switchTo", { side: otherLabel })}
             </button>
           )}
         </div>
@@ -94,7 +101,7 @@ export default function WorkspacePicker({ side, onSwitchSide }) {
 
       {mine.length > 0 && otherSide.length > 0 && (
         <>
-          <h2 className="pl-picker__subhead">On the {other.label.toLowerCase()} side</h2>
+          <h2 className="pl-picker__subhead">{t("picker.onOtherSide", { side: otherLabel })}</h2>
           <ul className="pl-picker__list">
             {otherSide.map((w) => (
               <li key={w.workspaceId}>
@@ -104,7 +111,7 @@ export default function WorkspacePicker({ side, onSwitchSide }) {
                     <span className="pl-wscard__name">{w.name}</span>
                     <span className="pl-wscard__blockednote">
                       <ArrowLeftRight size={13} aria-hidden="true" />
-                      {w.roles.map(humanise).join(", ")} — open on the {other.label.toLowerCase()} side
+                      {t("picker.otherSideNote", { roles: w.roles.map(humanise).join(", "), side: otherLabel })}
                     </span>
                   </span>
                   <ArrowRight size={18} className="pl-wscard__go" aria-hidden="true" />
@@ -117,11 +124,12 @@ export default function WorkspacePicker({ side, onSwitchSide }) {
 
       {blocked.length > 0 && (
         <>
-          <h2 className="pl-picker__subhead">Not available</h2>
+          <h2 className="pl-picker__subhead">{t("picker.notAvailable")}</h2>
           <ul className="pl-picker__list">
             {blocked.map((w) => {
-              const state = BLOCKED[w.membershipStatus] ?? { icon: PauseCircle, note: w.membershipStatus };
-              const Icon = state.icon;
+              const state = BLOCKED[w.membershipStatus];
+              const Icon = state?.icon ?? PauseCircle;
+              const note = state ? t(state.noteKey) : w.membershipStatus;
               return (
                 <li key={w.workspaceId}>
                   <div className="pl-wscard is-blocked">
@@ -129,7 +137,7 @@ export default function WorkspacePicker({ side, onSwitchSide }) {
                     <span className="pl-wscard__body">
                       <span className="pl-wscard__name">{w.name}</span>
                       <span className="pl-wscard__blockednote">
-                        <Icon size={13} aria-hidden="true" /> {state.note}
+                        <Icon size={13} aria-hidden="true" /> {note}
                       </span>
                     </span>
                   </div>
@@ -162,10 +170,11 @@ const CSS = `
     font-family: 'Karla', system-ui, sans-serif;
     color: var(--pl-ink);
     background: #F7F5F1;
-    min-height: 100vh;
+    min-height: 100vh; position: relative;
     padding: 56px 28px 72px;
   }
   .pl-picker *, .pl-picker *::before, .pl-picker *::after { box-sizing: border-box; }
+  .pl-picker__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; }
 
   .pl-picker__head {
     max-width: 620px; margin: 0 auto 28px;
@@ -202,7 +211,7 @@ const CSS = `
 
   .pl-wscard {
     width: 100%;
-    display: flex; align-items: center; gap: 14px; text-align: left;
+    display: flex; align-items: center; gap: 14px; text-align: start;
     background: var(--pl-surface);
     border: 1px solid var(--pl-line);
     border-radius: 12px;
@@ -274,4 +283,6 @@ const CSS = `
     .pl-wscard { transition: none; }
     button.pl-wscard:hover { transform: none; }
   }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;

@@ -149,7 +149,7 @@ const CSS = `
   }
   .lw-lh__continue {
     display: flex; align-items: center; justify-content: space-between; gap: 14px;
-    width: 100%; max-width: 800px; text-align: left; cursor: pointer;
+    width: 100%; max-width: 800px; text-align: start; cursor: pointer;
     background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
     padding: 16px 20px; margin-bottom: 18px; font-family: var(--font-body);
   }

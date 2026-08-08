@@ -5,6 +5,8 @@ import {
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
 import { useFonts } from "./hooks/useFonts";
+import { useLanguage } from "./i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "./i18n/LanguageToggle";
 import MembersScreen from "./screens/MembersScreen";
 import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
@@ -138,6 +140,7 @@ function BrandMark({ c, size = 34 }) {
  */
 function NotificationBell() {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [items, setItems] = useState([]);
@@ -168,7 +171,7 @@ function NotificationBell() {
     <div className="lw-notifbell">
       <button
         className="lw-notifbell__trigger" onClick={() => setOpen((v) => !v)}
-        aria-label={unread > 0 ? `Notifications (${unread} unread)` : "Notifications"}
+        aria-label={unread > 0 ? t("notifbell.ariaUnread", { count: unread }) : t("notifbell.ariaDefault")}
       >
         <Bell size={15} />
         {unread > 0 && <span className="lw-notifbell__badge">{unread}</span>}
@@ -177,9 +180,9 @@ function NotificationBell() {
         <>
           <div className="lw-notifbell__scrim" onClick={() => setOpen(false)} />
           <div className="lw-notifbell__panel">
-            <div className="lw-notifbell__head">Notifications</div>
+            <div className="lw-notifbell__head">{t("notifbell.title")}</div>
             {items.length === 0 ? (
-              <p className="lw-notifbell__empty">Nothing yet.</p>
+              <p className="lw-notifbell__empty">{t("notifbell.empty")}</p>
             ) : (
               <ul className="lw-notifbell__list">
                 {items.map((n) => (
@@ -200,10 +203,12 @@ function NotificationBell() {
 
 function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
   const { me, side, workspace, workspaces, eligibleWorkspaces, leaveWorkspace, signOut } = useAuth();
+  const { t } = useLanguage();
   if (!workspace) return null;
 
+  const otherKey = side === "teach" ? "learn" : "teach";
   const config = SIDES[side];
-  const other = SIDES[side === "teach" ? "learn" : "teach"];
+  const other = SIDES[otherKey];
 
   /* Offer the other door only where this person genuinely holds roles for it,
      in some Active Workspace. Showing it otherwise would send them to a side
@@ -214,7 +219,7 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
 
   return (
     <div className="lw-accountbar" style={{ "--side-accent": config.login.accent }}>
-      <span className="lw-accountbar__side">{config.label}</span>
+      <span className="lw-accountbar__side">{t(`sides.${side}.label`)}</span>
       {role === "owner" && (
         <>
           <span className="lw-accountbar__ws">
@@ -232,17 +237,18 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
           same claim twice. Primary navigation lives here instead. */}
       {role === "learner" && <LearnerTopNav screen={screen} onNavigate={onNavigate} aiLabel={aiLabel} />}
       <span className="lw-accountbar__spacer" />
+      <LanguageToggle />
       <NotificationBell />
       <button className="lw-accountbar__who" onClick={onOpenProfile}>{me?.fullName}</button>
       {canSwitchSide && (
         <button onClick={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}>
-          <ArrowLeftRight size={12} /> {other.label}
+          <ArrowLeftRight size={12} /> {t(`sides.${otherKey}.label`)}
         </button>
       )}
       {eligibleWorkspaces.length > 1 && (
-        <button onClick={leaveWorkspace}>Switch workspace</button>
+        <button onClick={leaveWorkspace}>{t("accountbar.switchWorkspace")}</button>
       )}
-      <button onClick={signOut}>Sign out</button>
+      <button onClick={signOut}>{t("accountbar.signOut")}</button>
     </div>
   );
 }
@@ -252,6 +258,7 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
    top bar uncluttered while still giving every section a reachable home,
    now that the left sidebar is reserved for in-lesson Course content. */
 function LearnerTopNav({ screen, onNavigate, aiLabel }) {
+  const { t } = useLanguage();
   const [moreOpen, setMoreOpen] = useState(false);
   const primary = LEARNER_NAV.filter((it) => PRIMARY_LEARNER_NAV.includes(it.id));
   const more = LEARNER_NAV.filter((it) => !PRIMARY_LEARNER_NAV.includes(it.id));
@@ -265,7 +272,7 @@ function LearnerTopNav({ screen, onNavigate, aiLabel }) {
           className={`lw-accountbar__navlink ${screen === it.id ? "is-active" : ""}`}
           onClick={() => onNavigate(it.id)}
         >
-          {it.id === "courses" ? "My Learnings" : it.label}
+          {it.id === "courses" ? t("learnerNav.myLearnings") : t(it.labelKey)}
         </button>
       ))}
       <span className="lw-accountbar__more">
@@ -273,7 +280,7 @@ function LearnerTopNav({ screen, onNavigate, aiLabel }) {
           className={`lw-accountbar__navlink ${moreActive ? "is-active" : ""}`}
           onClick={() => setMoreOpen((v) => !v)}
         >
-          More <ChevronDown size={12} />
+          {t("learnerNav.more")} <ChevronDown size={12} />
         </button>
         {moreOpen && (
           <>
@@ -285,7 +292,7 @@ function LearnerTopNav({ screen, onNavigate, aiLabel }) {
                   className={`lw-accountbar__moreitem ${screen === it.id ? "is-active" : ""}`}
                   onClick={() => { onNavigate(it.id); setMoreOpen(false); }}
                 >
-                  <it.icon size={14} /> {it.label === "__AI__" ? aiLabel : it.label}
+                  <it.icon size={14} /> {it.labelKey === "__AI__" ? aiLabel : t(it.labelKey)}
                 </button>
               ))}
             </div>
@@ -335,14 +342,14 @@ function AcademyHeader({ c }) {
    lessonId first) and is redundant now that My Learnings and the in-lesson
    sidebar both reach any lesson directly. */
 const LEARNER_NAV = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "courses", label: "Courses", icon: BookOpen },
-  { id: "assessments", label: "Assessments", icon: ClipboardCheck, capability: "assessments" },
-  { id: "certificates", label: "Certificates", icon: Award, capability: "certificates" },
-  { id: "schedule", label: "Schedule", icon: Calendar, capability: "schedule" },
-  { id: "messages", label: "Messages", icon: MessageSquare, capability: "messages" },
-  { id: "community", label: "Community", icon: MessageCircle, capability: "community" },
-  { id: "ai", label: "__AI__", icon: Bot, capability: "aiTutor" },
+  { id: "dashboard", labelKey: "learnerNav.dashboard", icon: LayoutDashboard },
+  { id: "courses", labelKey: "learnerNav.courses", icon: BookOpen },
+  { id: "assessments", labelKey: "learnerNav.assessments", icon: ClipboardCheck, capability: "assessments" },
+  { id: "certificates", labelKey: "learnerNav.certificates", icon: Award, capability: "certificates" },
+  { id: "schedule", labelKey: "learnerNav.schedule", icon: Calendar, capability: "schedule" },
+  { id: "messages", labelKey: "learnerNav.messages", icon: MessageSquare, capability: "messages" },
+  { id: "community", labelKey: "learnerNav.community", icon: MessageCircle, capability: "community" },
+  { id: "ai", labelKey: "__AI__", icon: Bot, capability: "aiTutor" },
 ];
 const PRIMARY_LEARNER_NAV = ["dashboard", "courses"];
 
@@ -351,21 +358,21 @@ const PRIMARY_LEARNER_NAV = ["dashboard", "courses"];
    (to redirect away from a screen an Owner just turned off). */
 
 const OWNER_NAV = [
-  { divider: "Grow" },
-  { id: "overview", label: "Overview", icon: BarChart3 },
-  { id: "products", label: "Learning Products", icon: BookOpen },
-  { id: "studio", label: "Content Studio", icon: Wand2 },
-  { divider: "Operate" },
-  { id: "members", label: "Members", icon: Users },
-  { id: "scheduling", label: "Scheduling", icon: Calendar },
-  { id: "commerce", label: "Commerce", icon: CreditCard },
-  { id: "communication", label: "Communication", icon: Megaphone },
-  { divider: "Prove" },
-  { id: "assessment", label: "Assessment & Certificates", icon: Award },
-  { divider: "Configure" },
+  { dividerKey: "nav.grow" },
+  { id: "overview", labelKey: "nav.overview", icon: BarChart3 },
+  { id: "products", labelKey: "nav.learningProducts", icon: BookOpen },
+  { id: "studio", labelKey: "nav.contentStudio", icon: Wand2 },
+  { dividerKey: "nav.operate" },
+  { id: "members", labelKey: "nav.members", icon: Users },
+  { id: "scheduling", labelKey: "nav.scheduling", icon: Calendar },
+  { id: "commerce", labelKey: "nav.commerce", icon: CreditCard },
+  { id: "communication", labelKey: "nav.communication", icon: Megaphone },
+  { dividerKey: "nav.prove" },
+  { id: "assessment", labelKey: "nav.assessmentCertificates", icon: Award },
+  { dividerKey: "nav.configure" },
   // The real Workspace lifecycle, above the prototype's settings panel
-  { id: "setup", label: "Workspace Setup", icon: Rocket },
-  { id: "settings", label: "Workspace Settings", icon: Settings },
+  { id: "setup", labelKey: "nav.workspaceSetup", icon: Rocket },
+  { id: "settings", labelKey: "nav.workspaceSettings", icon: Settings },
 ];
 
 /* Owner/tutor side only now — the Learner side's primary nav lives in the
@@ -373,6 +380,7 @@ const OWNER_NAV = [
    in-lesson Course content menu (LessonSidebar) while viewing a lesson,
    and empty everywhere else. */
 function Nav({ c, screen, setScreen, onOpenProfile, personName, personRole }) {
+  const { t } = useLanguage();
   return (
     <div className="lw-nav">
       <div className="lw-nav__brand">
@@ -384,8 +392,8 @@ function Nav({ c, screen, setScreen, onOpenProfile, personName, personRole }) {
       </div>
       <div className="lw-nav__items">
         {OWNER_NAV.map((it, i) =>
-          it.divider ? (
-            <div className="lw-nav__divider" key={`d${i}`}>{it.divider}</div>
+          it.dividerKey ? (
+            <div className="lw-nav__divider" key={`d${i}`}>{t(it.dividerKey)}</div>
           ) : (
             <button
               key={it.id}
@@ -393,13 +401,13 @@ function Nav({ c, screen, setScreen, onOpenProfile, personName, personRole }) {
               onClick={() => setScreen(it.id)}
             >
               <it.icon size={16} />
-              {it.label}
+              {t(it.labelKey)}
             </button>
           )
         )}
       </div>
       <button className="lw-nav__profile" onClick={onOpenProfile}>
-        <UserCircle size={16} /> My professional profile
+        <UserCircle size={16} /> {t("nav.myProfile")}
       </button>
       <div className="lw-nav__person">
         <div className="lw-nav__avatar">{(personName || "?").trim()[0]}</div>
@@ -421,6 +429,7 @@ function Nav({ c, screen, setScreen, onOpenProfile, personName, personRole }) {
    not its child. */
 function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [curriculum, setCurriculum] = useState(null);
@@ -455,10 +464,10 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
 
   return (
     <div className="lw-lessonnav">
-      <div className="lw-lessonnav__head">Course content</div>
+      <div className="lw-lessonnav__head">{t("lessonSidebar.courseContent")}</div>
       {curriculum.requiresSequentialCompletion && (
         <div className="lw-lessonnav__seqhint">
-          <Lock size={11} /> Complete each lesson to unlock the next
+          <Lock size={11} /> {t("lessonSidebar.seqHint")}
         </div>
       )}
       <div className="lw-lessonnav__units">
@@ -471,7 +480,7 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
               <button type="button" className="lw-lessonnav__unithead" onClick={() => toggleUnit(u.position)}>
                 <ChevronDown size={14} className={`lw-lessonnav__chevron ${open ? "is-open" : ""}`} />
                 <span className="lw-lessonnav__unittitle">{i + 1}. {u.title}</span>
-                <span className="lw-lessonnav__unitmeta">{doneCount}/{u.lessons.length}{mins > 0 ? ` · ${mins}min` : ""}</span>
+                <span className="lw-lessonnav__unitmeta">{doneCount}/{u.lessons.length}{mins > 0 ? ` · ${mins}${t("lessonSidebar.min")}` : ""}</span>
               </button>
               {open && (
                 <div className="lw-lessonnav__lessons">
@@ -483,14 +492,14 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
                         type="button" key={l.id}
                         className={`lw-lessonnav__lessonrow ${active ? "is-active" : ""} ${l.locked ? "is-locked" : ""}`}
                         disabled={l.locked}
-                        title={l.locked ? "Complete the previous lesson first" : undefined}
+                        title={l.locked ? t("lessonSidebar.lockedTitle") : undefined}
                         onClick={() => !active && !l.locked && onOpenLesson?.(l.id)}
                       >
                         {lessonDone
                           ? <CheckCircle2 size={14} className="is-done" />
                           : l.locked ? <Lock size={14} /> : <PlayCircle size={14} />}
                         <span className="lw-lessonnav__lessontitle">{l.title}</span>
-                        {l.estimatedMinutes != null && <span className="lw-lessonnav__lessonmins">{l.estimatedMinutes}min</span>}
+                        {l.estimatedMinutes != null && <span className="lw-lessonnav__lessonmins">{l.estimatedMinutes}{t("lessonSidebar.min")}</span>}
                       </button>
                     );
                   })}
@@ -553,6 +562,7 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
 
 export default function App() {
   useFonts();
+  const { t } = useLanguage();
 
   /* Which surface renders is decided by the door you came through, not by a
      toggle — and you only reach this component at all once the API has
@@ -632,7 +642,7 @@ export default function App() {
   return (
     <div className="lw-root" style={theme}>
       <style>{CSS}</style>
-      <AccountBar role={role} screen={learnerScreen} onNavigate={goToLearnerScreen} aiLabel={c.aiName || "AI Assistant"}
+      <AccountBar role={role} screen={learnerScreen} onNavigate={goToLearnerScreen} aiLabel={c.aiName || t("learnerNav.ai")}
         onOpenProfile={() => setProfileOpen(true)} />
       {/* The academy switcher and workspace wizard are gone: they moved between
           two fictional academies, which cannot coexist with a real signed-in
@@ -679,33 +689,33 @@ export default function App() {
                   onBack={() => setLearnerScreen("courses")}
                   onProgress={() => setLessonProgressTick((t) => t + 1)}
                 />
-              : <NotBuiltYet area="Lesson Delivery" onNavigate={setLearnerScreen}
-                  blurb="Open a lesson from My Learnings to continue it here."
-                  next={{ text: "Go to My Learnings", to: "courses" }} />
+              : <NotBuiltYet area={t("notBuilt.lessonArea")} onNavigate={setLearnerScreen}
+                  blurb={t("notBuilt.lessonBlurb")}
+                  next={{ text: t("notBuilt.goToMyLearnings"), to: "courses" }} />
           )}
           {role === "learner" && learnerScreen === "assessments" && (
-            <NotBuiltYet area="Assessment Context" onNavigate={setLearnerScreen}
-              blurb="Assessments aren’t built yet, so no work of yours has been marked." />
+            <NotBuiltYet area={t("notBuilt.assessmentsArea")} onNavigate={setLearnerScreen}
+              blurb={t("notBuilt.assessmentsBlurb")} />
           )}
           {role === "learner" && learnerScreen === "certificates" && (
-            <NotBuiltYet area="Certification Context" onNavigate={setLearnerScreen}
-              blurb="Certificates aren’t built yet. Nothing has been awarded, so nothing is shown." />
+            <NotBuiltYet area={t("notBuilt.certificatesArea")} onNavigate={setLearnerScreen}
+              blurb={t("notBuilt.certificatesBlurb")} />
           )}
           {role === "learner" && learnerScreen === "schedule" && (
-            <NotBuiltYet area="Scheduling Context" onNavigate={setLearnerScreen}
-              blurb="Scheduling isn’t built yet, so there are no sessions in your calendar." />
+            <NotBuiltYet area={t("notBuilt.scheduleArea")} onNavigate={setLearnerScreen}
+              blurb={t("notBuilt.scheduleBlurbLearner")} />
           )}
           {role === "learner" && learnerScreen === "messages" && (
-            <NotBuiltYet area="Communication Context" onNavigate={setLearnerScreen}
-              blurb="Messaging isn’t built yet. Contact your tutor the way you normally would." />
+            <NotBuiltYet area={t("notBuilt.messagesArea")} onNavigate={setLearnerScreen}
+              blurb={t("notBuilt.messagesBlurb")} />
           )}
           {role === "learner" && learnerScreen === "community" && (
-            <NotBuiltYet area="Community Context" onNavigate={setLearnerScreen}
-              blurb="Community discussion isn’t built yet." />
+            <NotBuiltYet area={t("notBuilt.communityArea")} onNavigate={setLearnerScreen}
+              blurb={t("notBuilt.communityBlurb")} />
           )}
           {role === "learner" && learnerScreen === "ai" && (
-            <NotBuiltYet area="AI Context" onNavigate={setLearnerScreen}
-              blurb="The workspace AI assistant isn’t built yet." />
+            <NotBuiltYet area={t("notBuilt.aiArea")} onNavigate={setLearnerScreen}
+              blurb={t("notBuilt.aiBlurb")} />
           )}
 
           {/* Owner screens. Only overview, members and setup are real; the rest
@@ -722,26 +732,26 @@ export default function App() {
             <ContentStudioScreen productId={studioProductId} onSelectProduct={setStudioProductId} />
           )}
           {role === "owner" && ownerScreen === "scheduling" && (
-            <NotBuiltYet area="Scheduling Context" onNavigate={setOwnerScreen}
-              blurb="Sessions and scheduling aren't built yet. Once they are, what you schedule here will be what your learners see." />
+            <NotBuiltYet area={t("notBuilt.scheduleArea")} onNavigate={setOwnerScreen}
+              blurb={t("notBuilt.schedulingBlurbOwner")} />
           )}
           {role === "owner" && ownerScreen === "commerce" && (
-            <NotBuiltYet area="Commerce Context" onNavigate={setOwnerScreen}
-              blurb="Pricing, orders and payouts aren't built yet. Your own subscription to the platform is separate and already handled." />
+            <NotBuiltYet area={t("notBuilt.commerceArea")} onNavigate={setOwnerScreen}
+              blurb={t("notBuilt.commerceBlurb")} />
           )}
           {role === "owner" && ownerScreen === "communication" && (
-            <NotBuiltYet area="Communication Context" onNavigate={setOwnerScreen}
-              blurb="Announcements and messaging aren't built yet. For now, invitations are the only thing the platform sends on your behalf."
-              next={{ text: "Invite someone", to: "members" }} />
+            <NotBuiltYet area={t("notBuilt.messagesArea")} onNavigate={setOwnerScreen}
+              blurb={t("notBuilt.communicationBlurbOwner")}
+              next={{ text: t("notBuilt.inviteSomeone"), to: "members" }} />
           )}
           {role === "owner" && ownerScreen === "assessment" && (
-            <NotBuiltYet area="Assessment & Certification" onNavigate={setOwnerScreen}
-              blurb="Assessments and certificates aren't built yet. They depend on Learning Products, which come first." />
+            <NotBuiltYet area={t("notBuilt.assessmentCertArea")} onNavigate={setOwnerScreen}
+              blurb={t("notBuilt.assessmentCertBlurb")} />
           )}
           {role === "owner" && ownerScreen === "settings" && (
-            <NotBuiltYet area="Workspace Configuration" onNavigate={setOwnerScreen}
-              blurb="Branding, capabilities and regional settings aren't built yet. Your workspace's name, address and lifecycle live under Workspace Setup."
-              next={{ text: "Open Workspace Setup", to: "setup" }} />
+            <NotBuiltYet area={t("notBuilt.settingsArea")} onNavigate={setOwnerScreen}
+              blurb={t("notBuilt.settingsBlurb")}
+              next={{ text: t("notBuilt.openWorkspaceSetup"), to: "setup" }} />
           )}
         </div>
       </div>
@@ -776,14 +786,14 @@ const CSS = `
   .lw-accountbar .lw-accountbar__navlink.is-active { color: #2D5BD1; border-color: #DAE3FA; background: #EDF1FB; }
   .lw-accountbar__more { position: relative; }
   .lw-accountbar__morepanel {
-    position: absolute; top: calc(100% + 8px); left: 0; z-index: 41;
+    position: absolute; top: calc(100% + 8px); inset-inline-start: 0; z-index: 41;
     width: 200px; overflow: hidden;
     background: #fff; color: #1B2430; border: 1px solid #E1DED7; border-radius: 10px;
     box-shadow: 0 10px 30px rgba(10,12,15,0.14);
     display: flex; flex-direction: column; padding: 6px;
   }
   .lw-accountbar .lw-accountbar__moreitem {
-    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: start;
     background: transparent; border: none; color: #1B2430; border-radius: 7px;
     padding: 8px 9px; font-family: var(--font-body); font-size: 12px; cursor: pointer;
   }
@@ -797,7 +807,7 @@ const CSS = `
   }
   .lw-accountbar .lw-notifbell__trigger:hover { border-color: #E1DED7; }
   .lw-notifbell__badge {
-    position: absolute; top: -3px; right: -3px;
+    position: absolute; top: -3px; inset-inline-end: -3px;
     min-width: 15px; height: 15px; padding: 0 3px; border-radius: 50%;
     background: #B3382B; color: #fff;
     font-family: var(--font-mono); font-size: 9px; font-weight: 700;
@@ -805,7 +815,7 @@ const CSS = `
   }
   .lw-notifbell__scrim { position: fixed; inset: 0; z-index: 40; }
   .lw-notifbell__panel {
-    position: absolute; top: calc(100% + 8px); right: 0; z-index: 41;
+    position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 41;
     width: 320px; max-height: 380px; overflow-y: auto;
     background: #fff; color: #1B2430; border: 1px solid #E1DED7; border-radius: 10px;
     box-shadow: 0 10px 30px rgba(10,12,15,0.14);
@@ -827,11 +837,11 @@ const CSS = `
   .lw-controlstrip { background: #0D0F12; color: #C9CDD3; font-family: var(--font-mono); font-size: 11px; display: flex; align-items: center; gap: 20px; padding: 8px 18px; flex-wrap: wrap; border-bottom: 1px solid #000; }
   .lw-controlstrip__label { opacity: 0.65; letter-spacing: 0.04em; }
   .lw-controlstrip__group { display: flex; align-items: center; gap: 6px; }
-  .lw-controlstrip__group span { opacity: 0.6; margin-right: 2px; }
+  .lw-controlstrip__group span { opacity: 0.6; margin-inline-end: 2px; }
   .lw-controlstrip button { background: transparent; border: 1px solid #383D45; color: #C9CDD3; border-radius: 20px; padding: 3px 10px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; transition: all .15s; }
   .lw-controlstrip button.active { background: #C9CDD3; color: #0D0F12; border-color: #C9CDD3; }
   .lw-controlstrip__new { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px dashed #4A5058 !important; color: #8FE3EA !important; border-radius: 20px; padding: 3px 10px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; }
-  .lw-controlstrip__reset { margin-left: auto; display: flex; align-items: center; gap: 5px; background: transparent; border: none; color: #8A8F97; cursor: pointer; font-family: var(--font-mono); font-size: 11px; }
+  .lw-controlstrip__reset { margin-inline-start: auto; display: flex; align-items: center; gap: 5px; background: transparent; border: none; color: #8A8F97; cursor: pointer; font-family: var(--font-mono); font-size: 11px; }
 
   .lw-academyheader { display: flex; align-items: center; gap: 16px; padding: 20px 32px; width: 100%; background: linear-gradient(120deg, var(--accent), var(--accent-2)); box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08); }
   .lw-academyheader__mark { background: rgba(255,255,255,0.18); padding: 6px; border-radius: var(--radius-sm); display: flex; flex-shrink: 0; }
@@ -841,7 +851,7 @@ const CSS = `
 
   .lw-shell { display: flex; flex: 1; min-height: 0; }
   .lw-content { flex: 1; overflow-y: auto; padding: 40px 48px 64px; }
-  .lw-page { max-width: 880px; animation: lwFade .3s ease; }
+  .lw-page { max-width: 880px; margin: 0 auto; animation: lwFade .3s ease; }
   @keyframes lwFade { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
   @media (prefers-reduced-motion: reduce) { .lw-page { animation: none; } }
 
@@ -864,7 +874,7 @@ const CSS = `
   .lw-nav__tagline { font-size: 10.5px; opacity: 0.6; margin-top: 2px; }
   .lw-nav__items { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
   .lw-nav__divider { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.45; padding: 12px 12px 4px; }
-  .lw-nav__item { display: flex; align-items: center; gap: 9px; background: transparent; border: none; color: var(--nav-text); opacity: 0.72; padding: 8px 12px; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 0.84rem; cursor: pointer; text-align: left; transition: all .15s; }
+  .lw-nav__item { display: flex; align-items: center; gap: 9px; background: transparent; border: none; color: var(--nav-text); opacity: 0.72; padding: 8px 12px; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 0.84rem; cursor: pointer; text-align: start; transition: all .15s; }
   .lw-nav__item:hover { opacity: 1; background: rgba(255,255,255,0.06); }
   .lw-nav__item.is-active { opacity: 1; background: var(--accent); color: #fff; }
   .lw-nav__profile { display: flex; align-items: center; gap: 8px; background: transparent; border: 1px dashed rgba(255,255,255,0.25); color: var(--nav-text); opacity: 0.75; padding: 8px 10px; border-radius: var(--radius-sm); font-size: 0.75rem; cursor: pointer; margin: 6px 0; }
@@ -879,7 +889,7 @@ const CSS = `
      "you're inside a lesson now" surface) rather than the dark app chrome. */
   .lw-lessonnav {
     width: 300px; flex-shrink: 0; overflow-y: auto;
-    background: var(--surface); border-right: 1px solid var(--line);
+    background: var(--surface); border-inline-end: 1px solid var(--line);
   }
   .lw-lessonnav__head {
     font-family: var(--font-display); font-weight: 600; font-size: 0.95rem;
@@ -892,7 +902,7 @@ const CSS = `
   }
   .lw-lessonnav__unit { border-bottom: 1px solid var(--line); }
   .lw-lessonnav__unithead {
-    width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
+    width: 100%; display: flex; align-items: center; gap: 8px; text-align: start;
     background: transparent; border: none; cursor: pointer; padding: 12px 16px;
     font-family: var(--font-body); color: var(--ink);
   }
@@ -903,14 +913,14 @@ const CSS = `
   .lw-lessonnav__unitmeta { font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft); white-space: nowrap; }
   .lw-lessonnav__lessons { display: flex; flex-direction: column; background: var(--bg); }
   .lw-lessonnav__lessonrow {
-    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: start;
     background: transparent; border: none; border-top: 1px solid var(--line); cursor: pointer;
-    padding: 10px 16px 10px 34px; font-family: var(--font-body); color: var(--ink);
+    padding-block: 10px; padding-inline: 34px 16px; font-family: var(--font-body); color: var(--ink);
   }
   .lw-lessonnav__lessonrow:hover { background: var(--surface-2); }
   .lw-lessonnav__lessonrow.is-active {
     background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-    border-left: 3px solid var(--accent); padding-left: 31px; cursor: default;
+    border-inline-start: 3px solid var(--accent); padding-inline-start: 31px; cursor: default;
   }
   .lw-lessonnav__lessonrow svg { flex-shrink: 0; color: var(--ink-soft); }
   .lw-lessonnav__lessonrow svg.is-done { color: var(--accent-2); }
@@ -944,7 +954,7 @@ const CSS = `
 
   [data-academy="lumen"] .lw-stampcard::after {
     content: "IN\\A PROGRESS"; white-space: pre; text-align: center; font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.04em;
-    position: absolute; top: 14px; right: 14px; width: 44px; height: 44px; border-radius: 50%;
+    position: absolute; top: 14px; inset-inline-end: 14px; width: 44px; height: 44px; border-radius: 50%;
     border: 1.5px dashed var(--accent); color: var(--accent); display: flex; align-items: center; justify-content: center; transform: rotate(8deg);
   }
 
@@ -974,11 +984,11 @@ const CSS = `
   .lw-unitlist { display: flex; flex-direction: column; gap: 14px; }
   .lw-unitcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
   .lw-unitcard__head { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 600; font-size: 1rem; margin-bottom: 10px; }
-  .lw-unitcard__remove { margin-left: auto; background: transparent; border: none; color: var(--ink-soft); cursor: pointer; }
+  .lw-unitcard__remove { margin-inline-start: auto; background: transparent; border: none; color: var(--ink-soft); cursor: pointer; }
 
-  .lw-inlineai { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: none; color: var(--accent); font-size: 0.75rem; cursor: pointer; margin-left: 8px; font-weight: 600; }
+  .lw-inlineai { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: none; color: var(--accent); font-size: 0.75rem; cursor: pointer; margin-inline-start: 8px; font-weight: 600; }
   .lw-imagepicker { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-  .lw-imagepicker .lw-inlineai { margin-left: 0; }
+  .lw-imagepicker .lw-inlineai { margin-inline-start: 0; }
   .lw-inlineai:disabled { opacity: 0.4; cursor: default; }
   .lw-inlineinput { padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line); font-family: var(--font-body); background: var(--surface); font-size: 0.85rem; }
   .lw-rationale { display: flex; align-items: center; gap: 5px; font-size: 0.74rem; color: var(--accent-2); margin-top: 3px; font-style: italic; }
@@ -1001,7 +1011,7 @@ const CSS = `
 
   .lw-questioncard__prompt { font-family: var(--font-display); font-size: 1.1rem; font-weight: 500; margin: 6px 0 16px; }
   .lw-options { display: flex; flex-direction: column; gap: 8px; }
-  .lw-option { display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); cursor: pointer; font-family: var(--font-body); font-size: 0.9rem; transition: all .12s; }
+  .lw-option { display: flex; justify-content: space-between; align-items: center; text-align: start; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); cursor: pointer; font-family: var(--font-body); font-size: 0.9rem; transition: all .12s; }
   .lw-option:hover:not(:disabled) { border-color: var(--accent); }
   .lw-option.is-correct { border-color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 10%, var(--bg)); color: var(--accent-2); font-weight: 600; }
   .lw-option.is-wrong { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); color: var(--danger); }
@@ -1022,7 +1032,7 @@ const CSS = `
   .lw-dropzone__meta { font-size: 0.78rem; }
   .lw-dropzone--compact { padding: 20px; margin-bottom: 4px; }
   .lw-videosource { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
-  .lw-tag--source { background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color: var(--accent); margin-left: 6px; }
+  .lw-tag--source { background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color: var(--accent); margin-inline-start: 6px; }
 
   .lw-principle { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2); border-radius: var(--radius-sm); padding: 13px 16px; font-size: 0.85rem; color: var(--ink-soft); margin-top: 20px; }
   .lw-principle strong { color: var(--ink); }
@@ -1047,7 +1057,7 @@ const CSS = `
 
   .lw-titleinput { font-family: var(--font-display); font-weight: 600; font-size: 2rem; border: none; border-bottom: 2px dashed var(--line); background: transparent; width: 100%; padding: 4px 0; color: var(--ink); }
   .lw-titleinput:focus { outline: none; border-color: var(--accent); }
-  .lw-objectives { margin: 4px 0 0; padding-left: 20px; font-size: 0.9rem; color: var(--ink-soft); display: flex; flex-direction: column; gap: 6px; }
+  .lw-objectives { margin: 4px 0 0; padding-inline-start: 20px; font-size: 0.9rem; color: var(--ink-soft); display: flex; flex-direction: column; gap: 6px; }
   .lw-questionrow.accepted { border-color: var(--accent-2); }
   .lw-questionrow.removed { opacity: 0.5; }
   .lw-rowactions { display: flex; gap: 4px; }
@@ -1072,7 +1082,7 @@ const CSS = `
   .lw-settingsrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
   .lw-settingsrow:first-of-type { border-top: none; }
   .lw-settingsrow label { font-size: 0.82rem; color: var(--ink-soft); flex-shrink: 0; }
-  .lw-settingsrow input { text-align: right; border: none; background: transparent; font-family: var(--font-body); font-size: 0.85rem; color: var(--ink); width: 60%; }
+  .lw-settingsrow input { text-align: end; border: none; background: transparent; font-family: var(--font-body); font-size: 0.85rem; color: var(--ink); width: 60%; }
   .lw-settingsrow input:focus { outline: none; }
   .lw-swatchrow { display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
   .lw-swatch { display: flex; gap: 8px; align-items: center; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-soft); }
@@ -1083,9 +1093,9 @@ const CSS = `
   .lw-widgetrow__label { font-size: 0.88rem; font-weight: 600; }
   .lw-widgetrow__consequence { font-size: 0.76rem; color: var(--ink-soft); margin-top: 2px; }
   .lw-toggle { width: 40px; height: 22px; border-radius: 20px; background: var(--line); border: none; cursor: pointer; position: relative; flex-shrink: 0; transition: background .15s; }
-  .lw-toggle span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  .lw-toggle span { position: absolute; top: 2px; inset-inline-start: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: inset-inline-start .15s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
   .lw-toggle.is-on { background: var(--accent-2); }
-  .lw-toggle.is-on span { transform: translateX(18px); }
+  .lw-toggle.is-on span { inset-inline-start: 20px; }
 
   .lw-overlay { position: fixed; inset: 0; background: rgba(10,12,15,0.55); display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; z-index: 50; overflow-y: auto; animation: lwFade .2s ease; }
   .lw-overlay__panel { background: #FAFAFA; color: #222; border-radius: 16px; max-width: 640px; width: 100%; padding: 32px 36px 40px; position: relative; font-family: 'IBM Plex Sans', sans-serif; }
@@ -1127,13 +1137,15 @@ const CSS = `
   .lw-overlay__panel .lw-listrow, .lw-overlay__panel .lw-badge { background: #fff; border-color: #E3E3E3; }
   .lw-overlay__panel .lw-badge.is-earned { border-color: #1E8E63; }
   .lw-overlay__panel h1 { color: #1A1A1A; }
-  .lw-overlay__close { position: absolute; top: 20px; right: 20px; background: transparent; border: none; cursor: pointer; color: #888; }
+  .lw-overlay__close { position: absolute; top: 20px; inset-inline-end: 20px; background: transparent; border: none; cursor: pointer; color: #888; }
   .lw-idcard { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid #E3E3E3; border-radius: 12px; padding: 16px; margin-bottom: 6px; }
   .lw-idcard__avatar { width: 44px; height: 44px; border-radius: 50%; background: #2454C7; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
   .lw-idcard__name { font-weight: 600; }
   .lw-idcard__meta { font-size: 0.8rem; color: #777; }
 
   button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;
 
 /* The person behind the membership, across the platform rather than inside one
@@ -1143,19 +1155,20 @@ const CSS = `
    inventing a portfolio. */
 function ProfessionalProfile({ onClose }) {
   const { me, workspaces } = useAuth();
+  const { t } = useLanguage();
   const active = workspaces.filter((w) => w.membershipStatus === "Active");
 
   return (
     <div className="lw-modal" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="lw-modal__panel" onClick={(e) => e.stopPropagation()}>
         <button className="lw-modal__close" onClick={onClose} aria-label="Close"><X size={16} /></button>
-        <div className="lw-eyebrow">Your account</div>
+        <div className="lw-eyebrow">{t("profile.yourAccount")}</div>
         <h2>{me?.fullName}</h2>
         <p className="lw-modal__sub">{me?.email}</p>
 
-        <h3 className="lw-modal__h3">Workspaces you belong to</h3>
+        <h3 className="lw-modal__h3">{t("profile.workspacesTitle")}</h3>
         <div className="lw-modal__list">
-          {active.length === 0 && <p className="lw-modal__muted">None yet.</p>}
+          {active.length === 0 && <p className="lw-modal__muted">{t("profile.none")}</p>}
           {active.map((w) => (
             <div className="lw-modal__row" key={w.workspaceId}>
               <strong>{w.name}</strong>
@@ -1164,11 +1177,7 @@ function ProfessionalProfile({ onClose }) {
           ))}
         </div>
 
-        <p className="lw-modal__muted">
-          Your identity is yours and follows you across every workspace. A public
-          professional profile, reputation and teaching history are described in
-          the design but not built yet, so nothing here is inferred or invented.
-        </p>
+        <p className="lw-modal__muted">{t("profile.footer")}</p>
       </div>
     </div>
   );

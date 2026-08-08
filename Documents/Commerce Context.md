@@ -1,5 +1,17 @@
 # Commerce Context
 
+> **NEEDS RECONCILIATION WITH THE COMMERCIAL DOMAIN**
+>
+> This document predates the detailed Commercial Domain architecture and defines a "Commerce Context" that claims ownership of Price, Order, Payment, Subscription, and Invoice — concepts now owned in more detail by separate bounded contexts in `CommercialDomainReferenceArchitecture.md`:
+> * Price/Pricing → Product Configuration Engine
+> * Subscription → Subscription Management
+> * Invoice, Payment, Refund → Billing
+> * Offer/Discount → Promotion & Discounts
+>
+> This creates two competing sources of truth for the same concepts under different bounded-context names. Until explicitly reconciled, treat the Commercial Domain documents as authoritative for any platform subscription/billing concern. This document may still be valid for a narrower, unresolved scope (e.g., one-off marketplace-style purchases distinct from workspace subscriptions) — that scope has not been confirmed and should be clarified with the business owner before further work is built on top of it.
+
+---
+
 **Version:** 1.0 (Draft)
 
 **Bounded Context Type:** Supporting Domain

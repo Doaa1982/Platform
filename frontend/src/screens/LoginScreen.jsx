@@ -3,6 +3,8 @@ import { Eye, EyeOff, LoaderCircle, AlertCircle, ArrowRight, ArrowLeft } from "l
 import { useAuth } from "../auth/authContext";
 import { SIDES } from "../auth/sides";
 import { useFonts } from "../hooks/useFonts";
+import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 
 /* =========================================================================
    LOGIN SCREEN — one component, two faces.
@@ -21,6 +23,7 @@ import { useFonts } from "../hooks/useFonts";
 export default function LoginScreen({ side, onBack }) {
   useFonts();
   const { signIn } = useAuth();
+  const { t } = useLanguage();
   const copy = SIDES[side].login;
 
   const [email, setEmail] = useState("");
@@ -45,9 +48,9 @@ export default function LoginScreen({ side, onBack }) {
       // Never reveal which field was wrong: the API deliberately returns the
       // same message for an unknown email and a bad password.
       setError(
-        err.status === 401 ? "That email and password don't match."
-        : err.status === 400 ? "Please enter both your email and password."
-        : err.message || "Something went wrong. Please try again."
+        err.status === 401 ? t("login.errMismatch")
+        : err.status === 400 ? t("login.errMissing")
+        : err.message || t("login.errGeneric")
       );
       setPassword("");
       setSubmitting(false);
@@ -65,6 +68,8 @@ export default function LoginScreen({ side, onBack }) {
     <div className="pl-login" style={themeVars}>
       <style>{CSS}</style>
 
+      <div className="pl-login__langtoggle"><LanguageToggle /></div>
+
       <section className="pl-login__aside" aria-hidden="true">
         <div className="pl-login__mark">
           <svg viewBox="0 0 40 40" width="44" height="44">
@@ -75,22 +80,22 @@ export default function LoginScreen({ side, onBack }) {
           </svg>
         </div>
         <h2 className="pl-login__asidetitle">
-          {copy.asideTitle.split("\n").map((line, i) => (
+          {t(`sides.${side}.login.asideTitle`).split("\n").map((line, i) => (
             <span key={i}>{line}<br /></span>
           ))}
         </h2>
-        <p className="pl-login__asidetext">{copy.asideText}</p>
+        <p className="pl-login__asidetext">{t(`sides.${side}.login.asideText`)}</p>
       </section>
 
       <main className="pl-login__panel">
         <div className="pl-login__form-wrap">
           <button type="button" className="pl-login__back" onClick={onBack}>
-            <ArrowLeft size={14} aria-hidden="true" /> Not what you wanted?
+            <ArrowLeft size={14} aria-hidden="true" /> {t("login.notWhatYouWanted")}
           </button>
 
-          <div className="pl-login__eyebrow">{copy.eyebrow}</div>
-          <h1 className="pl-login__title">{copy.heading}</h1>
-          <p className="pl-login__sub">{copy.sub}</p>
+          <div className="pl-login__eyebrow">{t(`sides.${side}.login.eyebrow`)}</div>
+          <h1 className="pl-login__title">{t(`sides.${side}.login.heading`)}</h1>
+          <p className="pl-login__sub">{t(`sides.${side}.login.sub`)}</p>
 
           <form onSubmit={handleSubmit} noValidate>
             {error && (
@@ -101,7 +106,7 @@ export default function LoginScreen({ side, onBack }) {
             )}
 
             <div className="pl-field">
-              <label htmlFor="email">Email</label>
+              <label htmlFor="email">{t("login.email")}</label>
               <input
                 id="email"
                 name="email"
@@ -110,7 +115,7 @@ export default function LoginScreen({ side, onBack }) {
                 autoFocus
                 required
                 value={email}
-                placeholder="you@example.com"
+                placeholder={t("login.emailPlaceholder")}
                 aria-invalid={error ? "true" : undefined}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={submitting}
@@ -118,7 +123,7 @@ export default function LoginScreen({ side, onBack }) {
             </div>
 
             <div className="pl-field">
-              <label htmlFor="password">Password</label>
+              <label htmlFor="password">{t("login.password")}</label>
               <div className="pl-field__control">
                 <input
                   id="password"
@@ -136,7 +141,7 @@ export default function LoginScreen({ side, onBack }) {
                   type="button"
                   className="pl-field__toggle"
                   onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
                   disabled={submitting}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -146,14 +151,14 @@ export default function LoginScreen({ side, onBack }) {
 
             <button type="submit" className="pl-btn" disabled={!canSubmit}>
               {submitting
-                ? (<><LoaderCircle size={16} className="pl-spin" aria-hidden="true" /> Signing in…</>)
-                : (<>Sign in <ArrowRight size={16} aria-hidden="true" /></>)}
+                ? (<><LoaderCircle size={16} className="pl-spin" aria-hidden="true" /> {t("login.signingIn")}</>)
+                : (<>{t("login.signIn")} <ArrowRight size={16} aria-hidden="true" /></>)}
             </button>
           </form>
 
           {import.meta.env.DEV && (
             <p className="pl-login__hint">
-              <strong>Dev seed:</strong> {copy.devSeed} · Test1234!
+              <strong>{t("login.devSeed")}</strong> {copy.devSeed} · Test1234!
             </p>
           )}
         </div>
@@ -178,8 +183,10 @@ const CSS = `
     min-height: 100vh;
     display: grid;
     grid-template-columns: 1.05fr 1fr;
+    position: relative;
   }
   .pl-login *, .pl-login *::before, .pl-login *::after { box-sizing: border-box; }
+  .pl-login__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; z-index: 3; }
 
   /* ── Left brand panel ─────────────────────────────────────────────────── */
   .pl-login__aside {
@@ -246,7 +253,7 @@ const CSS = `
     padding: 11px 13px;
     transition: border-color .15s, box-shadow .15s;
   }
-  .pl-field__control input { padding-right: 44px; }
+  .pl-field__control input { padding-inline-end: 44px; }
   .pl-field input::placeholder { color: #A9AFBA; }
   .pl-field input:focus-visible {
     outline: none;
@@ -257,7 +264,7 @@ const CSS = `
   .pl-field input:disabled { background: #F4F3F0; color: var(--pl-ink-soft); }
 
   .pl-field__toggle {
-    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
     display: flex; align-items: center; justify-content: center;
     width: 34px; height: 34px;
     background: transparent; border: none; border-radius: 8px;
@@ -317,4 +324,6 @@ const CSS = `
     .pl-spin { animation: none; }
     .pl-login * { transition: none !important; }
   }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;

@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    WORKSPACE HOME — what an owner sees on arrival.
@@ -25,6 +26,7 @@ import { useAuth } from "../auth/authContext";
 
 export default function WorkspaceHomeScreen({ onNavigate }) {
   const { session, workspace, me } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [setup, setSetup] = useState(null);
@@ -54,7 +56,7 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   if (!setup || !members) {
     return (
       <div className="lw-page">
-        <div className="lw-home__loading"><LoaderCircle size={18} className="lw-home__spin" /> Loading…</div>
+        <div className="lw-home__loading"><LoaderCircle size={18} className="lw-home__spin" /> {t("home.loading")}</div>
       </div>
     );
   }
@@ -77,11 +79,9 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
       <style>{CSS}</style>
 
       <div className="lw-eyebrow">{setup.name}</div>
-      <h1>{isFirstRun ? `Welcome${firstName ? `, ${firstName}` : ""}.` : "Overview"}</h1>
+      <h1>{isFirstRun ? (firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")) : t("home.overview")}</h1>
       <p className="lw-sub">
-        {isFirstRun
-          ? "Your workspace exists and it's yours. Nothing has been published yet — here's what's left before learners can join you."
-          : `Where ${setup.name} stands today.`}
+        {isFirstRun ? t("home.firstRunSub") : t("home.standsToday", { name: setup.name })}
       </p>
 
       {/* ── The one thing that matters until it's done ────────────────── */}
@@ -89,68 +89,63 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
         <div className="lw-home__setup">
           <div className="lw-home__setuptext">
             <strong>
-              {setup.status === "Created" ? "Your workspace isn't set up yet"
-                : setup.status === "Published" ? "Almost there — open when you're ready"
-                : "Setup in progress"}
+              {setup.status === "Created" ? t("home.notSetUpTitle")
+                : setup.status === "Published" ? t("home.almostThereTitle")
+                : t("home.setupInProgressTitle")}
             </strong>
             <p>
-              It's currently <em>{setup.status}</em>. Learners can't reach it until
-              it's published and open.
+              {t("home.currentlyPrefix")} <em>{setup.status}</em>. {t("home.currentlySuffix")}
             </p>
           </div>
           <button className="lw-btn lw-btn--accent" onClick={() => onNavigate("setup")}>
-            Continue setup <ArrowRight size={15} />
+            {t("home.continueSetup")} <ArrowRight size={15} />
           </button>
         </div>
       )}
 
       {isLive && (
         <div className="lw-home__live">
-          <Rocket size={16} /> {setup.name} is open. Learners can enrol.
+          <Rocket size={16} /> {t("home.liveBanner", { name: setup.name })}
         </div>
       )}
 
       {/* ── Measured facts only ──────────────────────────────────────── */}
       <div className="lw-home__stats">
-        <Stat icon={Users} color={CARD_COLORS.teaching} label="Teaching" value={teachers.length}
-              note={teachers.length === 1 ? "just you so far" : "including you"} />
-        <Stat icon={Users} color={CARD_COLORS.learners} label="Learners" value={learners.length}
-              note={learners.length === 0 ? "none yet" : "active members"} />
-        <Stat icon={UserPlus} color={CARD_COLORS.invites} label="Invitations out" value={pendingInvites.length}
-              note={pendingInvites.length === 0 ? "none pending" : "awaiting acceptance"} />
-        <Stat icon={Inbox} color={CARD_COLORS.requests} label="Requests to join" value={pendingRequests.length}
-              note={pendingRequests.length > 0 ? "waiting on you" : setup.acceptsJoinRequests ? "none yet" : "not accepting"}
+        <Stat icon={Users} color={CARD_COLORS.teaching} label={t("home.statTeaching")} value={teachers.length}
+              note={teachers.length === 1 ? t("home.statTeachingNoteSolo") : t("home.statTeachingNote")} />
+        <Stat icon={Users} color={CARD_COLORS.learners} label={t("home.statLearners")} value={learners.length}
+              note={learners.length === 0 ? t("home.statLearnersNoteNone") : t("home.statLearnersNote")} />
+        <Stat icon={UserPlus} color={CARD_COLORS.invites} label={t("home.statInvites")} value={pendingInvites.length}
+              note={pendingInvites.length === 0 ? t("home.statInvitesNoteNone") : t("home.statInvitesNote")} />
+        <Stat icon={Inbox} color={CARD_COLORS.requests} label={t("home.statRequests")} value={pendingRequests.length}
+              note={pendingRequests.length > 0 ? t("home.statRequestsWaiting") : setup.acceptsJoinRequests ? t("home.statRequestsNone") : t("home.statRequestsNotAccepting")}
               urgent={pendingRequests.length > 0} />
       </div>
 
       {/* ── What to do next, in the order it makes sense ─────────────── */}
-      <h2 className="lw-sectiontitle">Getting started</h2>
+      <h2 className="lw-sectiontitle">{t("home.gettingStarted")}</h2>
       <ol className="lw-home__steps">
-        <Step done label="Accept your invitation and take ownership" />
+        <Step done label={t("home.stepAcceptInvite")} />
         <Step done={isLive}
-              label="Publish and open your workspace"
-              action={!isLive ? { text: "Set up", to: "setup" } : null}
+              label={t("home.stepPublish")}
+              action={!isLive ? { text: t("home.setUp"), to: "setup" } : null}
               onNavigate={onNavigate} />
         <Step done={activeMembers.length > 1 || pendingInvites.length > 0}
-              label="Invite your first people"
-              action={{ text: "Invite", to: "members" }}
+              label={t("home.stepInvite")}
+              action={{ text: t("home.invite"), to: "members" }}
               onNavigate={onNavigate} />
       </ol>
 
       {/* ── Honest about what does not exist ─────────────────────────── */}
       <div className="lw-home__notyet">
-        <strong>Not built yet</strong>
-        <p>
-          Courses, lessons, enrolments, scheduling and payments aren't part of the
-          platform yet. When they arrive they'll appear here with real numbers —
-          you won't see invented ones in the meantime.
-        </p>
+        <strong>{t("home.notBuiltTitle")}</strong>
+        <p>{t("home.notBuiltBody")}</p>
       </div>
 
       <p className="lw-home__addr">
         {isLive || setup.status === "Published"
-          ? <><Globe size={13} /> Reachable at <code>/{setup.slug}</code></>
-          : <><Lock size={13} /> Not publicly reachable yet</>}
+          ? <><Globe size={13} /> {t("home.reachableAt")} <code>/{setup.slug}</code></>
+          : <><Lock size={13} /> {t("home.notReachable")}</>}
       </p>
     </div>
   );

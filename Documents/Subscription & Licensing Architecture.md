@@ -6,6 +6,20 @@ Bounded Context: Subscription & Licensing
 
 ---
 
+> **SUPERSEDED — Reference Only**
+>
+> This document predates the split of the Commercial Domain into separate bounded contexts and is retained for historical context only. It is **not** the current architecture.
+>
+> Current documents:
+> * `CommercialDomainReferenceArchitecture.md` (entry point)
+> * `SubscriptionManagementArchitecture.md`
+> * `LicensingAndEntitlementArchitecture.md`
+> * `CommercialProductManagementArchitecture.md`
+>
+> Do not use this document as a source of truth for terminology, ownership, or business rules. Where this document conflicts with the documents above, the documents above govern.
+
+---
+
 # 1. Vision
 
 The Subscription & Licensing bounded context defines how commercial products are composed, licensed, and delivered to workspaces.

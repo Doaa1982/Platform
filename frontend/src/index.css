@@ -54,6 +54,14 @@ body {
   margin: 0;
 }
 
+/* Back/forward arrows encode reading direction, not a fixed screen side —
+   mirror them under RTL so "back" still points toward where the user came
+   from and "continue" still points toward where they're going. */
+[dir="rtl"] svg.lucide-arrow-left,
+[dir="rtl"] svg.lucide-arrow-right {
+  transform: scaleX(-1);
+}
+
 #root {
   width: 1126px;
   max-width: 100%;

@@ -1322,6 +1322,8 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
           busy={busy}
           onSave={saveQuestion}
           onCancel={() => setFormMode(null)}
+          existingQuestions={data.questions}
+          videoDurationSeconds={videoDurationSeconds}
         />
       )}
 
@@ -1436,7 +1438,7 @@ function QuestionRow({ q, editable, onEdit, onRemove }) {
   );
 }
 
-function QuestionForm({ initial, busy, onSave, onCancel }) {
+function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, videoDurationSeconds }) {
   const types = useQuestionTypes();
   const [type, setType] = useState(initial?.type ?? types[0]?.value ?? "MultipleChoice");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
@@ -1478,8 +1480,16 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
     !prompt.trim() && "Enter the question text.",
     type === "MultipleChoice" && options.filter((o) => o.trim()).length < 2 && "Add at least 2 options.",
     type === "CompleteTheSentence" && !acceptedAnswers.some((a) => a.trim()) && "Add at least one accepted answer.",
+    String(timestamp).trim() === "" && "Enter the question time.",
+    timestamp !== "" && videoDurationSeconds != null && Number(timestamp) >= videoDurationSeconds
+      && "Question time must be less than the video length.",
   ].filter(Boolean);
   const valid = validationMessages.length === 0;
+
+  // Informational only — two questions at the same second is unusual, not
+  // invalid, so this warns the tutor without blocking Save.
+  const sameTimeQuestion = timestamp !== "" && existingQuestions?.find(
+    (q) => q.id !== initial?.id && Number(q.videoTimestampSeconds) === Number(timestamp));
 
   return (
     <form
@@ -1600,9 +1610,16 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
       </label>
 
       <div className="lw-studio__minsfield">
-        <span>Video timestamp <em>(seconds)</em></span>
-        <input type="number" min="0" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} disabled={busy} />
+        <span>Question time <em>(seconds)</em><RequiredMark /></span>
+        <input type="number" min="0" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} disabled={busy} required
+               style={attempted && (String(timestamp).trim() === "" || (videoDurationSeconds != null && Number(timestamp) >= videoDurationSeconds)) ? invalidFieldStyle : undefined} />
       </div>
+      {sameTimeQuestion && (
+        <div className="lw-studio__blocker">
+          <AlertCircle size={14} />
+          Another question is already set at this time ({formatTime(Number(timestamp))}) — learners will see both together.
+        </div>
+      )}
       <div className="lw-studio__minsfield">
         <span>Points</span>
         <input type="number" min="1" value={points} onChange={(e) => setPoints(e.target.value)} disabled={busy} />
@@ -1775,15 +1792,15 @@ const CSS = `
   .lw-studio__empty h2 { font-family: var(--font-display); font-size: 1.05rem; color: var(--ink); margin: 10px 0 6px; }
   .lw-studio__empty p { font-size: 0.86rem; max-width: 46ch; margin: 0 auto; line-height: 1.6; }
   .lw-studio__steps {
-    list-style: none; counter-reset: lw-step; text-align: left;
+    list-style: none; counter-reset: lw-step; text-align: start;
     max-width: 44ch; margin: 4px auto 0; padding: 0; display: flex; flex-direction: column; gap: 10px;
   }
   .lw-studio__steps li {
-    counter-increment: lw-step; position: relative; padding-left: 30px;
+    counter-increment: lw-step; position: relative; padding-inline-start: 30px;
     font-size: 0.86rem; color: var(--ink-soft); line-height: 1.5;
   }
   .lw-studio__steps li::before {
-    content: counter(lw-step); position: absolute; left: 0; top: -1px;
+    content: counter(lw-step); position: absolute; inset-inline-start: 0; top: -1px;
     width: 20px; height: 20px; border-radius: 50%; background: var(--surface-2); color: var(--ink);
     display: flex; align-items: center; justify-content: center;
     font-family: var(--font-mono); font-size: 10.5px; flex-shrink: 0;
@@ -1835,7 +1852,7 @@ const CSS = `
   .lw-studio__lessonmove button:hover { color: var(--ink); }
   .lw-studio__lessonmove button:disabled { opacity: 0.35; cursor: not-allowed; }
   .lw-studio__lessonopen {
-    flex: 1; display: flex; align-items: center; gap: 9px; text-align: left;
+    flex: 1; display: flex; align-items: center; gap: 9px; text-align: start;
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 9px 12px; cursor: pointer; font-family: var(--font-body); color: var(--ink);
   }
@@ -1863,7 +1880,7 @@ const CSS = `
     display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px;
   }
   .lw-studio__card {
-    display: flex; flex-direction: column; text-align: left; cursor: pointer; padding: 0;
+    display: flex; flex-direction: column; text-align: start; cursor: pointer; padding: 0;
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
     overflow: hidden; font-family: var(--font-body);
   }
@@ -1875,7 +1892,7 @@ const CSS = `
     font-family: var(--font-display); font-size: 2rem; font-weight: 600; color: rgba(255,255,255,0.92);
   }
   .lw-studio__cardcover .lw-studio__pill {
-    position: absolute; top: 9px; right: 9px; background: rgba(10,12,15,0.4); color: #fff;
+    position: absolute; top: 9px; inset-inline-end: 9px; background: rgba(10,12,15,0.4); color: #fff;
   }
   .lw-cover--0 { background: linear-gradient(135deg, #2D5BD1, #6D3FC4); }
   .lw-cover--1 { background: linear-gradient(135deg, #1E7F63, #5B8DEF); }
@@ -1896,7 +1913,7 @@ const CSS = `
     background: var(--surface); color: var(--ink); border-radius: var(--radius);
     max-width: 640px; width: 100%; padding: 30px 32px 34px; position: relative;
   }
-  .lw-studio__panelclose { position: absolute; top: 18px; right: 18px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
+  .lw-studio__panelclose { position: absolute; top: 18px; inset-inline-end: 18px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
   .lw-studio__panelclose:hover { color: var(--ink); }
   .lw-studio__panelnote { font-size: 0.83rem; color: var(--ink-soft); margin: 0 0 16px; line-height: 1.5; }
 
@@ -1917,6 +1934,7 @@ const CSS = `
     padding: 9px 11px; resize: vertical;
   }
   .lw-studio__draftform > .lw-studio__alert,
+  .lw-studio__draftform > .lw-studio__blocker,
   .lw-studio__draftform > p,
   .lw-studio__draftform > .lw-options,
   .lw-studio__draftform > button,
@@ -1945,7 +1963,7 @@ const CSS = `
     background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px;
   }
   .lw-studio__versionoption h3 { font-size: 0.88rem; margin: 0; }
-  .lw-studio__versionoption ul { margin: 0; padding-left: 18px; font-size: 0.78rem; color: var(--ink-soft); line-height: 1.6; flex: 1; }
+  .lw-studio__versionoption ul { margin: 0; padding-inline-start: 18px; font-size: 0.78rem; color: var(--ink-soft); line-height: 1.6; flex: 1; }
   .lw-studio__versionoption button { width: 100%; justify-content: center; }
   @media (max-width: 480px) { .lw-studio__versionoptions { grid-template-columns: 1fr; } }
 

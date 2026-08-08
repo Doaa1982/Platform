@@ -3,6 +3,8 @@ import { LoaderCircle, AlertCircle, CheckCircle2, ArrowRight, Building2, Clock }
 import * as api from "../api/client";
 import { useFonts } from "../hooks/useFonts";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
+import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 
 /* =========================================================================
    JOIN SCREEN — /join/{slug}
@@ -23,6 +25,7 @@ import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 
 export default function JoinScreen({ slug, onSignIn }) {
   useFonts();
+  const { t } = useLanguage();
 
   const [preview, setPreview] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -48,7 +51,7 @@ export default function JoinScreen({ slug, onSignIn }) {
 
     if (!fullName.trim() || !email.trim()) {
       setAttempted(true);
-      setError("Fill in your name and email before sending — both are required.");
+      setError(t("join.errBothRequired"));
       return;
     }
 
@@ -72,12 +75,9 @@ export default function JoinScreen({ slug, onSignIn }) {
       <Shell>
         <div className="pl-join__card pl-join__card--bad">
           <AlertCircle size={26} aria-hidden="true" />
-          <h1>This link doesn't work</h1>
+          <h1>{t("join.linkBadTitle")}</h1>
           <p>{loadError}</p>
-          <p className="pl-join__muted">
-            Academies are reached through their own link. If yours isn't working,
-            ask whoever shared it with you.
-          </p>
+          <p className="pl-join__muted">{t("join.linkBadHint")}</p>
         </div>
       </Shell>
     );
@@ -88,7 +88,7 @@ export default function JoinScreen({ slug, onSignIn }) {
       <Shell>
         <div className="pl-join__card">
           <LoaderCircle size={22} className="pl-join__spin" aria-hidden="true" />
-          <p className="pl-join__muted">Loading…</p>
+          <p className="pl-join__muted">{t("join.loading")}</p>
         </div>
       </Shell>
     );
@@ -99,13 +99,9 @@ export default function JoinScreen({ slug, onSignIn }) {
       <Shell>
         <div className="pl-join__card pl-join__card--good">
           <CheckCircle2 size={26} aria-hidden="true" />
-          <h1>Request sent</h1>
-          <p>
-            {preview.workspaceName} will review it. If they'd like you to join,
-            they'll send an invitation to {email.trim()} — that's where you'll
-            set up your account.
-          </p>
-          <button className="pl-join__ghost" onClick={onSignIn}>Sign in</button>
+          <h1>{t("join.requestSentTitle")}</h1>
+          <p>{t("join.requestSentBody", { workspace: preview.workspaceName, email: email.trim() })}</p>
+          <button className="pl-join__ghost" onClick={onSignIn}>{t("join.signIn")}</button>
         </div>
       </Shell>
     );
@@ -119,13 +115,9 @@ export default function JoinScreen({ slug, onSignIn }) {
         <div className="pl-join__card">
           <div className="pl-join__mark" aria-hidden="true"><Building2 size={22} /></div>
           <h1>{preview.workspaceName}</h1>
-          <p className="pl-join__lead">This academy isn't taking open requests.</p>
-          <p className="pl-join__muted">
-            You'll need an invitation from someone who teaches here. If you're
-            expecting one, check your email — and if you already have an account,
-            you can sign in.
-          </p>
-          <button className="pl-join__ghost" onClick={onSignIn}>Sign in</button>
+          <p className="pl-join__lead">{t("join.notAcceptingLead")}</p>
+          <p className="pl-join__muted">{t("join.notAcceptingHint")}</p>
+          <button className="pl-join__ghost" onClick={onSignIn}>{t("join.signIn")}</button>
         </div>
       </Shell>
     );
@@ -135,7 +127,7 @@ export default function JoinScreen({ slug, onSignIn }) {
     <Shell>
       <div className="pl-join__card">
         <div className="pl-join__mark" aria-hidden="true"><Building2 size={22} /></div>
-        <div className="pl-join__eyebrow">Request to join</div>
+        <div className="pl-join__eyebrow">{t("join.eyebrow")}</div>
         <h1>{preview.workspaceName}</h1>
         {preview.description && <p className="pl-join__lead">{preview.description}</p>}
 
@@ -147,37 +139,36 @@ export default function JoinScreen({ slug, onSignIn }) {
           )}
 
           <label className="pl-join__field">
-            <span>Your name<RequiredMark /></span>
+            <span>{t("join.nameLabel")}<RequiredMark /></span>
             <input type="text" autoComplete="name" required autoFocus
                    value={fullName} onChange={(e) => { setFullName(e.target.value); setError(null); }}
-                   placeholder="Alex Morgan" disabled={submitting}
+                   placeholder={t("join.namePlaceholder")} disabled={submitting}
                    style={attempted && !fullName.trim() ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-join__field">
-            <span>Email<RequiredMark /></span>
+            <span>{t("join.emailLabel")}<RequiredMark /></span>
             <input type="email" autoComplete="email" required
                    value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                   placeholder="you@example.com" disabled={submitting}
+                   placeholder={t("join.emailPlaceholder")} disabled={submitting}
                    style={attempted && !email.trim() ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-join__field">
-            <span>Anything you'd like them to know</span>
+            <span>{t("join.messageLabel")}</span>
             <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)}
-                      placeholder="A little about why you'd like to join…" disabled={submitting} />
+                      placeholder={t("join.messagePlaceholder")} disabled={submitting} />
           </label>
 
           <button type="submit" className="pl-join__btn" disabled={submitting}>
             {submitting
-              ? (<><LoaderCircle size={16} className="pl-join__spin" aria-hidden="true" /> Sending…</>)
-              : (<>Send request <ArrowRight size={16} aria-hidden="true" /></>)}
+              ? (<><LoaderCircle size={16} className="pl-join__spin" aria-hidden="true" /> {t("join.sending")}</>)
+              : (<>{t("join.sendRequest")} <ArrowRight size={16} aria-hidden="true" /></>)}
           </button>
         </form>
 
         <p className="pl-join__muted">
-          <Clock size={13} aria-hidden="true" /> Requests are read by the people who run this
-          academy. Joining doesn't enrol you in anything yet.
+          <Clock size={13} aria-hidden="true" /> {t("join.footerNote")}
         </p>
       </div>
     </Shell>
@@ -185,17 +176,24 @@ export default function JoinScreen({ slug, onSignIn }) {
 }
 
 function Shell({ children }) {
-  return <div className="pl-join"><style>{CSS}</style>{children}</div>;
+  return (
+    <div className="pl-join">
+      <style>{CSS}</style>
+      <div className="pl-join__langtoggle"><LanguageToggle /></div>
+      {children}
+    </div>
+  );
 }
 
 const CSS = `
   .pl-join {
     --ink: #1B2430; --ink-soft: #6A7383; --line: #E1DED7; --accent: #2D5BD1;
     font-family: 'Karla', system-ui, sans-serif; color: var(--ink);
-    background: #F7F5F1; min-height: 100vh;
+    background: #F7F5F1; min-height: 100vh; position: relative;
     display: flex; align-items: center; justify-content: center; padding: 40px 22px;
   }
   .pl-join *, .pl-join *::before, .pl-join *::after { box-sizing: border-box; }
+  .pl-join__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; }
 
   .pl-join__card {
     width: 100%; max-width: 460px; background: #fff;
@@ -220,7 +218,7 @@ const CSS = `
   /* UIC-003: one property per row — label left, value right. The card
      around this form is text-align: center (for its centered header); this
      grid overrides back to left, same override .pl-join__field always did. */
-  .pl-join__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 16px; column-gap: 14px; align-items: start; text-align: left; }
+  .pl-join__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 16px; column-gap: 14px; align-items: start; text-align: start; }
   .pl-join__form > .pl-join__field { display: contents; }
   .pl-join__field > span:first-child { font-size: 0.82rem; font-weight: 600; padding-top: 11px; white-space: nowrap; }
   .pl-join__field em { font-style: normal; font-weight: 400; color: var(--ink-soft); }
@@ -256,7 +254,7 @@ const CSS = `
   .pl-join__ghost:hover { border-color: var(--accent); }
 
   .pl-join__alert {
-    display: flex; align-items: flex-start; gap: 9px; text-align: left;
+    display: flex; align-items: flex-start; gap: 9px; text-align: start;
     background: #FDF1EF; border: 1px solid rgba(179,56,43,0.28); color: #B3382B;
     border-radius: 10px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.87rem;
   }
@@ -270,4 +268,6 @@ const CSS = `
   .pl-join__spin { animation: plJoinSpin 0.9s linear infinite; }
   @keyframes plJoinSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .pl-join__spin { animation: none; } }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;

@@ -3,6 +3,7 @@ import { LoaderCircle, AlertCircle, Check, Circle, ArrowRight, Globe, Lock, Rock
 import QRCode from "qrcode";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    WORKSPACE SETUP — the owner's own journey.
@@ -19,18 +20,18 @@ import { useAuth } from "../auth/authContext";
 
 /** The five states an owner drives through, in order (Workspace Aggregate Design §15). */
 const JOURNEY = [
-  { status: "Created",     label: "Handed over",   blurb: "The workspace is yours. Nothing configured yet." },
-  { status: "Configuring", label: "Configuring",   blurb: "Filling in the details that make it yours." },
-  { status: "Private",     label: "Private",       blurb: "Ready to work in. Nobody outside can find it." },
-  { status: "Published",   label: "Published",     blurb: "Publicly discoverable at its address." },
-  { status: "Active",      label: "Open",          blurb: "Open for business — learners can enrol." },
+  { status: "Created",     labelKey: "setup.journey0Label", blurbKey: "setup.journey0Blurb" },
+  { status: "Configuring", labelKey: "setup.journey1Label", blurbKey: "setup.journey1Blurb" },
+  { status: "Private",     labelKey: "setup.journey2Label", blurbKey: "setup.journey2Blurb" },
+  { status: "Published",   labelKey: "setup.journey3Label", blurbKey: "setup.journey3Blurb" },
+  { status: "Active",      labelKey: "setup.journey4Label", blurbKey: "setup.journey4Blurb" },
 ];
 
-const ACTION_LABEL = {
-  BeginConfiguration: "Start setting up",
-  MakePrivate:        "Mark configuration complete",
-  Publish:            "Publish workspace",
-  Activate:           "Open for business",
+const ACTION_LABEL_KEY = {
+  BeginConfiguration: "setup.actionBeginConfiguration",
+  MakePrivate:        "setup.actionMakePrivate",
+  Publish:            "setup.actionPublish",
+  Activate:           "setup.actionActivate",
 };
 
 const ACTION_PATH = {
@@ -41,15 +42,16 @@ const ACTION_PATH = {
 };
 
 /** What each action actually does, so the owner isn't guessing before clicking. */
-const ACTION_BLURB = {
-  BeginConfiguration: "Moves the workspace into configuration so you can fill in its details.",
-  MakePrivate:        "Marks it ready to work in. You and your members can use it; the public still can't see it.",
-  Publish:            "Makes it publicly discoverable at its address. You can still change details afterwards.",
-  Activate:           "Declares you're open. This is separate from being findable — it's you saying you're ready for learners.",
+const ACTION_BLURB_KEY = {
+  BeginConfiguration: "setup.blurbBeginConfiguration",
+  MakePrivate:        "setup.blurbMakePrivate",
+  Publish:            "setup.blurbPublish",
+  Activate:           "setup.blurbActivate",
 };
 
 export default function WorkspaceSetupScreen() {
   const { session, workspace, refreshProfile } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [setup, setSetup] = useState(null);
@@ -111,7 +113,7 @@ export default function WorkspaceSetupScreen() {
   if (!setup) {
     return (
       <div className="lw-page">
-        <div className="lw-setup__loading"><LoaderCircle size={18} className="lw-setup__spin" /> Loading setup…</div>
+        <div className="lw-setup__loading"><LoaderCircle size={18} className="lw-setup__spin" /> {t("setup.loading")}</div>
       </div>
     );
   }
@@ -123,12 +125,9 @@ export default function WorkspaceSetupScreen() {
     <div className="lw-page">
       <style>{CSS}</style>
 
-      <div className="lw-eyebrow">Workspace Setup</div>
+      <div className="lw-eyebrow">{t("setup.eyebrow")}</div>
       <h1>{setup.name}</h1>
-      <p className="lw-sub">
-        Getting {setup.name} from handed-over to open for learners. Each step
-        unlocks the next.
-      </p>
+      <p className="lw-sub">{t("setup.lead", { name: setup.name })}</p>
 
       {error && <div className="lw-setup__alert"><AlertCircle size={16} /> {error}</div>}
 
@@ -142,8 +141,8 @@ export default function WorkspaceSetupScreen() {
                 {state === "done" ? <Check size={12} /> : <Circle size={8} />}
               </span>
               <span className="lw-setup__steptext">
-                <span className="lw-setup__steplabel">{step.label}</span>
-                <span className="lw-setup__stepblurb">{step.blurb}</span>
+                <span className="lw-setup__steplabel">{t(step.labelKey)}</span>
+                <span className="lw-setup__stepblurb">{t(step.blurbKey)}</span>
               </span>
             </li>
           );
@@ -153,7 +152,7 @@ export default function WorkspaceSetupScreen() {
       {/* Suspended and Archived are platform-driven and sit outside the journey */}
       {currentIndex === -1 && (
         <div className="lw-setup__alert">
-          <AlertCircle size={16} /> This workspace is {setup.status}. {setup.blocker}
+          <AlertCircle size={16} /> {t("setup.statusAlert", { status: setup.status, blocker: setup.blocker })}
         </div>
       )}
 
@@ -161,15 +160,15 @@ export default function WorkspaceSetupScreen() {
       {setup.canManage && next && (
         <div className="lw-setup__action">
           <div>
-            <div className="lw-setup__actiontitle">{ACTION_LABEL[next] ?? next}</div>
-            <p>{ACTION_BLURB[next]}</p>
+            <div className="lw-setup__actiontitle">{ACTION_LABEL_KEY[next] ? t(ACTION_LABEL_KEY[next]) : next}</div>
+            <p>{t(ACTION_BLURB_KEY[next])}</p>
           </div>
           <button
             className="lw-btn lw-btn--accent"
             disabled={busy}
             onClick={() => act(() => api.workspaceTransition(session.token, slug, ACTION_PATH[next]))}
           >
-            {busy ? <LoaderCircle size={15} className="lw-setup__spin" /> : <>{ACTION_LABEL[next]} <ArrowRight size={15} /></>}
+            {busy ? <LoaderCircle size={15} className="lw-setup__spin" /> : <>{t(ACTION_LABEL_KEY[next])} <ArrowRight size={15} /></>}
           </button>
         </div>
       )}
@@ -180,12 +179,12 @@ export default function WorkspaceSetupScreen() {
 
       {setup.canManage && !next && !setup.blocker && setup.status === "Active" && (
         <div className="lw-setup__done">
-          <Rocket size={16} /> {setup.name} is open. Learners can enrol.
+          <Rocket size={16} /> {t("setup.doneAlert", { name: setup.name })}
         </div>
       )}
 
       {/* ── Identity ────────────────────────────────────────────────────── */}
-      <h2 className="lw-sectiontitle">Workspace identity</h2>
+      <h2 className="lw-sectiontitle">{t("setup.identityTitle")}</h2>
       {editing ? (
         <IdentityForm
           setup={setup}
@@ -198,11 +197,11 @@ export default function WorkspaceSetupScreen() {
         />
       ) : (
         <div className="lw-setup__identity">
-          <Field label="Name" value={setup.name} />
-          <Field label="Public identifier" value={`/${setup.slug}`} mono />
-          <Field label="Description" value={setup.description || "— not set —"} muted={!setup.description} />
+          <Field label={t("setup.nameLabel")} value={setup.name} />
+          <Field label={t("setup.publicIdLabel")} value={`/${setup.slug}`} mono />
+          <Field label={t("setup.descriptionLabel")} value={setup.description || t("setup.notSet")} muted={!setup.description} />
           {setup.canManage && (
-            <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setEditing(true)}>Edit</button>
+            <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setEditing(true)}>{t("setup.edit")}</button>
           )}
         </div>
       )}
@@ -210,27 +209,22 @@ export default function WorkspaceSetupScreen() {
       {/* Renaming after publication changes the address people already have */}
       {setup.status === "Published" || setup.status === "Active" ? (
         <p className="lw-setup__note">
-          <Globe size={13} /> This workspace is discoverable at <code>/{setup.slug}</code>.
-          Changing the identifier changes that address.
+          <Globe size={13} /> {t("setup.discoverablePrefix")} <code>/{setup.slug}</code>. {t("setup.discoverableSuffix")}
         </p>
       ) : (
         <p className="lw-setup__note">
-          <Lock size={13} /> Not publicly discoverable yet.
+          <Lock size={13} /> {t("setup.notDiscoverable")}
         </p>
       )}
 
       {/* ── Join requests ───────────────────────────────────────────────── */}
-      <h2 className="lw-sectiontitle">Join requests</h2>
+      <h2 className="lw-sectiontitle">{t("setup.joinReqTitle")}</h2>
       <div className={`lw-setup__joinreq ${setup.acceptsJoinRequests ? "is-on" : ""}`}>
         <div>
           <div className="lw-setup__joinreqtitle">
-            {setup.acceptsJoinRequests ? "Open to join requests" : "Closed to join requests"}
+            {setup.acceptsJoinRequests ? t("setup.joinOpenTitle") : t("setup.joinClosedTitle")}
           </div>
-          <p>
-            {setup.acceptsJoinRequests
-              ? "Strangers with your /join link can ask to join. You still approve or decline each one."
-              : "Off by default. Turn this on so people with your /join link can ask to join — you'll still approve or decline each request."}
-          </p>
+          <p>{setup.acceptsJoinRequests ? t("setup.joinOpenBody") : t("setup.joinClosedBody")}</p>
         </div>
         {setup.canManage && (
           <button
@@ -240,7 +234,7 @@ export default function WorkspaceSetupScreen() {
           >
             {busy
               ? <LoaderCircle size={14} className="lw-setup__spin" />
-              : setup.acceptsJoinRequests ? "Turn off" : "Turn on"}
+              : setup.acceptsJoinRequests ? t("setup.turnOff") : t("setup.turnOn")}
           </button>
         )}
 
@@ -248,7 +242,7 @@ export default function WorkspaceSetupScreen() {
           <div className="lw-setup__joinqr">
             <img src={qrDataUrl} width={88} height={88} alt={`QR code linking to /join/${setup.slug}`} />
             <div>
-              <div className="lw-setup__joinqrlabel">Scan to request to join</div>
+              <div className="lw-setup__joinqrlabel">{t("setup.scanToJoin")}</div>
               <code>{`${window.location.origin}/join/${setup.slug}`}</code>
             </div>
           </div>
@@ -256,9 +250,7 @@ export default function WorkspaceSetupScreen() {
       </div>
 
       {!setup.canManage && (
-        <p className="lw-setup__readonly">
-          You're viewing this. Only an owner or administrator can change setup.
-        </p>
+        <p className="lw-setup__readonly">{t("setup.readonlyNote")}</p>
       )}
     </div>
   );
@@ -274,6 +266,7 @@ function Field({ label, value, mono, muted }) {
 }
 
 function IdentityForm({ setup, onSubmit, onCancel, busy }) {
+  const { t } = useLanguage();
   const [name, setName] = useState(setup.name);
   const [slug, setSlug] = useState(setup.slug);
   const [description, setDescription] = useState(setup.description ?? "");
@@ -287,11 +280,11 @@ function IdentityForm({ setup, onSubmit, onCancel, busy }) {
       }}
     >
       <label>
-        <span>Name</span>
+        <span>{t("setup.nameLabel")}</span>
         <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus disabled={busy} />
       </label>
       <label>
-        <span>Public identifier</span>
+        <span>{t("setup.publicIdLabel")}</span>
         <input
           value={slug}
           onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
@@ -299,13 +292,13 @@ function IdentityForm({ setup, onSubmit, onCancel, busy }) {
         />
       </label>
       <label className="lw-setup__wide">
-        <span>Description</span>
+        <span>{t("setup.descriptionLabel")}</span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} disabled={busy} />
       </label>
       <div className="lw-setup__formactions">
-        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>{t("setup.cancel")}</button>
         <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !name.trim() || !slug.trim()}>
-          {busy ? <LoaderCircle size={14} className="lw-setup__spin" /> : "Save"}
+          {busy ? <LoaderCircle size={14} className="lw-setup__spin" /> : t("setup.save")}
         </button>
       </div>
     </form>
@@ -325,7 +318,7 @@ const CSS = `
   .lw-setup__journey { list-style: none; padding: 0; margin: 0 0 24px; }
   .lw-setup__step { display: flex; gap: 12px; padding: 0 0 16px; position: relative; }
   .lw-setup__step:not(:last-child)::before {
-    content: ""; position: absolute; left: 10px; top: 22px; bottom: 2px;
+    content: ""; position: absolute; inset-inline-start: 10px; top: 22px; bottom: 2px;
     width: 1px; background: var(--line);
   }
   .lw-setup__step.is-done::before { background: var(--accent-2); }

@@ -511,7 +511,7 @@ const CSS = `
   .pl-admin__tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
   .pl-admin__table { width: 100%; border-collapse: collapse; font-size: 0.87rem; min-width: 860px; }
   .pl-admin__table th {
-    text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+    text-align: start; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
     letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft);
     font-weight: 500; padding: 11px 14px; background: var(--surface); border-bottom: 1px solid var(--line);
   }

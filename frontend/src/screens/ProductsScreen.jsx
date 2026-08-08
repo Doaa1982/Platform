@@ -7,6 +7,7 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import InfoTip from "../components/InfoTip";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    LEARNING PRODUCTS — what this workspace offers.
@@ -36,26 +37,27 @@ const DEFAULT_PACING = "SelfPaced";
    (Open / InvitationOnly / ApprovalRequired) are the domain's own vocabulary
    and stay as they are; only what's shown on screen changed. */
 const ENROLLMENT = [
-  { value: "Open", label: "Open to everyone",
-    help: "Anyone who finds this product can join right away — no approval needed." },
-  { value: "InvitationOnly", label: "By invite only",
-    help: "Only people you personally invite can get in. No one can just sign themselves up." },
-  { value: "ApprovalRequired", label: "Ask to join first",
-    help: "Anyone can ask to join, but you decide who actually gets in, one request at a time." },
+  { value: "Open", labelKey: "products.enrollOpenLabel", helpKey: "products.enrollOpenHelp" },
+  { value: "InvitationOnly", labelKey: "products.enrollInviteLabel", helpKey: "products.enrollInviteHelp" },
+  { value: "ApprovalRequired", labelKey: "products.enrollApprovalLabel", helpKey: "products.enrollApprovalHelp" },
 ];
-const enrollmentLabel = (value) => ENROLLMENT.find((m) => m.value === value)?.label ?? value;
+const enrollmentLabel = (t, value) => {
+  const m = ENROLLMENT.find((m) => m.value === value);
+  return m ? t(m.labelKey) : value;
+};
 
 /** Which transitions each status offers, mirroring §16's ordered machine. */
 const ACTIONS = {
-  Draft:       [{ key: "submit", label: "Submit for review", icon: Send },
-                { key: "publish", label: "Publish", icon: Globe }],
-  UnderReview: [{ key: "publish", label: "Publish", icon: Globe },
-                { key: "return", label: "Back to draft", icon: Undo2 }],
-  Published:   [{ key: "unpublish", label: "Unpublish", icon: Undo2 }],
+  Draft:       [{ key: "submit", labelKey: "products.actionSubmit", icon: Send },
+                { key: "publish", labelKey: "products.actionPublish", icon: Globe }],
+  UnderReview: [{ key: "publish", labelKey: "products.actionPublish", icon: Globe },
+                { key: "return", labelKey: "products.actionReturn", icon: Undo2 }],
+  Published:   [{ key: "unpublish", labelKey: "products.actionUnpublish", icon: Undo2 }],
   Archived:    [],
 };
 
-const human = (s) => s.replace(/([a-z])([A-Z])/g, "$1 $2");
+const STATUS_KEY = { Draft: "products.statusDraft", UnderReview: "products.statusUnderReview", Published: "products.statusPublished", Archived: "products.statusArchived" };
+const human = (t, s) => t(STATUS_KEY[s] ?? "") || s;
 
 /** A small, fixed palette so each product gets a stable "cover" color from its id — no image upload exists yet. */
 const COVER_VARIANTS = 5;
@@ -67,6 +69,7 @@ function coverVariant(id) {
 
 export default function ProductsScreen({ onOpenStudio }) {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
@@ -110,7 +113,7 @@ export default function ProductsScreen({ onOpenStudio }) {
   if (!data) {
     return (
       <div className="lw-page">
-        <div className="lw-prod__loading"><LoaderCircle size={18} className="lw-prod__spin" /> Loading…</div>
+        <div className="lw-prod__loading"><LoaderCircle size={18} className="lw-prod__spin" /> {t("products.loading")}</div>
       </div>
     );
   }
@@ -119,23 +122,19 @@ export default function ProductsScreen({ onOpenStudio }) {
     <div className="lw-page">
       <style>{CSS}</style>
 
-      <div className="lw-eyebrow">Learning Product Context</div>
-      <h1>Learning products</h1>
-      <p className="lw-sub">
-        What {data.workspaceName} offers. A product is the thing a learner enrols
-        in — its curriculum, the units and lessons a learner actually works
-        through, is built separately in Content Studio.
-      </p>
+      <div className="lw-eyebrow">{t("products.eyebrow")}</div>
+      <h1>{t("products.title")}</h1>
+      <p className="lw-sub">{t("products.lead", { workspace: data.workspaceName })}</p>
 
       {error && !editing && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
 
       {data.canAuthor && (
         <div className="lw-prod__bar">
           <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={() => setEditing("new")}>
-            <Plus size={14} /> New product
+            <Plus size={14} /> {t("products.newProduct")}
           </button>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={load} disabled={busy}>
-            <RefreshCw size={13} /> Refresh
+            <RefreshCw size={13} /> {t("products.refresh")}
           </button>
         </div>
       )}
@@ -143,9 +142,9 @@ export default function ProductsScreen({ onOpenStudio }) {
       {editing && (
         <div className="lw-prod__overlay" role="dialog" aria-modal="true" onClick={() => setEditing(null)}>
           <div className="lw-prod__panel" onClick={(e) => e.stopPropagation()}>
-            <button className="lw-prod__panelclose" onClick={() => setEditing(null)} aria-label="Close"><X size={16} /></button>
-            <div className="lw-eyebrow">{editing === "new" ? "New product" : "Edit product"}</div>
-            <h2 className="lw-prod__panelh2">{editing === "new" ? "Create a learning product" : liveEditing.title}</h2>
+            <button className="lw-prod__panelclose" onClick={() => setEditing(null)} aria-label={t("products.close")}><X size={16} /></button>
+            <div className="lw-eyebrow">{editing === "new" ? t("products.newProduct") : t("products.editProduct")}</div>
+            <h2 className="lw-prod__panelh2">{editing === "new" ? t("products.createHeading") : liveEditing.title}</h2>
             {error && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
             <ProductForm
               busy={busy}
@@ -175,12 +174,8 @@ export default function ProductsScreen({ onOpenStudio }) {
       {data.products.length === 0 && (
         <div className="lw-prod__empty">
           <BookOpen size={26} />
-          <h2>Nothing offered yet</h2>
-          <p>
-            {data.canAuthor
-              ? "Create your first product — a course, a programme, whatever you teach. You only need a title to start."
-              : "This workspace hasn't defined any learning products yet."}
-          </p>
+          <h2>{t("products.emptyTitle")}</h2>
+          <p>{data.canAuthor ? t("products.emptyCanAuthor") : t("products.emptyReadonly")}</p>
         </div>
       )}
 
@@ -190,7 +185,7 @@ export default function ProductsScreen({ onOpenStudio }) {
             <div className={`lw-prod__card is-${p.status.toLowerCase()}`} key={p.id}>
               <div className={`lw-prod__cover lw-cover--${coverVariant(p.id)}`}>
                 <span className="lw-prod__monogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
-                <span className={`lw-prod__pill is-${p.status.toLowerCase()}`}>{human(p.status)}</span>
+                <span className={`lw-prod__pill is-${p.status.toLowerCase()}`}>{human(t, p.status)}</span>
               </div>
 
               <div className="lw-prod__body">
@@ -198,59 +193,59 @@ export default function ProductsScreen({ onOpenStudio }) {
 
                 {/* Display only — one property per row, label in its own column. */}
                 <div className="lw-prod__proplist">
-                  <span className="lw-prod__proplabel">📝 Description</span>
+                  <span className="lw-prod__proplabel">📝 {t("products.descriptionLabel")}</span>
                   {p.description
                     ? <span className="lw-prod__propvalue">{p.description}</span>
-                    : <span className="lw-prod__propvalue is-empty">No description yet</span>}
+                    : <span className="lw-prod__propvalue is-empty">{t("products.noDescription")}</span>}
 
-                  <span className="lw-prod__proplabel">🔓 Who can join</span>
-                  <span className="lw-prod__propvalue">{enrollmentLabel(p.enrollmentMode)}</span>
+                  <span className="lw-prod__proplabel">🔓 {t("products.whoCanJoin")}</span>
+                  <span className="lw-prod__propvalue">{enrollmentLabel(t, p.enrollmentMode)}</span>
 
                   {p.category && (
                     <>
-                      <span className="lw-prod__proplabel">🏷️ Category</span>
+                      <span className="lw-prod__proplabel">🏷️ {t("products.category")}</span>
                       <span className="lw-prod__propvalue">{p.category}</span>
                     </>
                   )}
 
                   {p.defaultLanguage && (
                     <>
-                      <span className="lw-prod__proplabel">🌐 Language</span>
+                      <span className="lw-prod__proplabel">🌐 {t("products.language")}</span>
                       <span className="lw-prod__propvalue">{p.defaultLanguage}</span>
                     </>
                   )}
 
                   {p.tags.length > 0 && (
                     <>
-                      <span className="lw-prod__proplabel">🔖 Tags</span>
+                      <span className="lw-prod__proplabel">🔖 {t("products.tags")}</span>
                       <span className="lw-prod__propvalue">{p.tags.join(", ")}</span>
                     </>
                   )}
 
-                  <span className="lw-prod__proplabel">📚 Curriculum</span>
+                  <span className="lw-prod__proplabel">📚 {t("products.curriculum")}</span>
                   {p.hasCurriculum
-                    ? <span className="lw-prod__propvalue is-ready">Published</span>
-                    : <span className="lw-prod__propvalue is-empty">Not published yet</span>}
+                    ? <span className="lw-prod__propvalue is-ready">{t("products.curriculumPublished")}</span>
+                    : <span className="lw-prod__propvalue is-empty">{t("products.curriculumNotPublished")}</span>}
                 </div>
               </div>
 
               {data.canAuthor && p.status !== "Archived" && (
                 <div className="lw-prod__actions">
-                  <button disabled={busy} onClick={() => setEditing(p)}><Pencil size={12} /> Edit</button>
+                  <button disabled={busy} onClick={() => setEditing(p)}><Pencil size={12} /> {t("products.edit")}</button>
                   {onOpenStudio && (
                     <button disabled={busy} onClick={() => onOpenStudio(p.id)}>
-                      <Layers size={12} /> {p.hasCurriculum ? "Curriculum" : "Build curriculum"}
+                      <Layers size={12} /> {p.hasCurriculum ? t("products.curriculumBtn") : t("products.buildCurriculum")}
                     </button>
                   )}
                   {(ACTIONS[p.status] ?? []).map((a) => (
                     <button key={a.key} disabled={busy}
                             onClick={() => run(() => api.productTransition(session.token, slug, p.id, a.key))}>
-                      <a.icon size={12} /> {a.label}
+                      <a.icon size={12} /> {t(a.labelKey)}
                     </button>
                   ))}
                   <button disabled={busy}
                           onClick={() => run(() => api.productTransition(session.token, slug, p.id, "archive"))}>
-                    <Archive size={12} /> Archive
+                    <Archive size={12} /> {t("products.archive")}
                   </button>
                 </div>
               )}
@@ -260,15 +255,14 @@ export default function ProductsScreen({ onOpenStudio }) {
       </div>
 
       {!data.canAuthor && data.products.length > 0 && (
-        <p className="lw-prod__readonly">
-          You're viewing this list. Only an owner, administrator or teacher can create or change products.
-        </p>
+        <p className="lw-prod__readonly">{t("products.readonlyNote")}</p>
       )}
     </div>
   );
 }
 
 function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) {
+  const { t } = useLanguage();
   const [title, setTitle] = useState(product?.title ?? "");
   const [description, setDescription] = useState(product?.description ?? "");
   const [category, setCategory] = useState(product?.category ?? "");
@@ -301,29 +295,29 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
       }}
     >
       {attempted && !title.trim() && (
-        <div className="lw-prod__alert"><AlertCircle size={16} /> Title is required.</div>
+        <div className="lw-prod__alert"><AlertCircle size={16} /> {t("products.titleRequired")}</div>
       )}
       <label>
-        <span>Title<RequiredMark /></span>
+        <span>{t("products.titleLabel")}<RequiredMark /></span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus
-               placeholder="Everyday Conversation A2" disabled={busy}
+               placeholder={t("products.titlePlaceholder")} disabled={busy}
                style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("products.descriptionLabel")}</span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Who it's for and what they'll come away with." disabled={busy} />
+                  placeholder={t("products.descPlaceholder")} disabled={busy} />
       </label>
       <label>
-        <span>Who can join <InfoTip text={ENROLLMENT.find((m) => m.value === enrollmentMode)?.help} /></span>
+        <span>{t("products.whoCanJoin")} <InfoTip text={t(ENROLLMENT.find((m) => m.value === enrollmentMode)?.helpKey ?? "")} /></span>
         <select value={enrollmentMode} onChange={(e) => setEnrollmentMode(e.target.value)} disabled={busy}>
-          {ENROLLMENT.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          {ENROLLMENT.map((m) => <option key={m.value} value={m.value}>{t(m.labelKey)}</option>)}
         </select>
       </label>
       <label>
-        <span>Lesson order <InfoTip text="When on, a learner must complete each lesson before the next one unlocks." /></span>
+        <span>{t("products.lessonOrder")} <InfoTip text={t("products.lessonOrderTip")} /></span>
         <button type="button" role="switch" aria-checked={sequentialOn}
-                aria-label="Require lessons to unlock in order"
+                aria-label={t("products.lessonOrderAria")}
                 className={`lw-toggle ${sequentialOn ? "is-on" : ""}`}
                 disabled={busy}
                 onClick={product ? onToggleSequential : () => setNewSequential((v) => !v)}>
@@ -331,25 +325,25 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
         </button>
       </label>
       <label>
-        <span>Category</span>
+        <span>{t("products.category")}</span>
         <input value={category} onChange={(e) => setCategory(e.target.value)}
-               placeholder="Languages" disabled={busy} />
+               placeholder={t("products.categoryPlaceholder")} disabled={busy} />
       </label>
       <label>
-        <span>Language</span>
+        <span>{t("products.language")}</span>
         <input value={defaultLanguage} onChange={(e) => setDefaultLanguage(e.target.value)}
-               placeholder="English" disabled={busy} />
+               placeholder={t("products.languagePlaceholder")} disabled={busy} />
       </label>
       <label>
-        <span>Tags <em>(comma separated)</em></span>
+        <span>{t("products.tags")} <em>{t("products.tagsHint")}</em></span>
         <input value={tags} onChange={(e) => setTags(e.target.value)}
-               placeholder="beginner, conversation, evenings" disabled={busy} />
+               placeholder={t("products.tagsPlaceholder")} disabled={busy} />
       </label>
 
       <div className="lw-prod__formactions">
-        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>{t("products.cancel")}</button>
         <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}>
-          {busy ? <LoaderCircle size={14} className="lw-prod__spin" /> : product ? "Save changes" : "Create product"}
+          {busy ? <LoaderCircle size={14} className="lw-prod__spin" /> : product ? t("products.saveChanges") : t("products.createProduct")}
         </button>
       </div>
     </form>
@@ -401,7 +395,7 @@ const CSS = `
     display: flex; align-items: center; justify-content: center;
   }
   .lw-prod__monogram { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: rgba(255,255,255,0.92); }
-  .lw-prod__cover .lw-prod__pill { position: absolute; top: 9px; right: 9px; background: rgba(10,12,15,0.4); color: #fff; }
+  .lw-prod__cover .lw-prod__pill { position: absolute; top: 9px; inset-inline-end: 9px; background: rgba(10,12,15,0.4); color: #fff; }
   .lw-cover--0 { background: linear-gradient(135deg, #2D5BD1, #6D3FC4); }
   .lw-cover--1 { background: linear-gradient(135deg, #1E7F63, #5B8DEF); }
   .lw-cover--2 { background: linear-gradient(135deg, #E0A83E, #C4533F); }
@@ -431,7 +425,7 @@ const CSS = `
     background: var(--surface); color: var(--ink); border-radius: var(--radius);
     max-width: 640px; width: 100%; padding: 30px 32px 34px; position: relative;
   }
-  .lw-prod__panelclose { position: absolute; top: 18px; right: 18px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
+  .lw-prod__panelclose { position: absolute; top: 18px; inset-inline-end: 18px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
   .lw-prod__panelclose:hover { color: var(--ink); }
   .lw-prod__panelh2 { margin: 2px 0 18px; text-align: center; }
 
@@ -440,11 +434,11 @@ const CSS = `
     cursor: pointer; position: relative; flex-shrink: 0; transition: background .15s;
   }
   .lw-toggle span {
-    position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
-    background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    position: absolute; top: 2px; inset-inline-start: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: inset-inline-start .15s; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
   }
   .lw-toggle.is-on { background: var(--accent-2); }
-  .lw-toggle.is-on span { transform: translateX(18px); }
+  .lw-toggle.is-on span { inset-inline-start: 20px; }
   .lw-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .lw-prod__pill {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { LoaderCircle, AlertCircle, ArrowRight, ArrowLeft, ShieldCheck } from "lucide-react";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    ADMIN LOGIN.
@@ -19,6 +20,7 @@ import { useFonts } from "../hooks/useFonts";
 export default function AdminLogin({ onBack }) {
   useFonts();
   const { signIn } = useAuth();
+  const { t } = useLanguage();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,8 +39,8 @@ export default function AdminLogin({ onBack }) {
       await signIn(email.trim(), password);
     } catch (err) {
       setError(
-        err.status === 401 ? "That email and password don't match."
-        : err.message || "Something went wrong. Please try again."
+        err.status === 401 ? t("login.errMismatch")
+        : err.message || t("login.errGeneric")
       );
       setPassword("");
       setSubmitting(false);
@@ -50,13 +52,13 @@ export default function AdminLogin({ onBack }) {
       <style>{CSS}</style>
       <div className="pl-alogin__card">
         <button type="button" className="pl-alogin__back" onClick={onBack}>
-          <ArrowLeft size={14} aria-hidden="true" /> Back
+          <ArrowLeft size={14} aria-hidden="true" /> {t("apply.back")}
         </button>
 
         <div className="pl-alogin__mark" aria-hidden="true"><ShieldCheck size={22} /></div>
-        <div className="pl-alogin__eyebrow">Platform operations</div>
-        <h1>Administrator sign in</h1>
-        <p className="pl-alogin__sub">This console operates the platform, not a single workspace.</p>
+        <div className="pl-alogin__eyebrow">{t("adminLogin.eyebrow")}</div>
+        <h1>{t("adminLogin.heading")}</h1>
+        <p className="pl-alogin__sub">{t("adminLogin.sub")}</p>
 
         <form onSubmit={handleSubmit} noValidate>
           {error && (
@@ -66,14 +68,14 @@ export default function AdminLogin({ onBack }) {
           )}
 
           <label className="pl-alogin__field">
-            <span>Email</span>
+            <span>{t("login.email")}</span>
             <input type="email" autoComplete="email" autoFocus required value={email}
                    onChange={(e) => setEmail(e.target.value)} placeholder="admin@platform.com"
                    disabled={submitting} />
           </label>
 
           <label className="pl-alogin__field">
-            <span>Password</span>
+            <span>{t("login.password")}</span>
             <input type="password" autoComplete="current-password" required value={password}
                    onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
                    disabled={submitting} />
@@ -81,13 +83,13 @@ export default function AdminLogin({ onBack }) {
 
           <button type="submit" className="pl-alogin__btn" disabled={!canSubmit}>
             {submitting
-              ? (<><LoaderCircle size={16} className="pl-alogin__spin" aria-hidden="true" /> Signing in…</>)
-              : (<>Sign in <ArrowRight size={16} aria-hidden="true" /></>)}
+              ? (<><LoaderCircle size={16} className="pl-alogin__spin" aria-hidden="true" /> {t("login.signingIn")}</>)
+              : (<>{t("login.signIn")} <ArrowRight size={16} aria-hidden="true" /></>)}
           </button>
         </form>
 
         {import.meta.env.DEV && (
-          <p className="pl-alogin__hint"><strong>Dev seed:</strong> admin@platform.com · Test1234!</p>
+          <p className="pl-alogin__hint"><strong>{t("login.devSeed")}</strong> admin@platform.com · Test1234!</p>
         )}
       </div>
     </div>

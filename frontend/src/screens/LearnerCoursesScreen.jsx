@@ -213,7 +213,7 @@ const CSS = `
 
   .lw-learn__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
   .lw-learn__card {
-    display: flex; flex-direction: column; text-align: left; cursor: pointer; padding: 0;
+    display: flex; flex-direction: column; text-align: start; cursor: pointer; padding: 0;
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
     overflow: hidden; font-family: var(--font-body);
   }
@@ -245,7 +245,7 @@ const CSS = `
   }
   .lw-learn__lessonlist { display: flex; flex-direction: column; gap: 6px; }
   .lw-learn__lessonrow {
-    display: flex; align-items: center; gap: 9px; text-align: left; width: 100%;
+    display: flex; align-items: center; gap: 9px; text-align: start; width: 100%;
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 9px 12px; cursor: pointer; font-family: var(--font-body); color: var(--ink);
   }

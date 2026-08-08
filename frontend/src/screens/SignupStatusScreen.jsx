@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { LoaderCircle, AlertCircle, Clock, CheckCircle2, CreditCard, XCircle, RotateCcw } from "lucide-react";
 import * as api from "../api/client";
 import { useFonts } from "../hooks/useFonts";
+import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 
 /* =========================================================================
    SIGNUP STATUS — /apply/status/{token}
@@ -29,6 +31,7 @@ const LOOK = {
 
 export default function SignupStatusScreen({ token, onApplyAgain }) {
   useFonts();
+  const { t } = useLanguage();
 
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
@@ -59,7 +62,7 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
       <Shell>
         <div className="pl-stat__card is-done">
           <AlertCircle size={26} aria-hidden="true" />
-          <h1>This link isn't valid</h1>
+          <h1>{t("signupStatus.invalidTitle")}</h1>
           <p>{error}</p>
         </div>
       </Shell>
@@ -71,7 +74,7 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
       <Shell>
         <div className="pl-stat__card">
           <LoaderCircle size={22} className="pl-stat__spin" aria-hidden="true" />
-          <p className="pl-stat__muted">Checking your application…</p>
+          <p className="pl-stat__muted">{t("signupStatus.checking")}</p>
         </div>
       </Shell>
     );
@@ -87,7 +90,7 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
     <Shell>
       <div className={`pl-stat__card is-${look.tone}`}>
         <div className="pl-stat__mark" aria-hidden="true"><Icon size={22} /></div>
-        <div className="pl-stat__eyebrow">Your application</div>
+        <div className="pl-stat__eyebrow">{t("signupStatus.eyebrow")}</div>
         <h1>{status.headline}</h1>
         <p className="pl-stat__lead">{status.detail}</p>
 
@@ -99,32 +102,30 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
 
         {status.canPay && (
           <div className="pl-stat__pay">
-            {deadline && <p className="pl-stat__deadline">Complete payment by {deadline}.</p>}
+            {deadline && <p className="pl-stat__deadline">{t("signupStatus.completeBy", { date: deadline })}</p>}
             <button className="pl-stat__primary" disabled={paying} onClick={() => pay(true)}>
               {paying
-                ? <><LoaderCircle size={15} className="pl-stat__spin" /> Processing…</>
-                : <><CreditCard size={15} /> Complete payment</>}
+                ? <><LoaderCircle size={15} className="pl-stat__spin" /> {t("signupStatus.processing")}</>
+                : <><CreditCard size={15} /> {t("signupStatus.completePayment")}</>}
             </button>
             {/* No payment processor is integrated yet — BA-006 leaves the
                 processor call itself as the one genuinely external step. This
                 stands in for it so the flow can be exercised end to end. */}
             <button className="pl-stat__ghost" disabled={paying} onClick={() => pay(false)}>
-              Simulate a failed payment
+              {t("signupStatus.simulateFailed")}
             </button>
-            <p className="pl-stat__note">
-              No real payment processor is connected yet — these buttons stand in for it.
-            </p>
+            <p className="pl-stat__note">{t("signupStatus.simulateNote")}</p>
           </div>
         )}
 
         {status.status === "Expired" && (
-          <button className="pl-stat__primary" onClick={onApplyAgain}>Apply again</button>
+          <button className="pl-stat__primary" onClick={onApplyAgain}>{t("signupStatus.applyAgain")}</button>
         )}
 
         <dl className="pl-stat__meta">
-          <div><dt>Name</dt><dd>{status.fullName}</dd></div>
-          <div><dt>Email</dt><dd>{status.email}</dd></div>
-          <div><dt>Applied</dt><dd>{new Date(status.submittedAt).toLocaleDateString()}</dd></div>
+          <div><dt>{t("signupStatus.name")}</dt><dd>{status.fullName}</dd></div>
+          <div><dt>{t("signupStatus.email")}</dt><dd>{status.email}</dd></div>
+          <div><dt>{t("signupStatus.applied")}</dt><dd>{new Date(status.submittedAt).toLocaleDateString()}</dd></div>
         </dl>
       </div>
     </Shell>
@@ -132,17 +133,24 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
 }
 
 function Shell({ children }) {
-  return <div className="pl-stat"><style>{CSS}</style>{children}</div>;
+  return (
+    <div className="pl-stat">
+      <style>{CSS}</style>
+      <div className="pl-stat__langtoggle"><LanguageToggle /></div>
+      {children}
+    </div>
+  );
 }
 
 const CSS = `
   .pl-stat {
     --ink: #F2F5FA; --ink-soft: #98A2B5; --accent: #5B8DEF;
     font-family: 'Karla', system-ui, sans-serif; color: var(--ink);
-    background: #0B0F16; min-height: 100vh;
+    background: #0B0F16; min-height: 100vh; position: relative;
     display: flex; align-items: center; justify-content: center; padding: 40px 22px;
   }
   .pl-stat *, .pl-stat *::before, .pl-stat *::after { box-sizing: border-box; }
+  .pl-stat__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; }
 
   .pl-stat__card {
     width: 100%; max-width: 440px; text-align: center;
@@ -184,7 +192,7 @@ const CSS = `
   .pl-stat__note { font-size: 0.75rem; color: var(--ink-soft); margin: 2px 0 0; opacity: 0.8; }
 
   .pl-stat__alert {
-    display: flex; align-items: flex-start; gap: 8px; text-align: left;
+    display: flex; align-items: flex-start; gap: 8px; text-align: start;
     background: rgba(224,97,90,0.12); border: 1px solid rgba(224,97,90,0.4);
     color: #E0615A; border-radius: 9px; padding: 9px 11px; margin-top: 16px; font-size: 0.84rem;
   }
@@ -193,7 +201,7 @@ const CSS = `
     display: flex; justify-content: center; gap: 22px; flex-wrap: wrap;
     margin: 26px 0 0; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.08);
   }
-  .pl-stat__meta div { text-align: left; }
+  .pl-stat__meta div { text-align: start; }
   .pl-stat__meta dt {
     font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
     letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 3px;
@@ -204,4 +212,6 @@ const CSS = `
   .pl-stat__spin { animation: plStatSpin 0.9s linear infinite; }
   @keyframes plStatSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .pl-stat__spin { animation: none; } }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;

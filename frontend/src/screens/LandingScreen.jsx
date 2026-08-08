@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
 import { useFonts } from "../hooks/useFonts";
+import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 
 /* =========================================================================
    LANDING — https://platform.com/
@@ -23,19 +25,15 @@ import { useFonts } from "../hooks/useFonts";
    people who already have an account, not a second call to action.
    ========================================================================= */
 
-/* The rotating proof line. Concrete tutor outcomes, not platform features —
-   the page is a pitch, not a description. */
-const CLAIMS = [
-  "Publish your first lesson this afternoon.",
-  "Your academy, your branding, your rules.",
-  "Bring your own students. Keep your own students.",
-  "One workspace for teaching, marking and messaging.",
-];
-
 export default function LandingScreen({ onBecomeTutor, onSignIn }) {
   useFonts();
+  const { t } = useLanguage();
   const [claim, setClaim] = useState(0);
   const [entered, setEntered] = useState(false);
+
+  /* The rotating proof line. Concrete tutor outcomes, not platform features —
+     the page is a pitch, not a description. */
+  const CLAIMS = [t("landing.claim0"), t("landing.claim1"), t("landing.claim2"), t("landing.claim3")];
 
   // Entrance transition, run once after mount
   useEffect(() => {
@@ -47,7 +45,7 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
   // the first claim as static text rather than a stuttering carousel.
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = setInterval(() => setClaim((c) => (c + 1) % CLAIMS.length), 3600);
+    const id = setInterval(() => setClaim((c) => (c + 1) % 4), 3600);
     return () => clearInterval(id);
   }, []);
 
@@ -80,16 +78,19 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
           <span>Platform</span>
         </div>
 
-        {/* Navigation, not a call to action — for people who already have an account */}
-        <button className="pl-land__signin" onClick={onSignIn}>Log in</button>
+        <div className="pl-land__navactions">
+          <LanguageToggle />
+          {/* Navigation, not a call to action — for people who already have an account */}
+          <button className="pl-land__signin" onClick={onSignIn}>{t("landing.logIn")}</button>
+        </div>
       </header>
 
       <main className="pl-land__hero">
-        <p className="pl-land__eyebrow">For tutors and independent educators</p>
+        <p className="pl-land__eyebrow">{t("landing.eyebrow")}</p>
 
         <h1 className="pl-land__title">
-          Teach on your own<br />
-          <span className="pl-land__accent">terms.</span>
+          {t("landing.titleLine1")}<br />
+          <span className="pl-land__accent">{t("landing.titleAccent")}</span>
         </h1>
 
         <div className="pl-land__claims" aria-live="off">
@@ -104,13 +105,13 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
 
         {/* ADR-EA-002: exactly one call to action */}
         <button className="pl-land__cta" onClick={onBecomeTutor}>
-          Become a tutor <ArrowRight size={18} aria-hidden="true" />
+          {t("landing.cta")} <ArrowRight size={18} aria-hidden="true" />
         </button>
 
         <ul className="pl-land__points">
-          <li><Check size={14} aria-hidden="true" /> Your own branded academy</li>
-          <li><Check size={14} aria-hidden="true" /> Invite learners directly</li>
-          <li><Check size={14} aria-hidden="true" /> No commission on your teaching</li>
+          <li><Check size={14} aria-hidden="true" /> {t("landing.pointBranded")}</li>
+          <li><Check size={14} aria-hidden="true" /> {t("landing.pointInvite")}</li>
+          <li><Check size={14} aria-hidden="true" /> {t("landing.pointCommission")}</li>
         </ul>
       </main>
 
@@ -119,7 +120,7 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
       </section>
 
       <footer className="pl-land__foot">
-        <span>Already teaching somewhere? Your academy has its own address — use the link your tutor gave you.</span>
+        <span>{t("landing.footer")}</span>
       </footer>
     </div>
   );
@@ -170,9 +171,9 @@ const CSS = `
   /* ── Background ─────────────────────────────────────────────────────── */
   .pl-land__aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
   .pl-land__blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.5; }
-  .pl-land__blob--a { width: 46vw; height: 46vw; background: #2D5BD1; top: -14vw; left: -8vw; animation: plDrift 26s ease-in-out infinite; }
-  .pl-land__blob--b { width: 38vw; height: 38vw; background: #1E7F63; bottom: -12vw; right: -6vw; animation: plDrift 32s ease-in-out infinite reverse; }
-  .pl-land__blob--c { width: 30vw; height: 30vw; background: #6D3FC4; top: 32%; right: 22%; opacity: 0.35; animation: plDrift 38s ease-in-out infinite; }
+  .pl-land__blob--a { width: 46vw; height: 46vw; background: #2D5BD1; top: -14vw; inset-inline-start: -8vw; animation: plDrift 26s ease-in-out infinite; }
+  .pl-land__blob--b { width: 38vw; height: 38vw; background: #1E7F63; bottom: -12vw; inset-inline-end: -6vw; animation: plDrift 32s ease-in-out infinite reverse; }
+  .pl-land__blob--c { width: 30vw; height: 30vw; background: #6D3FC4; top: 32%; inset-inline-end: 22%; opacity: 0.35; animation: plDrift 38s ease-in-out infinite; }
   .pl-land__grid {
     position: absolute; inset: 0;
     background-image: linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
@@ -192,6 +193,9 @@ const CSS = `
     padding: 22px clamp(20px, 5vw, 56px);
   }
   .pl-land__brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -0.01em; }
+  .pl-land__navactions { display: flex; align-items: center; gap: 10px; }
+  .pl-land .lw-langtoggle { background: rgba(255,255,255,0.06); }
+  .pl-land .lw-langtoggle__btn.is-active { background: var(--accent); }
   .pl-land__signin {
     font-family: inherit; font-size: 0.88rem; color: var(--ink);
     background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14);
@@ -276,7 +280,7 @@ const CSS = `
   .pl-prev__bar { display: flex; gap: 6px; padding: 11px 14px; background: #0E1218; border-bottom: 1px solid rgba(255,255,255,0.07); }
   .pl-prev__bar span { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.16); }
   .pl-prev__body { display: flex; min-height: 260px; }
-  .pl-prev__side { width: 180px; flex-shrink: 0; padding: 18px 14px; background: #0E1218; border-right: 1px solid rgba(255,255,255,0.07); }
+  .pl-prev__side { width: 180px; flex-shrink: 0; padding: 18px 14px; background: #0E1218; border-inline-end: 1px solid rgba(255,255,255,0.07); }
   .pl-prev__mark { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #5B8DEF, #2D5BD1); margin-bottom: 14px; }
   .pl-prev__line { height: 7px; border-radius: 4px; background: rgba(255,255,255,0.1); margin-bottom: 8px; }
   .pl-prev__line.is-tall { height: 13px; }
@@ -316,4 +320,6 @@ const CSS = `
     .pl-land__claim { opacity: 0; }
     .pl-land__claim.is-active { opacity: 1; }
   }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;

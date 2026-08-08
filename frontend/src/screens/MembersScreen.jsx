@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    MEMBERS SCREEN — the tutor's own member management.
@@ -26,6 +27,7 @@ const GRANTABLE = ["Administrator", "Teacher", "AssistantTeacher", "Learner", "P
 
 export default function MembersScreen() {
   const { session, workspace } = useAuth();
+  const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
@@ -82,7 +84,7 @@ export default function MembersScreen() {
   if (!data) {
     return (
       <div className="lw-page">
-        <div className="lw-members__loading"><LoaderCircle size={18} className="lw-members__spin" /> Loading members…</div>
+        <div className="lw-members__loading"><LoaderCircle size={18} className="lw-members__spin" /> {t("members.loading")}</div>
       </div>
     );
   }
@@ -94,22 +96,19 @@ export default function MembersScreen() {
     <div className="lw-page">
       <style>{CSS}</style>
 
-      <div className="lw-eyebrow">Workspace Access Context</div>
-      <h1>Members</h1>
-      <p className="lw-sub">
-        Who belongs to {data.workspaceName}, and what they may do here. Roles are
-        scoped to this workspace — they confer nothing anywhere else.
-      </p>
+      <div className="lw-eyebrow">{t("members.eyebrow")}</div>
+      <h1>{t("members.title")}</h1>
+      <p className="lw-sub">{t("members.lead", { workspace: data.workspaceName })}</p>
 
       {error && <div className="lw-members__alert"><AlertCircle size={16} /> {error}</div>}
 
       {data.canManage && (
         <div className="lw-members__bar">
           <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={() => setInviteOpen((v) => !v)}>
-            <UserPlus size={14} /> Invite someone
+            <UserPlus size={14} /> {t("members.inviteSomeone")}
           </button>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={load} disabled={busy}>
-            <RefreshCw size={13} /> Refresh
+            <RefreshCw size={13} /> {t("members.refresh")}
           </button>
         </div>
       )}
@@ -135,16 +134,16 @@ export default function MembersScreen() {
             <div className="lw-members__who">
               <div className="lw-members__name">
                 {m.fullName}
-                {m.isOwner && <span className="lw-members__owner"><Crown size={11} /> Owner</span>}
+                {m.isOwner && <span className="lw-members__owner"><Crown size={11} /> {t("members.owner")}</span>}
               </div>
               <div className="lw-members__email">{m.email}</div>
               <div className="lw-members__roles">
                 {m.roles.map((r) => (
                   <span className="lw-members__role" key={r}>
-                    {humanise(r)}
+                    {humanise(t, r)}
                     {data.canManage && r !== "Owner" && (
                       <button
-                        aria-label={`Remove ${humanise(r)}`}
+                        aria-label={t("members.removeRole", { role: humanise(t, r) })}
                         disabled={busy}
                         onClick={() => run(() => api.removeMemberRole(session.token, slug, m.membershipId, r))}
                       ><X size={10} /></button>
@@ -161,29 +160,29 @@ export default function MembersScreen() {
               </div>
             </div>
 
-            <span className={`lw-members__status is-${m.status.toLowerCase()}`}>{m.status}</span>
+            <span className={`lw-members__status is-${m.status.toLowerCase()}`}>{statusLabel(t, m.status)}</span>
 
             {data.canManage && (
               <div className="lw-members__actions">
                 {m.status === "Pending" && (
                   <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "activate"))}>
-                    <PlayCircle size={12} /> Activate
+                    <PlayCircle size={12} /> {t("members.activate")}
                   </button>
                 )}
                 {/* INV-006: the owner's row offers none of these until ownership moves */}
                 {!m.isOwner && m.status === "Active" && (
                   <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "suspend"))}>
-                    <PauseCircle size={12} /> Suspend
+                    <PauseCircle size={12} /> {t("members.suspend")}
                   </button>
                 )}
                 {!m.isOwner && m.status === "Suspended" && (
                   <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "reinstate"))}>
-                    <PlayCircle size={12} /> Reinstate
+                    <PlayCircle size={12} /> {t("members.reinstate")}
                   </button>
                 )}
                 {!m.isOwner && m.status === "Active" && (
                   <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "remove"))}>
-                    <UserX size={12} /> Remove
+                    <UserX size={12} /> {t("members.remove")}
                   </button>
                 )}
               </div>
@@ -196,7 +195,7 @@ export default function MembersScreen() {
           invitations because these are the ones waiting on a decision. */}
       {pendingRequests.length > 0 && (
         <>
-          <h2 className="lw-sectiontitle">Requests to join</h2>
+          <h2 className="lw-sectiontitle">{t("members.requestsToJoin")}</h2>
           <div className="lw-members__list">
             {pendingRequests.map((r) => (
               <div className="lw-members__row" key={r.id}>
@@ -204,20 +203,20 @@ export default function MembersScreen() {
                 <div className="lw-members__who">
                   <div className="lw-members__name">{r.fullName}</div>
                   <div className="lw-members__email">
-                    {r.email} · asked to join as {humanise(r.requestedRole)}
+                    {t("members.askedToJoinAs", { email: r.email, role: humanise(t, r.requestedRole) })}
                   </div>
                   {r.message && <div className="lw-members__msg">“{r.message}”</div>}
                 </div>
-                <span className="lw-members__status is-pending">{r.status}</span>
+                <span className="lw-members__status is-pending">{statusLabel(t, r.status)}</span>
                 {data.canManage && (
                   <div className="lw-members__actions">
                     <button disabled={busy}
                             onClick={() => run(() => api.decideJoinRequest(session.token, slug, r.id, "approve"))}>
-                      <UserCheck size={12} /> Approve
+                      <UserCheck size={12} /> {t("members.approve")}
                     </button>
                     <button disabled={busy}
                             onClick={() => run(() => api.decideJoinRequest(session.token, slug, r.id, "decline"))}>
-                      <X size={12} /> Decline
+                      <X size={12} /> {t("members.decline")}
                     </button>
                   </div>
                 )}
@@ -229,7 +228,7 @@ export default function MembersScreen() {
 
       {openInvites.length > 0 && (
         <>
-          <h2 className="lw-sectiontitle">Pending invitations</h2>
+          <h2 className="lw-sectiontitle">{t("members.pendingInvitations")}</h2>
           <div className="lw-members__list">
             {openInvites.map((i) => (
               <div className="lw-members__row" key={i.id}>
@@ -237,11 +236,10 @@ export default function MembersScreen() {
                 <div className="lw-members__who">
                   <div className="lw-members__name">{i.email}</div>
                   <div className="lw-members__email">
-                    Invited as {humanise(i.intendedRole)} · expires{" "}
-                    {new Date(i.expiresAt).toLocaleDateString()}
+                    {t("members.invitedAs", { role: humanise(t, i.intendedRole), date: new Date(i.expiresAt).toLocaleDateString() })}
                   </div>
                 </div>
-                <span className="lw-members__status is-pending">{i.status}</span>
+                <span className="lw-members__status is-pending">{statusLabel(t, i.status)}</span>
               </div>
             ))}
           </div>
@@ -249,10 +247,7 @@ export default function MembersScreen() {
       )}
 
       {!data.canManage && (
-        <p className="lw-members__readonly">
-          You're viewing this list. Only an owner or administrator can invite or
-          change members here.
-        </p>
+        <p className="lw-members__readonly">{t("members.readonlyNote")}</p>
       )}
     </div>
   );
@@ -261,6 +256,7 @@ export default function MembersScreen() {
 /* ── Bits ─────────────────────────────────────────────────────────────────── */
 
 function RoleAdder({ existing, onAdd, busy }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const available = GRANTABLE.filter((r) => !existing.includes(r));
   if (available.length === 0) return null;
@@ -274,17 +270,18 @@ function RoleAdder({ existing, onAdd, busy }) {
       onChange={(e) => { if (e.target.value) { onAdd(e.target.value); setOpen(false); } }}
       onBlur={() => setOpen(false)}
     >
-      <option value="" disabled>Add role…</option>
-      {available.map((r) => <option key={r} value={r}>{humanise(r)}</option>)}
+      <option value="" disabled>{t("members.addRole")}</option>
+      {available.map((r) => <option key={r} value={r}>{humanise(t, r)}</option>)}
     </select>
   ) : (
     <button className="lw-members__roleadd" onClick={() => setOpen(true)} disabled={busy}>
-      <Plus size={10} /> Role
+      <Plus size={10} /> {t("members.role")}
     </button>
   );
 }
 
 function InviteForm({ onSubmit, onCancel, busy }) {
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Learner");
 
@@ -294,29 +291,30 @@ function InviteForm({ onSubmit, onCancel, busy }) {
       onSubmit={(e) => { e.preventDefault(); onSubmit({ email: email.trim(), role }); }}
     >
       <label>
-        <span>Email</span>
+        <span>{t("members.email")}</span>
         <input
           type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-          placeholder="their@email.com" required autoFocus disabled={busy}
+          placeholder={t("members.emailPlaceholder")} required autoFocus disabled={busy}
         />
       </label>
       <label>
-        <span>Role</span>
+        <span>{t("members.role")}</span>
         <select value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
-          {GRANTABLE.map((r) => <option key={r} value={r}>{humanise(r)}</option>)}
+          {GRANTABLE.map((r) => <option key={r} value={r}>{humanise(t, r)}</option>)}
         </select>
       </label>
       <div className="lw-members__formactions">
         <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !email.trim()}>
-          {busy ? <LoaderCircle size={14} className="lw-members__spin" /> : "Send invitation"}
+          {busy ? <LoaderCircle size={14} className="lw-members__spin" /> : t("members.sendInvitation")}
         </button>
-        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>{t("members.cancel")}</button>
       </div>
     </form>
   );
 }
 
 function IssuedInvite({ issued, onDismiss }) {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const absolute = `${window.location.origin}${issued.invitationLink}`;
 
@@ -325,13 +323,13 @@ function IssuedInvite({ issued, onDismiss }) {
       <div>
         <strong>
           {issued.delivered
-            ? `Invitation emailed to ${issued.email}`
-            : `Invitation ready for ${issued.email} — not delivered`}
+            ? t("members.emailedTo", { email: issued.email })
+            : t("members.readyNotDelivered", { email: issued.email })}
         </strong>
         <p>
           {issued.delivered
-            ? "The link is here too, in case the email doesn't arrive. It's shown once."
-            : `Sending failed${issued.deliveryDetail ? ` (${issued.deliveryDetail})` : ""}, so send this link yourself. The invitation is valid either way.`}
+            ? t("members.linkHereToo")
+            : t("members.sendFailed", { detail: issued.deliveryDetail ? ` (${issued.deliveryDetail})` : "" })}
         </p>
         <code>{absolute}</code>
       </div>
@@ -346,16 +344,22 @@ function IssuedInvite({ issued, onDismiss }) {
             } catch { setCopied(false); }
           }}
         >
-          {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
+          {copied ? <><Check size={13} /> {t("members.copied")}</> : <><Copy size={13} /> {t("members.copy")}</>}
         </button>
-        <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onDismiss}>Dismiss</button>
+        <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onDismiss}>{t("members.dismiss")}</button>
       </div>
     </div>
   );
 }
 
-function humanise(role) {
-  return role.replace(/([a-z])([A-Z])/g, "$1 $2");
+function humanise(t, role) {
+  return t(`roles.${role}`) !== `roles.${role}` ? t(`roles.${role}`) : role.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function statusLabel(t, status) {
+  const key = `members.status${status}`;
+  const label = t(key);
+  return label !== key ? label : status;
 }
 
 const CSS = `
