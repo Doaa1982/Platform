@@ -1400,11 +1400,11 @@ function SuggestionRow({ s, onAccept, onReject, busy }) {
   const types = useQuestionTypes();
   return (
     <div className="lw-studio__unit">
-      <p className="lw-questioncard__prompt" style={{ fontSize: "0.92rem", margin: "0 0 10px" }}>
+      <div style={{ marginBottom: 8 }}>
         <span className="lw-tag" style={{ marginRight: 8 }}>{typeLabel(types, s.type)}</span>
-        {s.videoTimestampSeconds != null && <span className="lw-timestamp lw-tag" style={{ marginRight: 8 }}>{formatTime(s.videoTimestampSeconds)}</span>}
-        {s.prompt}
-      </p>
+        {s.videoTimestampSeconds != null && <span className="lw-timestamp lw-tag">{formatTime(s.videoTimestampSeconds)}</span>}
+      </div>
+      <p className="lw-questioncard__prompt" style={{ fontSize: "0.92rem", margin: "0 0 10px" }}>{s.prompt}</p>
       <AnswerKeyDisplay type={s.type} options={s.options} correctOptionIndex={s.correctOptionIndex} acceptedAnswers={s.acceptedAnswers} />
       {s.explanation && <p className="lw-rationale"><Sparkles size={12} /> {s.explanation}</p>}
       <div className="lw-rowactions" style={{ marginTop: 12 }}>
@@ -1419,11 +1419,11 @@ function QuestionRow({ q, editable, onEdit, onRemove }) {
   const types = useQuestionTypes();
   return (
     <div className="lw-studio__unit">
-      <p className="lw-questioncard__prompt" style={{ fontSize: "0.92rem", margin: "0 0 10px" }}>
+      <div style={{ marginBottom: 8 }}>
         <span className="lw-tag" style={{ marginRight: 8 }}>{typeLabel(types, q.type)}</span>
-        {q.videoTimestampSeconds != null && <span className="lw-timestamp lw-tag" style={{ marginRight: 8 }}>{formatTime(q.videoTimestampSeconds)}</span>}
-        {q.prompt}
-      </p>
+        {q.videoTimestampSeconds != null && <span className="lw-timestamp lw-tag">{formatTime(q.videoTimestampSeconds)}</span>}
+      </div>
+      <p className="lw-questioncard__prompt" style={{ fontSize: "0.92rem", margin: "0 0 10px" }}>{q.prompt}</p>
       <AnswerKeyDisplay type={q.type} options={q.options} correctOptionIndex={q.correctOptionIndex} acceptedAnswers={q.acceptedAnswers} />
       {q.explanation && <p className="lw-rationale"><Sparkles size={12} /> {q.explanation}</p>}
       {editable && (
@@ -1449,11 +1449,18 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
   const [points, setPoints] = useState(initial?.points ?? 1);
   const [attempted, setAttempted] = useState(false);
 
+  /** Switching type populates whatever that type requires, rather than leaving the previous type's data sitting unused underneath. */
   function selectType(next) {
     setType(next);
-    if (next === "MultipleChoice" && options.filter((o) => o.trim()).length < 2) setOptions(["", ""]);
-    if (next === "TrueFalse" && correctOptionIndex !== 0 && correctOptionIndex !== 1) setCorrectOptionIndex(0);
-    if (next === "CompleteTheSentence" && acceptedAnswers.length === 0) setAcceptedAnswers([""]);
+    if (next === "MultipleChoice") {
+      if (options.filter((o) => o.trim()).length < 2) setOptions(["", ""]);
+      if (correctOptionIndex < 0 || correctOptionIndex >= options.length) setCorrectOptionIndex(0);
+    } else if (next === "TrueFalse") {
+      setOptions(["True", "False"]);
+      if (correctOptionIndex !== 0 && correctOptionIndex !== 1) setCorrectOptionIndex(0);
+    } else if (next === "CompleteTheSentence") {
+      if (acceptedAnswers.filter((a) => a.trim()).length === 0) setAcceptedAnswers([""]);
+    }
   }
 
   const updateOption = (i, value) => setOptions((prev) => prev.map((o, idx) => (idx === i ? value : o)));
@@ -1506,13 +1513,9 @@ function QuestionForm({ initial, busy, onSave, onCancel }) {
 
       <label>
         <span>Type</span>
-        <div className="lw-segctrl" style={{ marginTop: 8, flexWrap: "wrap" }}>
-          {types.map((t) => (
-            <button key={t.value} type="button" className={type === t.value ? "active" : ""} disabled={busy} onClick={() => selectType(t.value)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <select value={type} onChange={(e) => selectType(e.target.value)} disabled={busy}>
+          {types.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
       </label>
 
       <label>

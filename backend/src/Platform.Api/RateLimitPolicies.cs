@@ -6,16 +6,20 @@ namespace Platform.Api;
 /// <summary>
 /// Rate limits for the endpoints a stranger can reach.
 ///
-/// Join Request Business Analysis BA-003 accepts a real cost: submitting a join
-/// request creates an Identity for someone with no prior relationship to the
-/// platform, because requiring an Identity first would be circular — there is
-/// no self-serve signup, so only already-invited people could ask to join.
+/// Submitting a Join Request creates no Identity and requires no credential —
+/// SubmitJoinRequest carries only a name, email and optional message, and
+/// JoinRequestService.SubmitAsync never touches db.Identities. (Join Request
+/// Business Analysis BA-003 originally described a submission-time Identity
+/// creation design; it was not built that way. See BA-003's 2026-08-08
+/// correction note and TD-018.) So there is no self-serve account creation on
+/// this path to guard against here.
 ///
-/// That makes account creation self-serve, and therefore abusable. The realistic
-/// harm is volume rather than escalation: an Identity holding no Membership can
-/// only sign in and see an empty list, so what an attacker actually achieves is
-/// junk rows and a reviewer's queue full of noise. Rate limiting is the
-/// proportionate answer to a volume problem.
+/// What this limit actually bounds is volume, not escalation: an unauthenticated
+/// caller can otherwise mint unlimited JoinRequest rows against any Workspace
+/// accepting them, which is junk data and a reviewer's queue full of noise
+/// (Join Request Business Analysis §5: "Ensuring one person cannot flood one
+/// Workspace with parallel requests"). Rate limiting is the proportionate
+/// answer to that volume problem.
 ///
 /// Email verification is deliberately NOT part of this. It buys little here —
 /// join requests are off by default per Workspace and require approval, so an

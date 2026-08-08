@@ -42,6 +42,17 @@ public class JoinRequestsController(JoinRequestService joinRequests) : Controlle
         string slug, [FromBody] SubmitJoinRequest request, CancellationToken ct)
         => Run(await joinRequests.SubmitAsync(slug, request, ct));
 
+    /// <summary>
+    /// GET /api/join-requests/status/{token} — the Join Request Status Link
+    /// (§16, "Checking back without an Identity" — TD-018). Not workspace-scoped
+    /// in the route: the token itself resolves everything, the same shape as
+    /// InvitationsController's GET /api/invite/{token}.
+    /// </summary>
+    [HttpGet("join-requests/status/{token}")]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
+    public async Task<ActionResult<JoinRequestStatusResponse>> Status(string token, CancellationToken ct)
+        => Run(await joinRequests.GetStatusAsync(token, ct));
+
     /// <summary>GET /api/workspaces/{slug}/join-requests — the reviewer's queue.</summary>
     [HttpGet("workspaces/{slug}/join-requests")]
     [Authorize]

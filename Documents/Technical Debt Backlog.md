@@ -616,6 +616,142 @@ the AI Workspace Profile boundary flag Workspace Aggregate Design already owns.
 
 ---
 
+## TD-016 — `JoinRequestService.SubmitAsync` never checks for an outstanding Invitation
+
+**Raised:** 2026-08-08 (verifying `JoinRequestService` against Join Request Business
+Analysis §10 after the document was found missing from `Documents/` and restored)
+**Area:** Platform.Api — `JoinRequestService.SubmitAsync`, `.ApproveAsync`
+**Severity:** Low today, Moderate as both inbound paths see real traffic
+**Status:** Deferred
+
+Join Request Business Analysis §10's Submission Rules list five checks a submission must
+pass — discoverable Workspace, join requests enabled, at most one open `Submitted`
+request, no existing Active Membership, not a Suspended/Archived Identity — and
+`SubmitAsync` implements four of those five correctly (the fifth, Identity status, is its
+own gap — TD-017). None of the five is an outstanding Invitation.
+Concretely: `SubmitAsync` queries `db.Memberships` (for an Active Membership) and
+`db.JoinRequests` (for an existing `Submitted` one); it never queries `db.Invitations`.
+So a Workspace Owner can invite someone, and before that person acts on it, the same
+person can separately find the Workspace's join page and submit a Join Request for the
+same email — nothing refuses this.
+
+**This is not just an unenforced rule sitting quietly — it breaks the reviewer's normal
+approval path.** `WorkspaceMemberService.InviteAsync` *does* enforce the equivalent check
+on its own side (§8: "at most one open Invitation per (email, Workspace)"; `open.Any(i =>
+i.IsOpen())` refuses with "There's already an open invitation for that email — resend it
+instead of creating another."). `JoinRequestService.ApproveAsync` calls exactly that
+method to turn an approved Join Request into an Invitation. So: reviewer approves the Join
+Request → `InviteAsync` finds the requester's own pre-existing open Invitation → refuses →
+`ApproveAsync` returns that Conflict *before* ever calling `joinRequest.Approve(...)` →
+the Join Request is left stuck in `Submitted` permanently, sitting in the reviewer's queue
+with no way to approve it through the normal flow, and the reviewer sees a confusing
+error about "resending" an invitation they have no reason to know exists for a person they
+only know as a join requester.
+
+Not a BA-001 tension — Join Request and Invitation are correctly kept as separate
+aggregates, and reaching across into another aggregate's table at submission time is
+already the established pattern here (the existing Active-Membership check already
+queries `db.Memberships`). This is a missing sixth check of the same shape as the other
+five, not a design disagreement.
+
+**Trigger:** implementing the fix below, or the first real report of a reviewer unable to
+approve a Join Request that keeps failing with an invitation-resend error.
+**Resolution sketch:** add a sixth check to `SubmitAsync`, same shape as the existing
+Active-Membership one — an open Invitation (`IsOpen()`) to that email in that Workspace
+refuses the Join Request with a message pointing the person at the invitation they
+already have, rather than letting it reach `Submitted` and fail later at approval time.
+Separately decide (not settled by this entry) what should happen to a Submitted Join
+Request left behind when its person becomes an Active Member through the *other* path —
+auto-withdraw on Membership activation is the natural answer but is not designed here.
+
+---
+
+## TD-017 — `JoinRequestService.SubmitAsync` never checks the requester's Identity status
+
+**Raised:** 2026-08-08 (split out from TD-016 during the same verification pass)
+**Area:** Platform.Api — `JoinRequestService.SubmitAsync`
+**Severity:** Low — no downstream failure found, unlike TD-016's Invitation gap
+**Status:** Deferred
+
+Join Request Business Analysis §10's fifth Submission Rule: "A person whose Identity is
+Suspended or Archived cannot submit a request." `SubmitAsync` never looks up an existing
+Identity by the submitted email at all, so this rule has no code behind it — a Suspended
+or Archived Identity's email can submit a Join Request exactly as freely as anyone else's.
+
+Unlike TD-016, this was not traced to a concrete downstream break — `ApproveAsync` runs
+`WorkspaceMemberService.InviteAsync`, and nothing in that path currently re-checks the
+target email's Identity status either, so an approval would proceed rather than fail. The
+gap is real but its consequence is narrower: a Workspace could end up inviting, and
+potentially activating a Membership for, an Identity the platform previously suspended or
+archived — which is the exact outcome §10's rule exists to prevent, just without an
+error message forcing the question the way TD-016's does.
+
+**Trigger:** implementing TD-016's fix (a natural point to add this alongside it, same
+method, same shape of check), or the first Suspended/Archived Identity observed to have
+an Active Membership created through this path.
+**Resolution sketch:** add a seventh check to `SubmitAsync` — look up an existing Identity
+by the submitted email and refuse if its status is Suspended or Archived, same shape as
+the Active-Membership and (once TD-016 lands) open-Invitation checks. Worth deciding
+alongside TD-016 whether `ApproveAsync`/`InviteAsync` should also re-check status at
+approval time, in case an Identity is suspended *after* a request is already `Submitted`.
+
+---
+
+## TD-018 — Join Request Business Analysis contradicts itself on when Identity Resolution runs; the submission-time design it describes was never built
+
+**Raised:** 2026-08-08 (confirming implementation of §6's "Identity Context" business actor)
+**Area:** Documentation — `Documents/Join Request Business Analysis.md` §4/§5 vs §6 vs §7
+and BA-003; `backend/src/Platform.Api/RateLimitPolicies.cs`'s doc comment
+**Severity:** Low — no code is wrong, only what several comments and one document claim
+about it
+**Status:** Done (2026-08-08) — same-document contradiction, resolved the way TD-008
+resolved a cross-document one: ruling recorded, sources corrected in place, nothing rewritten
+out of the record
+
+Three parts of the same document describe three different moments for Identity
+Resolution, and the code confirms only one of them:
+
+| Section | Claims it happens... | Matches code? |
+| --- | --- | --- |
+| §4 ("Onboarding Request" row), §5 | After the resulting Invitation is accepted | Yes |
+| §6 ("Identity Context" business actor) | "on approval" | No — `ApproveAsync` never touches `db.Identities`, only issues an Invitation |
+| §7 (workflow diagram), BA-003 | At **submission** — the request carries a password; an Identity is created or matched immediately | No — `SubmitJoinRequest` has no `Password` field (`FullName`, `Email`, `Message` only); `SubmitAsync` never touches `db.Identities` |
+
+The submission-time design §7 and BA-003 describe — collect a password up front,
+create-or-match the Identity right there, reusing "exactly what invitation acceptance
+already does" — reads as a deliberate, specific decision, not a stray typo. It appears to
+have been designed and then quietly abandoned during implementation in favour of the
+simpler §4/§5 model: a Join Request stays anonymous request data (no password, no
+Identity, nothing in `db.Identities`) until a reviewer approves it into an ordinary
+Invitation, and Identity Resolution happens only if and when *that* Invitation is later
+accepted — `ProvisioningService.AcceptAsync`, labelled inline `// ── Identity Resolution
+(Workspace_Access_Context §4.6) ──`, the exact same code path a directly-issued Invitation
+uses. Nothing was ever written back to correct §6, §7, or BA-003 to match.
+
+**This is not cosmetic — it changes a stated risk.** BA-003's accepted cost ("this makes
+Identity creation self-serve and therefore abusable") and §16's open question ("Abuse
+control on Identity creation... should be settled before the feature is exposed publicly")
+both assume `SubmitAsync` can mint an Identity. It cannot — anonymous submission never
+reaches `db.Identities` at all, so there is no self-serve Identity creation on this path
+for email verification or anything else to guard. The same wrong premise is repeated
+verbatim in `RateLimitPolicies.cs`'s own doc comment ("each one can mint an Identity"),
+which currently justifies the endpoint's rate limit on a mechanism the code below it does
+not have.
+
+**Ruling:** §4/§5's model is normative — it is what `AcceptAsync` actually implements.
+§6, §7, BA-003, and `RateLimitPolicies.cs`'s comment are corrected in place (this same
+change) to describe Identity Resolution as deferred entirely to Invitation acceptance,
+with a note on each rather than a silent rewrite. Rate limiting on `SubmitAsync` remains
+justified on its own, narrower ground that was already true independent of this
+correction — bounding junk `JoinRequest` rows and reviewer-queue noise (§5: "Ensuring one
+person cannot flood one Workspace with parallel requests") — not guarding Identity
+creation, which this endpoint was never able to do.
+
+**Trigger:** already actioned. Any future document or comment repeating "Join Request
+submission can create an Identity" should be corrected the same way.
+
+---
+
 ## Log
 
 | Date | Change |
@@ -642,3 +778,7 @@ the AI Workspace Profile boundary flag Workspace Aggregate Design already owns.
 | 2026-08-05 | Workspace discovery ruled out permanently, not deferred — root page is single-CTA (Become a Tutor only). ExperienceArchitecture.md ADR-EA-002 revised; Join Request Business Analysis v1.1 adds BA-007, resolving its "where requesters find Workspaces" open question the same way. |
 | 2026-08-05 | TD-014 raised — first login (credential capture, session issuance, Workspace selection, first-run Welcome) was built with no Business Analysis behind it, and diverges from Workspace_Access_Context §4.7's unbuilt Workspace Session. Documented by the new First Login Business Analysis, whose BA-004 supersedes §4.7 for Version 1; §4.7 itself not yet corrected. |
 | 2026-08-05 | TD-015 raised and closed — TutorWorkspaceFirstTimeExperienceArchitecture.md's onboarding lifecycle and Workspace Setup's publish lifecycle are independent parallel tracks, not sequenced. Cross-references added to all three documents. |
+| 2026-08-08 | Join Request Business Analysis, Invitation Business Analysis, Enrollment Aggregate Design and Platform Administrator Business Analysis restored to `Documents/` from git history — accidentally swept into an unrelated commit's bulk deletion; content was never actually lost. |
+| 2026-08-08 | TD-016 raised while re-verifying `JoinRequestService` against the restored Join Request Business Analysis §10 — `SubmitAsync` never checks for an outstanding Invitation, and approving such a Join Request fails against `InviteAsync`'s own dedupe check, leaving it stuck in `Submitted` with no way to approve it. |
+| 2026-08-08 | TD-017 split out from TD-016 — `SubmitAsync` also never checks whether the requester's email belongs to a Suspended or Archived Identity, §10's fifth Submission Rule. Narrower than TD-016: no concrete downstream failure traced, just the rule going unenforced. |
+| 2026-08-08 | TD-018 raised and closed — Join Request Business Analysis §6/§7/BA-003 described Identity Resolution happening at submission (with a password field that doesn't exist) or on approval; only §4/§5's "after Invitation acceptance" matches code. Ruled §4/§5 normative; §6, §7, BA-003, and `RateLimitPolicies.cs`'s comment corrected in place. Also corrects BA-003's and §16's stated risk — `SubmitAsync` never creates an Identity, so there is no self-serve Identity creation on this path to guard against. |

@@ -198,6 +198,9 @@ public class PlatformDbContext : DbContext
                   .HasConversion<string>()
                   .HasMaxLength(32);
 
+            entity.Property(e => e.TokenHash).HasMaxLength(64);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+
             entity.Property(e => e.Status)
                   .HasConversion<string>()
                   .HasMaxLength(32);

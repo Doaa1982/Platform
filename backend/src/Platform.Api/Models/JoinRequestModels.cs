@@ -22,8 +22,22 @@ public record JoinPreview(
 /// </summary>
 public record SubmitJoinRequest(string FullName, string Email, string? Message);
 
-/// <summary>What the requester sees immediately after submitting.</summary>
-public record JoinRequestReceipt(Guid Id, string Status);
+/// <summary>
+/// What the requester sees immediately after submitting. StatusLink is the
+/// only way they can check back later (§16, "Checking back without an
+/// Identity" — TD-018) — also emailed, but returned here too so it is not
+/// lost if that delivery fails or the requester navigates away first.
+/// </summary>
+public record JoinRequestReceipt(Guid Id, string Status, string StatusLink);
+
+/// <summary>What the Join Request Status Link resolves to — the requester's own view of their request.</summary>
+public record JoinRequestStatusResponse(
+    string FullName,
+    string Email,
+    string Status,
+    string Headline,
+    string Detail,
+    DateTime SubmittedAt);
 
 /// <summary>One row of the reviewer's queue.</summary>
 public record JoinRequestRow(

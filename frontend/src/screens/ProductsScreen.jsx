@@ -151,11 +151,19 @@ export default function ProductsScreen({ onOpenStudio }) {
               busy={busy}
               product={editing === "new" ? null : liveEditing}
               onCancel={() => setEditing(null)}
-              onSubmit={async (body) => {
+              onSubmit={async (body, newSequential) => {
                 const saved = await run(() => editing === "new"
                   ? api.createProduct(session.token, slug, body)
                   : api.updateProduct(session.token, slug, editing.id, body));
-                if (saved) setEditing(null);
+                if (saved) {
+                  // No curriculum exists yet to toggle live against until the
+                  // product itself exists — apply the intended starting value
+                  // as a follow-up now that it does.
+                  if (editing === "new" && newSequential) {
+                    await run(() => api.setSequentialUnlock(session.token, slug, saved.id, true));
+                  }
+                  setEditing(null);
+                }
               }}
               onToggleSequential={() => run(() => api.setSequentialUnlock(
                 session.token, slug, editing.id, !liveEditing.requiresSequentialCompletion))}
@@ -269,6 +277,13 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
   const [defaultLanguage, setDefaultLanguage] = useState(product?.defaultLanguage ?? "");
   const [attempted, setAttempted] = useState(false);
 
+  /* No product exists yet while creating, so there is nothing to toggle live
+     against (setSequentialUnlock needs a real product id) — this is just
+     the intended starting value, applied as a follow-up call once
+     "Create product" actually creates the row. */
+  const [newSequential, setNewSequential] = useState(false);
+  const sequentialOn = product ? product.requiresSequentialCompletion : newSequential;
+
   return (
     <form
       className="lw-prod__form" noValidate
@@ -282,7 +297,7 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
           tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
           pacing: DEFAULT_PACING, enrollmentMode,
           defaultLanguage: defaultLanguage.trim() || null,
-        });
+        }, newSequential);
       }}
     >
       {attempted && !title.trim() && (
@@ -305,17 +320,16 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
           {ENROLLMENT.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
       </label>
-      {product && (
-        <label>
-          <span>Lesson order <InfoTip text="When on, a learner must complete each lesson before the next one unlocks." /></span>
-          <button type="button" role="switch" aria-checked={product.requiresSequentialCompletion}
-                  aria-label="Require lessons to unlock in order"
-                  className={`lw-toggle ${product.requiresSequentialCompletion ? "is-on" : ""}`}
-                  disabled={busy} onClick={onToggleSequential}>
-            <span />
-          </button>
-        </label>
-      )}
+      <label>
+        <span>Lesson order <InfoTip text="When on, a learner must complete each lesson before the next one unlocks." /></span>
+        <button type="button" role="switch" aria-checked={sequentialOn}
+                aria-label="Require lessons to unlock in order"
+                className={`lw-toggle ${sequentialOn ? "is-on" : ""}`}
+                disabled={busy}
+                onClick={product ? onToggleSequential : () => setNewSequential((v) => !v)}>
+          <span />
+        </button>
+      </label>
       <label>
         <span>Category</span>
         <input value={category} onChange={(e) => setCategory(e.target.value)}
