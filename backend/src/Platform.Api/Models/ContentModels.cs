@@ -11,6 +11,8 @@ public record CurriculumResponse(
     bool CanAuthor,
     /// <summary>Why publication is refused right now, or null when it is allowed.</summary>
     string? PublicationBlocker,
+    /// <summary>Whether a Learner must complete each lesson before the next one unlocks.</summary>
+    bool RequiresSequentialCompletion,
     IReadOnlyList<CurriculumUnitRow> Units,
     /// <summary>Lessons in this product not yet placed in any unit.</summary>
     IReadOnlyList<LessonRow> UnplacedLessons);
@@ -55,6 +57,11 @@ public record LessonRevisionRow(
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);
 public record CreateLessonRequest(string Title, Guid? UnitId);
+/// <summary>Every unit id currently in the curriculum, once each, in the desired order.</summary>
+public record ReorderUnitsRequest(IReadOnlyList<Guid> UnitIds);
+/// <summary>Every lesson id currently in the unit, once each, in the desired order.</summary>
+public record ReorderLessonsRequest(IReadOnlyList<Guid> LessonIds);
+public record SetSequentialUnlockRequest(bool Enabled);
 public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode);
 public record AttachVideoRequest(Guid LearningAssetId);
 public record SetVideoUrlRequest(string Url);

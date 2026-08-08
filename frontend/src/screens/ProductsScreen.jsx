@@ -74,6 +74,14 @@ export default function ProductsScreen({ onOpenStudio }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null);   // product being edited, or "new"
 
+  /* `editing` only identifies *which* product is open; its display values
+     come from `data` so a toggle like sequential-unlock (applied immediately,
+     outside the save form) shows its new state right away after `load()`
+     refreshes `data`, instead of the stale snapshot captured when the panel
+     was opened. */
+  const liveEditing = editing === "new" ? "new"
+    : editing && (data?.products.find((p) => p.id === editing.id) ?? editing);
+
   const load = useCallback(
     () => api.getProducts(session.token, slug)
       .then((d) => { setData(d); setError(null); })
@@ -137,11 +145,11 @@ export default function ProductsScreen({ onOpenStudio }) {
           <div className="lw-prod__panel" onClick={(e) => e.stopPropagation()}>
             <button className="lw-prod__panelclose" onClick={() => setEditing(null)} aria-label="Close"><X size={16} /></button>
             <div className="lw-eyebrow">{editing === "new" ? "New product" : "Edit product"}</div>
-            <h2 className="lw-prod__panelh2">{editing === "new" ? "Create a learning product" : editing.title}</h2>
+            <h2 className="lw-prod__panelh2">{editing === "new" ? "Create a learning product" : liveEditing.title}</h2>
             {error && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
             <ProductForm
               busy={busy}
-              product={editing === "new" ? null : editing}
+              product={editing === "new" ? null : liveEditing}
               onCancel={() => setEditing(null)}
               onSubmit={async (body) => {
                 const saved = await run(() => editing === "new"
@@ -149,6 +157,8 @@ export default function ProductsScreen({ onOpenStudio }) {
                   : api.updateProduct(session.token, slug, editing.id, body));
                 if (saved) setEditing(null);
               }}
+              onToggleSequential={() => run(() => api.setSequentialUnlock(
+                session.token, slug, editing.id, !liveEditing.requiresSequentialCompletion))}
             />
           </div>
         </div>
@@ -250,7 +260,7 @@ export default function ProductsScreen({ onOpenStudio }) {
   );
 }
 
-function ProductForm({ product, onSubmit, onCancel, busy }) {
+function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) {
   const [title, setTitle] = useState(product?.title ?? "");
   const [description, setDescription] = useState(product?.description ?? "");
   const [category, setCategory] = useState(product?.category ?? "");
@@ -295,6 +305,17 @@ function ProductForm({ product, onSubmit, onCancel, busy }) {
           {ENROLLMENT.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
       </label>
+      {product && (
+        <label>
+          <span>Lesson order <InfoTip text="When on, a learner must complete each lesson before the next one unlocks." /></span>
+          <button type="button" role="switch" aria-checked={product.requiresSequentialCompletion}
+                  aria-label="Require lessons to unlock in order"
+                  className={`lw-toggle ${product.requiresSequentialCompletion ? "is-on" : ""}`}
+                  disabled={busy} onClick={onToggleSequential}>
+            <span />
+          </button>
+        </label>
+      )}
       <label>
         <span>Category</span>
         <input value={category} onChange={(e) => setCategory(e.target.value)}
@@ -399,6 +420,18 @@ const CSS = `
   .lw-prod__panelclose { position: absolute; top: 18px; right: 18px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
   .lw-prod__panelclose:hover { color: var(--ink); }
   .lw-prod__panelh2 { margin: 2px 0 18px; text-align: center; }
+
+  .lw-toggle {
+    width: 40px; height: 22px; border-radius: 20px; background: var(--line); border: none;
+    cursor: pointer; position: relative; flex-shrink: 0; transition: background .15s;
+  }
+  .lw-toggle span {
+    position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+  .lw-toggle.is-on { background: var(--accent-2); }
+  .lw-toggle.is-on span { transform: translateX(18px); }
+  .lw-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .lw-prod__pill {
     font-family: var(--font-mono); font-size: 10px; border-radius: 20px; padding: 3px 9px;

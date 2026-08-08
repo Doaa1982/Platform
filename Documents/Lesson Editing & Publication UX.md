@@ -209,16 +209,31 @@ Create New Version
 
 ✓ Copy current lesson
 ✓ Upload the new video
-✓ Existing students remain on the current version
-✓ New students receive the new version
+✓ Students already partway through the lesson keep watching the current
+  video until they finish it
+✓ Students who haven't started the lesson yet, and new students, get
+  the new version
 ```
 
 ### Business Rules
 
 - A new lesson version is created immediately.
-- Existing students remain assigned to the current published version.
-- The new version becomes the active version after publication.
+- The new version becomes the active version for anyone who has **not started**
+  the lesson — new enrollments and existing students alike — as soon as it is
+  published.
+- A student who is already **Started or In Progress** on the lesson stays on
+  the version they started with until they reach Completed. This is a fixed
+  platform rule, not a tutor-configurable choice.
+- A student who has already **Completed** the lesson is never affected by a
+  later video replacement.
 - Student history remains unchanged.
+
+> **Resolved 2026-08-08** — see Learning Publication & Version Management §20
+> (Rules 16–18). Earlier wording here implied existing students remain on the
+> old version indefinitely regardless of their progress; the actual rule only
+> protects students who are mid-lesson, and depends on Learning Progress
+> recording which revision a student's progress belongs to (currently a gap —
+> see Learning Progress Tracking Business Analysis, PR-009).
 
 ---
 

@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle, AlertCircle, CheckCircle2, ArrowRight, Building2, Clock } from "lucide-react";
 import * as api from "../api/client";
-import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
-import InfoTip from "../components/InfoTip";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 
 /* =========================================================================
@@ -15,21 +13,21 @@ import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
    would put the platform in competition with its own paying customers for
    their students' attention.
 
-   Anonymous by necessity: a stranger has no account yet, and requiring one
-   first would be circular (BA-003). Submitting therefore creates their
-   Identity — which is why the endpoint behind this form is the one carrying a
-   rate limit.
+   Anonymous, and account-free (§11): submitting files a name, email and
+   message for the Workspace to decide on — nothing is created here. If they
+   approve, a real Invitation goes to that email, and accepting *that* is
+   where an account first comes into existence — same as anyone invited
+   outright. That is also why the endpoint behind this form carries a rate
+   limit: it is reachable by anyone, with no account standing behind it.
    ========================================================================= */
 
-export default function JoinScreen({ slug, onJoined, onSignIn }) {
+export default function JoinScreen({ slug, onSignIn }) {
   useFonts();
-  const { adoptSession } = useAuth();
 
   const [preview, setPreview] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -48,31 +46,21 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
     event.preventDefault();
     if (submitting) return;
 
-    if (!fullName.trim() || !email.trim() || !password) {
+    if (!fullName.trim() || !email.trim()) {
       setAttempted(true);
-      setError("Fill in your name, email and password before sending — all three are required.");
+      setError("Fill in your name and email before sending — both are required.");
       return;
     }
 
     setSubmitting(true);
     setError(null);
     try {
-      const session = await api.submitJoin(slug, {
+      await api.submitJoin(slug, {
         fullName: fullName.trim(),
         email: email.trim(),
-        password,
         message: message.trim() || null,
       });
-      // Through the provider, not straight to storage — see AuthProvider's
-      // adoptSession: a session written behind its back is invisible to it,
-      // and any previously signed-in person would silently remain current.
-      adoptSession({
-        token: session.token,
-        expiresAt: session.expiresAt,
-        fullName: session.fullName,
-      });
       setDone(true);
-      setTimeout(() => onJoined(), 1600);
     } catch (e) {
       setError(e.message);
       setSubmitting(false);
@@ -112,7 +100,12 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
         <div className="pl-join__card pl-join__card--good">
           <CheckCircle2 size={26} aria-hidden="true" />
           <h1>Request sent</h1>
-          <p>{preview.workspaceName} will decide whether to let you in. You'll see the outcome on your account.</p>
+          <p>
+            {preview.workspaceName} will review it. If they'd like you to join,
+            they'll send an invitation to {email.trim()} — that's where you'll
+            set up your account.
+          </p>
+          <button className="pl-join__ghost" onClick={onSignIn}>Sign in</button>
         </div>
       </Shell>
     );
@@ -167,14 +160,6 @@ export default function JoinScreen({ slug, onJoined, onSignIn }) {
                    value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }}
                    placeholder="you@example.com" disabled={submitting}
                    style={attempted && !email.trim() ? invalidFieldStyle : undefined} />
-          </label>
-
-          <label className="pl-join__field">
-            <span>Password<RequiredMark /> <InfoTip text="If you already have an account with this email, enter its existing password." /></span>
-            <input type="password" autoComplete="new-password" required
-                   value={password} onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                   placeholder="••••••••" disabled={submitting}
-                   style={attempted && !password ? invalidFieldStyle : undefined} />
           </label>
 
           <label className="pl-join__field">

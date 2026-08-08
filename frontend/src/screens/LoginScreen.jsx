@@ -153,7 +153,7 @@ export default function LoginScreen({ side, onBack }) {
 
           {import.meta.env.DEV && (
             <p className="pl-login__hint">
-              <strong>Dev seed:</strong> tutor@platform.com · Test1234!
+              <strong>Dev seed:</strong> {copy.devSeed} · Test1234!
             </p>
           )}
         </div>

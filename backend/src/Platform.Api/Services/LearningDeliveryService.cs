@@ -63,10 +63,11 @@ public class LearningDeliveryService(PlatformDbContext db)
         var enrollmentIds = enrollments.Select(e => e.Id).ToList();
         var productIds = enrollments.Select(e => e.LearningProductId).Distinct().ToList();
 
-        var completedLessonIds = await db.LessonProgresses.AsNoTracking()
+        var completedProgress = await db.LessonProgresses.AsNoTracking()
             .Where(p => enrollmentIds.Contains(p.EnrollmentId) && p.Status == LessonProgressStatus.Completed)
-            .Select(p => p.LessonId)
+            .Select(p => new { p.LessonId, p.LessonRevisionId })
             .ToListAsync(ct);
+        var completedLessonIds = completedProgress.Select(p => p.LessonId).ToList();
 
         var curricula = await db.Curricula.Include(c => c.Units).ThenInclude(u => u.Lessons).AsNoTracking()
             .Where(c => productIds.Contains(c.LearningProductId) && c.Status == CurriculumStatus.Published)
@@ -88,12 +89,15 @@ public class LearningDeliveryService(PlatformDbContext db)
             });
 
         // Time invested only counts what's actually finished — a lesson
-        // half-watched hasn't been "spent" yet, it's still in progress.
-        var timeInvestedMinutes = completedLessonIds.Count == 0 ? 0 :
-            (await db.Lessons.Include(l => l.Revisions).AsNoTracking()
-                .Where(l => completedLessonIds.Contains(l.Id))
-                .ToListAsync(ct))
-            .Sum(l => l.CurrentRevision?.EstimatedMinutes ?? 0);
+        // half-watched hasn't been "spent" yet, it's still in progress. Uses
+        // each completion's pinned revision (§20), not the lesson's current
+        // one, so a later video replacement can't retroactively change a
+        // number the learner already earned.
+        var completedRevisionIds = completedProgress.Select(p => p.LessonRevisionId).Distinct().ToList();
+        var timeInvestedMinutes = completedRevisionIds.Count == 0 ? 0 :
+            await db.Set<LessonRevision>().AsNoTracking()
+                .Where(r => completedRevisionIds.Contains(r.Id))
+                .SumAsync(r => r.EstimatedMinutes ?? 0, ct);
 
         // Distinct Assessments, not attempts — retaking one you've already
         // passed shouldn't inflate the count.
@@ -151,7 +155,7 @@ public class LearningDeliveryService(PlatformDbContext db)
 
         if (curriculum is null)
             return ProvisioningResult<LearnerCurriculumResponse>.Success(
-                new LearnerCurriculumResponse(product.Id, product.Title, null, null, []));
+                new LearnerCurriculumResponse(product.Id, product.Title, null, null, false, []));
 
         var lessonIds = curriculum.Units.SelectMany(u => u.Lessons).Select(l => l.LessonId).Distinct().ToList();
         var lessons = lessonIds.Count == 0
@@ -163,6 +167,22 @@ public class LearningDeliveryService(PlatformDbContext db)
         var progress = await db.LessonProgresses.AsNoTracking()
             .Where(p => p.EnrollmentId == enrollment.Id).ToDictionaryAsync(p => p.LessonId, ct);
 
+        // Curriculum order — every placed lesson, regardless of its own
+        // publish state, so a lesson the tutor temporarily unpublished still
+        // occupies its place in the sequence rather than silently skipping.
+        var orderedLessonIds = curriculum.Units.OrderBy(u => u.Position)
+            .SelectMany(u => u.Lessons.OrderBy(l => l.Position))
+            .Select(l => l.LessonId).ToList();
+
+        bool IsLocked(Guid lessonId)
+        {
+            if (!curriculum.RequiresSequentialCompletion) return false;
+            var index = orderedLessonIds.IndexOf(lessonId);
+            if (index <= 0) return false;
+            var previousLessonId = orderedLessonIds[index - 1];
+            return !progress.TryGetValue(previousLessonId, out var pr) || pr.Status != LessonProgressStatus.Completed;
+        }
+
         var units = curriculum.Units.OrderBy(u => u.Position)
             .Select(u => new LearnerUnitRow(
                 u.Title, u.Position,
@@ -171,13 +191,16 @@ public class LearningDeliveryService(PlatformDbContext db)
                     .Select(l => lessons[l.LessonId])
                     .Select(lesson => new LearnerLessonRow(
                         lesson.Id, lesson.Title, lesson.CurrentRevision?.EstimatedMinutes,
-                        progress.TryGetValue(lesson.Id, out var pr) ? pr.Status.ToString() : "NotStarted"))
+                        progress.TryGetValue(lesson.Id, out var pr) ? pr.Status.ToString() : "NotStarted",
+                        IsLocked(lesson.Id)))
                     .ToList()))
             .Where(u => u.Lessons.Count > 0)
             .ToList();
 
         return ProvisioningResult<LearnerCurriculumResponse>.Success(
-            new LearnerCurriculumResponse(product.Id, product.Title, curriculum.Id, curriculum.Title, units));
+            new LearnerCurriculumResponse(
+                product.Id, product.Title, curriculum.Id, curriculum.Title,
+                curriculum.RequiresSequentialCompletion, units));
     }
 
     // ── Lesson delivery ──────────────────────────────────────────────────────
@@ -193,10 +216,18 @@ public class LearningDeliveryService(PlatformDbContext db)
                                     && l.Status == LessonStatus.Published, ct);
         if (lesson is null) return Fail<LearnerLessonResponse>((ProvisioningError.NotFound, "No such lesson."));
 
-        var revision = lesson.CurrentRevision!;
-
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
-        var progress = await EnsureProgressAsync(enrollment.Id, lessonId, ct);
+
+        if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
+            return Fail<LearnerLessonResponse>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
+
+        var progress = await EnsureProgressAsync(enrollment.Id, lessonId, lesson.CurrentRevisionId!.Value, ct);
+
+        // Served from the revision this progress is pinned to (Learning
+        // Publication & Version Management §20), not necessarily the lesson's
+        // current one — a learner Started/In Progress on an earlier revision
+        // keeps seeing it through a later Major change.
+        var revision = lesson.Revisions.First(r => r.Id == progress.LessonRevisionId);
 
         LearningAssetResponse? video = null;
         if (revision.VideoAssetId is { } videoId)
@@ -206,7 +237,7 @@ public class LearningDeliveryService(PlatformDbContext db)
         }
 
         var assessment = await db.Assessments.Include(a => a.Questions).AsNoTracking()
-            .FirstOrDefaultAsync(a => a.LessonRevisionId == lesson.CurrentRevisionId && a.Status == AssessmentStatus.Published, ct);
+            .FirstOrDefaultAsync(a => a.LessonRevisionId == progress.LessonRevisionId && a.Status == AssessmentStatus.Published, ct);
 
         var questions = assessment is null ? [] : assessment.Questions.OrderBy(q => q.Position)
             .Select(q => new LearnerQuestionRow(q.Id, q.Type.ToString(), q.Prompt, q.Options, q.VideoTimestampSeconds, q.Points))
@@ -241,10 +272,14 @@ public class LearningDeliveryService(PlatformDbContext db)
         if (lesson is null) return Fail<LearnerLessonResponse>((ProvisioningError.NotFound, "No such lesson."));
 
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
-        var progress = await EnsureProgressAsync(enrollment.Id, lessonId, ct);
+
+        if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
+            return Fail<LearnerLessonResponse>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
+
+        var progress = await EnsureProgressAsync(enrollment.Id, lessonId, lesson.CurrentRevisionId!.Value, ct);
 
         var assessment = await db.Assessments.Include(a => a.Questions).AsNoTracking()
-            .FirstOrDefaultAsync(a => a.LessonRevisionId == lesson.CurrentRevisionId && a.Status == AssessmentStatus.Published, ct);
+            .FirstOrDefaultAsync(a => a.LessonRevisionId == progress.LessonRevisionId && a.Status == AssessmentStatus.Published, ct);
         var hasGradableAssessment = assessment is not null && assessment.Questions.Count > 0;
         var hasPassing = hasGradableAssessment && await HasPassingSubmissionAsync(assessment!.Id, ctx.MembershipId, ct);
 
@@ -272,13 +307,20 @@ public class LearningDeliveryService(PlatformDbContext db)
                                     && l.Status == LessonStatus.Published, ct);
         if (lesson is null) return Fail<PreviewResult>((ProvisioningError.NotFound, "No such lesson."));
 
+        var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
+
+        if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
+            return Fail<PreviewResult>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
+
+        var progress = await EnsureProgressAsync(enrollment.Id, lessonId, lesson.CurrentRevisionId!.Value, ct);
+
+        // Graded against the Assessment on the revision this progress is
+        // pinned to (§20) — a learner mid-lesson on an older revision answers
+        // that revision's questions, not whatever the tutor published since.
         var assessment = await db.Assessments.Include(a => a.Questions)
-            .FirstOrDefaultAsync(a => a.LessonRevisionId == lesson.CurrentRevisionId && a.Status == AssessmentStatus.Published, ct);
+            .FirstOrDefaultAsync(a => a.LessonRevisionId == progress.LessonRevisionId && a.Status == AssessmentStatus.Published, ct);
         if (assessment is null || assessment.Questions.Count == 0)
             return Fail<PreviewResult>((ProvisioningError.Conflict, "This lesson has no questions to answer."));
-
-        var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
-        var progress = await EnsureProgressAsync(enrollment.Id, lessonId, ct);
 
         var submission = Submission.Start(assessment.Id, ctx.MembershipId, enrollment.Id);
         db.Submissions.Add(submission);
@@ -286,7 +328,8 @@ public class LearningDeliveryService(PlatformDbContext db)
         var byQuestion = request.Answers.ToDictionary(a => a.QuestionId, a => new SubmittedAnswer(a.SelectedOptionIndex, a.TextAnswer));
         var perQuestion = submission.Grade(assessment, byQuestion);
 
-        var hasVideo = lesson.CurrentRevision!.VideoAssetId is not null || lesson.CurrentRevision!.VideoUrl is not null;
+        var pinnedRevision = lesson.Revisions.First(r => r.Id == progress.LessonRevisionId);
+        var hasVideo = pinnedRevision.VideoAssetId is not null || pinnedRevision.VideoUrl is not null;
         progress.RecomputeCompletion(hasVideo, hasGradableAssessment: true, hasPassingSubmission: submission.Passed);
 
         await db.SaveChangesAsync(ct);
@@ -311,6 +354,35 @@ public class LearningDeliveryService(PlatformDbContext db)
     private async Task<bool> HasPassingSubmissionAsync(Guid assessmentId, Guid membershipId, CancellationToken ct)
         => await db.Submissions.AsNoTracking()
             .AnyAsync(s => s.AssessmentId == assessmentId && s.MembershipId == membershipId && s.Passed, ct);
+
+    /// <summary>
+    /// Whether this lesson is locked under the curriculum's sequential-unlock
+    /// setting — true only when that setting is on, this is not the first
+    /// lesson in curriculum order, and the lesson immediately before it isn't
+    /// Completed for this enrollment yet. A lesson the published curriculum
+    /// doesn't place anywhere is never locked — there is no "previous lesson"
+    /// to have finished. This is the actual enforcement; GetCurriculumAsync's
+    /// per-lesson Locked flag is only a preview of it for the UI.
+    /// </summary>
+    private async Task<bool> IsLessonLockedAsync(Guid learningProductId, Guid lessonId, Guid enrollmentId, CancellationToken ct)
+    {
+        var curriculum = await db.Curricula.Include(c => c.Units).ThenInclude(u => u.Lessons).AsNoTracking()
+            .FirstOrDefaultAsync(c => c.LearningProductId == learningProductId && c.Status == CurriculumStatus.Published, ct);
+        if (curriculum is null || !curriculum.RequiresSequentialCompletion) return false;
+
+        var orderedLessonIds = curriculum.Units.OrderBy(u => u.Position)
+            .SelectMany(u => u.Lessons.OrderBy(l => l.Position))
+            .Select(l => l.LessonId).ToList();
+
+        var index = orderedLessonIds.IndexOf(lessonId);
+        if (index <= 0) return false;
+
+        var previousLessonId = orderedLessonIds[index - 1];
+        var previousProgress = await db.LessonProgresses.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.EnrollmentId == enrollmentId && p.LessonId == previousLessonId, ct);
+
+        return previousProgress?.Status != LessonProgressStatus.Completed;
+    }
 
     // ── Plumbing ─────────────────────────────────────────────────────────────
 
@@ -344,14 +416,21 @@ public class LearningDeliveryService(PlatformDbContext db)
         return enrollment;
     }
 
-    /// <summary>Same race, same fix, as <see cref="EnsureEnrolledAsync"/> — the unique index is (EnrollmentId, LessonId).</summary>
-    private async Task<LessonProgress> EnsureProgressAsync(Guid enrollmentId, Guid lessonId, CancellationToken ct)
+    /// <summary>
+    /// Same race, same fix, as <see cref="EnsureEnrolledAsync"/> — the unique
+    /// index is (EnrollmentId, LessonId). <paramref name="currentRevisionId"/>
+    /// is only used the first time: a brand-new row pins to whatever is
+    /// current right now (Rule 17); an existing row already carries its own
+    /// pin and this parameter is ignored (Rule 16/18).
+    /// </summary>
+    private async Task<LessonProgress> EnsureProgressAsync(
+        Guid enrollmentId, Guid lessonId, Guid currentRevisionId, CancellationToken ct)
     {
         var progress = await db.LessonProgresses
             .FirstOrDefaultAsync(p => p.EnrollmentId == enrollmentId && p.LessonId == lessonId, ct);
         if (progress is not null) return progress;
 
-        progress = LessonProgress.Start(enrollmentId, lessonId);
+        progress = LessonProgress.Start(enrollmentId, lessonId, currentRevisionId);
         db.LessonProgresses.Add(progress);
         try
         {

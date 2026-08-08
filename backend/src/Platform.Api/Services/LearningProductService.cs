@@ -48,13 +48,21 @@ public class LearningProductService(PlatformDbContext db)
             .Select(c => c.LearningProductId)
             .ToListAsync(ct);
 
+        // Read regardless of Curriculum status — a tutor may set this before
+        // ever publishing, from the product edit form rather than Content Studio.
+        var sequentialByProduct = await db.Curricula.AsNoTracking()
+            .Where(c => c.WorkspaceId == ctx.Workspace!.Id && c.Status != CurriculumStatus.Archived)
+            .ToDictionaryAsync(c => c.LearningProductId, c => c.RequiresSequentialCompletion, ct);
+
         return ProvisioningResult<LearningProductListResponse>.Success(new LearningProductListResponse(
             WorkspaceName: ctx.Workspace!.Name,
             CanAuthor:     ctx.CanAuthor,
-            Products:      products.Select(p => Describe(p, withCurriculum.Contains(p.Id))).ToList()));
+            Products:      products.Select(p => Describe(
+                p, withCurriculum.Contains(p.Id), sequentialByProduct.GetValueOrDefault(p.Id))).ToList()));
     }
 
-    private static LearningProductRow Describe(LearningProduct p, bool hasCurriculum = false) => new(
+    private static LearningProductRow Describe(
+        LearningProduct p, bool hasCurriculum = false, bool requiresSequentialCompletion = false) => new(
         Id:              p.Id,
         Title:           p.Title,
         Description:     p.Description,
@@ -67,7 +75,8 @@ public class LearningProductService(PlatformDbContext db)
         CreatedAt:       p.CreatedAt,
         UpdatedAt:       p.UpdatedAt,
         PublishedAt:     p.PublishedAt,
-        HasCurriculum:   hasCurriculum);
+        HasCurriculum:   hasCurriculum,
+        RequiresSequentialCompletion: requiresSequentialCompletion);
 
     // ── Writing ──────────────────────────────────────────────────────────────
 

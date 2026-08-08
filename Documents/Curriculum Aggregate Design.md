@@ -56,7 +56,7 @@ The Curriculum Aggregate is responsible for:
 - Managing learning paths.
 - Managing prerequisites.
 - Managing release rules.
--- Defining learning rules.
+- Defining learning rules.
 - Managing curriculum navigation.
 - Defining learner progression.
 
@@ -102,8 +102,6 @@ Curriculum (Aggregate Root)
 │      ├── Curriculum Lessons
 │      │
 │      └── Unit Rules
-│
-├── Curriculum Rules
 │
 ├── Navigation Rules
 │
@@ -246,6 +244,16 @@ Examples:
 
 ---
 
+## Prerequisites
+
+Defines the ordering dependency between two instructional elements: a lesson or unit that must reach a defined state (e.g. Completed) before another becomes available.
+
+Prerequisites are the mechanism behind the "prerequisite lessons," "prerequisite units," and "branching paths" referenced in Section 11, and are what INV-007 (no circular dependencies) governs.
+
+**V1 status:** not yet modeled as a general graph. Only the single-predecessor case is implemented today, as `RequiresSequentialCompletion` (see Section 18) — a Lesson may require the one immediately before it in curriculum order. There is no per-lesson or per-unit prerequisite list yet, so INV-007 does not currently apply; it becomes active once a general Prerequisite value object is introduced.
+
+---
+
 # 9. Aggregate Relationships
 
 ```text
@@ -280,7 +288,8 @@ The Curriculum references Lessons by identifier only.
 
 A Lesson may appear:
 
-- multiple times in one Curriculum (if allowed),
+- at most once within a given Curriculum Unit (enforced — a Unit cannot contain the same Lesson twice),
+- in more than one Curriculum Unit within the same Curriculum,
 - in multiple Curricula,
 - in multiple Learning Products.
 
@@ -419,6 +428,12 @@ Progress calculation rules must produce deterministic learner progress.
 
 ---
 
+## INV-012
+
+Every Curriculum belongs to exactly one Workspace.
+
+---
+
 # 15. State Machine
 
 ```text
@@ -445,6 +460,7 @@ Publication controls the pedagogical structure rather than the instructional con
 
 The Curriculum Aggregate references:
 
+- WorkspaceId
 - LearningProductId
 - LessonId (through Curriculum Lesson)
 
@@ -475,7 +491,68 @@ Learning Asset provides educational resources.
 
 ---
 
-# 18. Future Evolution
+# 18. V1 Implementation Notes
+
+The first working implementation narrows two of the above to a single concrete
+behavior each. Recorded here so this document stays an accurate reference
+alongside the richer model in the sections above, which remains the intended
+direction rather than what exists today.
+
+## Reordering (§12 Domain Events: CurriculumUnitReordered, CurriculumLessonMoved; §13 Commands: ReorderCurriculumUnits, MoveLesson)
+
+Implemented as `Curriculum.ReorderUnits(orderedUnitIds)` and
+`Curriculum.ReorderLessonsInUnit(unitId, orderedLessonIds)`. The caller
+supplies the complete new order as a permutation of the current ids — there
+is no single-position "move by one" command; a client wanting to move one
+item builds the new full order and sends that. Positions stay dense,
+zero-based integers (§7), the same scheme AddUnit/AddLesson already use.
+Both require the Curriculum to be Draft (RequireEditable, §15) — the same
+rule that already governs every other structural change, so a Learner
+mid-course never has ordering shift beneath them.
+
+## Sequential Unlock (§8 Navigation Rules: "Sequential")
+
+Implemented as a single boolean, `Curriculum.RequiresSequentialCompletion`,
+rather than the richer per-lesson prerequisite graph implied by §11 and
+INV-007. When on, a Learner may not open a lesson until the lesson
+immediately before it — in curriculum order, unit by unit — is Completed.
+There is no concept yet of optional lessons, branching, or multiple
+prerequisites; INV-007's circular-dependency concern does not yet apply,
+since the only relationship is "the one lesson immediately before this one."
+
+Unlike structural changes, toggling this setting is *not* gated by
+RequireEditable — `SetSequentialUnlock` is a policy switch, not a structural
+edit, so a tutor can turn it on or off while the Curriculum is Published.
+Enforcement itself lives outside this aggregate, in the Learning Delivery
+capability (see Learning Progress Tracking Business Analysis, BA-007), since
+it depends on per-enrollment Lesson Progress this aggregate has no knowledge
+of — this aggregate only records the setting.
+
+## Published-Lesson Check on Publish (§14 INV-010)
+
+Not yet implemented. `Curriculum.PublicationBlocker()` currently checks only
+INV-008 (at least one Unit) and INV-009 (every Unit non-empty) — it does not
+check that every referenced Lesson is itself Published. It cannot today,
+because Curriculum holds only a `LessonId` and has no visibility into Lesson
+state (§16 — no external aggregate is embedded). Enforcing INV-010 requires
+either a cross-aggregate domain service that reads Lesson publication state
+at the moment `Publish()` is called, or an application-layer check ahead of
+it. Until one exists, INV-010 is the intended rule rather than an enforced
+one, and a Curriculum can currently publish while referencing an unpublished
+Lesson.
+
+## Progress Rules (§8)
+
+Not yet implemented beyond Sequential Unlock above. The richer catalogue in
+§8 — progress based on required lessons only, weighted progress, time spent,
+assessment completion — has no corresponding value object or field on
+`Curriculum` today. `RequiresSequentialCompletion` is the only progress-
+relevant rule the aggregate currently carries; the rest of §8 describes the
+intended direction, not current state.
+
+---
+
+# 19. Future Evolution
 
 The Curriculum Aggregate supports future capabilities including:
 

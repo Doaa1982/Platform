@@ -14,13 +14,14 @@ public record LearningProductRow(
     DateTime CreatedAt,
     DateTime UpdatedAt,
     DateTime? PublishedAt,
+    /// <summary>Whether the product has a published Curriculum behind it (INV-006).</summary>
+    bool HasCurriculum,
     /// <summary>
-    /// Whether the product has teaching content behind it. Always false today:
-    /// Curriculum is not implemented, so INV-006's publication requirement
-    /// cannot be met or checked. Reported rather than assumed, so the client can
-    /// say so instead of implying a course is ready to take.
+    /// Mirrors the product's Curriculum.RequiresSequentialCompletion (Curriculum
+    /// Aggregate Design §18) — surfaced here so a tutor can set it from the same
+    /// place they edit the product, rather than needing to open Content Studio.
     /// </summary>
-    bool HasCurriculum);
+    bool RequiresSequentialCompletion);
 
 public record LearningProductListResponse(
     string WorkspaceName,

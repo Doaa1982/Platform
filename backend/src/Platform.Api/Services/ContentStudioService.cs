@@ -55,6 +55,7 @@ public class ContentStudioService(PlatformDbContext db)
             PublicationBlocker: curriculum is null
                                 ? "This product has no curriculum yet — add a unit to start one."
                                 : curriculum.PublicationBlocker(),
+            RequiresSequentialCompletion: curriculum?.RequiresSequentialCompletion ?? false,
             Units: curriculum is null ? [] : curriculum.Units.OrderBy(u => u.Position)
                 .Select(u => new CurriculumUnitRow(u.Id, u.Title, u.Position,
                     u.Lessons.OrderBy(l => l.Position)
@@ -150,6 +151,18 @@ public class ContentStudioService(PlatformDbContext db)
     public Task<ProvisioningResult<CurriculumResponse>> UnplaceLessonAsync(
         string slug, Guid caller, Guid productId, Guid unitId, Guid lessonId, CancellationToken ct = default)
         => MutateAsync(slug, caller, productId, (c, _) => c.RemoveLessonFromUnit(unitId, lessonId), ct);
+
+    public Task<ProvisioningResult<CurriculumResponse>> ReorderUnitsAsync(
+        string slug, Guid caller, Guid productId, ReorderUnitsRequest request, CancellationToken ct = default)
+        => MutateAsync(slug, caller, productId, (c, _) => c.ReorderUnits(request.UnitIds), ct);
+
+    public Task<ProvisioningResult<CurriculumResponse>> ReorderLessonsAsync(
+        string slug, Guid caller, Guid productId, Guid unitId, ReorderLessonsRequest request, CancellationToken ct = default)
+        => MutateAsync(slug, caller, productId, (c, _) => c.ReorderLessonsInUnit(unitId, request.LessonIds), ct);
+
+    public Task<ProvisioningResult<CurriculumResponse>> SetSequentialUnlockAsync(
+        string slug, Guid caller, Guid productId, SetSequentialUnlockRequest request, CancellationToken ct = default)
+        => MutateAsync(slug, caller, productId, (c, _) => c.SetSequentialUnlock(request.Enabled), ct, createIfMissing: true);
 
     public Task<ProvisioningResult<CurriculumResponse>> PublishCurriculumAsync(
         string slug, Guid caller, Guid productId, CancellationToken ct = default)

@@ -684,9 +684,39 @@ Editing Interactive Learning Events on a Published Lesson Version produces a Not
 
 ## Rule 15
 
-There is no per-learner "pinned to their original version" mechanism, and none is needed. Only one Lesson Version is ever a Lesson's current published one, and a new Draft never affects what is being served to anyone until the tutor explicitly publishes it. "Existing learners keep seeing the old version while a replacement is prepared" already holds for free in the gap between starting a new Draft and publishing it — Rule 9's "retired versions remain available to assigned learners until migration occurs" is satisfied without a distinct migration step, because until publication there is nothing to migrate away from.
+For Patch and Minor changes, there is no per-learner "pinned to their original version" mechanism, and none is needed. Only one Lesson Version is ever a Lesson's current published one for these changes, and a new Draft never affects what is being served to anyone until the tutor explicitly publishes it. "Existing learners keep seeing the old version while a replacement is prepared" already holds for free in the gap between starting a new Draft and publishing it — Rule 9's "retired versions remain available to assigned learners until migration occurs" is satisfied without a distinct migration step, because until publication there is nothing to migrate away from.
 
-This closes the question Learning Progress Tracking Business Analysis §16 left open under "Lesson Revision": which revision determines learner progress is always the Lesson's current published one — there is no scenario, under this decision, where two learners are served a different Lesson Version at the same moment.
+**Amended 2026-08-08 — this does not extend to Major changes.** See §20: a Major change (e.g. a replaced video) does introduce a narrow, fixed form of per-learner pinning for anyone already Started or In Progress on the lesson. The claim in this rule and in the paragraph below should be read as scoped to Patch/Minor changes only.
+
+This closes the question Learning Progress Tracking Business Analysis §16 left open under "Lesson Revision": which revision determines learner progress is always the Lesson's current published one for a learner who has not yet started it — there is no scenario, under this decision, where two such learners are served a different Lesson Version at the same moment. See §20 for the Major-change exception.
+
+---
+
+# 20. Applied Decision — Video Replacement and In-Progress Learners
+
+**Decided:** 2026-08-08
+
+Rule 15 and the Lesson Editing & Publication UX document's "Replace Video" Option 1 described two different, incompatible behaviors for the same moment: Rule 15 said publishing a new version is a single global cutover with no per-learner pinning, while the UX document promised existing students would remain on the current version after the new one went active. This section resolves the contradiction in favor of a narrow, fixed rule — not the full Impact Analysis / Migration Policy engine described in §§8–13, which remains correctly out of scope per the §19 preamble.
+
+## Rule 16
+
+A Major-classified change (e.g. replacing the lesson video) pins every learner whose Learning Progress on that lesson is Started or In Progress to the Lesson Revision they started on. They continue being served that revision, unaffected, until they reach Completed.
+
+## Rule 17
+
+Learners whose Learning Progress on the lesson is Not Started move to the newly published revision immediately, the same as any new enrollment — there is no history to protect for them.
+
+## Rule 18
+
+Once a learner's Learning Progress on a lesson is Completed, that completion is permanent and is never re-evaluated against a later revision, regardless of subsequent Major changes.
+
+## Scope note
+
+This is a single fixed default — effectively `KeepExistingStudents` (§9) applied automatically to in-progress learners on every Major change — not a tutor-selectable Migration Policy. It requires no Impact Analysis, Compatibility Analysis, or recommendation UI. The full engine in §§8–13 remains deferred exactly as §19 describes.
+
+## Implementation dependency — blocking, not future work
+
+Enforcing Rule 16 requires Learning Progress to record which Lesson Revision it reflects. As of this writing, `LessonProgress` (Learning Delivery) references only `LessonId`, with no revision reference — so a learner's recorded video-watched state cannot be tied to which video it was actually watched against. Until this is added, a tutor replacing a video and publishing will silently and incorrectly carry forward "video watched" for learners who watched the old one, and Rule 16 cannot be enforced at all. See Learning Progress Tracking Business Analysis, PR-009 and BA-008.
 
 ---
 

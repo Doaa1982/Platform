@@ -182,7 +182,6 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Id).ValueGeneratedNever();
 
             entity.Property(e => e.WorkspaceId).IsRequired();
-            entity.Property(e => e.IdentityId).IsRequired();
 
             entity.Property(e => e.Email)
                   .IsRequired()
@@ -204,9 +203,9 @@ public class PlatformDbContext : DbContext
                   .HasMaxLength(32);
 
             // The reviewer's queue reads by Workspace; the single-open-request
-            // check reads by (identity, workspace)
+            // check reads by (email, workspace)
             entity.HasIndex(e => e.WorkspaceId);
-            entity.HasIndex(e => new { e.IdentityId, e.WorkspaceId });
+            entity.HasIndex(e => new { e.Email, e.WorkspaceId });
         });
 
         modelBuilder.Entity<SignupRequest>(entity =>
@@ -277,6 +276,7 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.LearningProductId).IsRequired();
             entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.RequiresSequentialCompletion).IsRequired().HasDefaultValue(false);
 
             // INV-003 (Learning Product): at most one active Curriculum per product,
             // so every read is by product
@@ -456,6 +456,7 @@ public class PlatformDbContext : DbContext
 
             entity.Property(e => e.EnrollmentId).IsRequired();
             entity.Property(e => e.LessonId).IsRequired();
+            entity.Property(e => e.LessonRevisionId).IsRequired();
 
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
 

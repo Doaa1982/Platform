@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, Plus, RefreshCw, ArrowLeft, X, Trash2,
+  LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
-  UploadCloud, Sparkles, Bot, PlayCircle, Link as LinkIcon,
+  UploadCloud, Sparkles, Bot, PlayCircle, Link as LinkIcon, ChevronUp, ChevronDown,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -151,6 +151,28 @@ function CurriculumBuilder({ productId, onBack }) {
     finally { setBusy(false); }
   }
 
+  function moveUnit(unitId, direction) {
+    if (!data) return;
+    const ids = data.units.map((u) => u.id);
+    const i = ids.indexOf(unitId);
+    const j = i + direction;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    run(() => api.reorderUnits(session.token, slug, productId, ids)).then(load);
+  }
+
+  function moveLesson(unitId, lessonId, direction) {
+    if (!data) return;
+    const unit = data.units.find((u) => u.id === unitId);
+    if (!unit) return;
+    const ids = unit.lessons.map((l) => l.id);
+    const i = ids.indexOf(lessonId);
+    const j = i + direction;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    run(() => api.reorderLessons(session.token, slug, productId, unitId, ids)).then(load);
+  }
+
   if (error && !data) {
     return (
       <div className="lw-page">
@@ -194,7 +216,7 @@ function CurriculumBuilder({ productId, onBack }) {
           {data.status === "Published" ? (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                     onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "unpublish")).then(load)}>
-              <Undo2 size={13} /> Unpublish to edit
+              <Undo2 size={13} /> Edit Mode
             </button>
           ) : data.status !== "Archived" && (
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
@@ -202,14 +224,18 @@ function CurriculumBuilder({ productId, onBack }) {
               <Globe size={13} /> Publish curriculum
             </button>
           )}
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={load} disabled={busy}>
-            <RefreshCw size={13} /> Refresh
-          </button>
         </div>
       )}
 
       {data.publicationBlocker && (
         <div className="lw-studio__blocker"><AlertCircle size={14} /> {data.publicationBlocker}</div>
+      )}
+
+      {data.canAuthor && data.status === "Published" && (
+        <p className="muted" style={{ margin: "-6px 0 16px" }}>
+          This curriculum is live — enrolled students can see it, so it's view only here.
+          Turning on <strong>Edit Mode</strong> hides its content from them until you publish again.
+        </p>
       )}
 
       {editable && !data.publicationBlocker && data.status !== "Published" && (
@@ -218,6 +244,7 @@ function CurriculumBuilder({ productId, onBack }) {
           can unpublish anytime to keep editing — nothing is locked in.
         </p>
       )}
+
 
       {editable && (
         <NewUnitForm busy={busy} onAdd={(title) =>
@@ -246,9 +273,10 @@ function CurriculumBuilder({ productId, onBack }) {
       )}
 
       <div className="lw-studio__units">
-        {data.units.map((u) => (
+        {data.units.map((u, i) => (
           <UnitCard
             key={u.id} unit={u} editable={editable} busy={busy}
+            isFirst={i === 0} isLast={i === data.units.length - 1}
             unplacedLessons={data.unplacedLessons}
             onOpenLesson={setOpenLessonId}
             onRename={(title) => run(() => api.renameUnit(session.token, slug, productId, u.id, title)).then(load)}
@@ -256,6 +284,8 @@ function CurriculumBuilder({ productId, onBack }) {
             onCreateLesson={(title) => run(() => api.createLesson(session.token, slug, productId, title, u.id)).then(load)}
             onPlaceExisting={(lessonId) => run(() => api.placeLesson(session.token, slug, productId, u.id, lessonId)).then(load)}
             onUnplace={(lessonId) => run(() => api.unplaceLesson(session.token, slug, productId, u.id, lessonId)).then(load)}
+            onMoveUnit={(direction) => moveUnit(u.id, direction)}
+            onMoveLesson={(lessonId, direction) => moveLesson(u.id, lessonId, direction)}
           />
         ))}
       </div>
@@ -296,6 +326,7 @@ function CurriculumBuilder({ productId, onBack }) {
         <LessonEditor
           key={openLessonId}
           lessonId={openLessonId}
+          editable={editable}
           onClose={() => setOpenLessonId(null)}
           onChanged={load}
           onDuplicated={setOpenLessonId}
@@ -360,8 +391,8 @@ function NewLessonOnlyForm({ busy, onAdd }) {
 }
 
 function UnitCard({
-  unit, editable, busy, unplacedLessons, onOpenLesson,
-  onRename, onRemove, onCreateLesson, onPlaceExisting, onUnplace,
+  unit, editable, busy, isFirst, isLast, unplacedLessons, onOpenLesson,
+  onRename, onRemove, onCreateLesson, onPlaceExisting, onUnplace, onMoveUnit, onMoveLesson,
 }) {
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(unit.title);
@@ -395,6 +426,8 @@ function UnitCard({
         )}
         {editable && !renaming && (
           <div className="lw-studio__unitactions">
+            <button aria-label="Move unit up" disabled={isFirst} onClick={() => onMoveUnit(-1)}><ChevronUp size={12} /></button>
+            <button aria-label="Move unit down" disabled={isLast} onClick={() => onMoveUnit(1)}><ChevronDown size={12} /></button>
             <button aria-label="Rename unit" onClick={() => { setTitle(unit.title); setRenaming(true); }}><Pencil size={12} /></button>
             <button aria-label="Remove unit" onClick={onRemove}><Trash2 size={12} /></button>
           </div>
@@ -408,9 +441,13 @@ function UnitCard({
       )}
 
       <div className="lw-studio__lessonlist">
-        {unit.lessons.map((l) => (
-          <LessonRowView key={l.id} lesson={l} onOpen={() => onOpenLesson(l.id)}
-                          onRemove={editable ? () => onUnplace(l.id) : null} />
+        {unit.lessons.map((l, i) => (
+          <LessonRowView
+            key={l.id} lesson={l} onOpen={() => onOpenLesson(l.id)}
+            onRemove={editable ? () => onUnplace(l.id) : null}
+            editable={editable} isFirst={i === 0} isLast={i === unit.lessons.length - 1}
+            onMove={(direction) => onMoveLesson(l.id, direction)}
+          />
         ))}
       </div>
 
@@ -446,9 +483,15 @@ function UnitCard({
   );
 }
 
-function LessonRowView({ lesson, onOpen, onRemove }) {
+function LessonRowView({ lesson, onOpen, onRemove, editable, isFirst, isLast, onMove }) {
   return (
     <div className="lw-studio__lessonrow">
+      {editable && onMove && (
+        <div className="lw-studio__lessonmove">
+          <button aria-label="Move lesson up" disabled={isFirst} onClick={() => onMove(-1)}><ChevronUp size={12} /></button>
+          <button aria-label="Move lesson down" disabled={isLast} onClick={() => onMove(1)}><ChevronDown size={12} /></button>
+        </div>
+      )}
       <button className="lw-studio__lessonopen" onClick={onOpen}>
         <FileText size={13} />
         <span className="lw-studio__lessontitle">{lesson.title}</span>
@@ -467,7 +510,7 @@ function LessonRowView({ lesson, onOpen, onRemove }) {
 
 /* ── Lesson editor overlay ─────────────────────────────────────────────── */
 
-function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
+function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) {
   const { session, workspace } = useAuth();
   const slug = workspace?.slug;
 
@@ -621,7 +664,14 @@ function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
               <span className={`lw-studio__pill is-${lesson.status.toLowerCase()}`}>{human(lesson.status)}</span>
             </div>
 
-            {lesson.currentRevision && (
+            {!editable && (
+              <p className="lw-studio__panelnote">
+                View only — this curriculum is published. Turn on Edit Mode from the curriculum
+                page to change this lesson.
+              </p>
+            )}
+
+            {editable && lesson.currentRevision && (
               <p className="lw-studio__panelnote">
                 Published as revision {lesson.currentRevision.version}.{" "}
                 {lesson.draftRevision
@@ -649,7 +699,7 @@ function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
                 )}
                 <label>
                   <span>Title<RequiredMark /></span>
-                  <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} required
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy || !editable} required
                          style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
                 </label>
 
@@ -657,18 +707,20 @@ function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
                   <span>Content<RequiredMark /></span>
                   <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)}
                             placeholder="What this lesson teaches — the material itself for a recorded lesson, or the outline/agenda for a live session."
-                            disabled={busy}
+                            disabled={busy || !editable}
                             style={publishAttempted && !body.trim() ? invalidFieldStyle : undefined} />
                 </label>
                 <label className="lw-studio__minsfield">
                   <span>Estimated minutes</span>
                   <input type="number" min="0" value={minutes}
-                         onChange={(e) => setMinutes(e.target.value)} disabled={busy} />
+                         onChange={(e) => setMinutes(e.target.value)} disabled={busy || !editable} />
                 </label>
-                <p className="muted" style={{ margin: 0 }}>
-                  <strong>Save draft</strong> and <strong>Publish</strong> are below, under the tabs — Save draft keeps
-                  changes private while you keep working; Publish makes this version visible to learners right away.
-                </p>
+                {editable && (
+                  <p className="muted" style={{ margin: 0 }}>
+                    <strong>Save draft</strong> and <strong>Publish</strong> are below, under the tabs — Save draft keeps
+                    changes private while you keep working; Publish makes this version visible to learners right away.
+                  </p>
+                )}
                 {publishAttempted && !body.trim() && (
                   <div className="lw-studio__alert"><AlertCircle size={16} /> Add some content above before you can publish.</div>
                 )}
@@ -683,39 +735,41 @@ function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
                 )}
                 <label>
                   <span>Title<RequiredMark /></span>
-                  <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} required
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy || !editable} required
                          style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
                 </label>
                 <label>
                   <span>Content<RequiredMark /></span>
-                  <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} disabled={busy}
+                  <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} disabled={busy || !editable}
                             style={attempted && !body.trim() ? invalidFieldStyle : undefined} />
                 </label>
                 <label className="lw-studio__minsfield">
                   <span>Estimated minutes</span>
                   <input type="number" min="0" value={minutes}
-                         onChange={(e) => setMinutes(e.target.value)} disabled={busy} />
+                         onChange={(e) => setMinutes(e.target.value)} disabled={busy || !editable} />
                 </label>
-                <p className="muted" style={{ margin: 0 }}>
-                  This lesson is published — <strong>Save changes</strong> updates it directly. No new revision, nothing to republish.
-                </p>
-                <div className="lw-studio__panelactions">
-                  <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                          onClick={() => run(() => api.startLessonRevision(session.token, slug, lessonId)).then((l) => l && setLesson(l))}>
-                    Start a full new revision instead
-                  </button>
-                  <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handleQuickSave}>
-                    Save changes
-                  </button>
-                </div>
+                {editable && (
+                  <>
+                    <p className="muted" style={{ margin: 0 }}>
+                      This lesson is published — <strong>Save changes</strong> updates it directly. No new revision, nothing to republish.
+                    </p>
+                    <div className="lw-studio__panelactions">
+                      <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handleQuickSave}>
+                        Save changes
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="lw-studio__nodraft">
                 <p>This lesson has no content yet.</p>
-                <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}
-                        onClick={() => run(() => api.startLessonRevision(session.token, slug, lessonId)).then((l) => l && setLesson(l))}>
-                  <Plus size={13} /> Start a new revision
-                </button>
+                {editable && (
+                  <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}
+                          onClick={() => run(() => api.startLessonRevision(session.token, slug, lessonId)).then((l) => l && setLesson(l))}>
+                    <Plus size={13} /> Start a new revision
+                  </button>
+                )}
               </div>
             ))}
 
@@ -726,7 +780,7 @@ function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
                     <label>
                       <span>Delivery type</span>
                       <select
-                        value={deliveryMode} disabled={busy}
+                        value={deliveryMode} disabled={busy || !editable}
                         onChange={(e) => {
                           const next = e.target.value;
                           if (lesson.draftRevision) {
@@ -750,6 +804,7 @@ function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
                   </div>
                   <VideoSection
                     lesson={lesson}
+                    editable={editable}
                     hasDraft={!!lesson.draftRevision}
                     deliveryMode={deliveryMode}
                     onChanged={load}
@@ -778,6 +833,7 @@ function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
               (lesson.currentRevision || lesson.draftRevision) ? (
                 <AssessmentSection
                   lessonId={lesson.id}
+                  editable={editable}
                   videoDurationSeconds={videoDuration}
                 />
               ) : (
@@ -787,30 +843,32 @@ function LessonEditor({ lessonId, onClose, onChanged, onDuplicated }) {
               )
             )}
 
-            <div className="lw-studio__panelfooter">
-              {lesson.draftRevision && (
-                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleSaveDraft}>
-                  Save draft
-                </button>
-              )}
-              {lesson.draftRevision && lesson.status !== "Archived" && (
-                <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handlePublish}>
-                  <Globe size={13} /> Publish
-                </button>
-              )}
-              {lesson.status === "Published" && (
-                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                        onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "unpublish")).then((l) => l && setLesson(l))}>
-                  <Undo2 size={13} /> Unpublish
-                </button>
-              )}
-              {lesson.status !== "Archived" && (
-                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                        onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "archive")).then((l) => l && setLesson(l))}>
-                  <Archive size={13} /> Archive lesson
-                </button>
-              )}
-            </div>
+            {editable && (
+              <div className="lw-studio__panelfooter">
+                {lesson.draftRevision && (
+                  <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleSaveDraft}>
+                    Save draft
+                  </button>
+                )}
+                {lesson.draftRevision && lesson.status !== "Archived" && (
+                  <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handlePublish}>
+                    <Globe size={13} /> Publish
+                  </button>
+                )}
+                {lesson.status === "Published" && (
+                  <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
+                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "unpublish")).then((l) => l && setLesson(l))}>
+                    <Undo2 size={13} /> Unpublish
+                  </button>
+                )}
+                {lesson.status !== "Archived" && (
+                  <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
+                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "archive")).then((l) => l && setLesson(l))}>
+                    <Archive size={13} /> Archive lesson
+                  </button>
+                )}
+              </div>
+            )}
 
             {lesson.history.length > 1 && (
               <details className="lw-studio__history">
@@ -866,8 +924,8 @@ function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onC
             <ul>
               <li>Copy current lesson</li>
               <li>Upload the new video right away</li>
-              <li>Existing students remain on the current version</li>
-              <li>New students get the new version once you publish it</li>
+              <li>Students already partway through this lesson keep watching the current video until they finish it</li>
+              <li>Students who haven't started yet, and new students, get the new version once you publish it</li>
             </ul>
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={onChooseNewVersion}>
               Create new version
@@ -898,7 +956,7 @@ function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onC
    checkpoints against this video's own timeline.
    ========================================================================= */
 
-function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKnown, onRequestNewVersion }) {
+function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onDurationKnown, onRequestNewVersion }) {
   const { session, workspace } = useAuth();
   const slug = workspace?.slug;
   const fileInputRef = useRef(null);
@@ -969,7 +1027,7 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
       )}
       {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
 
-      {!hasVideo && hasDraft && (
+      {!hasVideo && hasDraft && editable && (
         <>
           <div className="lw-segctrl" style={{ marginBottom: 14 }}>
             <button type="button" className={sourceTab === "upload" ? "active" : ""} onClick={() => setSourceTab("upload")}>
@@ -1019,7 +1077,11 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
         </>
       )}
 
-      {!hasVideo && !hasDraft && (
+      {!hasVideo && !editable && (
+        <div className="lw-studio__unitempty">No video.</div>
+      )}
+
+      {!hasVideo && !hasDraft && editable && (
         <div className="lw-studio__unitempty" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <span>No video yet. Adding one starts a new version of this lesson.</span>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
@@ -1043,7 +1105,7 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
             <span>
               {video.title} <span className="lw-tag lw-tag--source">{Math.round(video.fileSizeBytes / 1024 / 1024)} MB</span>
             </span>
-            {hasDraft ? (
+            {editable && (hasDraft ? (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={handleRemove}>
                 <Trash2 size={13} /> Remove
               </button>
@@ -1051,7 +1113,7 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
                 <UploadCloud size={13} /> Replace video
               </button>
-            )}
+            ))}
           </div>
         </div>
       )}
@@ -1069,7 +1131,7 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
           </div>
           <div className="lw-videosource" style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <span className="lw-tag lw-tag--source" style={{ wordBreak: "break-all" }}>{videoUrl}</span>
-            {hasDraft ? (
+            {editable && (hasDraft ? (
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={handleRemove}>
                 <Trash2 size={13} /> Remove
               </button>
@@ -1077,7 +1139,7 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
               <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onRequestNewVersion}>
                 <UploadCloud size={13} /> Replace video
               </button>
-            )}
+            ))}
           </div>
         </div>
       )}
@@ -1095,7 +1157,7 @@ function VideoSection({ lesson, hasDraft, deliveryMode, onChanged, onDurationKno
 
 const ANALYZE_STEPS = ["Watching the video…", "Detecting explanations and examples…", "Placing knowledge checkpoints…"];
 
-function AssessmentSection({ lessonId, videoDurationSeconds }) {
+function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
   const { session, workspace } = useAuth();
   const slug = workspace?.slug;
 
@@ -1181,10 +1243,11 @@ function AssessmentSection({ lessonId, videoDurationSeconds }) {
     );
   }
 
-  // Lesson Editing & Publication UX, Scenario 4: interactive questions are
-  // always editable for an author, whether this Assessment is Draft or
-  // Published — Publish/Unpublish below stay purely about learner visibility.
-  const editable = true;
+  // Lesson Editing & Publication UX, Scenario 4: independent of this
+  // Assessment's own Draft/Published state — Publish/Unpublish below stay
+  // purely about learner visibility. `editable` here is the curriculum-level
+  // Edit Mode toggle instead: questions are view only while the curriculum
+  // is published, same as everything else in this lesson.
 
   return (
     <div className="lw-studio__section">
@@ -1749,6 +1812,7 @@ const CSS = `
     color: var(--ink-soft); cursor: pointer; padding: 5px; display: flex;
   }
   .lw-studio__unitactions button:hover { color: var(--ink); }
+  .lw-studio__unitactions button:disabled { opacity: 0.35; cursor: not-allowed; }
   .lw-studio__renameform { display: flex; gap: 6px; align-items: center; flex: 1; }
   .lw-studio__renameform input {
     flex: 1; font-family: var(--font-display); font-weight: 600; font-size: 0.95rem;
@@ -1760,6 +1824,13 @@ const CSS = `
 
   .lw-studio__lessonlist { display: flex; flex-direction: column; gap: 6px; }
   .lw-studio__lessonrow { display: flex; align-items: center; gap: 4px; }
+  .lw-studio__lessonmove { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+  .lw-studio__lessonmove button {
+    background: transparent; border: 1px solid var(--line); border-radius: 4px;
+    color: var(--ink-soft); cursor: pointer; padding: 1px; display: flex;
+  }
+  .lw-studio__lessonmove button:hover { color: var(--ink); }
+  .lw-studio__lessonmove button:disabled { opacity: 0.35; cursor: not-allowed; }
   .lw-studio__lessonopen {
     flex: 1; display: flex; align-items: center; gap: 9px; text-align: left;
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);

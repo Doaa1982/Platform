@@ -11,14 +11,14 @@ namespace Platform.Api.Controllers;
 /// <summary>
 /// Join Requests — the only inbound path to Membership.
 ///
-/// Submission is anonymous by necessity: a stranger who has found a published
-/// Workspace has no account yet, and requiring one would be circular (BA-003).
-/// That is also what makes this the most exposed endpoint in the API, so it is
-/// the one carrying a rate limit.
+/// Submission is anonymous and account-free (§11): a stranger who has found a
+/// published Workspace files a name, email and message, nothing more. That is
+/// also what makes this the most exposed endpoint in the API, so it is the
+/// one carrying a rate limit.
 /// </summary>
 [ApiController]
 [Route("api")]
-public class JoinRequestsController(JoinRequestService joinRequests, TokenService tokens) : ControllerBase
+public class JoinRequestsController(JoinRequestService joinRequests) : ControllerBase
 {
     /// <summary>
     /// GET /api/workspaces/{slug}/join — what a stranger sees before asking.
@@ -32,27 +32,15 @@ public class JoinRequestsController(JoinRequestService joinRequests, TokenServic
     /// <summary>
     /// POST /api/workspaces/{slug}/join — ask to join.
     ///
-    /// Anonymous, and rate limited: this is the one endpoint that can create an
-    /// Identity without any prior relationship (BA-003), so it is the surface
-    /// worth guarding.
+    /// Anonymous, and rate limited. Files interest data only — no Identity is
+    /// created here, so this stays the lightest-weight surface in the API even
+    /// though it is reachable by anyone (§11).
     /// </summary>
     [HttpPost("workspaces/{slug}/join")]
     [EnableRateLimiting(RateLimitPolicies.JoinRequests)]
-    public async Task<ActionResult<LoginResponse>> Submit(
+    public async Task<ActionResult<JoinRequestReceipt>> Submit(
         string slug, [FromBody] SubmitJoinRequest request, CancellationToken ct)
-        => Run(await joinRequests.SubmitAsync(slug, request, tokens, ct));
-
-    /// <summary>GET /api/me/join-requests — the requester's own requests.</summary>
-    [HttpGet("me/join-requests")]
-    [Authorize]
-    public async Task<ActionResult<IReadOnlyList<MyJoinRequest>>> Mine(CancellationToken ct)
-        => Ok(await joinRequests.MineAsync(Caller(), ct));
-
-    /// <summary>POST /api/me/join-requests/{id}/withdraw — take it back.</summary>
-    [HttpPost("me/join-requests/{id:guid}/withdraw")]
-    [Authorize]
-    public async Task<IActionResult> Withdraw(Guid id, CancellationToken ct)
-        => RunStatus(await joinRequests.WithdrawAsync(id, Caller(), ct));
+        => Run(await joinRequests.SubmitAsync(slug, request, ct));
 
     /// <summary>GET /api/workspaces/{slug}/join-requests — the reviewer's queue.</summary>
     [HttpGet("workspaces/{slug}/join-requests")]
@@ -60,7 +48,7 @@ public class JoinRequestsController(JoinRequestService joinRequests, TokenServic
     public async Task<ActionResult<IReadOnlyList<JoinRequestRow>>> List(string slug, CancellationToken ct)
         => Run(await joinRequests.ListAsync(slug, Caller(), ct));
 
-    /// <summary>Approve — creates and activates the Membership.</summary>
+    /// <summary>Approve — issues a real Invitation to the request's email.</summary>
     [HttpPost("workspaces/{slug}/join-requests/{id:guid}/approve")]
     [Authorize]
     public async Task<IActionResult> Approve(string slug, Guid id, CancellationToken ct)

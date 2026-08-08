@@ -15,7 +15,6 @@
 > - Identity & Membership
 > - Learning Product Aggregate
 > - Curriculum Aggregate
-> - Curriculum Unit Aggregate
 > - Lesson Aggregate
 > - Lesson Revision Aggregate
 > - Learning Activity Business Analysis
@@ -222,6 +221,7 @@ Examples include:
 - Minimum assessment score
 - Tutor approval required
 - Mandatory activity completion
+- Sequential lesson unlock (a lesson requires the one immediately before it, in curriculum order, to be Completed — see BA-007)
 
 Progress Tracking does not define these rules.
 
@@ -394,6 +394,12 @@ Mastery evaluation belongs to future Competency capabilities.
 
 ---
 
+## PR-009
+
+**Added 2026-08-08.** Learning Progress must record which Lesson Revision it reflects wherever that progress depends on revision-specific content (e.g. a video-watched flag). A completion signal recorded against one revision must not be silently treated as satisfied against a different, later revision — otherwise a tutor's Major-classified edit (Learning Publication & Version Management §20) can retroactively and incorrectly credit a learner for content they never consumed.
+
+---
+
 # 13. Relationship with Other Domains
 
 | Domain | Relationship |
@@ -467,6 +473,36 @@ Progress Tracking serves learners, tutors, AI, analytics, and certification simu
 
 ---
 
+## BA-007
+
+**2026-08-08** — Sequential unlock is a Curriculum-level policy switch
+(`RequiresSequentialCompletion`, off by default — see Curriculum Aggregate
+Design §18), not a Learning Progress state of its own. Learning Delivery
+enforces it at the moment a Learner tries to open, watch, or submit a
+lesson: a locked lesson is refused outright (Forbidden) rather than
+recorded as any kind of Progress — consistent with BA-003, since a refused
+attempt is not an operational event to interpret. A locked lesson therefore
+has no Learning Progress record at all until it unlocks.
+
+---
+
+## BA-008
+
+**2026-08-08** — When a Lesson Revision changes via a Major-classified edit
+(e.g. video replacement), a learner who is Started or In Progress on that
+lesson stays on their starting revision until Completed; a Not Started
+learner moves to the new revision immediately; a Completed learner's
+progress is never re-evaluated (see Learning Publication & Version
+Management §20, Rules 16–18). Enforcing this requires Learning Progress to
+record which Lesson Revision it was recorded against (PR-009) — the current
+`LessonProgress` model (Learning Delivery) references only `LessonId`, with
+no revision reference, so a learner's video-watched state cannot yet be
+tied to which video it reflects. This is a blocking gap for Rule 16, not a
+future enhancement: without it, a tutor replacing a video and publishing
+will silently carry forward "watched" for learners who watched the old one.
+
+---
+
 # 16. Open Business Questions
 
 The following decisions remain under analysis.
@@ -497,7 +533,9 @@ The following decisions remain under analysis.
 - Which Lesson Revision determines learner progress?
 - How should progress behave when a learner changes to a newer Lesson Revision?
 
-**Resolved 2026-08-06** — see Learning Publication & Version Management §19 (Rules 11–15). A Lesson's current published revision is always the one that determines progress; there is no per-learner pinning to an older revision. A tutor preparing a replacement (e.g. a new video) works in a Draft that does not affect any learner until it is published, so nothing "changes to a newer revision" out from under an in-progress learner — the cutover is a single deliberate publish action, not a migration a learner is individually moved through.
+**Resolved 2026-08-06, amended 2026-08-08** — see Learning Publication & Version Management §19 (Rules 11–15) and §20 (Rules 16–18). A Lesson's current published revision determines progress for any learner who has not yet started the lesson; a tutor preparing a replacement (e.g. a new video) works in a Draft that does not affect any learner until it is published, so nothing changes out from under a learner who hasn't reached the lesson yet.
+
+The original "no per-learner pinning" statement applies only to Patch and Minor changes. For a Major change (a replaced video), a learner already Started or In Progress on the lesson stays pinned to the revision they started on until they complete it — otherwise the tutor's video swap would silently and incorrectly count as watched a video the learner never saw. See BA-008 for the data-model gap this exposes.
 
 ---
 

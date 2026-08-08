@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, ArrowLeft, BookOpen, CheckCircle2, PlayCircle,
+  LoaderCircle, AlertCircle, ArrowLeft, BookOpen, CheckCircle2, PlayCircle, Lock,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -134,6 +134,9 @@ function CurriculumView({ productId, onBack, onOpenLesson }) {
       <BackLink onBack={onBack} />
       <div className="lw-eyebrow">Course</div>
       <h1>{data.productTitle}</h1>
+      {data.requiresSequentialCompletion && (
+        <p className="lw-learn__seqhint"><Lock size={12} /> Complete each lesson to unlock the next</p>
+      )}
 
       {data.units.length === 0 && (
         <div className="lw-learn__empty">
@@ -153,8 +156,15 @@ function CurriculumView({ productId, onBack, onOpenLesson }) {
               {u.lessons.map((l) => {
                 const done = l.progressStatus === "Completed";
                 return (
-                  <button className="lw-learn__lessonrow" key={l.id} onClick={() => onOpenLesson(l.id)}>
-                    {done ? <CheckCircle2 size={15} className="is-done" /> : <PlayCircle size={15} />}
+                  <button
+                    className={`lw-learn__lessonrow ${l.locked ? "is-locked" : ""}`} key={l.id}
+                    disabled={l.locked}
+                    title={l.locked ? "Complete the previous lesson first" : undefined}
+                    onClick={() => onOpenLesson(l.id)}
+                  >
+                    {done
+                      ? <CheckCircle2 size={15} className="is-done" />
+                      : l.locked ? <Lock size={15} /> : <PlayCircle size={15} />}
                     <span className="lw-learn__lessontitle">{l.title}</span>
                     {l.estimatedMinutes != null && <span className="lw-learn__mins">{l.estimatedMinutes} min</span>}
                     {done && <span className="lw-learn__donepill">{human("Completed")}</span>}
@@ -221,6 +231,10 @@ const CSS = `
   .lw-learn__carddesc { font-size: 0.82rem; color: var(--ink-soft); margin: 0; line-height: 1.5; }
   .lw-learn__cardnote { font-size: 0.76rem; color: var(--ink-soft); font-style: italic; }
 
+  .lw-learn__seqhint {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 0.78rem; color: var(--ink-soft); margin: -8px 0 16px;
+  }
   .lw-learn__units { display: flex; flex-direction: column; gap: 14px; }
   .lw-learn__unit { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
   .lw-learn__unithead { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 600; font-size: 1rem; margin-bottom: 10px; }
@@ -238,6 +252,8 @@ const CSS = `
   .lw-learn__lessonrow:hover { border-color: var(--accent); }
   .lw-learn__lessonrow svg { color: var(--ink-soft); flex-shrink: 0; }
   .lw-learn__lessonrow svg.is-done { color: var(--accent-2); }
+  .lw-learn__lessonrow.is-locked { cursor: not-allowed; opacity: 0.55; }
+  .lw-learn__lessonrow.is-locked:hover { border-color: var(--line); }
   .lw-learn__lessontitle { flex: 1; font-size: 0.87rem; font-weight: 500; }
   .lw-learn__mins { font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft); }
   .lw-learn__donepill {

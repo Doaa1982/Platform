@@ -72,6 +72,17 @@ public class CurriculumUnit
         Renumber();
     }
 
+    /// <summary>
+    /// Applies a caller-supplied order. Validation that it is exactly a
+    /// permutation of this unit's current lessons is the aggregate root's job
+    /// (Curriculum.ReorderLessonsInUnit) — by the time this runs it is trusted.
+    /// </summary>
+    internal void ReorderLessons(IReadOnlyList<Guid> orderedLessonIds)
+    {
+        for (var i = 0; i < orderedLessonIds.Count; i++)
+            _lessons.First(l => l.LessonId == orderedLessonIds[i]).MoveTo(i);
+    }
+
     /// <summary>Keeps positions contiguous so ordering never develops gaps.</summary>
     private void Renumber()
     {
@@ -110,6 +121,14 @@ public class Curriculum
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
     public DateTime? PublishedAt { get; private set; }
+
+    /// <summary>
+    /// Off by default. When on, a Learner cannot open a lesson until the one
+    /// immediately before it (in curriculum order) is Completed — enforced by
+    /// LearningDeliveryService, not this aggregate, since it depends on
+    /// per-enrollment LessonProgress this aggregate has no knowledge of.
+    /// </summary>
+    public bool RequiresSequentialCompletion { get; private set; }
 
     public IReadOnlyCollection<CurriculumUnit> Units => _units.AsReadOnly();
 
@@ -180,6 +199,53 @@ public class Curriculum
     /// <summary>Every lesson referenced anywhere in this curriculum.</summary>
     public IEnumerable<Guid> AllLessonIds =>
         _units.SelectMany(u => u.Lessons).Select(l => l.LessonId);
+
+    /// <summary>
+    /// Re-sequences this curriculum's units. <paramref name="orderedUnitIds"/>
+    /// must be exactly this curriculum's current units, once each — same
+    /// editable-while-Draft rule as every other structural change, since a
+    /// learner mid-course should not have the order shift beneath them.
+    /// </summary>
+    public void ReorderUnits(IReadOnlyList<Guid> orderedUnitIds)
+    {
+        RequireEditable();
+        RequirePermutation(_units.Select(u => u.Id), orderedUnitIds, "unit");
+        for (var i = 0; i < orderedUnitIds.Count; i++) Unit(orderedUnitIds[i]).MoveTo(i);
+        Touch();
+    }
+
+    /// <summary>Re-sequences one unit's lessons. Same permutation rule as <see cref="ReorderUnits"/>.</summary>
+    public void ReorderLessonsInUnit(Guid unitId, IReadOnlyList<Guid> orderedLessonIds)
+    {
+        RequireEditable();
+        var unit = Unit(unitId);
+        RequirePermutation(unit.Lessons.Select(l => l.LessonId), orderedLessonIds, "lesson");
+        unit.ReorderLessons(orderedLessonIds);
+        Touch();
+    }
+
+    /// <summary>
+    /// Toggles sequential unlock. Deliberately not gated by RequireEditable —
+    /// it's a policy switch, not a structural change, so it stays changeable
+    /// even while Published (an archived curriculum is the only exception:
+    /// there is nothing left for it to gate).
+    /// </summary>
+    public void SetSequentialUnlock(bool enabled)
+    {
+        if (Status == CurriculumStatus.Archived)
+            throw new InvalidOperationException("An archived curriculum cannot be edited.");
+        RequiresSequentialCompletion = enabled;
+        Touch();
+    }
+
+    private static void RequirePermutation(IEnumerable<Guid> current, IReadOnlyList<Guid> proposed, string what)
+    {
+        var currentOrdered = current.OrderBy(x => x).ToList();
+        var proposedOrdered = proposed.OrderBy(x => x).ToList();
+        if (!currentOrdered.SequenceEqual(proposedOrdered))
+            throw new ArgumentException(
+                $"The given order must include exactly this curriculum's current {what}s, once each.", nameof(proposed));
+    }
 
     // ── Publication ──────────────────────────────────────────────────────────
 

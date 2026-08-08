@@ -53,6 +53,24 @@ public class ContentStudioController(ContentStudioService studio) : ControllerBa
         string slug, Guid productId, Guid unitId, Guid lessonId, CancellationToken ct)
         => Run(await studio.UnplaceLessonAsync(slug, Caller(), productId, unitId, lessonId, ct));
 
+    /// <summary>Re-sequences the curriculum's units. Draft-only, like every other structural change.</summary>
+    [HttpPut("units/reorder")]
+    public async Task<ActionResult<CurriculumResponse>> ReorderUnits(
+        string slug, Guid productId, [FromBody] ReorderUnitsRequest request, CancellationToken ct)
+        => Run(await studio.ReorderUnitsAsync(slug, Caller(), productId, request, ct));
+
+    /// <summary>Re-sequences one unit's lessons. Draft-only, like every other structural change.</summary>
+    [HttpPut("units/{unitId:guid}/lessons/reorder")]
+    public async Task<ActionResult<CurriculumResponse>> ReorderLessons(
+        string slug, Guid productId, Guid unitId, [FromBody] ReorderLessonsRequest request, CancellationToken ct)
+        => Run(await studio.ReorderLessonsAsync(slug, Caller(), productId, unitId, request, ct));
+
+    /// <summary>Turns sequential unlock on or off. Not gated by editability — a policy switch, not a structural one.</summary>
+    [HttpPut("sequential-unlock")]
+    public async Task<ActionResult<CurriculumResponse>> SetSequentialUnlock(
+        string slug, Guid productId, [FromBody] SetSequentialUnlockRequest request, CancellationToken ct)
+        => Run(await studio.SetSequentialUnlockAsync(slug, Caller(), productId, request, ct));
+
     /// <summary>Enforces INV-008 and INV-009 through the aggregate.</summary>
     [HttpPost("publish")]
     public async Task<ActionResult<CurriculumResponse>> Publish(string slug, Guid productId, CancellationToken ct)

@@ -272,6 +272,27 @@ export function unplaceLesson(token, slug, productId, unitId, lessonId) {
   });
 }
 
+/** PUT .../curriculum/units/reorder — unitIds is every unit's id, once each, in the new order */
+export function reorderUnits(token, slug, productId, unitIds) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/units/reorder`, {
+    method: "PUT", body: { unitIds }, token,
+  });
+}
+
+/** PUT .../curriculum/units/{unitId}/lessons/reorder — lessonIds is every lesson's id in that unit, once each, in the new order */
+export function reorderLessons(token, slug, productId, unitId, lessonIds) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/units/${unitId}/lessons/reorder`, {
+    method: "PUT", body: { lessonIds }, token,
+  });
+}
+
+/** PUT .../curriculum/sequential-unlock — require each lesson to be completed before the next one opens */
+export function setSequentialUnlock(token, slug, productId, enabled) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/sequential-unlock`, {
+    method: "PUT", body: { enabled }, token,
+  });
+}
+
 /** POST .../curriculum/{transition} — publish | unpublish */
 export function curriculumTransition(token, slug, productId, transition) {
   return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/curriculum/${transition}`, {
@@ -520,6 +541,13 @@ export function updateWorkspaceIdentity(token, slug, body) {
   return request(`/workspaces/${encodeURIComponent(slug)}/setup/identity`, { method: "PUT", body, token });
 }
 
+/** PUT /api/workspaces/{slug}/setup/join-requests */
+export function setAcceptsJoinRequests(token, slug, accepts) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/setup/join-requests`, {
+    method: "PUT", body: { accepts }, token,
+  });
+}
+
 /**
  * POST /api/workspaces/{slug}/setup/{transition}
  * begin-configuration | make-private | publish | activate
@@ -573,9 +601,10 @@ export function provisionForSignup(token, id, body) {
 }
 
 /* ── Join requests ─────────────────────────────────────────────────────────
-   The only inbound path to Membership. Preview and submit are anonymous by
-   necessity: a stranger has no account, and requiring one first is circular
-   (BA-003). Submit is the rate-limited endpoint.
+   The only inbound path to Membership. Preview and submit are anonymous, and
+   submit creates no account — it files a name/email/message for a reviewer to
+   decide on. Approval turns it into a real Invitation; an account only ever
+   comes from accepting that. Submit is the rate-limited endpoint.
    ------------------------------------------------------------------------ */
 
 /** GET /api/workspaces/{slug}/join — anonymous; 404 unless discoverable */
@@ -583,7 +612,7 @@ export function previewJoin(slug) {
   return request(`/workspaces/${encodeURIComponent(slug)}/join`);
 }
 
-/** POST /api/workspaces/{slug}/join — anonymous; creates an Identity, returns a session */
+/** POST /api/workspaces/{slug}/join — anonymous; files a request, no account created */
 export function submitJoin(slug, body) {
   return request(`/workspaces/${encodeURIComponent(slug)}/join`, { method: "POST", body });
 }
@@ -593,21 +622,11 @@ export function getJoinRequests(token, slug) {
   return request(`/workspaces/${encodeURIComponent(slug)}/join-requests`, { token });
 }
 
-/** POST .../join-requests/{id}/{decision} — approve | decline */
+/** POST .../join-requests/{id}/{decision} — approve | decline. Approve issues an Invitation. */
 export function decideJoinRequest(token, slug, id, decision) {
   return request(`/workspaces/${encodeURIComponent(slug)}/join-requests/${id}/${decision}`, {
     method: "POST", token,
   });
-}
-
-/** GET /api/me/join-requests — the requester's own */
-export function getMyJoinRequests(token) {
-  return request("/me/join-requests", { token });
-}
-
-/** POST /api/me/join-requests/{id}/withdraw */
-export function withdrawJoinRequest(token, id) {
-  return request(`/me/join-requests/${id}/withdraw`, { method: "POST", token });
 }
 
 /* ── Invitations (anonymous — the token is the credential) ─────────────── */

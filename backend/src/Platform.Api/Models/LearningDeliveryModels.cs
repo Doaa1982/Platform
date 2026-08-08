@@ -17,12 +17,20 @@ public record LearnerContinueLearningRow(Guid ProductId, string ProductTitle, Gu
 public record LearnerCurriculumResponse(
     Guid ProductId, string ProductTitle,
     Guid? CurriculumId, string? CurriculumTitle,
+    /// <summary>Whether each lesson's Locked flag below is actually enforced right now.</summary>
+    bool RequiresSequentialCompletion,
     IReadOnlyList<LearnerUnitRow> Units);
 
 public record LearnerUnitRow(string Title, int Position, IReadOnlyList<LearnerLessonRow> Lessons);
 
-/// <summary>ProgressStatus is "NotStarted" or "Completed" (LessonProgressStatus).</summary>
-public record LearnerLessonRow(Guid Id, string Title, int? EstimatedMinutes, string ProgressStatus);
+/// <summary>
+/// ProgressStatus is "NotStarted" or "Completed" (LessonProgressStatus).
+/// Locked is true only when the curriculum has sequential unlock on and the
+/// lesson immediately before this one (in curriculum order) isn't Completed
+/// yet — opening it is refused server-side, this is purely so the UI can
+/// show that before the Learner clicks.
+/// </summary>
+public record LearnerLessonRow(Guid Id, string Title, int? EstimatedMinutes, string ProgressStatus, bool Locked);
 
 /// <summary>
 /// One lesson as a Learner is delivered it — the Published revision only, and

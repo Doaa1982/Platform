@@ -15,13 +15,15 @@ public record JoinPreview(
     bool AcceptingRequests);
 
 /// <summary>
-/// Submitting a Join Request.
-///
-/// Password is required either way (BA-003): a new one when no Identity exists
-/// for this email, or the existing one to prove the requester is that person
-/// rather than someone who merely knows their address.
+/// Submitting a Join Request. No password, no Identity: this is interest data
+/// for a reviewer to decide on, not an account being created. An account only
+/// comes into existence if and when the request is approved and the resulting
+/// Invitation is accepted.
 /// </summary>
-public record SubmitJoinRequest(string FullName, string Email, string Password, string? Message);
+public record SubmitJoinRequest(string FullName, string Email, string? Message);
+
+/// <summary>What the requester sees immediately after submitting.</summary>
+public record JoinRequestReceipt(Guid Id, string Status);
 
 /// <summary>One row of the reviewer's queue.</summary>
 public record JoinRequestRow(
@@ -33,12 +35,3 @@ public record JoinRequestRow(
     string Status,
     DateTime SubmittedAt,
     DateTime? DecidedAt);
-
-/// <summary>The requester's own view of a request they submitted.</summary>
-public record MyJoinRequest(
-    Guid Id,
-    string WorkspaceName,
-    string WorkspaceSlug,
-    string RequestedRole,
-    string Status,
-    DateTime SubmittedAt);

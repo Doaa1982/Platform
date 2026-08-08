@@ -16,6 +16,21 @@ public class LessonProgress
     public Guid Id { get; private set; }
     public Guid EnrollmentId { get; private set; }
     public Guid LessonId { get; private set; }
+
+    /// <summary>
+    /// Which Lesson Revision this progress reflects (PR-009). Set once, to
+    /// whichever revision was current the moment this row was created, and
+    /// never changed afterward — that single pin is what implements Learning
+    /// Publication &amp; Version Management §20: a learner who is Started or
+    /// In Progress stays served this revision through a later Major change
+    /// (Rule 16) simply because nothing here moves it forward, while a
+    /// learner with no row yet picks up whatever is current the moment they
+    /// open the lesson (Rule 17), and a Completed row is never touched again
+    /// regardless of subsequent publishes (Rule 18). <see cref="VideoWatched"/>
+    /// and completion are therefore always evaluated against the video and
+    /// Assessment this same revision carries, not the lesson's current one.
+    /// </summary>
+    public Guid LessonRevisionId { get; private set; }
     public LessonProgressStatus Status { get; private set; }
     public bool VideoWatched { get; private set; }
     public DateTime StartedAt { get; private set; }
@@ -23,18 +38,21 @@ public class LessonProgress
 
     private LessonProgress() { }
 
-    public static LessonProgress Start(Guid enrollmentId, Guid lessonId)
+    public static LessonProgress Start(Guid enrollmentId, Guid lessonId, Guid lessonRevisionId)
     {
         if (enrollmentId == Guid.Empty)
             throw new ArgumentException("Progress belongs to exactly one Enrollment (PR-001).", nameof(enrollmentId));
         if (lessonId == Guid.Empty)
             throw new ArgumentException("Progress belongs to exactly one Lesson.", nameof(lessonId));
+        if (lessonRevisionId == Guid.Empty)
+            throw new ArgumentException("Progress is pinned to the Lesson Revision current when it started (PR-009).", nameof(lessonRevisionId));
 
         return new LessonProgress
         {
             Id = Guid.NewGuid(),
             EnrollmentId = enrollmentId,
             LessonId = lessonId,
+            LessonRevisionId = lessonRevisionId,
             Status = LessonProgressStatus.NotStarted,
             StartedAt = DateTime.UtcNow
         };

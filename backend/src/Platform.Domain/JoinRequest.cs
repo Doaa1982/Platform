@@ -15,26 +15,25 @@ namespace Platform.Domain;
 /// A Join Request confers nothing. It is a request for a Membership, never a
 /// Membership itself.
 ///
+/// Carries no Identity. Account creation is deliberately deferred past
+/// approval: a request is just a name, an email and a message until a
+/// reviewer decides it is worth an Invitation (§11) — the same Invitation
+/// anyone invited outright receives, which is where a real account first
+/// gets made, on acceptance.
+///
 /// Rules enforced here:
 ///   §9  — Submitted → { Approved | Declined | Withdrawn }, exactly one
 ///   §10 — approval grants precisely the role recorded on the request
 ///
 /// Enforced outside this class (they span rows):
 ///   §10 — the Workspace must be discoverable and accepting requests
-///   §10 — at most one Submitted request per (person, Workspace)
-///   §10 — a person already holding an Active Membership cannot request
+///   §10 — at most one Submitted request per (email, Workspace)
+///   §10 — an email already holding an Active Membership cannot request
 /// </summary>
 public class JoinRequest
 {
     public Guid Id { get; private set; }
     public Guid WorkspaceId { get; private set; }
-
-    /// <summary>
-    /// The requester's Identity. Resolved or created at submission, never at
-    /// approval (BA-003) — so the requester can sign in and watch their own
-    /// request rather than waiting blind.
-    /// </summary>
-    public Guid IdentityId { get; private set; }
 
     public string Email { get; private set; } = string.Empty;
     public string FullName { get; private set; } = string.Empty;
@@ -57,7 +56,6 @@ public class JoinRequest
 
     public static JoinRequest Submit(
         Guid workspaceId,
-        Guid identityId,
         string email,
         string fullName,
         WorkspaceRoleName requestedRole,
@@ -65,8 +63,6 @@ public class JoinRequest
     {
         if (workspaceId == Guid.Empty)
             throw new ArgumentException("A join request must name one Workspace.", nameof(workspaceId));
-        if (identityId == Guid.Empty)
-            throw new ArgumentException("A join request requires a resolved Identity (BA-003).", nameof(identityId));
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(fullName);
 
@@ -74,7 +70,6 @@ public class JoinRequest
         {
             Id = Guid.NewGuid(),
             WorkspaceId = workspaceId,
-            IdentityId = identityId,
             Email = email.ToLowerInvariant().Trim(),
             FullName = fullName.Trim(),
             RequestedRole = requestedRole,
@@ -88,8 +83,9 @@ public class JoinRequest
     public bool IsOpen => Status == JoinRequestStatus.Submitted;
 
     /// <summary>
-    /// Approved by a reviewer. The caller then creates and activates the
-    /// Membership — this aggregate never touches Membership itself (§5).
+    /// Approved by a reviewer. The caller then issues an Invitation to the
+    /// recorded email — this aggregate never touches Invitation or Membership
+    /// itself (§5); a Membership exists only once that Invitation is accepted.
     /// </summary>
     public void Approve(Guid reviewerIdentityId)
     {

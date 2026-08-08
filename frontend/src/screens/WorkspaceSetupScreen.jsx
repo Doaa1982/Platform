@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, AlertCircle, Check, Circle, ArrowRight, Globe, Lock, Rocket } from "lucide-react";
+import QRCode from "qrcode";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 
@@ -55,6 +56,19 @@ export default function WorkspaceSetupScreen() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+
+  // The QR just re-encodes the same /join/{slug} link the card already
+  // shows — only worth generating while that link is actually reachable.
+  useEffect(() => {
+    if (!setup?.acceptsJoinRequests || !setup?.slug) { setQrDataUrl(null); return; }
+    let cancelled = false;
+    const joinUrl = `${window.location.origin}/join/${setup.slug}`;
+    QRCode.toDataURL(joinUrl, { width: 176, margin: 1 })
+      .then((url) => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(null); });
+    return () => { cancelled = true; };
+  }, [setup?.acceptsJoinRequests, setup?.slug]);
 
   const load = useCallback(
     () => api.getSetup(session.token, slug)
@@ -205,6 +219,42 @@ export default function WorkspaceSetupScreen() {
         </p>
       )}
 
+      {/* ── Join requests ───────────────────────────────────────────────── */}
+      <h2 className="lw-sectiontitle">Join requests</h2>
+      <div className={`lw-setup__joinreq ${setup.acceptsJoinRequests ? "is-on" : ""}`}>
+        <div>
+          <div className="lw-setup__joinreqtitle">
+            {setup.acceptsJoinRequests ? "Open to join requests" : "Closed to join requests"}
+          </div>
+          <p>
+            {setup.acceptsJoinRequests
+              ? "Strangers with your /join link can ask to join. You still approve or decline each one."
+              : "Off by default. Turn this on so people with your /join link can ask to join — you'll still approve or decline each request."}
+          </p>
+        </div>
+        {setup.canManage && (
+          <button
+            className={`lw-btn ${setup.acceptsJoinRequests ? "lw-btn--ghost" : "lw-btn--accent"} lw-btn--sm`}
+            disabled={busy}
+            onClick={() => act(() => api.setAcceptsJoinRequests(session.token, slug, !setup.acceptsJoinRequests))}
+          >
+            {busy
+              ? <LoaderCircle size={14} className="lw-setup__spin" />
+              : setup.acceptsJoinRequests ? "Turn off" : "Turn on"}
+          </button>
+        )}
+
+        {qrDataUrl && (
+          <div className="lw-setup__joinqr">
+            <img src={qrDataUrl} width={88} height={88} alt={`QR code linking to /join/${setup.slug}`} />
+            <div>
+              <div className="lw-setup__joinqrlabel">Scan to request to join</div>
+              <code>{`${window.location.origin}/join/${setup.slug}`}</code>
+            </div>
+          </div>
+        )}
+      </div>
+
       {!setup.canManage && (
         <p className="lw-setup__readonly">
           You're viewing this. Only an owner or administrator can change setup.
@@ -337,6 +387,26 @@ const CSS = `
     .lw-setup__form > label { display: flex; flex-direction: column; gap: 5px; }
     .lw-setup__form label > span:first-child { padding-top: 0; white-space: normal; }
   }
+
+  .lw-setup__joinreq {
+    display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 16px 18px; margin-bottom: 8px;
+  }
+  .lw-setup__joinreq.is-on {
+    background: color-mix(in srgb, var(--accent-2) 8%, transparent);
+    border-color: color-mix(in srgb, var(--accent-2) 35%, transparent);
+  }
+  .lw-setup__joinreqtitle { font-weight: 600; font-size: 0.95rem; }
+  .lw-setup__joinreq p { font-size: 0.83rem; color: var(--ink-soft); margin: 4px 0 0; max-width: 58ch; line-height: 1.55; }
+  .lw-setup__joinqr {
+    display: flex; align-items: center; gap: 14px;
+    width: 100%; padding-top: 14px; margin-top: 4px;
+    border-top: 1px solid color-mix(in srgb, var(--accent-2) 25%, transparent);
+  }
+  .lw-setup__joinqr img { border-radius: 8px; background: #fff; padding: 6px; border: 1px solid var(--line); flex-shrink: 0; }
+  .lw-setup__joinqrlabel { font-size: 0.78rem; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
+  .lw-setup__joinqr code { font-family: var(--font-mono); font-size: 0.82rem; word-break: break-all; }
 
   .lw-setup__note {
     display: flex; align-items: center; gap: 7px;

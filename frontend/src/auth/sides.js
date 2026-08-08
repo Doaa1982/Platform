@@ -33,6 +33,7 @@ export const SIDES = {
       asideFrom: "#1B2430",
       asideVia: "#24344B",
       asideTo: "#2D5BD1",
+      devSeed: "tutor@platform.com",
     },
   },
 
@@ -56,6 +57,7 @@ export const SIDES = {
       asideFrom: "#132520",
       asideVia: "#1B3B31",
       asideTo: "#1E7F63",
+      devSeed: "learner@platform.com",
     },
   },
 };

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, CreditCard, LayoutDashboard, Megaphone, MessageCircle, MessageSquare, PlayCircle, Rocket, Settings, UserCircle, Users, Wand2, X
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, CreditCard, LayoutDashboard, Lock, Megaphone, MessageCircle, MessageSquare, PlayCircle, Rocket, Settings, UserCircle, Users, Wand2, X
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -198,7 +198,7 @@ function NotificationBell() {
   );
 }
 
-function AccountBar({ role, screen, onNavigate, aiLabel }) {
+function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
   const { me, side, workspace, workspaces, eligibleWorkspaces, leaveWorkspace, signOut } = useAuth();
   if (!workspace) return null;
 
@@ -233,7 +233,7 @@ function AccountBar({ role, screen, onNavigate, aiLabel }) {
       {role === "learner" && <LearnerTopNav screen={screen} onNavigate={onNavigate} aiLabel={aiLabel} />}
       <span className="lw-accountbar__spacer" />
       <NotificationBell />
-      <span className="lw-accountbar__who">{me?.fullName}</span>
+      <button className="lw-accountbar__who" onClick={onOpenProfile}>{me?.fullName}</button>
       {canSwitchSide && (
         <button onClick={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}>
           <ArrowLeftRight size={12} /> {other.label}
@@ -456,6 +456,11 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
   return (
     <div className="lw-lessonnav">
       <div className="lw-lessonnav__head">Course content</div>
+      {curriculum.requiresSequentialCompletion && (
+        <div className="lw-lessonnav__seqhint">
+          <Lock size={11} /> Complete each lesson to unlock the next
+        </div>
+      )}
       <div className="lw-lessonnav__units">
         {curriculum.units.map((u, i) => {
           const open = openUnits.has(u.position);
@@ -476,10 +481,14 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
                     return (
                       <button
                         type="button" key={l.id}
-                        className={`lw-lessonnav__lessonrow ${active ? "is-active" : ""}`}
-                        onClick={() => !active && onOpenLesson?.(l.id)}
+                        className={`lw-lessonnav__lessonrow ${active ? "is-active" : ""} ${l.locked ? "is-locked" : ""}`}
+                        disabled={l.locked}
+                        title={l.locked ? "Complete the previous lesson first" : undefined}
+                        onClick={() => !active && !l.locked && onOpenLesson?.(l.id)}
                       >
-                        {lessonDone ? <CheckCircle2 size={14} className="is-done" /> : <PlayCircle size={14} />}
+                        {lessonDone
+                          ? <CheckCircle2 size={14} className="is-done" />
+                          : l.locked ? <Lock size={14} /> : <PlayCircle size={14} />}
                         <span className="lw-lessonnav__lessontitle">{l.title}</span>
                         {l.estimatedMinutes != null && <span className="lw-lessonnav__lessonmins">{l.estimatedMinutes}min</span>}
                       </button>
@@ -623,7 +632,8 @@ export default function App() {
   return (
     <div className="lw-root" style={theme}>
       <style>{CSS}</style>
-      <AccountBar role={role} screen={learnerScreen} onNavigate={goToLearnerScreen} aiLabel={c.aiName || "AI Assistant"} />
+      <AccountBar role={role} screen={learnerScreen} onNavigate={goToLearnerScreen} aiLabel={c.aiName || "AI Assistant"}
+        onOpenProfile={() => setProfileOpen(true)} />
       {/* The academy switcher and workspace wizard are gone: they moved between
           two fictional academies, which cannot coexist with a real signed-in
           workspace. */}
@@ -756,7 +766,10 @@ const CSS = `
   .lw-accountbar__spacer { flex: 1; }
   .lw-accountbar button { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid #E1DED7; color: #6A7383; border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
   .lw-accountbar button:hover { color: #1B2430; border-color: #C9C5BC; }
-  .lw-accountbar__who { color: #6A7383; }
+  .lw-accountbar .lw-accountbar__who {
+    background: transparent; border: 1px solid transparent; color: #6A7383; padding: 4px 6px;
+  }
+  .lw-accountbar .lw-accountbar__who:hover { color: #1B2430; border-color: #E1DED7; }
 
   .lw-accountbar__navlinks { display: inline-flex; align-items: center; gap: 4px; }
   .lw-accountbar .lw-accountbar__navlink { border-color: transparent; }
@@ -872,6 +885,11 @@ const CSS = `
     font-family: var(--font-display); font-weight: 600; font-size: 0.95rem;
     padding: 18px 16px 14px; border-bottom: 1px solid var(--line);
   }
+  .lw-lessonnav__seqhint {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; color: var(--ink-soft); padding: 8px 16px;
+    border-bottom: 1px solid var(--line);
+  }
   .lw-lessonnav__unit { border-bottom: 1px solid var(--line); }
   .lw-lessonnav__unithead {
     width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
@@ -896,6 +914,8 @@ const CSS = `
   }
   .lw-lessonnav__lessonrow svg { flex-shrink: 0; color: var(--ink-soft); }
   .lw-lessonnav__lessonrow svg.is-done { color: var(--accent-2); }
+  .lw-lessonnav__lessonrow.is-locked { cursor: not-allowed; opacity: 0.55; }
+  .lw-lessonnav__lessonrow.is-locked:hover { background: transparent; }
   .lw-lessonnav__lessontitle { flex: 1; font-size: 0.82rem; }
   .lw-lessonnav__lessonmins { font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft); }
 

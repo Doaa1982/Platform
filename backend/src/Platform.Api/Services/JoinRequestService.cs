@@ -18,7 +18,7 @@ namespace Platform.Api.Services;
 ///   §10 — already an Active member? the answer is that they are already in
 ///   BA-002 — Learner is the only requestable role in Version 1
 /// </summary>
-public class JoinRequestService(PlatformDbContext db)
+public class JoinRequestService(PlatformDbContext db, WorkspaceMemberService members)
 {
     /// <summary>Who may review. Same authority that manages members and setup.</summary>
     private static readonly WorkspaceRoleName[] ReviewerRoles =
@@ -61,121 +61,57 @@ public class JoinRequestService(PlatformDbContext db)
     // ── Anonymous: submitting ────────────────────────────────────────────────
 
     /// <summary>
-    /// Submits a request, resolving or creating the requester's Identity as it
-    /// goes (BA-003) so they can sign in and watch their own request rather
-    /// than waiting blind.
-    ///
-    /// Returns a session, so the requester lands signed in.
+    /// Submits a request. No Identity is created or resolved here — this is
+    /// interest data for a reviewer to decide on, nothing more (§11).
     /// </summary>
-    public async Task<ProvisioningResult<LoginResponse>> SubmitAsync(
-        string slug, SubmitJoinRequest request, TokenService tokens, CancellationToken ct = default)
+    public async Task<ProvisioningResult<JoinRequestReceipt>> SubmitAsync(
+        string slug, SubmitJoinRequest request, CancellationToken ct = default)
     {
         var workspace = await FindAsync(slug, ct);
         if (workspace is null || !IsDiscoverable(workspace))
-            return Fail<LoginResponse>("No such workspace.", ProvisioningError.NotFound);
+            return Fail<JoinRequestReceipt>("No such workspace.", ProvisioningError.NotFound);
 
         if (!workspace.AcceptsJoinRequests)
-            return Fail<LoginResponse>(
+            return Fail<JoinRequestReceipt>(
                 "This workspace isn't accepting join requests. You'll need an invitation.",
                 ProvisioningError.Conflict);
 
-        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
-            return Fail<LoginResponse>("An email address and password are required.", ProvisioningError.Invalid);
+        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.FullName))
+            return Fail<JoinRequestReceipt>("Please tell us your name and email.", ProvisioningError.Invalid);
 
         var email = request.Email.ToLowerInvariant().Trim();
 
-        // ── Identity Resolution, at submission (BA-003) ──
-        var identity = await db.Identities.FirstOrDefaultAsync(i => i.Email == email, ct);
+        // Already in? The answer is that they are already in.
+        var alreadyMember = await (
+            from m in db.Memberships
+            join i in db.Identities on m.IdentityId equals i.Id
+            where m.WorkspaceId == workspace.Id && i.Email == email && m.Status == MembershipStatus.Active
+            select m.Id).AnyAsync(ct);
 
-        if (identity is null)
-        {
-            if (string.IsNullOrWhiteSpace(request.FullName))
-                return Fail<LoginResponse>("Please tell us your name.", ProvisioningError.Invalid);
+        if (alreadyMember)
+            return Fail<JoinRequestReceipt>("You're already a member of this workspace.", ProvisioningError.Conflict);
 
-            identity = Identity.Create(email, BCrypt.Net.BCrypt.HashPassword(request.Password), request.FullName);
-            db.Identities.Add(identity);
-        }
-        else
-        {
-            // Knowing someone's address must not be enough to queue up as them
-            if (!BCrypt.Net.BCrypt.Verify(request.Password, identity.PasswordHash))
-                return Fail<LoginResponse>(
-                    "An account already exists for this email. Enter its password to continue.",
-                    ProvisioningError.Forbidden);
+        // §10: at most one Submitted request per (email, Workspace)
+        var alreadyAsked = await db.JoinRequests.AnyAsync(
+            r => r.Email == email && r.WorkspaceId == workspace.Id && r.Status == JoinRequestStatus.Submitted, ct);
 
-            if (identity.Status != IdentityStatus.Active)
-                return Fail<LoginResponse>("This account is not active. Please contact support.", ProvisioningError.Forbidden);
-
-            // Already in? The answer is that they are already in.
-            var alreadyMember = await db.Memberships.AnyAsync(
-                m => m.IdentityId == identity.Id
-                  && m.WorkspaceId == workspace.Id
-                  && m.Status == MembershipStatus.Active, ct);
-
-            if (alreadyMember)
-                return Fail<LoginResponse>("You're already a member of this workspace.", ProvisioningError.Conflict);
-
-            // §10: at most one Submitted request per (person, Workspace)
-            var alreadyAsked = await db.JoinRequests.AnyAsync(
-                r => r.IdentityId == identity.Id
-                  && r.WorkspaceId == workspace.Id
-                  && r.Status == JoinRequestStatus.Submitted, ct);
-
-            if (alreadyAsked)
-                return Fail<LoginResponse>(
-                    "You've already asked to join this workspace. They haven't answered yet.",
-                    ProvisioningError.Conflict);
-        }
+        if (alreadyAsked)
+            return Fail<JoinRequestReceipt>(
+                "You've already asked to join this workspace. They haven't answered yet.",
+                ProvisioningError.Conflict);
 
         var joinRequest = JoinRequest.Submit(
             workspaceId:   workspace.Id,
-            identityId:    identity.Id,
             email:         email,
-            fullName:      identity.FullName,
+            fullName:      request.FullName.Trim(),
             requestedRole: RequestableRoles[0],
             message:       request.Message);
 
         db.JoinRequests.Add(joinRequest);
         await db.SaveChangesAsync(ct);
 
-        return ProvisioningResult<LoginResponse>.Success(tokens.Issue(identity));
-    }
-
-    // ── Requester: their own requests ────────────────────────────────────────
-
-    public async Task<IReadOnlyList<MyJoinRequest>> MineAsync(Guid identityId, CancellationToken ct = default)
-    {
-        var rows = await (
-            from r in db.JoinRequests.AsNoTracking()
-            join w in db.Workspaces.AsNoTracking() on r.WorkspaceId equals w.Id
-            where r.IdentityId == identityId
-            orderby r.SubmittedAt descending
-            select new { r, w }).ToListAsync(ct);
-
-        return rows.Select(x => new MyJoinRequest(
-            Id:            x.r.Id,
-            WorkspaceName: x.w.Name,
-            WorkspaceSlug: x.w.Slug,
-            RequestedRole: x.r.RequestedRole.ToString(),
-            Status:        x.r.Status.ToString(),
-            SubmittedAt:   x.r.SubmittedAt)).ToList();
-    }
-
-    /// <summary>Withdrawn by the requester — only ever their own request.</summary>
-    public async Task<ProvisioningResult<string>> WithdrawAsync(
-        Guid requestId, Guid callerIdentityId, CancellationToken ct = default)
-    {
-        var joinRequest = await db.JoinRequests.FirstOrDefaultAsync(r => r.Id == requestId, ct);
-
-        // Someone else's request is reported as not found, not forbidden
-        if (joinRequest is null || joinRequest.IdentityId != callerIdentityId)
-            return Fail<string>("No such request.", ProvisioningError.NotFound);
-
-        try { joinRequest.Withdraw(); }
-        catch (InvalidOperationException ex) { return Fail<string>(ex.Message, ProvisioningError.Conflict); }
-
-        await db.SaveChangesAsync(ct);
-        return ProvisioningResult<string>.Success(joinRequest.Status.ToString());
+        return ProvisioningResult<JoinRequestReceipt>.Success(
+            new JoinRequestReceipt(joinRequest.Id, joinRequest.Status.ToString()));
     }
 
     // ── Reviewer: the queue and the decision ─────────────────────────────────
@@ -201,10 +137,12 @@ public class JoinRequestService(PlatformDbContext db)
     }
 
     /// <summary>
-    /// Approves: the Membership is created and activated in one step (BA-004).
-    /// The waiting happened in the request's own Submitted state; leaving the
-    /// Membership Pending afterwards would invent a second confirmation nobody
-    /// asked for.
+    /// Approves: turns the request into a real Invitation to its email,
+    /// exactly the role recorded on it (§10) — the same path anyone invited
+    /// outright goes through. No Membership, and no Identity, exists yet;
+    /// both wait for the invitation to be accepted (WA-105). Reuses
+    /// WorkspaceMemberService's issuance so the two inbound paths cannot drift
+    /// apart on dedupe rules or delivery.
     /// </summary>
     public async Task<ProvisioningResult<string>> ApproveAsync(
         string slug, Guid callerIdentityId, Guid requestId, CancellationToken ct = default)
@@ -217,23 +155,15 @@ public class JoinRequestService(PlatformDbContext db)
 
         if (joinRequest is null) return Fail<string>("No such request.", ProvisioningError.NotFound);
 
-        // Between submission and approval they may have joined another way
-        var alreadyMember = await db.Memberships.AnyAsync(
-            m => m.IdentityId == joinRequest.IdentityId
-              && m.WorkspaceId == workspace!.Id
-              && m.Status == MembershipStatus.Active, ct);
+        var invited = await members.InviteAsync(
+            slug, callerIdentityId,
+            new InviteMemberRequest(joinRequest.Email, joinRequest.RequestedRole.ToString()), ct);
 
-        if (alreadyMember)
-            return Fail<string>("That person is already a member of this workspace.", ProvisioningError.Conflict);
+        if (invited.Error != ProvisioningError.None)
+            return Fail<string>(invited.Message ?? "Could not issue an invitation.", invited.Error);
 
         try { joinRequest.Approve(callerIdentityId); }
         catch (InvalidOperationException ex) { return Fail<string>(ex.Message, ProvisioningError.Conflict); }
-
-        // Exactly the role recorded on the request (§10). A reviewer wanting to
-        // grant more approves first, then assigns — which leaves its own trail.
-        var membership = Membership.Create(joinRequest.IdentityId, workspace!.Id, joinRequest.RequestedRole);
-        membership.Activate();
-        db.Memberships.Add(membership);
 
         await db.SaveChangesAsync(ct);
         return ProvisioningResult<string>.Success(joinRequest.Status.ToString());

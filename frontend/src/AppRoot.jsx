@@ -52,7 +52,6 @@ export default function AppRoot() {
       <AuthProvider side={null}>
         <JoinScreen
           slug={joinSlug}
-          onJoined={() => navigate("/learn", { replace: true })}
           onSignIn={() => navigate("/learn")}
         />
       </AuthProvider>
