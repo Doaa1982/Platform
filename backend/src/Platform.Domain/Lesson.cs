@@ -123,6 +123,11 @@ public class Lesson
         if (string.IsNullOrWhiteSpace(draft.Body))
             throw new InvalidOperationException("A lesson revision needs content before it can be published.");
 
+        // A recorded lesson is nothing but its video — a live session needs
+        // no pre-recorded file, so the check is delivery-mode-scoped.
+        if (draft.DeliveryMode == LessonDeliveryMode.Recorded && draft.VideoAssetId is null && string.IsNullOrWhiteSpace(draft.VideoUrl))
+            throw new InvalidOperationException("A recorded lesson needs a video, or a link to one, before it can be published.");
+
         CurrentRevision?.Supersede();
         draft.Publish();
 

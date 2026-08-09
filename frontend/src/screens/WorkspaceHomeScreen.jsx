@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, ArrowRight, Check, Circle,
+  LoaderCircle, ArrowRight, Check, Circle,
   Users, UserPlus, Inbox, Rocket, Globe, Lock,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    WORKSPACE HOME — what an owner sees on arrival.
@@ -51,7 +52,7 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   }, [session.token, slug]);
 
   if (error) {
-    return <div className="lw-page"><div className="lw-home__alert"><AlertCircle size={16} /> {error}</div></div>;
+    return <div className="lw-page"><Message type="error">{error}</Message></div>;
   }
   if (!setup || !members) {
     return (
@@ -122,19 +123,27 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
               urgent={pendingRequests.length > 0} />
       </div>
 
-      {/* ── What to do next, in the order it makes sense ─────────────── */}
-      <h2 className="lw-sectiontitle">{t("home.gettingStarted")}</h2>
-      <ol className="lw-home__steps">
-        <Step done label={t("home.stepAcceptInvite")} />
-        <Step done={isLive}
-              label={t("home.stepPublish")}
-              action={!isLive ? { text: t("home.setUp"), to: "setup" } : null}
-              onNavigate={onNavigate} />
-        <Step done={activeMembers.length > 1 || pendingInvites.length > 0}
-              label={t("home.stepInvite")}
-              action={{ text: t("home.invite"), to: "members" }}
-              onNavigate={onNavigate} />
-      </ol>
+      {/* ── What to do next, in the order it makes sense ─────────────────
+          Only while there's a "next" left to do — once the workspace is
+          live this would just be three permanently-checked lines, the same
+          "nothing left to say" case that already hides the setup banner
+          above. */}
+      {!isLive && (
+        <>
+          <h2 className="lw-sectiontitle">{t("home.gettingStarted")}</h2>
+          <ol className="lw-home__steps">
+            <Step done label={t("home.stepAcceptInvite")} />
+            <Step done={isLive}
+                  label={t("home.stepPublish")}
+                  action={!isLive ? { text: t("home.setUp"), to: "setup" } : null}
+                  onNavigate={onNavigate} />
+            <Step done={activeMembers.length > 1 || pendingInvites.length > 0}
+                  label={t("home.stepInvite")}
+                  action={{ text: t("home.invite"), to: "members" }}
+                  onNavigate={onNavigate} />
+          </ol>
+        </>
+      )}
 
       {/* ── Honest about what does not exist ─────────────────────────── */}
       <div className="lw-home__notyet">
@@ -151,16 +160,23 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   );
 }
 
+/* bg is derived (color-mix against --surface-2, see Stat) so these tints
+   stay a light accent wash in Light mode and a muted dark-surface wash in
+   Dark mode, instead of a hardcoded pastel fighting the page. */
 const CARD_COLORS = {
-  teaching: { bg: "#E9F0FE", icon: "#3E6FE0" },
-  learners: { bg: "#E4F7EE", icon: "#1FA971" },
-  invites: { bg: "#FFF1DF", icon: "#E0912E" },
-  requests: { bg: "#FDEAF0", icon: "#E0537B" },
+  teaching: { icon: "#3E6FE0" },
+  learners: { icon: "#1FA971" },
+  invites: { icon: "#E0912E" },
+  requests: { icon: "#E0537B" },
 };
 
 function Stat({ icon: Icon, color, label, value, note, urgent }) {
+  const style = {
+    "--card-bg": `color-mix(in srgb, ${color.icon} 16%, var(--surface-2))`,
+    "--card-icon": color.icon,
+  };
   return (
-    <div className={`lw-home__stat ${urgent ? "is-urgent" : ""}`} style={{ "--card-bg": color.bg, "--card-icon": color.icon }}>
+    <div className={`lw-home__stat ${urgent ? "is-urgent" : ""}`} style={style}>
       <div className="lw-home__staticon"><Icon size={17} /></div>
       <div className="lw-home__statlabel">{label}</div>
       <div className="lw-home__statvalue">{value}</div>
@@ -185,12 +201,6 @@ function Step({ done, label, action, onNavigate }) {
 
 const CSS = `
   .lw-home__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-home__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    color: var(--danger); border-radius: var(--radius-sm); padding: 10px 13px; font-size: 0.87rem;
-  }
 
   .lw-home__setup {
     display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;

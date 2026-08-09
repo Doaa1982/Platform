@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle, AlertCircle, X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    SUBSCRIPTION & BILLING — what this Workspace pays the platform.
@@ -60,6 +61,7 @@ export default function SubscriptionScreen() {
   const [packs, setPacks] = useState(null);
   const [subscription, setSubscription] = useState(undefined); // undefined = not loaded yet, null = none exists
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const fetchAll = useCallback(
@@ -83,16 +85,22 @@ export default function SubscriptionScreen() {
     return () => { cancelled = true; };
   }, [fetchAll]);
 
-  async function run(fn) {
+  async function run(fn, successMessage) {
     setBusy(true);
     setError(null);
-    try { const r = await fn(); await load(); return r; }
+    setSuccess(null);
+    try {
+      const r = await fn();
+      if (successMessage) setSuccess(successMessage);
+      await load();
+      return r;
+    }
     catch (e) { setError(e.message); return null; }
     finally { setBusy(false); }
   }
 
   if (error && !plans) {
-    return <div className="lw-page"><div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div></div>;
+    return <div className="lw-page"><Message type="error">{error}</Message></div>;
   }
   if (!plans || !packs || subscription === undefined) {
     return (
@@ -116,13 +124,15 @@ export default function SubscriptionScreen() {
         {t(isLive ? "subscription.lead" : "subscription.pickLead", { workspace: workspace?.name ?? "" })}
       </p>
 
-      {error && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       {isLive
         ? <SubscriptionStatus subscription={subscription} plans={plans} packs={packs} busy={busy}
-            onCancel={() => run(() => api.cancelSubscription(session.token, slug))} />
+            onCancel={() => run(() => api.cancelSubscription(session.token, slug), t("subscription.toastCancelled"))} />
         : <PlanPicker plans={plans} packs={packs} previous={subscription} busy={busy}
-            onSubscribe={(body) => run(() => api.checkoutSubscription(session.token, slug, body))} />}
+            onSubscribe={(body) => run(() => api.checkoutSubscription(session.token, slug, body),
+              t("subscription.toastSubscribed", { plan: plans.find((p) => p.code === body.planCode)?.name ?? body.planCode }))} />}
     </div>
   );
 }

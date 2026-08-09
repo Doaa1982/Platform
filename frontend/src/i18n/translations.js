@@ -49,6 +49,10 @@ const en = {
     switchWorkspace: "Switch workspace", signOut: "Sign out",
   },
 
+  themeToggle: {
+    switchToLight: "Switch to light mode", switchToDark: "Switch to dark mode",
+  },
+
   notifbell: {
     ariaUnread: "Notifications ({count} unread)", ariaDefault: "Notifications",
     title: "Notifications", empty: "Nothing yet.",
@@ -228,6 +232,11 @@ const en = {
     readonlyNote: "You're viewing this. Only an owner or administrator can change setup.",
     save: "Save",
     cancel: "Cancel",
+    toastBeginConfiguration: "Configuration started.",
+    toastMakePrivate: "Workspace is now private.",
+    toastPublish: "Workspace published.",
+    toastActivate: "Workspace activated.",
+    toastIdentitySaved: "Workspace details saved.",
   },
 
   home: {
@@ -304,6 +313,14 @@ const en = {
     statusSuspended: "Suspended",
     statusArchived: "Archived",
     statusSubmitted: "Submitted",
+    toastRoleRemoved: "{role} role removed.",
+    toastRoleAdded: "{role} role added.",
+    toastActivated: "{name} activated.",
+    toastSuspended: "{name} suspended.",
+    toastReinstated: "{name} reinstated.",
+    toastRemoved: "{name} removed.",
+    toastRequestApproved: "{name}'s request approved.",
+    toastRequestDeclined: "{name}'s request declined.",
   },
 
   products: {
@@ -358,6 +375,13 @@ const en = {
     saveChanges: "Save changes",
     createProduct: "Create product",
     titleRequired: "Title is required.",
+    toastCreated: "\"{title}\" created.",
+    toastSaved: "\"{title}\" saved.",
+    toastSubmitted: "\"{title}\" submitted for review.",
+    toastPublished: "\"{title}\" published.",
+    toastUnpublished: "\"{title}\" unpublished.",
+    toastReturned: "\"{title}\" returned to draft.",
+    toastArchived: "\"{title}\" archived.",
   },
 
   studio: {
@@ -435,6 +459,7 @@ const en = {
     saveDraftHintPublish: "Publish",
     saveDraftHintSuffix: "are below, under the tabs — Save draft keeps changes private while you keep working; Publish makes this version visible to learners right away.",
     addContentBeforePublish: "Add some content above before you can publish.",
+    addVideoBeforePublish: "A recorded lesson needs a video, or a link to one, before you can publish.",
     titleContentRequired: "Title and content are both required.",
     publishedDirectNotePrefix: "This lesson is published —",
     publishedDirectNoteBold: "Save changes",
@@ -544,6 +569,29 @@ const en = {
     removeSuggestion: "Remove suggestion",
     editQuestion: "Edit question",
     removeQuestion: "Remove question",
+    toastCurriculumPublished: "Curriculum published.",
+    toastCurriculumUnpublished: "Curriculum unpublished.",
+    toastUnitAdded: "\"{title}\" added.",
+    toastUnitRenamed: "Unit renamed to \"{title}\".",
+    toastUnitRemoved: "\"{title}\" removed.",
+    toastLessonCreated: "\"{title}\" created.",
+    toastLessonPlaced: "Lesson placed in unit.",
+    toastLessonUnplaced: "Lesson removed from unit.",
+    toastDraftSaved: "Draft saved.",
+    toastLessonPublished: "Lesson published.",
+    toastChangesSaved: "Changes saved.",
+    toastNewVersionStarted: "New version started.",
+    toastLessonDuplicated: "Lesson duplicated.",
+    toastLessonUnpublished: "Lesson unpublished.",
+    toastLessonArchived: "Lesson archived.",
+    toastVideoUploaded: "Video uploaded.",
+    toastVideoLinked: "Video link attached.",
+    toastVideoRemoved: "Video removed.",
+    toastQuestionAdded: "Question added.",
+    toastQuestionUpdated: "Question updated.",
+    toastQuestionRemoved: "Question removed.",
+    toastQuestionsPublished: "Questions published.",
+    toastQuestionsUnpublished: "Questions unpublished.",
   },
 
   learnerHome: {
@@ -683,6 +731,24 @@ const en = {
     requiresMinLevel: "Requires min. level",
     none: "None",
     catalogDraft: "Draft", catalogPublished: "Published", catalogRetired: "Retired",
+    toastApplicationApproved: "{name}'s application approved.",
+    toastApplicationRejected: "{name}'s application rejected.",
+    toastInvitationCancelled: "Invitation cancelled.",
+    toastWorkspaceSuspended: "{name} suspended.",
+    toastWorkspaceReinstated: "{name} reinstated.",
+    toastWorkspaceArchived: "{name} archived.",
+    toastOverdueSwept: "Overdue invoices swept.",
+    toastInvoicePaid: "{name}'s invoice marked paid.",
+    toastSubscriptionGrace: "{name}'s subscription moved to grace.",
+    toastSubscriptionSuspended: "{name}'s subscription suspended.",
+    toastSubscriptionExpired: "{name}'s subscription expired.",
+    toastProductVersionPublished: "{name} version published.",
+    toastProductRetired: "{name} retired.",
+    toastPackVersionPublished: "{name} version published.",
+    toastPackRetired: "{name} retired.",
+    toastProductCreated: "{name} created.",
+    toastPackCreated: "{name} created.",
+    toastDraftVersionCreated: "New draft version created.",
   },
 
   subscription: {
@@ -750,6 +816,8 @@ const en = {
     neverMind: "Never mind",
 
     errNoWorkspace: "No workspace selected.",
+    toastSubscribed: "Subscribed to {plan}.",
+    toastCancelled: "Subscription cancelled.",
   },
 
   landing: {
@@ -838,6 +906,10 @@ const ar = {
 
   accountbar: {
     switchWorkspace: "تبديل مساحة العمل", signOut: "تسجيل الخروج",
+  },
+
+  themeToggle: {
+    switchToLight: "التبديل إلى الوضع الفاتح", switchToDark: "التبديل إلى الوضع الداكن",
   },
 
   notifbell: {
@@ -1019,6 +1091,11 @@ const ar = {
     readonlyNote: "أنت تعرض هذا فقط. يمكن للمالك أو المسؤول فقط تغيير الإعداد.",
     save: "حفظ",
     cancel: "إلغاء",
+    toastBeginConfiguration: "بدأ الإعداد.",
+    toastMakePrivate: "أصبحت مساحة العمل خاصة الآن.",
+    toastPublish: "تم نشر مساحة العمل.",
+    toastActivate: "تم تفعيل مساحة العمل.",
+    toastIdentitySaved: "تم حفظ تفاصيل مساحة العمل.",
   },
 
   home: {
@@ -1095,6 +1172,14 @@ const ar = {
     statusSuspended: "موقوف",
     statusArchived: "مؤرشف",
     statusSubmitted: "مُقدَّم",
+    toastRoleRemoved: "تمت إزالة دور {role}.",
+    toastRoleAdded: "تمت إضافة دور {role}.",
+    toastActivated: "تم تفعيل {name}.",
+    toastSuspended: "تم إيقاف {name}.",
+    toastReinstated: "تمت إعادة تفعيل {name}.",
+    toastRemoved: "تمت إزالة {name}.",
+    toastRequestApproved: "تمت الموافقة على طلب {name}.",
+    toastRequestDeclined: "تم رفض طلب {name}.",
   },
 
   products: {
@@ -1149,6 +1234,13 @@ const ar = {
     saveChanges: "حفظ التغييرات",
     createProduct: "إنشاء المنتج",
     titleRequired: "العنوان مطلوب.",
+    toastCreated: "تم إنشاء \"{title}\".",
+    toastSaved: "تم حفظ \"{title}\".",
+    toastSubmitted: "تم تقديم \"{title}\" للمراجعة.",
+    toastPublished: "تم نشر \"{title}\".",
+    toastUnpublished: "تم إلغاء نشر \"{title}\".",
+    toastReturned: "تمت إعادة \"{title}\" إلى المسودة.",
+    toastArchived: "تمت أرشفة \"{title}\".",
   },
 
   studio: {
@@ -1226,6 +1318,7 @@ const ar = {
     saveDraftHintPublish: "النشر",
     saveDraftHintSuffix: "أدناه، تحت علامات التبويب — حفظ المسودة يبقي التغييرات خاصة أثناء عملك؛ النشر يجعل هذه النسخة مرئية للمتعلمين فورًا.",
     addContentBeforePublish: "أضف بعض المحتوى أعلاه قبل أن تتمكن من النشر.",
+    addVideoBeforePublish: "يحتاج الدرس المسجَّل إلى فيديو، أو رابط له، قبل أن تتمكن من نشره.",
     titleContentRequired: "العنوان والمحتوى كلاهما مطلوبان.",
     publishedDirectNotePrefix: "هذا الدرس منشور —",
     publishedDirectNoteBold: "حفظ التغييرات",
@@ -1335,6 +1428,29 @@ const ar = {
     removeSuggestion: "إزالة الاقتراح",
     editQuestion: "تعديل السؤال",
     removeQuestion: "إزالة السؤال",
+    toastCurriculumPublished: "تم نشر المنهج.",
+    toastCurriculumUnpublished: "تم إلغاء نشر المنهج.",
+    toastUnitAdded: "تمت إضافة \"{title}\".",
+    toastUnitRenamed: "تمت إعادة تسمية الوحدة إلى \"{title}\".",
+    toastUnitRemoved: "تمت إزالة \"{title}\".",
+    toastLessonCreated: "تم إنشاء \"{title}\".",
+    toastLessonPlaced: "تم وضع الدرس في الوحدة.",
+    toastLessonUnplaced: "تمت إزالة الدرس من الوحدة.",
+    toastDraftSaved: "تم حفظ المسودة.",
+    toastLessonPublished: "تم نشر الدرس.",
+    toastChangesSaved: "تم حفظ التغييرات.",
+    toastNewVersionStarted: "بدأت نسخة جديدة.",
+    toastLessonDuplicated: "تم تكرار الدرس.",
+    toastLessonUnpublished: "تم إلغاء نشر الدرس.",
+    toastLessonArchived: "تمت أرشفة الدرس.",
+    toastVideoUploaded: "تم رفع الفيديو.",
+    toastVideoLinked: "تم إرفاق رابط الفيديو.",
+    toastVideoRemoved: "تمت إزالة الفيديو.",
+    toastQuestionAdded: "تمت إضافة السؤال.",
+    toastQuestionUpdated: "تم تحديث السؤال.",
+    toastQuestionRemoved: "تمت إزالة السؤال.",
+    toastQuestionsPublished: "تم نشر الأسئلة.",
+    toastQuestionsUnpublished: "تم إلغاء نشر الأسئلة.",
   },
 
   learnerHome: {
@@ -1474,6 +1590,24 @@ const ar = {
     requiresMinLevel: "الحد الأدنى للمستوى المطلوب",
     none: "لا شيء",
     catalogDraft: "مسودة", catalogPublished: "منشور", catalogRetired: "مسحوب",
+    toastApplicationApproved: "تمت الموافقة على طلب {name}.",
+    toastApplicationRejected: "تم رفض طلب {name}.",
+    toastInvitationCancelled: "تم إلغاء الدعوة.",
+    toastWorkspaceSuspended: "تم إيقاف {name}.",
+    toastWorkspaceReinstated: "تمت إعادة تفعيل {name}.",
+    toastWorkspaceArchived: "تمت أرشفة {name}.",
+    toastOverdueSwept: "تمت معالجة الفواتير المتأخرة.",
+    toastInvoicePaid: "تم وضع علامة \"مدفوعة\" على فاتورة {name}.",
+    toastSubscriptionGrace: "انتقل اشتراك {name} إلى فترة السماح.",
+    toastSubscriptionSuspended: "تم إيقاف اشتراك {name}.",
+    toastSubscriptionExpired: "انتهى اشتراك {name}.",
+    toastProductVersionPublished: "تم نشر إصدار {name}.",
+    toastProductRetired: "تم سحب {name}.",
+    toastPackVersionPublished: "تم نشر إصدار {name}.",
+    toastPackRetired: "تم سحب {name}.",
+    toastProductCreated: "تم إنشاء {name}.",
+    toastPackCreated: "تم إنشاء {name}.",
+    toastDraftVersionCreated: "تم إنشاء إصدار مسودة جديد.",
   },
 
   subscription: {
@@ -1541,6 +1675,8 @@ const ar = {
     neverMind: "تراجع",
 
     errNoWorkspace: "لم يتم اختيار مساحة عمل.",
+    toastSubscribed: "تم الاشتراك في {plan}.",
+    toastCancelled: "تم إلغاء الاشتراك.",
   },
 
   landing: {

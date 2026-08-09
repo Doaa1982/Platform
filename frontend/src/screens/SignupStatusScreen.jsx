@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
+import Message from "../components/Message";
 
 /* =========================================================================
    SIGNUP STATUS — /apply/status/{token}
@@ -94,11 +95,7 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
         <h1>{status.headline}</h1>
         <p className="pl-stat__lead">{status.detail}</p>
 
-        {error && (
-          <div className="pl-stat__alert" role="alert">
-            <AlertCircle size={15} aria-hidden="true" /> <span>{error}</span>
-          </div>
-        )}
+        {error && <Message type="error">{error}</Message>}
 
         {status.canPay && (
           <div className="pl-stat__pay">
@@ -191,11 +188,6 @@ const CSS = `
   .pl-stat__ghost:hover:not(:disabled) { color: var(--ink); }
   .pl-stat__note { font-size: 0.75rem; color: var(--ink-soft); margin: 2px 0 0; opacity: 0.8; }
 
-  .pl-stat__alert {
-    display: flex; align-items: flex-start; gap: 8px; text-align: start;
-    background: rgba(224,97,90,0.12); border: 1px solid rgba(224,97,90,0.4);
-    color: #E0615A; border-radius: 9px; padding: 9px 11px; margin-top: 16px; font-size: 0.84rem;
-  }
 
   .pl-stat__meta {
     display: flex; justify-content: center; gap: 22px; flex-wrap: wrap;

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, ArrowLeft, BookOpen, CheckCircle2, PlayCircle, Lock,
+  LoaderCircle, ArrowLeft, BookOpen, CheckCircle2, PlayCircle, Lock,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    COURSES — a Learner's Published products and their Published curriculum.
@@ -46,7 +47,7 @@ function ProductPicker({ onSelect }) {
   }, [session.token, slug]);
 
   if (error) {
-    return <div className="lw-page"><style>{CSS}</style><div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div></div>;
+    return <div className="lw-page"><style>{CSS}</style><Message type="error">{error}</Message></div>;
   }
   if (!data) {
     return (
@@ -115,7 +116,7 @@ function CurriculumView({ productId, onBack, onOpenLesson }) {
       <div className="lw-page">
         <style>{CSS}</style>
         <BackLink onBack={onBack} />
-        <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>
+        <Message type="error">{error}</Message>
       </div>
     );
   }
@@ -191,13 +192,6 @@ function BackLink({ onBack }) {
 
 const CSS = `
   .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-learn__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    color: var(--danger); border-radius: var(--radius-sm);
-    padding: 10px 13px; margin-bottom: 16px; font-size: 0.87rem;
-  }
   .lw-learn__back {
     display: inline-flex; align-items: center; gap: 6px;
     background: transparent; border: none; color: var(--ink-soft);

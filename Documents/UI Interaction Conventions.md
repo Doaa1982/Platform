@@ -247,3 +247,77 @@ would fight the design rather than match it.
 Applied so far: `App.jsx` shared shell (covers `ProductsScreen.jsx`,
 `ContentStudioScreen.jsx`, `WorkspaceSetupScreen.jsx`, `MembersScreen.jsx`),
 `ApplyScreen.jsx`, `AdminScreen.jsx`, `AdminLogin.jsx`.
+
+---
+
+## UIC-005 — Outcomes are a vanishing toast, top-right, via a shared `<Message>` component
+
+**Decided:** 2026-08-09
+**Applies to:** every screen, authenticated or not
+**Status:** Active
+
+Every success, error or failure outcome a user needs to be told about is a
+small floating card fixed to the top-right corner of the page — icon plus
+text, color-coded (green for success, red for error/failure) — that appears,
+sits for ~4 seconds, fades out and removes itself. The caller never clears
+it: setting the same local `error`/success state this app already used
+everywhere is enough, the component owns its own visible/hidden lifecycle.
+A fresh outcome while one is still showing (or fading) restarts the timer
+and re-shows immediately, even mid-fade.
+
+This was originally implemented (same day) as an inline one-line banner
+sitting in the page's own flow, replacing each screen's alert box in place.
+That was superseded within the same day — the actual requirement was a
+toast, not an inline banner — before the inline version had a chance to
+accumulate its own "applied so far" history worth recording separately.
+
+This replaces ~29 independently-hand-written `.lw-*__alert` / `.pl-*__alert`
+CSS classes (one nearly-identical copy per screen, some even colliding on
+the same class name across two files while each defined its own separate
+rule for it — `lw-prod__alert` in both `ProductsScreen.jsx` and
+`SubscriptionScreen.jsx`) with one component. It also gives success outcomes
+a real, consistent home — before this, the only success feedback anywhere
+was a bespoke green banner on the learner lesson screen, a full-screen
+"done" card on the invite-acceptance screen, and three one-off
+copy-to-clipboard button-label swaps; every other action that succeeded
+(saving a draft, sending an invitation, publishing something) said nothing
+at all.
+
+**Does not apply to** field-level inline validation (`RequiredMark`/
+`invalidFieldStyle`, UIC-002 — a specific control being wrong, not an
+action's outcome), the "note"/hint-text paragraphs that already existed
+next to forms and status timelines (informational, not an outcome), or the
+richer bespoke moments that are deliberately more than a one-line message:
+`InviteScreen.jsx`'s full-screen "you're in" card and the three
+copy-to-clipboard button-label swaps (`AdminScreen.jsx`, `ApplyScreen.jsx`,
+`MembersScreen.jsx`) stay as they are — converting those to a toast would be
+a downgrade, not a consolidation.
+
+**Known limitation:** two `<Message>` instances active in the same screen at
+the same moment (rare — e.g. a saved-changes error alongside a separate
+client-side publish-validation message) will render on top of each other at
+the same fixed position rather than stacking with an offset. Not worth a
+full toast-queue/provider architecture for how rarely two outcomes are true
+simultaneously in this app today; revisit if that stops being rare.
+
+**Implementation:** `frontend/src/components/Message.jsx` — `<Message
+type="error">{text}</Message>` or `<Message type="success">{text}</Message>`;
+renders nothing when `text` is falsy. `position: fixed; top: 20px; right:
+20px` — safe because none of this app's overlay/panel wrappers use
+`transform` to center themselves (that would create a containing block and
+make `position: fixed` relative to the wrapper instead of the viewport).
+Auto-hide timing (`VISIBLE_MS`/`FADE_MS`) lives as constants at the top of
+the file. Fixed inline colors for the same portability reason as
+`InfoTip`/`RequiredMark` (no shared root theme): `#C0392B` for error (the
+same red `RequiredMark` already uses), `#1E7F63` for success (this app's
+existing `--accent-2`, already used everywhere else as its one "positive"
+color — `is-done`, `is-published`, `is-active` states). `role="alert"` for
+error, `role="status"` for success.
+
+Applied so far: every screen listed under UIC-002/UIC-003's "Applied so
+far" plus `LoginScreen.jsx`, `AdminLogin.jsx`, `SignupStatusScreen.jsx`,
+`JoinScreen.jsx`, `AdminCatalogSection.jsx`, `LearnerCoursesScreen.jsx`,
+`LearnerHomeScreen.jsx`, `LearnerLessonScreen.jsx`, `WorkspaceHomeScreen.jsx`
+— i.e. every screen that had its own `*__alert` class. Apply the same
+component to any new success/error/failure outcome rather than
+hand-writing another one-off alert box.

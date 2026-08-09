@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, BookOpen, CheckCircle2, ClipboardCheck, Award, Trophy, Clock, ArrowRight,
+  LoaderCircle, BookOpen, CheckCircle2, ClipboardCheck, Award, Trophy, Clock, ArrowRight,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    LEARNER HOME — what a learner sees in a workspace they belong to.
@@ -31,8 +32,12 @@ function formatMinutes(t, total) {
 
 /** A stat card reads as "what is this measuring" first, the number second — title carries the weight, the value is a colored accent underneath it, not the headline. */
 function StatCard({ icon: Icon, color, title, value, note, muted }) {
+  const style = muted ? undefined : {
+    "--card-bg": `color-mix(in srgb, ${color.icon} 16%, var(--surface-2))`,
+    "--card-icon": color.icon,
+  };
   return (
-    <div className={`lw-lh__card ${muted ? "is-muted" : ""}`} style={muted ? undefined : { "--card-bg": color.bg, "--card-icon": color.icon }}>
+    <div className={`lw-lh__card ${muted ? "is-muted" : ""}`} style={style}>
       <div className="lw-lh__cardicon"><Icon size={17} /></div>
       <div className="lw-lh__cardtitle">{title}</div>
       <div className="lw-lh__cardvalue">{value}</div>
@@ -41,13 +46,16 @@ function StatCard({ icon: Icon, color, title, value, note, muted }) {
   );
 }
 
+/* Backgrounds are derived (color-mix against --surface-2, see StatCard) so
+   these tints stay a light accent wash in Light mode and a muted dark-surface
+   wash in Dark mode, instead of a hardcoded pastel fighting the page. */
 const CARD_COLORS = {
-  courses: { bg: "#FFF1DF", icon: "#E0912E" },
-  completedCourses: { bg: "#E4F7EE", icon: "#1FA971" },
-  lessons: { bg: "#E9F0FE", icon: "#3E6FE0" },
-  time: { bg: "#F3EBFC", icon: "#8B5CF6" },
-  assessments: { bg: "#FDEAF0", icon: "#E0537B" },
-  certificates: { bg: "#FEF6DD", icon: "#C9971C" },
+  courses: { icon: "#E0912E" },
+  completedCourses: { icon: "#1FA971" },
+  lessons: { icon: "#3E6FE0" },
+  time: { icon: "#8B5CF6" },
+  assessments: { icon: "#E0537B" },
+  certificates: { icon: "#C9971C" },
 };
 
 export default function LearnerHomeScreen({ onContinueLesson }) {
@@ -74,7 +82,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
   const firstName = (me?.fullName ?? "").trim().split(" ")[0];
 
   if (error) {
-    return <div className="lw-page"><div className="lw-lh__alert"><AlertCircle size={16} /> {error}</div></div>;
+    return <div className="lw-page"><Message type="error">{error}</Message></div>;
   }
   if (!setup || !stats) {
     return (
@@ -143,12 +151,6 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
 
 const CSS = `
   .lw-lh__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-lh__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    color: var(--danger); border-radius: var(--radius-sm); padding: 10px 13px; font-size: 0.87rem;
-  }
   .lw-lh__continue {
     display: flex; align-items: center; justify-content: space-between; gap: 14px;
     width: 100%; max-width: 800px; text-align: start; cursor: pointer;

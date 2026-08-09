@@ -7,6 +7,8 @@ import { SIDES, rolesMatchSide } from "./auth/sides";
 import { useFonts } from "./hooks/useFonts";
 import { useLanguage } from "./i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "./i18n/LanguageToggle";
+import { useTheme } from "./theme/useTheme";
+import ThemeToggle, { THEME_TOGGLE_CSS } from "./theme/ThemeToggle";
 import MembersScreen from "./screens/MembersScreen";
 import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
@@ -28,16 +30,39 @@ import * as api from "./api/client";
 
 /* The platform default palette. Per-workspace branding is not implemented
    (Technical Debt Backlog TD-006); this replaces the two fixture academy
-   themes, which dressed every workspace as somebody else's brand. */
-const DEFAULT_THEME = {
-  "--bg": "#F7F5F1", "--surface": "#FFFFFF", "--surface-2": "#EFEDE8",
-  "--ink": "#1B2430", "--ink-soft": "#6A7383", "--accent": "#2D5BD1",
-  "--accent-2": "#1E7F63", "--line": "#E1DED7", "--danger": "#B3382B",
+   themes, which dressed every workspace as somebody else's brand.
+   Fonts/radii/nav are mode-invariant — only color tokens differ below. */
+const SHARED_THEME = {
   "--radius": "14px", "--radius-sm": "10px",
-  "--nav-bg": "#1B2430", "--nav-text": "#F2F5FA",
   "--font-display": "'Fraunces', Georgia, serif",
   "--font-body": "'Karla', system-ui, sans-serif",
   "--font-mono": "'IBM Plex Mono', monospace",
+};
+
+const LIGHT_THEME = {
+  ...SHARED_THEME,
+  "--bg": "#F7F5F1", "--surface": "#FFFFFF", "--surface-2": "#EFEDE8",
+  "--ink": "#1B2430", "--ink-soft": "#6A7383", "--accent": "#2D5BD1",
+  "--accent-2": "#1E7F63", "--line": "#E1DED7", "--danger": "#B3382B",
+  "--nav-bg": "#1B2430", "--nav-text": "#F2F5FA",
+  "--bar-bg": "#FFFFFF", "--bar-ink": "#1B2430", "--bar-line": "#E1DED7",
+  "--bar-hover-line": "#C9C5BC", "--bar-panel-shadow": "rgba(10,12,15,0.14)",
+  "--bar-role-bg": "#EDF1FB", "--bar-role-ink": "#2449AC",
+  "--bar-active-bg": "#EDF1FB", "--bar-active-ink": "#2449AC", "--bar-active-line": "#DAE3FA",
+  "--bar-hover-bg": "#F7F5F1", "--bar-unread-bg": "#EDF1FB", "--bar-unread-hover-bg": "#E3EAFB",
+};
+
+const DARK_THEME = {
+  ...SHARED_THEME,
+  "--bg": "#14161B", "--surface": "#1C1F26", "--surface-2": "#262A33",
+  "--ink": "#E8EAED", "--ink-soft": "#9199A6", "--accent": "#6C93FF",
+  "--accent-2": "#3FBF8B", "--line": "#333844", "--danger": "#E06152",
+  "--nav-bg": "#0F1115", "--nav-text": "#F2F5FA",
+  "--bar-bg": "#1C1F26", "--bar-ink": "#E8EAED", "--bar-line": "#333844",
+  "--bar-hover-line": "#454C5A", "--bar-panel-shadow": "rgba(0,0,0,0.45)",
+  "--bar-role-bg": "#232B45", "--bar-role-ink": "#9FB6FF",
+  "--bar-active-bg": "#232B45", "--bar-active-ink": "#9FB6FF", "--bar-active-line": "#37436B",
+  "--bar-hover-bg": "#262A33", "--bar-unread-bg": "#232B45", "--bar-unread-hover-bg": "#2C3550",
 };
 
 /* =========================================================================
@@ -239,6 +264,7 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
       {role === "learner" && <LearnerTopNav screen={screen} onNavigate={onNavigate} aiLabel={aiLabel} />}
       <span className="lw-accountbar__spacer" />
       <LanguageToggle />
+      <ThemeToggle />
       <NotificationBell />
       <button className="lw-accountbar__who" onClick={onOpenProfile}>{me?.fullName}</button>
       {canSwitchSide && (
@@ -568,6 +594,7 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
 export default function App() {
   useFonts();
   const { t } = useLanguage();
+  const { mode } = useTheme();
 
   /* Which surface renders is decided by the door you came through, not by a
      toggle — and you only reach this component at all once the API has
@@ -619,8 +646,9 @@ export default function App() {
 
   /* Branding is not implemented (Technical Debt Backlog TD-006), so every
      workspace renders in the platform default. Inventing a palette per
-     workspace would be another fiction, just a prettier one. */
-  const theme = DEFAULT_THEME;
+     workspace would be another fiction, just a prettier one. Which of the
+     two default palettes is Light/Dark mode, owned by ThemeContext. */
+  const theme = mode === "dark" ? DARK_THEME : LIGHT_THEME;
 
   /* The person is whoever is actually signed in, and their label is the roles
      they actually hold here — not a fixture "Mentor" or "Instructor". */
@@ -774,48 +802,48 @@ const CSS = `
   .lw-root { font-family: var(--font-body); color: var(--ink); background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; }
   .lw-root * { box-sizing: border-box; }
 
-  .lw-accountbar { background: #FFFFFF; color: #1B2430; border-bottom: 1px solid #E1DED7; font-family: var(--font-body); font-size: 12px; display: flex; align-items: center; gap: 10px; padding: 8px 18px; flex-wrap: wrap; }
+  .lw-accountbar { background: var(--bar-bg); color: var(--bar-ink); border-bottom: 1px solid var(--bar-line); font-family: var(--font-body); font-size: 12px; display: flex; align-items: center; gap: 10px; padding: 8px 18px; flex-wrap: wrap; }
   .lw-accountbar__side { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; background: var(--side-accent); color: #fff; border-radius: 20px; padding: 3px 9px; }
   .lw-accountbar__ws { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
   .lw-accountbar__roles { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-  .lw-accountbar__role { font-family: var(--font-mono); font-size: 10px; background: #EDF1FB; color: #2449AC; border-radius: 20px; padding: 2px 8px; }
+  .lw-accountbar__role { font-family: var(--font-mono); font-size: 10px; background: var(--bar-role-bg); color: var(--bar-role-ink); border-radius: 20px; padding: 2px 8px; }
   .lw-accountbar__spacer { flex: 1; }
-  .lw-accountbar button { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid #E1DED7; color: #6A7383; border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
-  .lw-accountbar button:hover { color: #1B2430; border-color: #C9C5BC; }
+  .lw-accountbar button { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--bar-line); color: var(--ink-soft); border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
+  .lw-accountbar button:hover { color: var(--bar-ink); border-color: var(--bar-hover-line); }
   .lw-accountbar .lw-accountbar__who {
-    background: transparent; border: 1px solid transparent; color: #6A7383; padding: 4px 6px;
+    background: transparent; border: 1px solid transparent; color: var(--ink-soft); padding: 4px 6px;
   }
-  .lw-accountbar .lw-accountbar__who:hover { color: #1B2430; border-color: #E1DED7; }
+  .lw-accountbar .lw-accountbar__who:hover { color: var(--bar-ink); border-color: var(--bar-line); }
 
   .lw-accountbar__navlinks { display: inline-flex; align-items: center; gap: 4px; }
   .lw-accountbar .lw-accountbar__navlink { border-color: transparent; }
-  .lw-accountbar .lw-accountbar__navlink.is-active { color: #2D5BD1; border-color: #DAE3FA; background: #EDF1FB; }
+  .lw-accountbar .lw-accountbar__navlink.is-active { color: var(--bar-active-ink); border-color: var(--bar-active-line); background: var(--bar-active-bg); }
   .lw-accountbar__more { position: relative; }
   .lw-accountbar__morepanel {
     position: absolute; top: calc(100% + 8px); inset-inline-start: 0; z-index: 41;
     width: 200px; overflow: hidden;
-    background: #fff; color: #1B2430; border: 1px solid #E1DED7; border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(10,12,15,0.14);
+    background: var(--bar-bg); color: var(--bar-ink); border: 1px solid var(--bar-line); border-radius: 10px;
+    box-shadow: 0 10px 30px var(--bar-panel-shadow);
     display: flex; flex-direction: column; padding: 6px;
   }
   .lw-accountbar .lw-accountbar__moreitem {
     display: flex; align-items: center; gap: 8px; width: 100%; text-align: start;
-    background: transparent; border: none; color: #1B2430; border-radius: 7px;
+    background: transparent; border: none; color: var(--bar-ink); border-radius: 7px;
     padding: 8px 9px; font-family: var(--font-body); font-size: 12px; cursor: pointer;
   }
-  .lw-accountbar__moreitem svg { color: #6A7383; flex-shrink: 0; }
-  .lw-accountbar .lw-accountbar__moreitem:hover { background: #F7F5F1; border-color: transparent; }
-  .lw-accountbar .lw-accountbar__moreitem.is-active { background: #EDF1FB; color: #2449AC; border-color: transparent; }
+  .lw-accountbar__moreitem svg { color: var(--ink-soft); flex-shrink: 0; }
+  .lw-accountbar .lw-accountbar__moreitem:hover { background: var(--bar-hover-bg); border-color: transparent; }
+  .lw-accountbar .lw-accountbar__moreitem.is-active { background: var(--bar-active-bg); color: var(--bar-active-ink); border-color: transparent; }
 
   .lw-notifbell { position: relative; }
   .lw-accountbar .lw-notifbell__trigger {
     position: relative; padding: 5px; border-radius: 50%; border: 1px solid transparent;
   }
-  .lw-accountbar .lw-notifbell__trigger:hover { border-color: #E1DED7; }
+  .lw-accountbar .lw-notifbell__trigger:hover { border-color: var(--bar-line); }
   .lw-notifbell__badge {
     position: absolute; top: -3px; inset-inline-end: -3px;
     min-width: 15px; height: 15px; padding: 0 3px; border-radius: 50%;
-    background: #B3382B; color: #fff;
+    background: var(--danger); color: #fff;
     font-family: var(--font-mono); font-size: 9px; font-weight: 700;
     display: flex; align-items: center; justify-content: center; line-height: 1;
   }
@@ -823,22 +851,22 @@ const CSS = `
   .lw-notifbell__panel {
     position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 41;
     width: 320px; max-height: 380px; overflow-y: auto;
-    background: #fff; color: #1B2430; border: 1px solid #E1DED7; border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(10,12,15,0.14);
+    background: var(--bar-bg); color: var(--bar-ink); border: 1px solid var(--bar-line); border-radius: 10px;
+    box-shadow: 0 10px 30px var(--bar-panel-shadow);
   }
   .lw-notifbell__head {
     font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
-    color: #6A7383; padding: 12px 14px 8px;
+    color: var(--ink-soft); padding: 12px 14px 8px;
   }
-  .lw-notifbell__empty { font-size: 0.83rem; color: #6A7383; padding: 6px 14px 16px; }
+  .lw-notifbell__empty { font-size: 0.83rem; color: var(--ink-soft); padding: 6px 14px 16px; }
   .lw-notifbell__list { list-style: none; margin: 0; padding: 0 6px 6px; display: flex; flex-direction: column; gap: 2px; }
   .lw-notifbell__list li { padding: 9px 8px; border-radius: 8px; cursor: pointer; }
-  .lw-notifbell__list li:hover { background: #F7F5F1; }
-  .lw-notifbell__list li.is-unread { background: #EDF1FB; }
-  .lw-notifbell__list li.is-unread:hover { background: #E3EAFB; }
+  .lw-notifbell__list li:hover { background: var(--bar-hover-bg); }
+  .lw-notifbell__list li.is-unread { background: var(--bar-unread-bg); }
+  .lw-notifbell__list li.is-unread:hover { background: var(--bar-unread-hover-bg); }
   .lw-notifbell__list strong { display: block; font-size: 0.85rem; }
-  .lw-notifbell__list p { font-size: 0.8rem; color: #4A5261; margin: 3px 0 5px; line-height: 1.45; }
-  .lw-notifbell__time { font-family: var(--font-mono); font-size: 9.5px; color: #6A7383; }
+  .lw-notifbell__list p { font-size: 0.8rem; color: var(--ink-soft); margin: 3px 0 5px; line-height: 1.45; }
+  .lw-notifbell__time { font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-soft); }
 
   .lw-controlstrip { background: #0D0F12; color: #C9CDD3; font-family: var(--font-mono); font-size: 11px; display: flex; align-items: center; gap: 20px; padding: 8px 18px; flex-wrap: wrap; border-bottom: 1px solid #000; }
   .lw-controlstrip__label { opacity: 0.65; letter-spacing: 0.04em; }
@@ -1122,8 +1150,8 @@ const CSS = `
   .lw-wfield input:focus { outline: 2px solid #2454C7; outline-offset: 1px; }
 
   .lw-segctrl { display: flex; gap: 6px; flex-wrap: wrap; }
-  .lw-segctrl button { padding: 7px 14px; border-radius: 20px; border: 1px solid #DDD; background: #fff; color: #444; font-size: 0.82rem; cursor: pointer; }
-  .lw-segctrl button.active { background: #2454C7; border-color: #2454C7; color: #fff; }
+  .lw-segctrl button { padding: 7px 14px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 0.82rem; cursor: pointer; }
+  .lw-segctrl button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
   .lw-presetgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
   .lw-presetcard { border: 2px solid #E3E3E3; border-radius: 12px; padding: 14px; cursor: pointer; background: #fff; transition: border-color .12s; }
@@ -1152,6 +1180,7 @@ const CSS = `
   button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   ${LANGUAGE_TOGGLE_CSS}
+  ${THEME_TOGGLE_CSS}
 `;
 
 /* The person behind the membership, across the platform rather than inside one

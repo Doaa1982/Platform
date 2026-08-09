@@ -5,6 +5,7 @@ import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
+import Message from "../components/Message";
 
 /* =========================================================================
    INVITE SCREEN — /invite/{token}
@@ -121,12 +122,7 @@ export default function InviteScreen({ token, onAccepted }) {
         </p>
 
         <form className="pl-invite__form" onSubmit={handleSubmit} noValidate>
-          {error && (
-            <div className="pl-invite__alert" role="alert">
-              <AlertCircle size={16} aria-hidden="true" />
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <Message type="error">{error}</Message>}
 
           {!preview.accountExists && (
             <label className="pl-invite__field">
@@ -228,7 +224,6 @@ const CSS = `
     width: 100%; font-family: inherit; font-size: 0.95rem; color: var(--ink);
     background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px;
   }
-  .pl-invite__form > .pl-invite__alert,
   .pl-invite__form > .pl-invite__note,
   .pl-invite__form > .pl-invite__btn {
     grid-column: 1 / -1;
@@ -257,12 +252,6 @@ const CSS = `
   .pl-invite__btn:hover:not(:disabled) { background: #2449AC; }
   .pl-invite__btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-  .pl-invite__alert {
-    display: flex; align-items: flex-start; gap: 9px; text-align: start;
-    background: #FDF1EF; border: 1px solid rgba(179,56,43,0.28); color: #B3382B;
-    border-radius: 10px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.87rem;
-  }
-  .pl-invite__alert svg { flex-shrink: 0; margin-top: 1px; }
 
   .pl-invite__muted { font-size: 0.8rem; color: var(--ink-soft); margin: 18px 0 0; line-height: 1.55; }
 

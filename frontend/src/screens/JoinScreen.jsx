@@ -5,6 +5,7 @@ import { useFonts } from "../hooks/useFonts";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
+import Message from "../components/Message";
 
 /* =========================================================================
    JOIN SCREEN — /join/{slug}
@@ -132,11 +133,7 @@ export default function JoinScreen({ slug, onSignIn }) {
         {preview.description && <p className="pl-join__lead">{preview.description}</p>}
 
         <form className="pl-join__form" onSubmit={handleSubmit} noValidate>
-          {error && (
-            <div className="pl-join__alert" role="alert">
-              <AlertCircle size={16} aria-hidden="true" /> <span>{error}</span>
-            </div>
-          )}
+          {error && <Message type="error">{error}</Message>}
 
           <label className="pl-join__field">
             <span>{t("join.nameLabel")}<RequiredMark /></span>
@@ -227,7 +224,7 @@ const CSS = `
     background: #fff; border: 1px solid var(--line); border-radius: 10px;
     padding: 11px 13px; resize: vertical;
   }
-  .pl-join__form > .pl-join__alert, .pl-join__form > .pl-join__btn { grid-column: 1 / -1; }
+  .pl-join__form > .pl-join__btn { grid-column: 1 / -1; }
   @media (max-width: 480px) {
     .pl-join__form { grid-template-columns: 1fr; }
     .pl-join__form > .pl-join__field { display: flex; flex-direction: column; gap: 6px; }
@@ -253,12 +250,6 @@ const CSS = `
   }
   .pl-join__ghost:hover { border-color: var(--accent); }
 
-  .pl-join__alert {
-    display: flex; align-items: flex-start; gap: 9px; text-align: start;
-    background: #FDF1EF; border: 1px solid rgba(179,56,43,0.28); color: #B3382B;
-    border-radius: 10px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.87rem;
-  }
-  .pl-join__alert svg { flex-shrink: 0; margin-top: 1px; }
 
   .pl-join__muted {
     display: flex; align-items: center; justify-content: center; gap: 6px;

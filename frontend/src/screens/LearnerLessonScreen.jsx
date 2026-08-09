@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio,
+  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    LESSON — watch the video, answer its questions, get graded for real.
@@ -107,7 +108,11 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
 
   function handleVideoEnded() {
     setVideoEnded(true);
-    if (!completed) api.markVideoWatched(session.token, slug, lessonId).catch(() => {});
+    // The response already carries the authoritative post-watch progress —
+    // a video-only lesson (no questions to submit afterward) completes right
+    // here, and without applying it back nothing else ever refreshes this
+    // screen's `lesson` to show that.
+    if (!completed) api.markVideoWatched(session.token, slug, lessonId).then(setLesson).catch(() => {});
   }
 
   function recordAnswer(questionId, answer) {
@@ -142,7 +147,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
       <style>{CSS}</style>
       <BackLink onBack={onBack} />
 
-      {error && !lesson && <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>}
+      {error && !lesson && <Message type="error">{error}</Message>}
       {!lesson && !error && (
         <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> {t("learnerLesson.loading")}</div>
       )}
@@ -154,7 +159,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
           {done && <span className="lw-learn__donepill"><CheckCircle2 size={12} /> {t("learnerCourses.completed")}</span>}
         </div>
 
-        {error && <div className="lw-learn__alert"><AlertCircle size={16} /> {error}</div>}
+        {error && <Message type="error">{error}</Message>}
 
         {isLive && (
           <p className="muted" style={{ marginBottom: 14 }}>
@@ -221,7 +226,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
         )}
 
         {!(lesson.video || lesson.videoUrl) && lesson.questions.length === 0 && (
-          <p className="lw-learn__donebanner"><CheckCircle2 size={15} /> {t("learnerLesson.doneBanner")}</p>
+          <Message type="success">{t("learnerLesson.doneBanner")}</Message>
         )}
       </>}
     </div>
@@ -280,13 +285,6 @@ function BackLink({ onBack }) {
 const CSS = `
   .muted { color: var(--ink-soft); font-size: 0.86rem; line-height: 1.55; }
   .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-learn__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    color: var(--danger); border-radius: var(--radius-sm);
-    padding: 10px 13px; margin-bottom: 16px; font-size: 0.87rem;
-  }
   .lw-learn__back {
     display: inline-flex; align-items: center; gap: 6px;
     background: transparent; border: none; color: var(--ink-soft);
@@ -326,7 +324,6 @@ const CSS = `
   }
 
   .lw-learn__grading { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 0.87rem; margin-top: 16px; }
-  .lw-learn__donebanner { display: flex; align-items: center; gap: 8px; color: var(--accent-2); font-size: 0.88rem; margin-top: 18px; }
 
   .lw-option.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
 

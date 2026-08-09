@@ -7,6 +7,7 @@ import {
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
+import Message from "../components/Message";
 import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
@@ -64,7 +65,7 @@ function ProductPicker({ onSelect }) {
   }, [session.token, slug]);
 
   if (error) {
-    return <div className="lw-page"><div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div></div>;
+    return <div className="lw-page"><Message type="error">{error}</Message></div>;
   }
   if (!data) {
     return (
@@ -127,6 +128,7 @@ function CurriculumBuilder({ productId, onBack }) {
 
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [openLessonId, setOpenLessonId] = useState(null);
 
@@ -144,10 +146,15 @@ function CurriculumBuilder({ productId, onBack }) {
     return () => { cancelled = true; };
   }, [session.token, slug, productId]);
 
-  async function run(fn) {
+  async function run(fn, successMessage) {
     setBusy(true);
     setError(null);
-    try { return await fn(); }
+    setSuccess(null);
+    try {
+      const r = await fn();
+      if (successMessage) setSuccess(successMessage);
+      return r;
+    }
     catch (e) { setError(e.message); return null; }
     finally { setBusy(false); }
   }
@@ -179,7 +186,7 @@ function CurriculumBuilder({ productId, onBack }) {
       <div className="lw-page">
         <style>{CSS}</style>
         <BackLink onBack={onBack} />
-        <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>
+        <Message type="error">{error}</Message>
       </div>
     );
   }
@@ -207,18 +214,19 @@ function CurriculumBuilder({ productId, onBack }) {
       </div>
       <p className="lw-sub">{t("studio.lead", { product: data.productTitle })}</p>
 
-      {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       {data.canAuthor && (
         <div className="lw-studio__bar">
           {data.status === "Published" ? (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "unpublish")).then(load)}>
+                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "unpublish"), t("studio.toastCurriculumUnpublished")).then(load)}>
               <Undo2 size={13} /> {t("studio.editMode")}
             </button>
           ) : data.status !== "Archived" && (
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
-                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "publish")).then(load)}>
+                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "publish"), t("studio.toastCurriculumPublished")).then(load)}>
               <Globe size={13} /> {t("studio.publishCurriculum")}
             </button>
           )}
@@ -242,7 +250,7 @@ function CurriculumBuilder({ productId, onBack }) {
 
       {editable && (
         <NewUnitForm busy={busy} onAdd={(title) =>
-          run(() => api.addUnit(session.token, slug, productId, title)).then(load)} />
+          run(() => api.addUnit(session.token, slug, productId, title), t("studio.toastUnitAdded", { title })).then(load)} />
       )}
 
       {data.units.length === 0 && (
@@ -273,11 +281,11 @@ function CurriculumBuilder({ productId, onBack }) {
             isFirst={i === 0} isLast={i === data.units.length - 1}
             unplacedLessons={data.unplacedLessons}
             onOpenLesson={setOpenLessonId}
-            onRename={(title) => run(() => api.renameUnit(session.token, slug, productId, u.id, title)).then(load)}
-            onRemove={() => run(() => api.removeUnit(session.token, slug, productId, u.id)).then(load)}
-            onCreateLesson={(title) => run(() => api.createLesson(session.token, slug, productId, title, u.id)).then(load)}
-            onPlaceExisting={(lessonId) => run(() => api.placeLesson(session.token, slug, productId, u.id, lessonId)).then(load)}
-            onUnplace={(lessonId) => run(() => api.unplaceLesson(session.token, slug, productId, u.id, lessonId)).then(load)}
+            onRename={(title) => run(() => api.renameUnit(session.token, slug, productId, u.id, title), t("studio.toastUnitRenamed", { title })).then(load)}
+            onRemove={() => run(() => api.removeUnit(session.token, slug, productId, u.id), t("studio.toastUnitRemoved", { title: u.title })).then(load)}
+            onCreateLesson={(title) => run(() => api.createLesson(session.token, slug, productId, title, u.id), t("studio.toastLessonCreated", { title })).then(load)}
+            onPlaceExisting={(lessonId) => run(() => api.placeLesson(session.token, slug, productId, u.id, lessonId), t("studio.toastLessonPlaced")).then(load)}
+            onUnplace={(lessonId) => run(() => api.unplaceLesson(session.token, slug, productId, u.id, lessonId), t("studio.toastLessonUnplaced")).then(load)}
             onMoveUnit={(direction) => moveUnit(u.id, direction)}
             onMoveLesson={(lessonId, direction) => moveLesson(u.id, lessonId, direction)}
           />
@@ -300,7 +308,7 @@ function CurriculumBuilder({ productId, onBack }) {
         <>
           <p className="muted" style={{ marginTop: 14 }}>{t("studio.preferWriting")}</p>
           <NewLessonOnlyForm busy={busy}
-            onAdd={(title) => run(() => api.createLesson(session.token, slug, productId, title, null)).then(load)} />
+            onAdd={(title) => run(() => api.createLesson(session.token, slug, productId, title, null), t("studio.toastLessonCreated", { title })).then(load)} />
         </>
       )}
 
@@ -508,6 +516,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
   const [lesson, setLesson] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const [title, setTitle] = useState("");
@@ -545,11 +554,13 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
   useEffect(() => { load(); }, [load]);
 
-  async function run(fn) {
+  async function run(fn, successMessage) {
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
       const result = await fn();
+      if (successMessage) setSuccess(successMessage);
       onChanged();
       return result;
     } catch (e) { setError(e.message); return null; }
@@ -568,17 +579,21 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
   function handleSaveDraft() {
     if (!title.trim()) { setActiveTab("content"); setAttempted(true); return; }
-    run(() => api.saveLessonDraft(session.token, slug, lessonId, draftPayload())).then((l) => l && setLesson(l));
+    run(() => api.saveLessonDraft(session.token, slug, lessonId, draftPayload()), t("studio.toastDraftSaved"))
+      .then((l) => l && setLesson(l));
   }
 
   function handlePublish() {
     if (!body.trim()) { setActiveTab("content"); setPublishAttempted(true); return; }
+    const draftRevision = lesson.draftRevision;
+    const hasVideo = !!draftRevision?.video || !!draftRevision?.videoUrl;
+    if (deliveryMode === "Recorded" && !hasVideo) { setActiveTab("delivery"); setPublishAttempted(true); return; }
     // Publish always saves first — otherwise it would publish whatever was
     // last saved, silently dropping unsaved edits sitting in the form right now.
     run(async () => {
       await api.saveLessonDraft(session.token, slug, lessonId, draftPayload());
       return api.lessonTransition(session.token, slug, lessonId, "publish");
-    }).then((l) => l && setLesson(l));
+    }, t("studio.toastLessonPublished")).then((l) => l && setLesson(l));
   }
 
   /** Lesson Editing & Publication UX, Scenario 3 — no new revision, no republish. */
@@ -586,7 +601,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
     if (!title.trim() || !body.trim()) { setAttempted(true); return; }
     run(() => api.quickEditPublishedLesson(session.token, slug, lessonId, {
       title: title.trim(), body: body.trim() || null, estimatedMinutes: minutes === "" ? null : Number(minutes),
-    })).then((l) => l && setLesson(l));
+    }), t("studio.toastChangesSaved")).then((l) => l && setLesson(l));
   }
 
   function applyDraftToForm(l) {
@@ -606,7 +621,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
    */
   async function confirmSameLessonNewVersion() {
     setVersionDialogTrigger(null);
-    const started = await run(() => api.startLessonRevision(session.token, slug, lessonId));
+    const started = await run(() => api.startLessonRevision(session.token, slug, lessonId), t("studio.toastNewVersionStarted"));
     if (!started) return;
 
     let finalLesson = started;
@@ -634,7 +649,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
   async function confirmDuplicateAsNewLesson() {
     setVersionDialogTrigger(null);
     setPendingDeliveryMode(null);
-    const clone = await run(() => api.duplicateLesson(session.token, slug, lessonId));
+    const clone = await run(() => api.duplicateLesson(session.token, slug, lessonId), t("studio.toastLessonDuplicated"));
     if (clone) onDuplicated(clone.id);
   }
 
@@ -646,7 +661,8 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
         {!lesson && !error && (
           <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> {t("studio.loading")}</div>
         )}
-        {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
+        {error && <Message type="error">{error}</Message>}
+        {success && <Message type="success">{success}</Message>}
 
         {lesson && (
           <>
@@ -682,7 +698,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
             {activeTab === "content" && (lesson.draftRevision ? (
               <div className="lw-studio__draftform">
                 {attempted && !title.trim() && (
-                  <div className="lw-studio__alert"><AlertCircle size={16} /> {t("studio.titleRequired")}</div>
+                  <Message type="error">{t("studio.titleRequired")}</Message>
                 )}
                 <label>
                   <span>{t("studio.titleLabel")}<RequiredMark /></span>
@@ -708,7 +724,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                   </p>
                 )}
                 {publishAttempted && !body.trim() && (
-                  <div className="lw-studio__alert"><AlertCircle size={16} /> {t("studio.addContentBeforePublish")}</div>
+                  <Message type="error">{t("studio.addContentBeforePublish")}</Message>
                 )}
               </div>
             ) : lesson.currentRevision ? (
@@ -717,7 +733,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
               // directly — no draft, no republish, just Save changes.
               <div className="lw-studio__draftform">
                 {attempted && (!title.trim() || !body.trim()) && (
-                  <div className="lw-studio__alert"><AlertCircle size={16} /> {t("studio.titleContentRequired")}</div>
+                  <Message type="error">{t("studio.titleContentRequired")}</Message>
                 )}
                 <label>
                   <span>{t("studio.titleLabel")}<RequiredMark /></span>
@@ -752,7 +768,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                 <p>{t("studio.noContentYet")}</p>
                 {editable && (
                   <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}
-                          onClick={() => run(() => api.startLessonRevision(session.token, slug, lessonId)).then((l) => l && setLesson(l))}>
+                          onClick={() => run(() => api.startLessonRevision(session.token, slug, lessonId), t("studio.toastNewVersionStarted")).then((l) => l && setLesson(l))}>
                     <Plus size={13} /> {t("studio.startNewRevision")}
                   </button>
                 )}
@@ -793,6 +809,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                     editable={editable}
                     hasDraft={!!lesson.draftRevision}
                     deliveryMode={deliveryMode}
+                    publishAttempted={publishAttempted}
                     onChanged={load}
                     onDurationKnown={setVideoDuration}
                     onRequestNewVersion={() => setVersionDialogTrigger("video")}
@@ -839,13 +856,13 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                 )}
                 {lesson.status === "Published" && (
                   <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "unpublish")).then((l) => l && setLesson(l))}>
+                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "unpublish"), t("studio.toastLessonUnpublished")).then((l) => l && setLesson(l))}>
                     <Undo2 size={13} /> {t("studio.unpublish")}
                   </button>
                 )}
                 {lesson.status !== "Archived" && (
                   <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "archive")).then((l) => l && setLesson(l))}>
+                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "archive"), t("studio.toastLessonArchived")).then((l) => l && setLesson(l))}>
                     <Archive size={13} /> {t("studio.archiveLesson")}
                   </button>
                 )}
@@ -937,7 +954,7 @@ function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onC
    checkpoints against this video's own timeline.
    ========================================================================= */
 
-function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onDurationKnown, onRequestNewVersion }) {
+function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempted, onChanged, onDurationKnown, onRequestNewVersion }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -946,6 +963,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [sourceTab, setSourceTab] = useState("upload");
   const [urlInput, setUrlInput] = useState("");
   const [attachingUrl, setAttachingUrl] = useState(false);
@@ -963,6 +981,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
     try {
       const asset = await api.uploadLearningAsset(session.token, slug, file, file.name, setProgress);
       await api.attachLessonVideo(session.token, slug, lesson.id, asset.id);
+      setSuccess(t("studio.toastVideoUploaded"));
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -978,6 +997,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
     try {
       await api.setLessonVideoUrl(session.token, slug, lesson.id, urlInput.trim());
       setUrlInput("");
+      setSuccess(t("studio.toastVideoLinked"));
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -990,6 +1010,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
     setError(null);
     try {
       await api.removeLessonVideo(session.token, slug, lesson.id);
+      setSuccess(t("studio.toastVideoRemoved"));
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -1004,7 +1025,11 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, onChanged, onD
       {isLive && (
         <p className="muted" style={{ marginTop: -8, marginBottom: 14 }}>{t("studio.liveNote")}</p>
       )}
-      {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
+      {!isLive && !hasVideo && publishAttempted && (
+        <Message type="error">{t("studio.addVideoBeforePublish")}</Message>
+      )}
 
       {!hasVideo && hasDraft && editable && (
         <>
@@ -1139,6 +1164,7 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
 
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const [suggesting, setSuggesting] = useState(false);
@@ -1156,10 +1182,15 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
 
   useEffect(() => { load(); }, [load]);
 
-  async function run(fn) {
+  async function run(fn, successMessage) {
     setBusy(true);
     setError(null);
-    try { return await fn(); }
+    setSuccess(null);
+    try {
+      const r = await fn();
+      if (successMessage) setSuccess(successMessage);
+      return r;
+    }
     catch (e) { setError(e.message); return null; }
     finally { setBusy(false); }
   }
@@ -1187,7 +1218,7 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
       type: s.type, prompt: s.prompt, options: s.options, correctOptionIndex: s.correctOptionIndex,
       acceptedAnswers: s.acceptedAnswers, explanation: s.explanation,
       videoTimestampSeconds: s.videoTimestampSeconds, points: s.points,
-    }));
+    }), t("studio.toastQuestionAdded"));
     if (result) {
       setData(result);
       setSuggestions((prev) => prev.filter((x) => x.key !== s.key));
@@ -1200,13 +1231,13 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
 
   async function saveQuestion(body) {
     const result = formMode === "new"
-      ? await run(() => api.addQuestion(session.token, slug, lessonId, body))
-      : await run(() => api.updateQuestion(session.token, slug, lessonId, formMode.id, body));
+      ? await run(() => api.addQuestion(session.token, slug, lessonId, body), t("studio.toastQuestionAdded"))
+      : await run(() => api.updateQuestion(session.token, slug, lessonId, formMode.id, body), t("studio.toastQuestionUpdated"));
     if (result) { setData(result); setFormMode(null); }
   }
 
   async function removeQuestion(questionId) {
-    const result = await run(() => api.removeQuestion(session.token, slug, lessonId, questionId));
+    const result = await run(() => api.removeQuestion(session.token, slug, lessonId, questionId), t("studio.toastQuestionRemoved"));
     if (result) setData(result);
   }
 
@@ -1231,9 +1262,9 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
         <h2 className="lw-sectiontitle" style={{ margin: 0 }}>{t("studio.interactiveQuestions")}</h2>
         <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(t, data.status)}</span>
       </div>
-      <p className="muted" style={{ marginTop: 4 }}>{t("studio.assessmentLead")}</p>
-
-      {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
+      
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       {editable && (
         <div className="lw-studio__bar">
@@ -1251,12 +1282,12 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
           )}
           {data.status === "Published" ? (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                    onClick={() => run(() => api.assessmentTransition(session.token, slug, lessonId, "unpublish")).then((r) => r && setData(r))}>
+                    onClick={() => run(() => api.assessmentTransition(session.token, slug, lessonId, "unpublish"), t("studio.toastQuestionsUnpublished")).then((r) => r && setData(r))}>
               <Undo2 size={13} /> {t("studio.unpublish")}
             </button>
           ) : (
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
-                    onClick={() => run(() => api.assessmentTransition(session.token, slug, lessonId, "publish")).then((r) => r && setData(r))}>
+                    onClick={() => run(() => api.assessmentTransition(session.token, slug, lessonId, "publish"), t("studio.toastQuestionsPublished")).then((r) => r && setData(r))}>
               <Globe size={13} /> {t("studio.publishQuestions")}
             </button>
           )}
@@ -1488,14 +1519,13 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
       }}
     >
       {attempted && validationMessages.length > 0 && (
-        <div className="lw-studio__alert">
-          <AlertCircle size={16} />
+        <Message type="error">
           {validationMessages.length === 1 ? validationMessages[0] : (
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               {validationMessages.map((m) => <li key={m}>{m}</li>)}
             </ul>
           )}
-        </div>
+        </Message>
       )}
 
       <label>
@@ -1647,7 +1677,7 @@ function PreviewPanel({ questions, onClose, onSubmit }) {
         <div className="lw-eyebrow">{t("studio.previewEyebrow")}</div>
         <h2 className="lw-studio__panelh2">{t("studio.previewTitle")}</h2>
 
-        {error && <div className="lw-studio__alert"><AlertCircle size={16} /> {error}</div>}
+        {error && <Message type="error">{error}</Message>}
 
         {!result && questions.map((q) => (
           <div key={q.id} style={{ marginTop: 18 }}>
@@ -1726,13 +1756,6 @@ function PreviewPanel({ questions, onClose, onSubmit }) {
 const CSS = `
   .muted { color: var(--ink-soft); font-size: 0.86rem; line-height: 1.55; }
   .lw-studio__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-studio__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    color: var(--danger); border-radius: var(--radius-sm);
-    padding: 10px 13px; margin-bottom: 16px; font-size: 0.87rem;
-  }
   .lw-studio__back {
     display: inline-flex; align-items: center; gap: 6px;
     background: transparent; border: none; color: var(--ink-soft);
@@ -1908,7 +1931,6 @@ const CSS = `
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 9px 11px; resize: vertical;
   }
-  .lw-studio__draftform > .lw-studio__alert,
   .lw-studio__draftform > .lw-studio__blocker,
   .lw-studio__draftform > p,
   .lw-studio__draftform > .lw-options,
@@ -1918,7 +1940,7 @@ const CSS = `
   }
   .lw-studio__minsfield input { max-width: 120px; }
   .lw-studio__panelactions { display: flex; justify-content: flex-end; gap: 8px; }
-  .lw-studio__fielderror { display: block; color: #C0392B; font-size: 0.78rem; margin-top: 4px; }
+  .lw-studio__fielderror { display: block; color: var(--danger); font-size: 0.78rem; margin-top: 4px; }
   @media (max-width: 560px) {
     .lw-studio__draftform { grid-template-columns: 1fr; }
     .lw-studio__draftform > label, .lw-studio__draftform > .lw-studio__minsfield { display: flex; flex-direction: column; gap: 5px; }

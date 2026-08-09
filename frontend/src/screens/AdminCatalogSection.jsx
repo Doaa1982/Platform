@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle, AlertCircle, Plus, X, Send, Archive } from "lucide-react";
+import { LoaderCircle, Plus, X, Send, Archive } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    CATALOG — Products (Solo plans) and Packs (Capability Packs), database-
@@ -40,6 +41,7 @@ export default function AdminCatalogSection() {
   const [products, setProducts] = useState(null);
   const [packs, setPacks] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(null);        // "product" | "pack" | null
   const [versioning, setVersioning] = useState(null);     // the product/pack row getting a new version
@@ -58,16 +60,22 @@ export default function AdminCatalogSection() {
     return () => { cancelled = true; };
   }, [session.token]);
 
-  async function run(fn) {
+  async function run(fn, successMessage) {
     setBusy(true);
     setError(null);
-    try { const r = await fn(); await load(); return r; }
+    setSuccess(null);
+    try {
+      const r = await fn();
+      if (successMessage) setSuccess(successMessage);
+      await load();
+      return r;
+    }
     catch (e) { setError(e.message); return null; }
     finally { setBusy(false); }
   }
 
   if (error && !products) {
-    return <div className="pl-admin__alert" role="alert"><AlertCircle size={16} aria-hidden="true" /> <span>{error}</span></div>;
+    return <Message type="error">{error}</Message>;
   }
   if (!products || !packs) {
     return <div className="pl-admin__loading"><LoaderCircle size={20} className="pl-admin__spin" aria-hidden="true" /> {t("admin.loadingCatalog")}</div>;
@@ -75,7 +83,8 @@ export default function AdminCatalogSection() {
 
   return (
     <div>
-      {error && <div className="pl-admin__alert" role="alert"><AlertCircle size={16} aria-hidden="true" /> <span>{error}</span></div>}
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       <section className="pl-admin__subs">
         <div className="pl-admin__subshead">
@@ -88,8 +97,8 @@ export default function AdminCatalogSection() {
           {products.map((p) => (
             <ProductCard key={p.id} product={p} busy={busy} t={t}
               onNewVersion={() => setVersioning({ kind: "product", row: p })}
-              onPublish={(versionId) => run(() => api.publishProductVersion(session.token, p.id, versionId))}
-              onRetire={() => run(() => api.retireProduct(session.token, p.id))} />
+              onPublish={(versionId) => run(() => api.publishProductVersion(session.token, p.id, versionId), t("admin.toastProductVersionPublished", { name: p.name }))}
+              onRetire={() => run(() => api.retireProduct(session.token, p.id), t("admin.toastProductRetired", { name: p.name }))} />
           ))}
         </div>
       </section>
@@ -105,27 +114,27 @@ export default function AdminCatalogSection() {
           {packs.map((p) => (
             <PackCard key={p.id} pack={p} busy={busy} t={t}
               onNewVersion={() => setVersioning({ kind: "pack", row: p })}
-              onPublish={(versionId) => run(() => api.publishPackVersion(session.token, p.id, versionId))}
-              onRetire={() => run(() => api.retirePack(session.token, p.id))} />
+              onPublish={(versionId) => run(() => api.publishPackVersion(session.token, p.id, versionId), t("admin.toastPackVersionPublished", { name: p.name }))}
+              onRetire={() => run(() => api.retirePack(session.token, p.id), t("admin.toastPackRetired", { name: p.name }))} />
           ))}
         </div>
       </section>
 
       {creating === "product" && (
         <ProductFormModal busy={busy} t={t} onClose={() => setCreating(null)}
-          onSubmit={async (body) => { const r = await run(() => api.createCatalogProduct(session.token, body)); if (r) setCreating(null); }} />
+          onSubmit={async (body) => { const r = await run(() => api.createCatalogProduct(session.token, body), t("admin.toastProductCreated", { name: body.name })); if (r) setCreating(null); }} />
       )}
       {creating === "pack" && (
         <PackFormModal busy={busy} t={t} onClose={() => setCreating(null)}
-          onSubmit={async (body) => { const r = await run(() => api.createPack(session.token, body)); if (r) setCreating(null); }} />
+          onSubmit={async (body) => { const r = await run(() => api.createPack(session.token, body), t("admin.toastPackCreated", { name: body.name })); if (r) setCreating(null); }} />
       )}
       {versioning?.kind === "product" && (
         <ProductVersionModal product={versioning.row} busy={busy} t={t} onClose={() => setVersioning(null)}
-          onSubmit={async (version) => { const r = await run(() => api.createProductVersion(session.token, versioning.row.id, version)); if (r) setVersioning(null); }} />
+          onSubmit={async (version) => { const r = await run(() => api.createProductVersion(session.token, versioning.row.id, version), t("admin.toastDraftVersionCreated")); if (r) setVersioning(null); }} />
       )}
       {versioning?.kind === "pack" && (
         <PackVersionModal pack={versioning.row} busy={busy} t={t} onClose={() => setVersioning(null)}
-          onSubmit={async (version) => { const r = await run(() => api.createPackVersion(session.token, versioning.row.id, version)); if (r) setVersioning(null); }} />
+          onSubmit={async (version) => { const r = await run(() => api.createPackVersion(session.token, versioning.row.id, version), t("admin.toastDraftVersionCreated")); if (r) setVersioning(null); }} />
       )}
     </div>
   );

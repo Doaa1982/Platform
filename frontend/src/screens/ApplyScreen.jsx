@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, LoaderCircle, AlertCircle, CheckCircle2, Copy, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, LoaderCircle, CheckCircle2, Copy, Check } from "lucide-react";
 import * as api from "../api/client";
 import { useFonts } from "../hooks/useFonts";
 import InfoTip from "../components/InfoTip";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
+import Message from "../components/Message";
 
 /* =========================================================================
    APPLY — /apply
@@ -108,11 +109,7 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
         <p className="pl-apply__lead">{t("apply.lead")}</p>
 
         <form className="pl-apply__form" onSubmit={handleSubmit} noValidate>
-          {error && (
-            <div className="pl-apply__alert" role="alert">
-              <AlertCircle size={16} aria-hidden="true" /> <span>{error}</span>
-            </div>
-          )}
+          {error && <Message type="error">{error}</Message>}
 
           <label className="pl-apply__field">
             <span>{t("apply.nameLabel")}<RequiredMark /></span>
@@ -221,7 +218,7 @@ const CSS = `
     background: #0F1319; border: 1px solid rgba(255,255,255,0.12);
     border-radius: 10px; padding: 11px 13px; resize: vertical;
   }
-  .pl-apply__form > .pl-apply__alert, .pl-apply__form > .pl-apply__primary { grid-column: 1 / -1; }
+  .pl-apply__form > .pl-apply__primary { grid-column: 1 / -1; }
   @media (max-width: 480px) {
     .pl-apply__form { grid-template-columns: 1fr; }
     .pl-apply__form > .pl-apply__field { display: flex; flex-direction: column; gap: 6px; }
@@ -275,12 +272,6 @@ const CSS = `
   .pl-apply__linkactions { display: flex; gap: 8px; margin-top: 12px; }
   .pl-apply__linkactions button { flex: 1; }
 
-  .pl-apply__alert {
-    display: flex; align-items: flex-start; gap: 9px;
-    background: rgba(224,97,90,0.12); border: 1px solid rgba(224,97,90,0.4);
-    color: #E0615A; border-radius: 10px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.86rem;
-  }
-  .pl-apply__alert svg { flex-shrink: 0; margin-top: 1px; }
 
   .pl-apply__spin { animation: plApplySpin 0.9s linear infinite; }
   @keyframes plApplySpin { to { transform: rotate(360deg); } }

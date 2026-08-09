@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, UserPlus, Copy, Check, Crown,
+  LoaderCircle, UserPlus, Copy, Check, Crown,
   PauseCircle, PlayCircle, UserX, UserCheck, Plus, X, RefreshCw,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    MEMBERS SCREEN — the tutor's own member management.
@@ -33,6 +34,7 @@ export default function MembersScreen() {
   const [data, setData] = useState(null);
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -58,11 +60,13 @@ export default function MembersScreen() {
     return () => { cancelled = true; };
   }, [session.token, slug]);
 
-  async function run(fn) {
+  async function run(fn, successMessage) {
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
       const result = await fn();
+      if (successMessage) setSuccess(successMessage);
       await load();
       return result;
     } catch (e) {
@@ -76,7 +80,7 @@ export default function MembersScreen() {
   if (error && !data) {
     return (
       <div className="lw-page">
-        <div className="lw-members__alert"><AlertCircle size={16} /> {error}</div>
+        <Message type="error">{error}</Message>
       </div>
     );
   }
@@ -100,7 +104,8 @@ export default function MembersScreen() {
       <h1>{t("members.title")}</h1>
       <p className="lw-sub">{t("members.lead", { workspace: data.workspaceName })}</p>
 
-      {error && <div className="lw-members__alert"><AlertCircle size={16} /> {error}</div>}
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       {data.canManage && (
         <div className="lw-members__bar">
@@ -145,7 +150,7 @@ export default function MembersScreen() {
                       <button
                         aria-label={t("members.removeRole", { role: humanise(t, r) })}
                         disabled={busy}
-                        onClick={() => run(() => api.removeMemberRole(session.token, slug, m.membershipId, r))}
+                        onClick={() => run(() => api.removeMemberRole(session.token, slug, m.membershipId, r), t("members.toastRoleRemoved", { role: humanise(t, r) }))}
                       ><X size={10} /></button>
                     )}
                   </span>
@@ -154,7 +159,7 @@ export default function MembersScreen() {
                   <RoleAdder
                     busy={busy}
                     existing={m.roles}
-                    onAdd={(role) => run(() => api.assignMemberRole(session.token, slug, m.membershipId, role))}
+                    onAdd={(role) => run(() => api.assignMemberRole(session.token, slug, m.membershipId, role), t("members.toastRoleAdded", { role: humanise(t, role) }))}
                   />
                 )}
               </div>
@@ -165,23 +170,23 @@ export default function MembersScreen() {
             {data.canManage && (
               <div className="lw-members__actions">
                 {m.status === "Pending" && (
-                  <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "activate"))}>
+                  <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "activate"), t("members.toastActivated", { name: m.fullName }))}>
                     <PlayCircle size={12} /> {t("members.activate")}
                   </button>
                 )}
                 {/* INV-006: the owner's row offers none of these until ownership moves */}
                 {!m.isOwner && m.status === "Active" && (
-                  <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "suspend"))}>
+                  <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "suspend"), t("members.toastSuspended", { name: m.fullName }))}>
                     <PauseCircle size={12} /> {t("members.suspend")}
                   </button>
                 )}
                 {!m.isOwner && m.status === "Suspended" && (
-                  <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "reinstate"))}>
+                  <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "reinstate"), t("members.toastReinstated", { name: m.fullName }))}>
                     <PlayCircle size={12} /> {t("members.reinstate")}
                   </button>
                 )}
                 {!m.isOwner && m.status === "Active" && (
-                  <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "remove"))}>
+                  <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "remove"), t("members.toastRemoved", { name: m.fullName }))}>
                     <UserX size={12} /> {t("members.remove")}
                   </button>
                 )}
@@ -211,11 +216,11 @@ export default function MembersScreen() {
                 {data.canManage && (
                   <div className="lw-members__actions">
                     <button disabled={busy}
-                            onClick={() => run(() => api.decideJoinRequest(session.token, slug, r.id, "approve"))}>
+                            onClick={() => run(() => api.decideJoinRequest(session.token, slug, r.id, "approve"), t("members.toastRequestApproved", { name: r.fullName }))}>
                       <UserCheck size={12} /> {t("members.approve")}
                     </button>
                     <button disabled={busy}
-                            onClick={() => run(() => api.decideJoinRequest(session.token, slug, r.id, "decline"))}>
+                            onClick={() => run(() => api.decideJoinRequest(session.token, slug, r.id, "decline"), t("members.toastRequestDeclined", { name: r.fullName }))}>
                       <X size={12} /> {t("members.decline")}
                     </button>
                   </div>
@@ -365,14 +370,6 @@ function statusLabel(t, status) {
 const CSS = `
   .lw-members__bar { display: flex; gap: 8px; margin-bottom: 18px; }
   .lw-members__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-
-  .lw-members__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    color: var(--danger); border-radius: var(--radius-sm);
-    padding: 10px 13px; margin-bottom: 16px; font-size: 0.87rem;
-  }
 
   /* UIC-003: one property per row — label left, value right. */
   .lw-members__form {

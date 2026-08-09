@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Eye, EyeOff, LoaderCircle, AlertCircle, ArrowRight, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, ArrowRight, ArrowLeft } from "lucide-react";
 import { useAuth } from "../auth/authContext";
 import { SIDES } from "../auth/sides";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
+import Message from "../components/Message";
 
 /* =========================================================================
    LOGIN SCREEN — one component, two faces.
@@ -98,12 +99,7 @@ export default function LoginScreen({ side, onBack }) {
           <p className="pl-login__sub">{t(`sides.${side}.login.sub`)}</p>
 
           <form onSubmit={handleSubmit} noValidate>
-            {error && (
-              <div className="pl-alert" role="alert">
-                <AlertCircle size={16} aria-hidden="true" />
-                <span>{error}</span>
-              </div>
-            )}
+            {error && <Message type="error">{error}</Message>}
 
             <div className="pl-field">
               <label htmlFor="email">{t("login.email")}</label>
@@ -287,15 +283,6 @@ const CSS = `
   .pl-btn:focus-visible { outline: 2px solid var(--pl-ink); outline-offset: 2px; }
   .pl-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-  .pl-alert {
-    display: flex; align-items: flex-start; gap: 9px;
-    background: var(--pl-danger-bg);
-    border: 1px solid rgba(179,56,43,0.28);
-    color: var(--pl-danger);
-    border-radius: 10px; padding: 10px 12px; margin-bottom: 18px;
-    font-size: 0.87rem; line-height: 1.45;
-  }
-  .pl-alert svg { flex-shrink: 0; margin-top: 1px; }
 
   .pl-login__hint {
     margin-top: 26px; padding-top: 16px;

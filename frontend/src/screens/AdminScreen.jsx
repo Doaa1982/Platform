@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, Plus, RefreshCw, X, Copy, Check,
+  LoaderCircle, Plus, RefreshCw, X, Copy, Check,
   ShieldAlert, LogOut, Building2, PauseCircle, PlayCircle, Archive, Clock, Receipt,
 } from "lucide-react";
 import * as api from "../api/client";
@@ -8,6 +8,7 @@ import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
 import AdminCatalogSection from "./AdminCatalogSection";
+import Message from "../components/Message";
 
 /* =========================================================================
    ADMIN SCREEN — the Platform Administrator's console.
@@ -61,6 +62,7 @@ export default function AdminScreen() {
   const [subscriptions, setSubscriptions] = useState(null);
   const [invoiceNotes, setInvoiceNotes] = useState({});   // subscriptionId -> reference note text, for Mark Paid
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [denied, setDenied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -108,11 +110,13 @@ export default function AdminScreen() {
     return () => { cancelled = true; };
   }, [session.token]);
 
-  async function run(fn) {
+  async function run(fn, successMessage) {
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
       const result = await fn();
+      if (successMessage) setSuccess(successMessage);
       await load();
       return result;
     } catch (e) {
@@ -171,11 +175,8 @@ export default function AdminScreen() {
 
       {tab === "operations" && <>
 
-      {error && (
-        <div className="pl-admin__alert" role="alert">
-          <AlertCircle size={16} aria-hidden="true" /> <span>{error}</span>
-        </div>
-      )}
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       {showForm && (
         <ProvisionForm
@@ -213,11 +214,11 @@ export default function AdminScreen() {
                 <div className="pl-admin__actions">
                   {AWAITING.has(a.status) && (
                     <>
-                      <button disabled={busy} onClick={() => run(() => api.approveSignup(session.token, a.id))}>
+                      <button disabled={busy} onClick={() => run(() => api.approveSignup(session.token, a.id), t("admin.toastApplicationApproved", { name: a.fullName }))}>
                         <Check size={12} /> {t("admin.approve")}
                       </button>
                       <button disabled={busy}
-                              onClick={() => run(() => api.rejectSignup(session.token, a.id, { reason: null, reasonVisible: false }))}>
+                              onClick={() => run(() => api.rejectSignup(session.token, a.id, { reason: null, reasonVisible: false }), t("admin.toastApplicationRejected", { name: a.fullName }))}>
                         <X size={12} /> {t("admin.reject")}
                       </button>
                     </>
@@ -313,7 +314,7 @@ export default function AdminScreen() {
                         {r.invitation.status === "Sent" && (
                           <button
                             disabled={busy}
-                            onClick={() => run(() => api.cancelInvitation(session.token, r.invitation.id))}
+                            onClick={() => run(() => api.cancelInvitation(session.token, r.invitation.id), t("admin.toastInvitationCancelled"))}
                           >
                             <X size={12} aria-hidden="true" /> {t("admin.cancel")}
                           </button>
@@ -321,17 +322,17 @@ export default function AdminScreen() {
                       </>
                     )}
                     {r.workspaceStatus === "Active" && (
-                      <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "suspend"))}>
+                      <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "suspend"), t("admin.toastWorkspaceSuspended", { name: r.name }))}>
                         <PauseCircle size={12} aria-hidden="true" /> {t("admin.suspend")}
                       </button>
                     )}
                     {r.workspaceStatus === "Suspended" && (
-                      <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "reinstate"))}>
+                      <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "reinstate"), t("admin.toastWorkspaceReinstated", { name: r.name }))}>
                         <PlayCircle size={12} aria-hidden="true" /> {t("admin.reinstate")}
                       </button>
                     )}
                     {!["Archived", "Deleted"].includes(r.workspaceStatus) && (
-                      <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "archive"))}>
+                      <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "archive"), t("admin.toastWorkspaceArchived", { name: r.name }))}>
                         <Archive size={12} aria-hidden="true" /> {t("admin.archive")}
                       </button>
                     )}
@@ -349,7 +350,7 @@ export default function AdminScreen() {
       <section className="pl-admin__subs">
         <div className="pl-admin__subshead">
           <h2 className="pl-admin__h2">{t("admin.subscriptions")}</h2>
-          <button className="pl-admin__ghost" disabled={busy} onClick={() => run(() => api.sweepOverdueInvoices(session.token))}>
+          <button className="pl-admin__ghost" disabled={busy} onClick={() => run(() => api.sweepOverdueInvoices(session.token), t("admin.toastOverdueSwept"))}>
             <RefreshCw size={14} aria-hidden="true" /> {t("admin.sweepOverdue")}
           </button>
         </div>
@@ -417,24 +418,24 @@ export default function AdminScreen() {
                             onChange={(e) => setInvoiceNotes((n) => ({ ...n, [s.subscriptionId]: e.target.value }))}
                           />
                           <button disabled={busy}
-                                  onClick={() => run(() => api.markInvoicePaid(session.token, s.currentInvoiceId, invoiceNotes[s.subscriptionId] || null))}>
+                                  onClick={() => run(() => api.markInvoicePaid(session.token, s.currentInvoiceId, invoiceNotes[s.subscriptionId] || null), t("admin.toastInvoicePaid", { name: s.workspaceName }))}>
                             <Check size={12} aria-hidden="true" /> {t("admin.markPaid")}
                           </button>
                         </>
                       )}
                       {s.status === "PastDue" && (
-                        <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "advance-to-grace"))}>
+                        <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "advance-to-grace"), t("admin.toastSubscriptionGrace", { name: s.workspaceName }))}>
                           <Clock size={12} aria-hidden="true" /> {t("admin.advanceToGrace")}
                         </button>
                       )}
                       {s.status === "Grace" && (
-                        <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "suspend"))}>
+                        <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "suspend"), t("admin.toastSubscriptionSuspended", { name: s.workspaceName }))}>
                           <PauseCircle size={12} aria-hidden="true" /> {t("admin.suspend")}
                         </button>
                       )}
                       {s.status === "Suspended" && (
                         <>
-                          <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "expire"))}>
+                          <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "expire"), t("admin.toastSubscriptionExpired", { name: s.workspaceName }))}>
                             <Archive size={12} aria-hidden="true" /> {t("admin.expire")}
                           </button>
                           <span className="pl-admin__muted pl-admin__terminalnote">{t("admin.suspendedTerminalNote")}</span>
@@ -594,11 +595,6 @@ const CSS = `
   }
   .pl-admin__ghost:hover { color: var(--ink); border-color: #3C434C; }
 
-  .pl-admin__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: rgba(224,97,90,0.12); border: 1px solid rgba(224,97,90,0.4);
-    color: #E0615A; border-radius: 10px; padding: 10px 13px; margin-bottom: 18px; font-size: 0.87rem;
-  }
 
   .pl-admin__form { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
   /* UIC-003: one property per row — label left, value right. */

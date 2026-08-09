@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    WORKSPACE SETUP — the owner's own journey.
@@ -49,6 +50,13 @@ const ACTION_BLURB_KEY = {
   Activate:           "setup.blurbActivate",
 };
 
+const ACTION_TOAST_KEY = {
+  BeginConfiguration: "setup.toastBeginConfiguration",
+  MakePrivate:        "setup.toastMakePrivate",
+  Publish:            "setup.toastPublish",
+  Activate:           "setup.toastActivate",
+};
+
 export default function WorkspaceSetupScreen() {
   const { session, workspace, refreshProfile } = useAuth();
   const { t } = useLanguage();
@@ -56,6 +64,7 @@ export default function WorkspaceSetupScreen() {
 
   const [setup, setSetup] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState(null);
@@ -86,12 +95,14 @@ export default function WorkspaceSetupScreen() {
     return () => { cancelled = true; };
   }, [session.token, slug]);
 
-  async function act(fn) {
+  async function act(fn, successMessage) {
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
       const next = await fn();
       if (next) setSetup(next);   // every endpoint returns the whole state
+      if (successMessage) setSuccess(successMessage);
 
       /* The workspace name and slug the chrome renders were snapshotted at
          sign-in. Renaming here without this leaves the sidebar and account bar
@@ -108,7 +119,7 @@ export default function WorkspaceSetupScreen() {
   }
 
   if (error && !setup) {
-    return <div className="lw-page"><div className="lw-setup__alert"><AlertCircle size={16} /> {error}</div></div>;
+    return <div className="lw-page"><Message type="error">{error}</Message></div>;
   }
   if (!setup) {
     return (
@@ -129,7 +140,8 @@ export default function WorkspaceSetupScreen() {
       <h1>{setup.name}</h1>
       <p className="lw-sub">{t("setup.lead", { name: setup.name })}</p>
 
-      {error && <div className="lw-setup__alert"><AlertCircle size={16} /> {error}</div>}
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       {/* ── Journey ─────────────────────────────────────────────────────── */}
       <ol className="lw-setup__journey">
@@ -151,9 +163,7 @@ export default function WorkspaceSetupScreen() {
 
       {/* Suspended and Archived are platform-driven and sit outside the journey */}
       {currentIndex === -1 && (
-        <div className="lw-setup__alert">
-          <AlertCircle size={16} /> {t("setup.statusAlert", { status: setup.status, blocker: setup.blocker })}
-        </div>
+        <Message type="error">{t("setup.statusAlert", { status: setup.status, blocker: setup.blocker })}</Message>
       )}
 
       {/* ── The one available action ────────────────────────────────────── */}
@@ -166,7 +176,7 @@ export default function WorkspaceSetupScreen() {
           <button
             className="lw-btn lw-btn--accent"
             disabled={busy}
-            onClick={() => act(() => api.workspaceTransition(session.token, slug, ACTION_PATH[next]))}
+            onClick={() => act(() => api.workspaceTransition(session.token, slug, ACTION_PATH[next]), t(ACTION_TOAST_KEY[next]))}
           >
             {busy ? <LoaderCircle size={15} className="lw-setup__spin" /> : <>{t(ACTION_LABEL_KEY[next])} <ArrowRight size={15} /></>}
           </button>
@@ -191,7 +201,7 @@ export default function WorkspaceSetupScreen() {
           busy={busy}
           onCancel={() => setEditing(false)}
           onSubmit={async (body) => {
-            const saved = await act(() => api.updateWorkspaceIdentity(session.token, slug, body));
+            const saved = await act(() => api.updateWorkspaceIdentity(session.token, slug, body), t("setup.toastIdentitySaved"));
             if (saved) setEditing(false);
           }}
         />
@@ -307,13 +317,6 @@ function IdentityForm({ setup, onSubmit, onCancel, busy }) {
 
 const CSS = `
   .lw-setup__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-setup__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    color: var(--danger); border-radius: var(--radius-sm);
-    padding: 10px 13px; margin-bottom: 18px; font-size: 0.87rem;
-  }
 
   .lw-setup__journey { list-style: none; padding: 0; margin: 0 0 24px; }
   .lw-setup__step { display: flex; gap: 12px; padding: 0 0 16px; position: relative; }

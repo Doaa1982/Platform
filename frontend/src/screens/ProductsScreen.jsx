@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, Plus, RefreshCw, Send, Undo2,
+  LoaderCircle, Plus, RefreshCw, Send, Undo2,
   Globe, Archive, Pencil, BookOpen, Layers, X,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import InfoTip from "../components/InfoTip";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
+import Message from "../components/Message";
 import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
@@ -56,6 +57,11 @@ const ACTIONS = {
   Archived:    [],
 };
 
+const TRANSITION_TOAST_KEY = {
+  submit: "products.toastSubmitted", publish: "products.toastPublished",
+  unpublish: "products.toastUnpublished", return: "products.toastReturned",
+};
+
 const STATUS_KEY = { Draft: "products.statusDraft", UnderReview: "products.statusUnderReview", Published: "products.statusPublished", Archived: "products.statusArchived" };
 const human = (t, s) => t(STATUS_KEY[s] ?? "") || s;
 
@@ -74,6 +80,7 @@ export default function ProductsScreen({ onOpenStudio }) {
 
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null);   // product being edited, or "new"
 
@@ -99,16 +106,22 @@ export default function ProductsScreen({ onOpenStudio }) {
     return () => { cancelled = true; };
   }, [session.token, slug]);
 
-  async function run(fn) {
+  async function run(fn, successMessage) {
     setBusy(true);
     setError(null);
-    try { const r = await fn(); await load(); return r; }
+    setSuccess(null);
+    try {
+      const r = await fn();
+      if (successMessage) setSuccess(successMessage);
+      await load();
+      return r;
+    }
     catch (e) { setError(e.message); return null; }
     finally { setBusy(false); }
   }
 
   if (error && !data) {
-    return <div className="lw-page"><div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div></div>;
+    return <div className="lw-page"><Message type="error">{error}</Message></div>;
   }
   if (!data) {
     return (
@@ -126,7 +139,8 @@ export default function ProductsScreen({ onOpenStudio }) {
       <h1>{t("products.title")}</h1>
       <p className="lw-sub">{t("products.lead", { workspace: data.workspaceName })}</p>
 
-      {error && !editing && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
+      {error && !editing && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       {data.canAuthor && (
         <div className="lw-prod__bar">
@@ -145,7 +159,7 @@ export default function ProductsScreen({ onOpenStudio }) {
             <button className="lw-prod__panelclose" onClick={() => setEditing(null)} aria-label={t("products.close")}><X size={16} /></button>
             <div className="lw-eyebrow">{editing === "new" ? t("products.newProduct") : t("products.editProduct")}</div>
             <h2 className="lw-prod__panelh2">{editing === "new" ? t("products.createHeading") : liveEditing.title}</h2>
-            {error && <div className="lw-prod__alert"><AlertCircle size={16} /> {error}</div>}
+            {error && <Message type="error">{error}</Message>}
             <ProductForm
               busy={busy}
               product={editing === "new" ? null : liveEditing}
@@ -153,7 +167,8 @@ export default function ProductsScreen({ onOpenStudio }) {
               onSubmit={async (body, newSequential) => {
                 const saved = await run(() => editing === "new"
                   ? api.createProduct(session.token, slug, body)
-                  : api.updateProduct(session.token, slug, editing.id, body));
+                  : api.updateProduct(session.token, slug, editing.id, body),
+                  t(editing === "new" ? "products.toastCreated" : "products.toastSaved", { title: body.title }));
                 if (saved) {
                   // No curriculum exists yet to toggle live against until the
                   // product itself exists — apply the intended starting value
@@ -239,12 +254,14 @@ export default function ProductsScreen({ onOpenStudio }) {
                   )}
                   {(ACTIONS[p.status] ?? []).map((a) => (
                     <button key={a.key} disabled={busy}
-                            onClick={() => run(() => api.productTransition(session.token, slug, p.id, a.key))}>
+                            onClick={() => run(() => api.productTransition(session.token, slug, p.id, a.key),
+                              t(TRANSITION_TOAST_KEY[a.key], { title: p.title }))}>
                       <a.icon size={12} /> {t(a.labelKey)}
                     </button>
                   ))}
                   <button disabled={busy}
-                          onClick={() => run(() => api.productTransition(session.token, slug, p.id, "archive"))}>
+                          onClick={() => run(() => api.productTransition(session.token, slug, p.id, "archive"),
+                            t("products.toastArchived", { title: p.title }))}>
                     <Archive size={12} /> {t("products.archive")}
                   </button>
                 </div>
@@ -295,7 +312,7 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
       }}
     >
       {attempted && !title.trim() && (
-        <div className="lw-prod__alert"><AlertCircle size={16} /> {t("products.titleRequired")}</div>
+        <Message type="error">{t("products.titleRequired")}</Message>
       )}
       <label>
         <span>{t("products.titleLabel")}<RequiredMark /></span>
@@ -352,13 +369,6 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
 
 const CSS = `
   .lw-prod__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-prod__alert {
-    display: flex; align-items: center; gap: 9px;
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    color: var(--danger); border-radius: var(--radius-sm);
-    padding: 10px 13px; margin-bottom: 16px; font-size: 0.87rem;
-  }
   .lw-prod__bar { display: flex; gap: 8px; margin-bottom: 18px; }
 
   /* UIC-003: every field is a property-name / value row in one shared grid,
@@ -372,7 +382,6 @@ const CSS = `
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
   }
-  .lw-prod__form > .lw-prod__alert { grid-column: 1 / -1; }
   .lw-prod__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
   @media (max-width: 560px) {
     .lw-prod__form { grid-template-columns: 1fr; }

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { LoaderCircle, AlertCircle, ArrowRight, ArrowLeft, ShieldCheck } from "lucide-react";
+import { LoaderCircle, ArrowRight, ArrowLeft, ShieldCheck } from "lucide-react";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
+import Message from "../components/Message";
 
 /* =========================================================================
    ADMIN LOGIN.
@@ -61,11 +62,7 @@ export default function AdminLogin({ onBack }) {
         <p className="pl-alogin__sub">{t("adminLogin.sub")}</p>
 
         <form onSubmit={handleSubmit} noValidate>
-          {error && (
-            <div className="pl-alogin__alert" role="alert">
-              <AlertCircle size={16} aria-hidden="true" /> <span>{error}</span>
-            </div>
-          )}
+          {error && <Message type="error">{error}</Message>}
 
           <label className="pl-alogin__field">
             <span>{t("login.email")}</span>
@@ -150,12 +147,6 @@ const CSS = `
   }
   .pl-alogin__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .pl-alogin__alert {
-    display: flex; align-items: flex-start; gap: 9px;
-    background: rgba(224,97,90,0.12); border: 1px solid rgba(224,97,90,0.4);
-    color: #E0615A; border-radius: 9px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.86rem;
-  }
-  .pl-alogin__alert svg { flex-shrink: 0; margin-top: 1px; }
 
   .pl-alogin__hint {
     margin-top: 24px; padding-top: 14px; border-top: 1px dashed var(--line);
