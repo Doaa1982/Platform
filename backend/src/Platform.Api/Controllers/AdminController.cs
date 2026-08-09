@@ -27,7 +27,8 @@ namespace Platform.Api.Controllers;
 public class AdminController(
     PlatformDbContext db,
     ProvisioningService provisioning,
-    SignupRequestService signups) : ControllerBase
+    SignupRequestService signups,
+    CommercialOpsService commercialOps) : ControllerBase
 {
     // ── Tutor Signup Requests (§7.1) ─────────────────────────────────────────
 
@@ -180,6 +181,64 @@ public class AdminController(
     [HttpPost("identities/{id:guid}/reactivate")]
     public Task<IActionResult> ReactivateIdentity(Guid id, CancellationToken ct)
         => MutateIdentity(id, i => i.Reactivate(), ct);
+
+    // ── Commercial Domain — back-office actions ─────────────────────────────
+    //
+    // This platform does not collect payment (2026-08-09 correction) — these
+    // are the manual, audited actions that stand in for a payment provider's
+    // automation: an authorized Platform Operator recording that commercial
+    // terms were satisfied, or that they weren't, outside this platform.
+
+    /// <summary>GET /api/admin/subscriptions — every Workspace's commercial state, attention-needing statuses first.</summary>
+    [HttpGet("subscriptions")]
+    public async Task<ActionResult<IReadOnlyList<SubscriptionAdminRow>>> GetSubscriptions(CancellationToken ct)
+        => Ok(await commercialOps.ListSubscriptionsAsync(ct));
+
+    /// <summary>POST /api/admin/invoices/{id}/mark-paid — Manual Commercial Activation (§27a): the actual trigger for Active in this platform.</summary>
+    [HttpPost("invoices/{id:guid}/mark-paid")]
+    public async Task<ActionResult<SubscriptionSummary>> MarkInvoicePaid(
+        Guid id, [FromBody] MarkInvoicePaidRequest request, CancellationToken ct)
+    {
+        if (!TryGetIdentityId(out var operatorIdentityId))
+            return Unauthorized(new { message = "Token does not carry a valid identity." });
+
+        var result = await commercialOps.MarkInvoicePaidAsync(id, operatorIdentityId, request.ReferenceNote, ct);
+        return result.Ok ? Ok(result.Value) : Problem(result);
+    }
+
+    /// <summary>
+    /// POST /api/admin/invoices/sweep-overdue — no scheduler exists in this
+    /// codebase yet (§29's "Overdue Invoice" is date-driven, not payment-driven),
+    /// so this is the explicit, operator-triggered equivalent: marks every
+    /// issued invoice whose due date has passed Overdue and moves its
+    /// Subscription into PastDue.
+    /// </summary>
+    [HttpPost("invoices/sweep-overdue")]
+    public async Task<IActionResult> SweepOverdueInvoices(CancellationToken ct)
+        => Ok(new { subscriptionsAffected = await commercialOps.SweepOverdueInvoicesAsync(ct) });
+
+    [HttpPost("subscriptions/{id:guid}/advance-to-grace")]
+    public async Task<ActionResult<SubscriptionSummary>> AdvanceSubscriptionToGrace(Guid id, CancellationToken ct)
+        => await RunCommercialTransition(id, ct, commercialOps.AdvanceToGraceAsync);
+
+    [HttpPost("subscriptions/{id:guid}/suspend")]
+    public async Task<ActionResult<SubscriptionSummary>> SuspendSubscription(Guid id, CancellationToken ct)
+        => await RunCommercialTransition(id, ct, commercialOps.SuspendAsync);
+
+    [HttpPost("subscriptions/{id:guid}/expire")]
+    public async Task<ActionResult<SubscriptionSummary>> ExpireSubscription(Guid id, CancellationToken ct)
+        => await RunCommercialTransition(id, ct, commercialOps.ExpireAsync);
+
+    private async Task<ActionResult<SubscriptionSummary>> RunCommercialTransition(
+        Guid subscriptionId, CancellationToken ct,
+        Func<Guid, Guid, CancellationToken, Task<ProvisioningResult<SubscriptionSummary>>> transition)
+    {
+        if (!TryGetIdentityId(out var operatorIdentityId))
+            return Unauthorized(new { message = "Token does not carry a valid identity." });
+
+        var result = await transition(subscriptionId, operatorIdentityId, ct);
+        return result.Ok ? Ok(result.Value) : Problem(result);
+    }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

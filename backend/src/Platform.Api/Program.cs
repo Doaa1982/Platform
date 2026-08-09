@@ -101,6 +101,16 @@ builder.Services.AddScoped<AssessmentService>();
 builder.Services.AddScoped<LearningDeliveryService>();
 builder.Services.AddScoped<NotificationService>();
 
+// Commercial Domain — core spine (V1a)
+builder.Services.AddScoped<CatalogQueryService>();
+builder.Services.AddScoped<ConfigurationService>();
+builder.Services.AddScoped<EntitlementResolutionService>();
+builder.Services.AddScoped<LicensingService>();
+builder.Services.AddScoped<EntitlementOverrideService>();
+builder.Services.AddScoped<CommercialSubscriptionService>();
+builder.Services.AddScoped<CommercialOpsService>();
+builder.Services.AddScoped<CatalogAdminService>();
+
 // Guards the one endpoint a stranger can reach that creates an Identity
 builder.Services.AddPlatformRateLimiting(builder.Configuration);
 builder.Services.AddScoped<TokenService>();
@@ -233,6 +243,53 @@ if (app.Environment.IsDevelopment())
         db.PlatformOperators.Add(PlatformOperator.Grant(admin.Id));
 
         db.SaveChanges();
+    }
+
+    // ── Commercial Catalog seed ─────────────────────────────────────────────
+    // Deliberately its own check, not nested inside "no Identities yet" above:
+    // the Product/Pack catalog is real business data, not a throwaway dev
+    // fixture, so it's kept structurally separate. It only lives inside this
+    // IsDevelopment() block because db.Database.Migrate() above is itself
+    // gated the same way — there is no other startup path that touches the
+    // schema yet. Move this seed alongside a real migration step once one exists.
+    if (!db.CommercialProducts.Any())
+    {
+        var family = ProductFamily.Create("solo", "Solo");
+        db.ProductFamilies.Add(family);
+
+        foreach (var plan in CommercialCatalog.Plans)
+        {
+            var product = CommercialProduct.Create(family.Id, plan.Code, plan.Name);
+            var version = CommercialProductVersion.Create(
+                product.Id, versionNumber: 1,
+                plan.MonthlyPrice, plan.AnnualPrice, plan.Currency,
+                plan.TutorCapacityBase, plan.TutorCapacityMax, plan.AiCreditsIncluded,
+                plan.LearningProfile, plan.AssessmentProfile, plan.AnalyticsProfile, plan.BrandingProfile);
+            version.Publish();
+            product.Publish();
+            db.CommercialProducts.Add(product);
+            db.CommercialProductVersions.Add(version);
+        }
+
+        foreach (var packDef in CommercialCatalog.Packs)
+        {
+            var pack = CommercialPack.Create(packDef.Code, packDef.Name);
+            var version = CommercialPackVersion.Create(
+                pack.Id, versionNumber: 1, packDef.MonthlyPrice, packDef.Currency,
+                GrantFor(packDef, CapabilityDomain.Learning), GrantFor(packDef, CapabilityDomain.Assessment),
+                GrantFor(packDef, CapabilityDomain.Analytics), GrantFor(packDef, CapabilityDomain.Branding),
+                packDef.ExtraTutorCapacity,
+                packDef.RequiresMinProfile?.Domain, packDef.RequiresMinProfile?.MinLevel);
+            version.Publish();
+            pack.Publish();
+            db.CommercialPacks.Add(pack);
+            db.CommercialPackVersions.Add(version);
+        }
+
+        db.SaveChanges();
+
+        static CapabilityProfileLevel? GrantFor(CapabilityPackDefinition pack, CapabilityDomain domain) =>
+            pack.DomainGrants.TryGetValue(domain, out var level) ? level : null;
     }
 }
 

@@ -640,3 +640,116 @@ export function previewInvitation(inviteToken) {
 export function acceptInvitation(inviteToken, body) {
   return request(`/invitations/${encodeURIComponent(inviteToken)}/accept`, { method: "POST", body });
 }
+
+/* ── Commercial (this Workspace's own subscription to the platform) ─────
+   Separate from the Workspace's own commerce (pricing/orders/payouts for
+   selling its courses — not built yet). This is what the Workspace pays
+   the platform. No payment is collected here — checkout only issues an
+   Invoice; a Platform Operator confirms it was settled externally.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/catalog/plans → the public Solo plan catalog (no auth) */
+export function getCommercialPlans() {
+  return request("/catalog/plans");
+}
+
+/** GET /api/catalog/packs → the public Capability Pack catalog (no auth) */
+export function getCommercialPacks() {
+  return request("/catalog/packs");
+}
+
+/** GET /api/workspaces/{slug}/subscription → subscription + invoice + license + entitlements, or 404 if none yet */
+export function getSubscription(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription`, { token });
+}
+
+/** POST .../subscription/checkout → { planCode, packCodes, billingCycle } */
+export function checkoutSubscription(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/checkout`, { method: "POST", body, token });
+}
+
+/** POST .../subscription/cancel — access continues until the current period ends */
+export function cancelSubscription(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/cancel`, { method: "POST", token });
+}
+
+/* ── Platform admin: subscriptions & invoices ────────────────────────────
+   Manual Commercial Activation — a Platform Operator recording that
+   commercial terms were satisfied outside this platform, in place of a
+   payment-provider webhook.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/admin/subscriptions → every Workspace's commercial state, attention-needing first */
+export function getAdminSubscriptions(token) {
+  return request("/admin/subscriptions", { token });
+}
+
+/** POST /api/admin/invoices/{id}/mark-paid */
+export function markInvoicePaid(token, invoiceId, referenceNote) {
+  return request(`/admin/invoices/${invoiceId}/mark-paid`, { method: "POST", body: { referenceNote }, token });
+}
+
+/** POST /api/admin/invoices/sweep-overdue — marks every past-due Invoice Overdue and its Subscription PastDue */
+export function sweepOverdueInvoices(token) {
+  return request("/admin/invoices/sweep-overdue", { method: "POST", token });
+}
+
+/** POST /api/admin/subscriptions/{id}/{action} — advance-to-grace | suspend | expire */
+export function subscriptionAdminAction(token, subscriptionId, action) {
+  return request(`/admin/subscriptions/${subscriptionId}/${action}`, { method: "POST", token });
+}
+
+/* ── Platform admin: catalog (Products/Packs) ────────────────────────────
+   Database-backed catalog management — "editing a price" always creates a
+   new Draft version and publishes it, never patches an existing version.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/admin/catalog/products */
+export function getAdminProducts(token) {
+  return request("/admin/catalog/products", { token });
+}
+
+/** POST /api/admin/catalog/products → { familyCode, code, name, version: {...} } */
+export function createCatalogProduct(token, body) {
+  return request("/admin/catalog/products", { method: "POST", body, token });
+}
+
+/** POST /api/admin/catalog/products/{id}/versions → { version: {...} } */
+export function createProductVersion(token, productId, version) {
+  return request(`/admin/catalog/products/${productId}/versions`, { method: "POST", body: { version }, token });
+}
+
+/** POST /api/admin/catalog/products/{id}/versions/{versionId}/publish */
+export function publishProductVersion(token, productId, versionId) {
+  return request(`/admin/catalog/products/${productId}/versions/${versionId}/publish`, { method: "POST", token });
+}
+
+/** POST /api/admin/catalog/products/{id}/retire */
+export function retireProduct(token, productId) {
+  return request(`/admin/catalog/products/${productId}/retire`, { method: "POST", token });
+}
+
+/** GET /api/admin/catalog/packs */
+export function getAdminPacks(token) {
+  return request("/admin/catalog/packs", { token });
+}
+
+/** POST /api/admin/catalog/packs → { code, name, version: {...} } */
+export function createPack(token, body) {
+  return request("/admin/catalog/packs", { method: "POST", body, token });
+}
+
+/** POST /api/admin/catalog/packs/{id}/versions → { version: {...} } */
+export function createPackVersion(token, packId, version) {
+  return request(`/admin/catalog/packs/${packId}/versions`, { method: "POST", body: { version }, token });
+}
+
+/** POST /api/admin/catalog/packs/{id}/versions/{versionId}/publish */
+export function publishPackVersion(token, packId, versionId) {
+  return request(`/admin/catalog/packs/${packId}/versions/${versionId}/publish`, { method: "POST", token });
+}
+
+/** POST /api/admin/catalog/packs/{id}/retire */
+export function retirePack(token, packId) {
+  return request(`/admin/catalog/packs/${packId}/retire`, { method: "POST", token });
+}

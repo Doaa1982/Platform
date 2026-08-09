@@ -29,6 +29,22 @@ public class PlatformDbContext : DbContext
     public DbSet<LessonProgress> LessonProgresses => Set<LessonProgress>();
     public DbSet<Notification> Notifications => Set<Notification>();
 
+    // ── Commercial Domain — core spine (V1a) ────────────────────────────────
+    public DbSet<ConfigurationSnapshot> ConfigurationSnapshots => Set<ConfigurationSnapshot>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<SubscriptionEvent> SubscriptionEvents => Set<SubscriptionEvent>();
+    public DbSet<WorkspaceLicense> WorkspaceLicenses => Set<WorkspaceLicense>();
+    public DbSet<EntitlementOverride> EntitlementOverrides => Set<EntitlementOverride>();
+    public DbSet<BillingAccount> BillingAccounts => Set<BillingAccount>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+
+    // ── Commercial Domain — catalog (Products/Packs, database-backed) ───────
+    public DbSet<ProductFamily> ProductFamilies => Set<ProductFamily>();
+    public DbSet<CommercialProduct> CommercialProducts => Set<CommercialProduct>();
+    public DbSet<CommercialProductVersion> CommercialProductVersions => Set<CommercialProductVersion>();
+    public DbSet<CommercialPack> CommercialPacks => Set<CommercialPack>();
+    public DbSet<CommercialPackVersion> CommercialPackVersions => Set<CommercialPackVersion>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Identity>(entity =>
@@ -524,6 +540,249 @@ public class PlatformDbContext : DbContext
 
             // A Membership holds a given role at most once
             entity.HasIndex(e => new { e.MembershipId, e.Name }).IsUnique();
+        });
+
+        // ── Commercial Domain — core spine (V1a) ────────────────────────────
+
+        modelBuilder.Entity<ConfigurationSnapshot>(entity =>
+        {
+            entity.ToTable("configuration_snapshots");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.PlanCode).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.ProductVersionId).IsRequired();
+            entity.Property(e => e.PriceCurrency).IsRequired().HasMaxLength(8);
+
+            entity.Property(e => e.LearningProfile).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AssessmentProfile).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AnalyticsProfile).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.BrandingProfile).HasConversion<string>().HasMaxLength(32);
+
+            // Small owned lists — same reasoning as LearningProduct.Tags, a join table buys nothing.
+            entity.PrimitiveCollection(e => e.SelectedPackCodes);
+            entity.PrimitiveCollection(e => e.SelectedPackVersionIds);
+
+            // A Workspace's snapshot history, newest first — read by Subscription/License lookups
+            entity.HasIndex(e => e.WorkspaceId);
+
+            // Resolution (EntitlementResolutionService) loads the exact Version this snapshot was priced against
+            entity.HasIndex(e => e.ProductVersionId);
+        });
+
+        modelBuilder.Entity<Subscription>(entity =>
+        {
+            entity.ToTable("subscriptions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.BillingAccountId).IsRequired();
+            entity.Property(e => e.CurrentConfigurationSnapshotId).IsRequired();
+
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.BillingCycle).HasConversion<string>().HasMaxLength(32);
+
+            // Cross-aggregate references only (ConfigurationSnapshot, BillingAccount) — no
+            // FK constraint, matching the "reference by identifier only" convention used
+            // elsewhere between aggregates that evolve independently (e.g. Workspace.OwnerMembershipId).
+
+            // Looking up "this Workspace's current subscription" is the primary access path
+            entity.HasIndex(e => e.WorkspaceId);
+        });
+
+        modelBuilder.Entity<SubscriptionEvent>(entity =>
+        {
+            entity.ToTable("subscription_events");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.SubscriptionId).IsRequired();
+            entity.Property(e => e.EventType).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.ReferenceNote).HasMaxLength(2000);
+
+            // A Subscription's audit trail, read together in order
+            entity.HasIndex(e => new { e.SubscriptionId, e.OccurredAt });
+        });
+
+        modelBuilder.Entity<WorkspaceLicense>(entity =>
+        {
+            entity.ToTable("workspace_licenses");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.SubscriptionId).IsRequired();
+            entity.Property(e => e.ConfigurationSnapshotId).IsRequired();
+
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // One current license per Workspace — Recompute() upserts against this
+            entity.HasIndex(e => e.WorkspaceId).IsUnique();
+
+            entity.HasMany(e => e.Entitlements).WithOne()
+                  .HasForeignKey(e => e.LicenseId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.Entitlements).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<Entitlement>(entity =>
+        {
+            entity.ToTable("entitlements");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Domain).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Value).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Source).HasConversion<string>().HasMaxLength(32);
+
+            // Entitlement.source_ref_id is polymorphic (Decision Brief #10, accepted for V1) —
+            // no FK constraint, meaning depends on Source.
+        });
+
+        modelBuilder.Entity<EntitlementOverride>(entity =>
+        {
+            entity.ToTable("entitlement_overrides");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.EntitlementKey).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Value).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Reason).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.AppliedByIdentityId).IsRequired();
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // Resolution reads every active override for a Workspace on every recompute
+            entity.HasIndex(e => e.WorkspaceId);
+        });
+
+        modelBuilder.Entity<BillingAccount>(entity =>
+        {
+            entity.ToTable("billing_accounts");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+
+            // At most one Billing Account per Workspace (lazily created on first checkout)
+            entity.HasIndex(e => e.WorkspaceId).IsUnique();
+        });
+
+        modelBuilder.Entity<Invoice>(entity =>
+        {
+            entity.ToTable("invoices");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.BillingAccountId).IsRequired();
+            entity.Property(e => e.SubscriptionId).IsRequired();
+            entity.Property(e => e.ConfigurationSnapshotId).IsRequired();
+            entity.Property(e => e.Currency).IsRequired().HasMaxLength(8);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // A Subscription's invoice history, and the overdue sweep's working set
+            entity.HasIndex(e => e.SubscriptionId);
+            entity.HasIndex(e => e.Status);
+
+            entity.HasMany(e => e.Lines).WithOne()
+                  .HasForeignKey(l => l.InvoiceId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<InvoiceLine>(entity =>
+        {
+            entity.ToTable("invoice_lines");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.ComponentType).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Currency).IsRequired().HasMaxLength(8);
+        });
+
+        // ── Commercial Domain — catalog (Products/Packs, database-backed) ───
+
+        modelBuilder.Entity<ProductFamily>(entity =>
+        {
+            entity.ToTable("product_families");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.Code).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(256);
+            entity.HasIndex(e => e.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<CommercialProduct>(entity =>
+        {
+            entity.ToTable("commercial_products");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.ProductFamilyId).IsRequired();
+            entity.Property(e => e.Code).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // The public catalog and checkout both resolve a plan by its code
+            entity.HasIndex(e => e.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<CommercialProductVersion>(entity =>
+        {
+            entity.ToTable("commercial_product_versions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.ProductId).IsRequired();
+            entity.Property(e => e.Currency).IsRequired().HasMaxLength(8);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            entity.Property(e => e.LearningProfile).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AssessmentProfile).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AnalyticsProfile).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.BrandingProfile).HasConversion<string>().HasMaxLength(32);
+
+            // "Find this Product's current Published version" — CatalogQueryService's core query
+            entity.HasIndex(e => new { e.ProductId, e.Status });
+            entity.HasIndex(e => new { e.ProductId, e.VersionNumber }).IsUnique();
+        });
+
+        modelBuilder.Entity<CommercialPack>(entity =>
+        {
+            entity.ToTable("commercial_packs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.Code).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            entity.HasIndex(e => e.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<CommercialPackVersion>(entity =>
+        {
+            entity.ToTable("commercial_pack_versions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.PackId).IsRequired();
+            entity.Property(e => e.Currency).IsRequired().HasMaxLength(8);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            entity.Property(e => e.LearningGrant).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AssessmentGrant).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AnalyticsGrant).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.BrandingGrant).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.RequiresDomain).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.RequiresMinLevel).HasConversion<string>().HasMaxLength(32);
+
+            entity.HasIndex(e => new { e.PackId, e.Status });
+            entity.HasIndex(e => new { e.PackId, e.VersionNumber }).IsUnique();
         });
     }
 }

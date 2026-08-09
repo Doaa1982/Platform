@@ -27,11 +27,24 @@ public class WorkspaceMemberService(
     PlatformDbContext db,
     IConfiguration config,
     IInvitationDelivery delivery,
-    EmailOptions email)
+    EmailOptions email,
+    EntitlementResolutionService entitlements)
 {
     /// <summary>Roles that may manage members. Everyone else gets a read-only view.</summary>
     private static readonly WorkspaceRoleName[] ManagerRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator];
+
+    /// <summary>
+    /// Roles that draw against the plan's tutor-capacity entitlement — the
+    /// platform's own staff, not Learners/Parents/FinanceManagers.
+    /// A List, not an array: EF Core's query translator cannot evaluate an
+    /// array field's Contains() inside a nested Any() subquery on .NET 10 —
+    /// it resolves to the ReadOnlySpan-based MemoryExtensions.Contains
+    /// overload, which is a ref struct the interpreter cannot instantiate as
+    /// a generic argument. List&lt;T&gt;.Contains has no such overload.
+    /// </summary>
+    private static readonly List<WorkspaceRoleName> TutorRoles =
+        [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher, WorkspaceRoleName.AssistantTeacher];
 
     private TimeSpan ValidFor => TimeSpan.FromDays(config.GetValue("Invitations:ValidForDays", 7));
 
@@ -123,6 +136,13 @@ public class WorkspaceMemberService(
         if (role == WorkspaceRoleName.Owner)
             return Fail("Ownership is transferred, not invited. Invite an Administrator instead.", ProvisioningError.Invalid);
 
+        if (TutorRoles.Contains(role))
+        {
+            var capacityError = await CheckTutorCapacityAsync(workspace.Id, ct);
+            if (capacityError is not null)
+                return Fail(capacityError, ProvisioningError.Conflict);
+        }
+
         // Named to avoid shadowing the injected EmailOptions
         var inviteeEmail = request.Email.ToLowerInvariant().Trim();
 
@@ -170,6 +190,38 @@ public class WorkspaceMemberService(
             Delivered:       outcome.Delivered,
             DeliveryChannel: outcome.Channel,
             DeliveryDetail:  outcome.Detail));
+    }
+
+    /// <summary>
+    /// Counts active tutor Memberships plus still-open tutor Invitations
+    /// against the plan's tutor-capacity entitlement (LIC-008 consumer).
+    /// A Workspace with no License yet (never subscribed) is left
+    /// unrestricted here — capacity is a plan constraint, and there is no
+    /// plan to constrain against until checkout happens.
+    /// </summary>
+    private async Task<string?> CheckTutorCapacityAsync(Guid workspaceId, CancellationToken ct)
+    {
+        var capacityValue = await entitlements.GetEntitlementValueAsync(
+            workspaceId, EntitlementResolutionService.TutorCapacityKey, ct);
+        if (capacityValue is null || !int.TryParse(capacityValue, out var capacity))
+            return null;
+
+        var activeTutorSeats = await db.Memberships
+            .Where(m => m.WorkspaceId == workspaceId && m.Status == MembershipStatus.Active)
+            .Where(m => m.Roles.Any(r => TutorRoles.Contains(r.Name)))
+            .CountAsync(ct);
+
+        var openTutorInvites = await db.Invitations
+            .Where(i => i.WorkspaceId == workspaceId && TutorRoles.Contains(i.IntendedRole))
+            .ToListAsync(ct);
+        var pendingTutorSeats = openTutorInvites.Count(i => i.IsOpen());
+
+        if (activeTutorSeats + pendingTutorSeats + 1 <= capacity)
+            return null;
+
+        return pendingTutorSeats > 0
+            ? $"This workspace's plan allows up to {capacity} tutor seat{(capacity == 1 ? "" : "s")} ({activeTutorSeats} active, {pendingTutorSeats} pending). Remove a member, wait for a pending invitation to lapse, or upgrade the plan."
+            : $"This workspace's plan allows up to {capacity} tutor seat{(capacity == 1 ? "" : "s")} and is already at capacity. Remove a member or upgrade the plan to invite another tutor.";
     }
 
     private string AbsoluteLink(string rawToken) =>

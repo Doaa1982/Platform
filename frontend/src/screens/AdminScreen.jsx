@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   LoaderCircle, AlertCircle, Plus, RefreshCw, X, Copy, Check,
-  ShieldAlert, LogOut, Building2, PauseCircle, PlayCircle, Archive,
+  ShieldAlert, LogOut, Building2, PauseCircle, PlayCircle, Archive, Clock, Receipt,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
+import AdminCatalogSection from "./AdminCatalogSection";
 
 /* =========================================================================
    ADMIN SCREEN — the Platform Administrator's console.
@@ -34,6 +35,22 @@ function humanStatus(status) {
     .replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
+/** Subscription statuses needing operator attention (§9's ordering convention, applied to the commercial domain too). */
+const SUB_NEEDS_ACTION = new Set(["PastDue", "Grace", "Suspended"]);
+
+const SUB_STATUS_KEY = {
+  Pending: "subscription.statusPending", Active: "subscription.statusActive", PastDue: "subscription.statusPastDue",
+  Grace: "subscription.statusGrace", Suspended: "subscription.statusSuspended",
+  Cancelled: "subscription.statusCancelled", Expired: "subscription.statusExpired",
+};
+const subStatusLabel = (t, s) => t(SUB_STATUS_KEY[s] ?? "") || s;
+
+const INVOICE_STATUS_KEY = {
+  Draft: "admin.invoiceDraft", Issued: "admin.invoiceIssued", Paid: "admin.invoicePaid",
+  Overdue: "admin.invoiceOverdue", Voided: "admin.invoiceVoided",
+};
+const invoiceStatusLabel = (t, s) => t(INVOICE_STATUS_KEY[s] ?? "") || s;
+
 export default function AdminScreen() {
   useFonts();
   const { session, me, signOut } = useAuth();
@@ -41,12 +58,15 @@ export default function AdminScreen() {
 
   const [rows, setRows] = useState(null);
   const [applications, setApplications] = useState([]);
+  const [subscriptions, setSubscriptions] = useState(null);
+  const [invoiceNotes, setInvoiceNotes] = useState({});   // subscriptionId -> reference note text, for Mark Paid
   const [error, setError] = useState(null);
   const [denied, setDenied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [provisionFor, setProvisionFor] = useState(null);  // the paid applicant being provisioned
   const [issued, setIssued] = useState(null);   // most recently created/resent link
+  const [tab, setTab] = useState("operations");  // "operations" | "catalog"
 
   /* Used by the refresh button and after every mutation. State lands in the
      promise callbacks, never synchronously. */
@@ -54,8 +74,9 @@ export default function AdminScreen() {
     () => Promise.all([
       api.getProvisioningView(session.token),
       api.getSignupRequests(session.token),
+      api.getAdminSubscriptions(session.token),
     ])
-      .then(([workspaces, signups]) => { setRows(workspaces); setApplications(signups); setError(null); })
+      .then(([workspaces, signups, subs]) => { setRows(workspaces); setApplications(signups); setSubscriptions(subs); setError(null); })
       .catch((e) => {
         // 403 is not an error to retry — it is the answer. The account is
         // signed in but holds no PlatformOperator grant.
@@ -72,10 +93,11 @@ export default function AdminScreen() {
     Promise.all([
       api.getProvisioningView(session.token),
       api.getSignupRequests(session.token),
+      api.getAdminSubscriptions(session.token),
     ])
-      .then(([workspaces, signups]) => {
+      .then(([workspaces, signups, subs]) => {
         if (cancelled) return;
-        setRows(workspaces); setApplications(signups); setError(null);
+        setRows(workspaces); setApplications(signups); setSubscriptions(subs); setError(null);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -133,6 +155,21 @@ export default function AdminScreen() {
           </button>
         </div>
       </header>
+
+      <div className="pl-admin__tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "operations"}
+                className={tab === "operations" ? "is-active" : ""} onClick={() => setTab("operations")}>
+          {t("admin.tabOperations")}
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "catalog"}
+                className={tab === "catalog" ? "is-active" : ""} onClick={() => setTab("catalog")}>
+          {t("admin.tabCatalog")}
+        </button>
+      </div>
+
+      {tab === "catalog" && <AdminCatalogSection />}
+
+      {tab === "operations" && <>
 
       {error && (
         <div className="pl-admin__alert" role="alert">
@@ -305,6 +342,114 @@ export default function AdminScreen() {
           </table>
         </div>
       )}
+
+      {/* Manual Commercial Activation (2026-08-09 correction: this platform
+          collects no payment) — every Workspace's commercial state, and the
+          back-office actions that stand in for a payment provider's webhook. */}
+      <section className="pl-admin__subs">
+        <div className="pl-admin__subshead">
+          <h2 className="pl-admin__h2">{t("admin.subscriptions")}</h2>
+          <button className="pl-admin__ghost" disabled={busy} onClick={() => run(() => api.sweepOverdueInvoices(session.token))}>
+            <RefreshCw size={14} aria-hidden="true" /> {t("admin.sweepOverdue")}
+          </button>
+        </div>
+
+        {subscriptions === null && (
+          <div className="pl-admin__loading">
+            <LoaderCircle size={20} className="pl-admin__spin" aria-hidden="true" /> {t("admin.loadingSubscriptions")}
+          </div>
+        )}
+
+        {subscriptions?.length === 0 && (
+          <div className="pl-admin__empty">
+            <Receipt size={26} aria-hidden="true" />
+            <p>{t("admin.noSubscriptionsYet")}</p>
+          </div>
+        )}
+
+        {subscriptions && subscriptions.length > 0 && (
+          <div className="pl-admin__tablewrap">
+            <table className="pl-admin__table">
+              <thead>
+                <tr>
+                  <th>{t("admin.colWorkspace")}</th>
+                  <th>{t("admin.colPlan")}</th>
+                  <th>{t("admin.colStatus")}</th>
+                  <th>{t("admin.colInvoice")}</th>
+                  <th aria-label={t("admin.colActions")} />
+                </tr>
+              </thead>
+              <tbody>
+                {subscriptions.map((s) => (
+                  <tr key={s.subscriptionId} className={SUB_NEEDS_ACTION.has(s.status) ? "is-attention" : ""}>
+                    <td>
+                      <span className="pl-admin__wsname">{s.workspaceName}</span>
+                      <span className="pl-admin__slug">/{s.workspaceSlug}</span>
+                    </td>
+                    <td>{s.planCode}</td>
+                    <td>
+                      <span className={`pl-admin__pill ${s.status === "Active" ? "is-ok"
+                        : s.status === "Suspended" ? "is-danger"
+                        : SUB_NEEDS_ACTION.has(s.status) ? "is-warn" : ""}`}>
+                        {subStatusLabel(t, s.status)}
+                      </span>
+                    </td>
+                    <td>
+                      {s.currentInvoiceId ? (
+                        <span className="pl-admin__inv">
+                          <span className={`pl-admin__pill ${s.currentInvoiceStatus === "Overdue" ? "is-danger" : s.currentInvoiceStatus === "Paid" ? "is-ok" : ""}`}>
+                            {invoiceStatusLabel(t, s.currentInvoiceStatus)}
+                          </span>
+                          <span className="pl-admin__invmeta">
+                            {s.currentInvoiceTotal} · {s.currentInvoiceDueDate ? new Date(s.currentInvoiceDueDate).toLocaleDateString() : ""}
+                          </span>
+                        </span>
+                      ) : <span className="pl-admin__muted">{t("admin.noInvoice")}</span>}
+                    </td>
+                    <td className="pl-admin__actions">
+                      {(s.currentInvoiceStatus === "Issued" || s.currentInvoiceStatus === "Overdue") && (
+                        <>
+                          <input
+                            className="pl-admin__noteinput"
+                            placeholder={t("admin.referenceNotePlaceholder")}
+                            value={invoiceNotes[s.subscriptionId] ?? ""}
+                            disabled={busy}
+                            onChange={(e) => setInvoiceNotes((n) => ({ ...n, [s.subscriptionId]: e.target.value }))}
+                          />
+                          <button disabled={busy}
+                                  onClick={() => run(() => api.markInvoicePaid(session.token, s.currentInvoiceId, invoiceNotes[s.subscriptionId] || null))}>
+                            <Check size={12} aria-hidden="true" /> {t("admin.markPaid")}
+                          </button>
+                        </>
+                      )}
+                      {s.status === "PastDue" && (
+                        <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "advance-to-grace"))}>
+                          <Clock size={12} aria-hidden="true" /> {t("admin.advanceToGrace")}
+                        </button>
+                      )}
+                      {s.status === "Grace" && (
+                        <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "suspend"))}>
+                          <PauseCircle size={12} aria-hidden="true" /> {t("admin.suspend")}
+                        </button>
+                      )}
+                      {s.status === "Suspended" && (
+                        <>
+                          <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "expire"))}>
+                            <Archive size={12} aria-hidden="true" /> {t("admin.expire")}
+                          </button>
+                          <span className="pl-admin__muted pl-admin__terminalnote">{t("admin.suspendedTerminalNote")}</span>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      </>}
     </Shell>
   );
 }
@@ -419,7 +564,7 @@ const CSS = `
   .pl-admin {
     --ink: #E8EAED; --ink-soft: #949AA5; --line: #2A2F36;
     --surface: #1B1F24; --bg: #131619; --accent: #4C8DFF;
-    --warn: #E0A83E; --ok: #4FBF8B;
+    --warn: #E0A83E; --ok: #4FBF8B; --danger: #E0615A;
     font-family: 'Karla', system-ui, sans-serif;
     background: var(--bg); color: var(--ink); min-height: 100vh; padding: 32px 26px 64px;
   }
@@ -523,9 +668,20 @@ const CSS = `
   }
   .pl-admin__pill.is-warn { background: rgba(224,168,62,0.16); color: var(--warn); }
   .pl-admin__pill.is-ok { background: rgba(79,191,139,0.14); color: var(--ok); }
-  .pl-admin__inv { display: block; font-size: 0.84rem; }
+  .pl-admin__pill.is-danger { background: rgba(224,97,90,0.16); color: var(--danger); }
+  .pl-admin__inv { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; font-size: 0.84rem; }
   .pl-admin__invmeta { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-soft); margin-top: 2px; }
   .pl-admin__muted { color: var(--ink-soft); }
+
+  .pl-admin__subs { margin-top: 30px; }
+  .pl-admin__subshead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .pl-admin__subshead .pl-admin__h2 { margin: 0; }
+  .pl-admin__noteinput {
+    font-family: inherit; font-size: 11.5px; width: 150px;
+    background: #0F1215; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 8px;
+  }
+  .pl-admin__terminalnote { font-size: 10.5px; max-width: 22ch; line-height: 1.4; }
 
   .pl-admin__actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .pl-admin__actions button {
@@ -560,4 +716,61 @@ const CSS = `
     .pl-admin__form label > span:first-child { padding-top: 0; white-space: normal; }
   }
   @media (prefers-reduced-motion: reduce) { .pl-admin__spin { animation: none; } }
+
+  /* ── Tabs ─────────────────────────────────────────────────────────────── */
+  .pl-admin__tabs { display: flex; justify-content: center; gap: 4px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+  .pl-admin__tabs button {
+    font-family: inherit; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft);
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    padding: 9px 14px; cursor: pointer; margin-bottom: -1px;
+  }
+  .pl-admin__tabs button.is-active { color: var(--ink); border-bottom-color: var(--accent); }
+  .pl-admin__tabs button:hover:not(.is-active) { color: var(--ink); }
+
+  /* ── Catalog ──────────────────────────────────────────────────────────── */
+  .pl-admin__cataloggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .pl-admin__catalogcard {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .pl-admin__catalogcard.is-retired { opacity: 0.55; }
+  .pl-admin__catalogcardhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pl-admin__catalogcardhead strong { font-size: 0.95rem; }
+
+  .pl-admin__proplist {
+    display: grid; grid-template-columns: max-content 1fr; row-gap: 6px; column-gap: 12px;
+    font-size: 0.8rem; margin: 10px 0; color: var(--ink-soft);
+  }
+  .pl-admin__proplist span:nth-child(odd) { color: var(--ink-soft); }
+  .pl-admin__proplist span:nth-child(even) { color: var(--ink); text-align: end; }
+
+  .pl-admin__draftbanner {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: rgba(76,141,255,0.1); border: 1px solid rgba(76,141,255,0.35);
+    border-radius: 8px; padding: 8px 10px; font-size: 0.78rem; color: var(--accent); margin-bottom: 8px;
+  }
+  .pl-admin__draftbanner button {
+    display: inline-flex; align-items: center; gap: 4px; font-family: inherit; font-size: 11px;
+    background: var(--accent); color: #0B1220; border: none; border-radius: 6px; padding: 4px 9px; cursor: pointer;
+  }
+  .pl-admin__draftbanner button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .pl-admin__overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 40px 20px; z-index: 50; overflow-y: auto;
+  }
+  .pl-admin__panel {
+    background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: 14px;
+    max-width: 640px; width: 100%; padding: 28px 30px 30px; position: relative;
+  }
+  .pl-admin__panelclose { position: absolute; top: 16px; inset-inline-end: 16px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
+  .pl-admin__panelclose:hover { color: var(--ink); }
+  .pl-admin__panelh2 { margin: 2px 0 18px; text-align: center; font-family: 'Fraunces', Georgia, serif; }
+  .pl-admin__panel .pl-admin__formrow { row-gap: 12px; }
+  .pl-admin__panel select {
+    width: 100%; font-family: inherit; font-size: 0.9rem;
+    background: #0F1215; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 11px;
+  }
 `;

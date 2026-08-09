@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, CreditCard, LayoutDashboard, Lock, Megaphone, MessageCircle, MessageSquare, PlayCircle, Rocket, Settings, UserCircle, Users, Wand2, X
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, CreditCard, LayoutDashboard, Lock, Megaphone, MessageCircle, MessageSquare, PlayCircle, Receipt, Rocket, Settings, UserCircle, Users, Wand2, X
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -12,6 +12,7 @@ import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
 import NotBuiltYet from "./screens/NotBuiltYet";
 import ProductsScreen from "./screens/ProductsScreen";
+import SubscriptionScreen from "./screens/SubscriptionScreen";
 import ContentStudioScreen from "./screens/ContentStudioScreen";
 import LearnerHomeScreen from "./screens/LearnerHomeScreen";
 import LearnerCoursesScreen from "./screens/LearnerCoursesScreen";
@@ -372,6 +373,10 @@ const OWNER_NAV = [
   { dividerKey: "nav.configure" },
   // The real Workspace lifecycle, above the prototype's settings panel
   { id: "setup", labelKey: "nav.workspaceSetup", icon: Rocket },
+  // This Workspace's own subscription to the platform — distinct from the
+  // still-unbuilt "commerce" item above, which is what this tutor charges
+  // *their* students, not what they pay the platform.
+  { id: "billing", labelKey: "nav.billing", icon: Receipt },
   { id: "settings", labelKey: "nav.workspaceSettings", icon: Settings },
 ];
 
@@ -724,6 +729,7 @@ export default function App() {
           {role === "owner" && ownerScreen === "overview" && <WorkspaceHomeScreen onNavigate={setOwnerScreen} />}
           {role === "owner" && ownerScreen === "members" && <MembersScreen />}
           {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
+          {role === "owner" && ownerScreen === "billing" && <SubscriptionScreen />}
 
           {role === "owner" && ownerScreen === "products" && (
             <ProductsScreen onOpenStudio={(id) => { setStudioProductId(id); setOwnerScreen("studio"); }} />

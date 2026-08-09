@@ -24,7 +24,7 @@ namespace Platform.Api.Services;
 ///     unpublished assessment cannot receive a real Submission at all, so no
 ///     Submission is recorded here.
 /// </summary>
-public class AssessmentService(PlatformDbContext db)
+public class AssessmentService(PlatformDbContext db, EntitlementResolutionService entitlements)
 {
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
@@ -122,6 +122,10 @@ public class AssessmentService(PlatformDbContext db)
         var ctx = await ResolveAsync(slug, caller, lessonId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<IReadOnlyList<SuggestedQuestion>>(ctx.Error.Value);
 
+        if (!await HasAssessmentAiAsync(ctx.Workspace!.Id, ct))
+            return Fail<IReadOnlyList<SuggestedQuestion>>((ProvisioningError.Forbidden,
+                "AI-suggested checkpoints need the Professional plan or the AI Assessment pack. Upgrade to use this."));
+
         if (request.VideoDurationSeconds <= 0)
             return Fail<IReadOnlyList<SuggestedQuestion>>((ProvisioningError.Invalid, "A video duration is needed before checkpoints can be placed."));
 
@@ -148,6 +152,10 @@ public class AssessmentService(PlatformDbContext db)
     {
         var ctx = await ResolveAsync(slug, caller, lessonId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<PreviewResult>(ctx.Error.Value);
+
+        if (!await HasAssessmentAiAsync(ctx.Workspace!.Id, ct))
+            return Fail<PreviewResult>((ProvisioningError.Forbidden,
+                "AI preview grading needs the Professional plan or the AI Assessment pack. Upgrade to use this."));
 
         var assessment = await LoadAsync(ctx.TargetRevisionId, ct);
         if (assessment is null || assessment.Questions.Count == 0)
@@ -176,6 +184,12 @@ public class AssessmentService(PlatformDbContext db)
             graded.ScorePercent, graded.Passed, assessment.PassingThresholdPercent, feedback,
             graded.PerQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList()));
     }
+
+    /// <summary>Both simulated-AI surfaces are the Assessment domain's AI-assist tier — gated the same way (LIC-008).</summary>
+    private Task<bool> HasAssessmentAiAsync(Guid workspaceId, CancellationToken ct) =>
+        entitlements.HasEntitlementAsync(
+            workspaceId, EntitlementResolutionService.AiKey(CapabilityDomain.Assessment),
+            AiAssistanceLevel.Assist.ToString(), ct);
 
     // ── Plumbing ─────────────────────────────────────────────────────────────
 
