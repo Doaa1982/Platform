@@ -35,7 +35,12 @@ public class CommercialOpsService(
         try
         {
             invoice.MarkPaid(activation.Id);
-            subscription.Activate();
+            // Upgrade proration invoices are paid against a Subscription that's
+            // already Active (ApplyUpgrade took effect immediately, before the
+            // invoice existed) — Activate() only applies to first activation
+            // and PastDue/Grace recovery.
+            if (subscription.Status != SubscriptionStatus.Active)
+                subscription.Activate();
         }
         catch (InvalidOperationException ex) { return Fail(ProvisioningError.Conflict, ex.Message); }
 

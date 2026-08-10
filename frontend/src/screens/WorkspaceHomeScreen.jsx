@@ -123,13 +123,6 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
         </div>
       )}
 
-      {/* ── This Workspace's subscription plans, Shopify-style ───────────
-          A comparison grid right on the home page, not buried three clicks
-          deep in Billing — the current plan (if any) is marked in place. */}
-      {plans && plans.length > 0 && (
-        <PlansSection plans={plans} packs={packs} subscription={subscription} live={subscriptionLive} onNavigate={onNavigate} />
-      )}
-
       {/* ── Measured facts only ──────────────────────────────────────── */}
       <div className="lw-home__stats">
         <Stat icon={Users} color={CARD_COLORS.teaching} label={t("home.statTeaching")} value={teachers.length}
@@ -142,6 +135,13 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
               note={pendingRequests.length > 0 ? t("home.statRequestsWaiting") : setup.acceptsJoinRequests ? t("home.statRequestsNone") : t("home.statRequestsNotAccepting")}
               urgent={pendingRequests.length > 0} />
       </div>
+
+      {/* ── This Workspace's subscription plans, Shopify-style ───────────
+          A comparison grid right on the home page, not buried three clicks
+          deep in Billing — the current plan (if any) is marked in place. */}
+      {plans && plans.length > 0 && (
+        <PlansSection plans={plans} packs={packs} subscription={subscription} live={subscriptionLive} onNavigate={onNavigate} />
+      )}
 
       {/* ── What to do next, in the order it makes sense ─────────────────
           Only while there's a "next" left to do — once the workspace is
