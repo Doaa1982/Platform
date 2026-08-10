@@ -28,8 +28,19 @@ public class SubscriptionController(CommercialSubscriptionService subscriptions)
         => Run(await subscriptions.CheckoutAsync(slug, Caller(), request, ct));
 
     [HttpPost("cancel")]
-    public async Task<ActionResult<SubscriptionSummary>> Cancel(string slug, CancellationToken ct)
-        => Run(await subscriptions.CancelAsync(slug, Caller(), ct));
+    public async Task<ActionResult<SubscriptionSummary>> Cancel(
+        string slug, [FromBody] CancelSubscriptionRequest? request, CancellationToken ct)
+        => Run(await subscriptions.CancelAsync(slug, Caller(), request?.Reason, ct));
+
+    /// <summary>Schedules a plan/pack change for the end of the current billing period (Subscription Management Architecture §14, §17-18) — the retention off-ramp alongside Cancel, not a Cancel prerequisite.</summary>
+    [HttpPost("downgrade")]
+    public async Task<ActionResult<SubscriptionSummary>> Downgrade(
+        string slug, [FromBody] DowngradeRequest request, CancellationToken ct)
+        => Run(await subscriptions.DowngradeAsync(slug, Caller(), request, ct));
+
+    [HttpPost("cancel-pending-change")]
+    public async Task<ActionResult<SubscriptionSummary>> CancelPendingChange(string slug, CancellationToken ct)
+        => Run(await subscriptions.CancelPendingChangeAsync(slug, Caller(), ct));
 
     private ActionResult<T> Run<T>(ProvisioningResult<T> result) => result.Error switch
     {

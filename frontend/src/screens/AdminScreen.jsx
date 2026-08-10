@@ -387,7 +387,14 @@ export default function AdminScreen() {
                       <span className="pl-admin__wsname">{s.workspaceName}</span>
                       <span className="pl-admin__slug">/{s.workspaceSlug}</span>
                     </td>
-                    <td>{s.planCode}</td>
+                    <td>
+                      {s.planCode}
+                      {s.pendingPlanCode && (
+                        <span className="pl-admin__pendingchange">
+                          {t("admin.pendingChangeTo", { plan: s.pendingPlanCode, date: s.pendingChangeEffectiveDate ? new Date(s.pendingChangeEffectiveDate).toLocaleDateString() : "" })}
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <span className={`pl-admin__pill ${s.status === "Active" ? "is-ok"
                         : s.status === "Suspended" ? "is-danger"

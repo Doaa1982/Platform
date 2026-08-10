@@ -668,9 +668,10 @@ export function checkoutSubscription(token, slug, body) {
   return request(`/workspaces/${encodeURIComponent(slug)}/subscription/checkout`, { method: "POST", body, token });
 }
 
-/** POST .../subscription/cancel — access continues until the current period ends */
-export function cancelSubscription(token, slug) {
-  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/cancel`, { method: "POST", token });
+/** POST .../subscription/cancel — access continues until the current period ends. reason is optional and purely for the churn-signal audit trail. */
+export function cancelSubscription(token, slug, reason) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/cancel`,
+    { method: "POST", body: { reason: reason || null }, token });
 }
 
 /* ── Platform admin: subscriptions & invoices ────────────────────────────

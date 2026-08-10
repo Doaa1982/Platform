@@ -32,6 +32,23 @@ public record CheckoutRequest(
     IReadOnlyList<string>? PackCodes,
     string BillingCycle);
 
+/// <summary>
+/// Cancellation is otherwise a bare POST — Reason is optional and purely for
+/// the churn-signal audit trail (recorded on the resulting SubscriptionEvent,
+/// same ReferenceNote mechanism MarkInvoicePaidRequest already uses). Never
+/// required, never blocks the cancellation itself.
+/// </summary>
+public record CancelSubscriptionRequest(string? Reason);
+
+/// <summary>
+/// A Downgrade request — same shape as CheckoutRequest minus BillingCycle
+/// (Subscription Management Architecture §17: a plan/pack change, not a
+/// billing-cycle change; ChangeBillingCycle is a separate, unbuilt command).
+/// Resolved and Impact-Analyzed against the *current* Configuration Snapshot,
+/// then scheduled rather than applied immediately (§14).
+/// </summary>
+public record DowngradeRequest(string PlanCode, IReadOnlyList<string>? PackCodes);
+
 /// <summary>One resolved entry from a Workspace's effective Entitlement Set.</summary>
 public record EntitlementRow(
     string Type,
@@ -51,6 +68,9 @@ public record SubscriptionSummary(
     DateTime CurrentPeriodEnd,
     DateTime RenewalDate,
     DateTime? CancellationEffectiveDate,
+    /// <summary>Null unless a Downgrade is scheduled (Subscription §14/§17). Resolved from PendingConfigurationSnapshotId — the raw id is never exposed to the client.</summary>
+    string? PendingPlanCode,
+    DateTime? PendingChangeEffectiveDate,
     Guid? CurrentInvoiceId,
     string? CurrentInvoiceStatus,
     DateTime? CurrentInvoiceDueDate,
@@ -89,6 +109,8 @@ public record SubscriptionAdminRow(
     string BillingCycle,
     DateTime CurrentPeriodEnd,
     DateTime? CancellationEffectiveDate,
+    string? PendingPlanCode,
+    DateTime? PendingChangeEffectiveDate,
     Guid? CurrentInvoiceId,
     string? CurrentInvoiceStatus,
     DateTime? CurrentInvoiceDueDate,

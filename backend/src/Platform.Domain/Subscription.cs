@@ -31,6 +31,20 @@ public class Subscription
     public DateTime CurrentPeriodEnd { get; private set; }
     public DateTime RenewalDate { get; private set; }
     public DateTime? CancellationEffectiveDate { get; private set; }
+
+    /// <summary>
+    /// §14 (Scheduled Subscription Changes) / §17-18 (Downgrade, Downgrade
+    /// Safety): a Downgrade is scheduled for the next billing period rather
+    /// than applied immediately, mirroring how <see cref="CancellationEffectiveDate"/>
+    /// already defers Cancel's effect. Both null when no change is pending.
+    /// Impact Analysis (whether current usage fits the target plan) is
+    /// enforced by the caller (CommercialSubscriptionService) before
+    /// <see cref="ScheduleDowngrade"/> is ever invoked — this Aggregate only
+    /// tracks the decision, it does not re-derive it.
+    /// </summary>
+    public Guid? PendingConfigurationSnapshotId { get; private set; }
+    public DateTime? PendingChangeEffectiveDate { get; private set; }
+
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
@@ -90,6 +104,64 @@ public class Subscription
 
     public void Expire() => Transition(SubscriptionStatus.Expired,
         SubscriptionStatus.Cancelled, SubscriptionStatus.Suspended);
+
+    /// <summary>
+    /// Schedules a plan change for the end of the current billing period
+    /// (§14, §17) rather than applying it immediately — the caller must have
+    /// already run Impact Analysis (§18) before reaching here. Only one
+    /// pending change may exist at a time; scheduling a new one replaces any
+    /// prior one rather than stacking.
+    /// </summary>
+    public void ScheduleDowngrade(Guid targetConfigurationSnapshotId)
+    {
+        if (Status != SubscriptionStatus.Active)
+            throw new InvalidOperationException(
+                $"A Subscription that is {Status} cannot schedule a plan change. Only an Active subscription can.");
+        if (targetConfigurationSnapshotId == Guid.Empty)
+            throw new ArgumentException(
+                "A scheduled change must reference a Configuration Snapshot.", nameof(targetConfigurationSnapshotId));
+
+        PendingConfigurationSnapshotId = targetConfigurationSnapshotId;
+        PendingChangeEffectiveDate = CurrentPeriodEnd;
+        Touch();
+    }
+
+    /// <summary>Lets the customer back out of a scheduled change before it takes effect — the same "Never mind" pattern as the Cancel confirmation.</summary>
+    public void CancelPendingChange()
+    {
+        if (PendingConfigurationSnapshotId is null)
+            throw new InvalidOperationException("This Subscription has no scheduled change to cancel.");
+
+        PendingConfigurationSnapshotId = null;
+        PendingChangeEffectiveDate = null;
+        Touch();
+    }
+
+    /// <summary>
+    /// Applied by a Platform Operator once the effective date has arrived —
+    /// the same manual, audited pattern as <see cref="Expire"/>/<see cref="Suspend"/>/
+    /// <see cref="AdvanceToGrace"/>, since no scheduler exists in this codebase
+    /// (see CommercialOpsService's class-level remarks). This also advances
+    /// the billing period by one cycle from where it stood, which doubles as
+    /// this Subscription's renewal — there is no separate Renew() yet, so this
+    /// is intentionally the only path that currently rolls a period forward.
+    /// </summary>
+    public void ApplyPendingChange()
+    {
+        if (PendingConfigurationSnapshotId is not { } snapshotId)
+            throw new InvalidOperationException("This Subscription has no scheduled change to apply.");
+        if (Status != SubscriptionStatus.Active)
+            throw new InvalidOperationException(
+                $"A Subscription that is {Status} cannot have a scheduled change applied. Only an Active subscription can.");
+
+        var previousPeriodEnd = CurrentPeriodEnd;
+        CurrentConfigurationSnapshotId = snapshotId;
+        CurrentPeriodEnd = BillingCycle == BillingCycle.Annual ? previousPeriodEnd.AddYears(1) : previousPeriodEnd.AddMonths(1);
+        RenewalDate = CurrentPeriodEnd;
+        PendingConfigurationSnapshotId = null;
+        PendingChangeEffectiveDate = null;
+        Touch();
+    }
 
     private void Transition(SubscriptionStatus target, params SubscriptionStatus[] permittedFrom)
     {

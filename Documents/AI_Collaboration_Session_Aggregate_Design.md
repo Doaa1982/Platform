@@ -18,6 +18,8 @@
 > - AI Authoring Assistant Architecture
 > - Lesson Revision Aggregate Design
 > - Platform Aggregate Catalogue
+>
+> **Relationship to the AI sub-architecture suite (`Documents/AI /`):** this document remains the authoritative Aggregate design for AI Collaboration Session — its root, entities, invariants, and state machine are not superseded. `AI / AIAssistantArchitecture.md` §96 defines `AIOperation`, a finer-grained *execution* unit; each `AIOperation` corresponds to one Capability Invocation entity within a Session (see Section 7 below). Execution-layer concerns (orchestration, model routing, provider execution, safety policy) are owned by that suite (`AIOrchestrationArchitecture.md`, `AISkillArchitecture.md`, `AISafetyAndGovernanceArchitecture.md`) and are not re-derived here.
 
 ---
 

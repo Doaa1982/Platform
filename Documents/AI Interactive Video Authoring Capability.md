@@ -1,5 +1,7 @@
 # AI Interactive Video Lesson Generator
 
+> **Relationship to the AI sub-architecture suite (`Documents/AI /`):** the Timeline Event / Question Event domain model below (Sections 2 and 4) is the authoritative source for the Output Contract now referenced from `AI / AISkillArchitecture.md` §13 (Media Intelligence Skills), for the `GenerateLessonFromVideo` and `GenerateQuestionsFromVideo` Skills. The ownership split in Section 10 below is preserved in that document's terms: the AI Skill produces suggested Timeline Events, and Lesson Revision owns them once accepted (Platform Aggregate Catalogue §6).
+
 ## Definition
 
 The AI Interactive Video Lesson Generator transforms recorded teaching content into interactive learning experiences by analysing video content, identifying pedagogical moments, and embedding learning interactions directly into the video timeline.

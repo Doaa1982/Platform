@@ -19,6 +19,10 @@
 > - Curriculum Aggregate Design
 > - Lesson Revision Aggregate Design
 > - Enrollment Aggregate Design
+> - AI Collaboration Session Aggregate Design
+> - AI / AIAssistantArchitecture (execution-layer AIOperation model)
+>
+> **Revision Note (v1.2):** Section 3's AI Collaboration Session row and Section 6's AI Recommendation row now point to `AI_Collaboration_Session_Aggregate_Design.md`, which formalizes this Aggregate's root, entities, and invariants and was previously not cross-referenced from this Catalogue. `Documents/AI /AIAssistantArchitecture.md` §96 reconciles this Aggregate against that document's `AIOperation` execution model — the two are related by granularity (Session groups correlated Operations), not in conflict.
 >
 > **Revision Note (v1.1):** This Catalogue previously omitted three Aggregate Roots that already had full, standalone Aggregate Design documents elsewhere in the corpus: **Learning Asset**, **Curriculum**, and **Lesson Revision**. All three have been added to Sections 3, 4, 5, 7, and 8 below. The Aggregate Dependencies diagram (Section 5) was also missing Enrollment entirely despite it already appearing in Section 3 — this has been corrected. Section 6's Ownership Rules table has been clarified regarding Transcript ownership, which spans two aggregates with different responsibilities (see the note under that section).
 
@@ -91,7 +95,7 @@ Aggregates should be small enough to support transactional consistency while rem
 | Assessment | Submission | Represents a learner's submitted work. |
 | Certification | Certificate | Represents an awarded certificate. |
 | Community | Discussion Thread | Represents a collaborative discussion. |
-| AI | AI Collaboration Session | Represents an AI-assisted business session. |
+| AI | AI Collaboration Session | Represents an AI-assisted business session. Full aggregate design in AI Collaboration Session Aggregate Design; execution-layer detail in AI / AIAssistantArchitecture, §96. |
 
 ---
 
@@ -201,7 +205,7 @@ Examples:
 | Learner Submission | Submission |
 | Membership Role | Membership |
 | Workspace Policy | Workspace |
-| AI Recommendation | AI Collaboration Session |
+| AI Recommendation | AI Collaboration Session (see AI Collaboration Session Aggregate Design, §7) |
 | Curriculum Unit | Curriculum |
 | Asset File / Technical Metadata | Learning Asset |
 

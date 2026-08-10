@@ -94,6 +94,18 @@ public class CommercialOpsService(
         => TransitionAsync(subscriptionId, operatorIdentityId, "Expired", s => s.Expire(), ct);
 
     /// <summary>
+    /// Applies a scheduled Downgrade once its effective date has arrived —
+    /// same manual, operator-triggered pattern as the transitions above,
+    /// since this codebase still has no scheduler (Subscription.ApplyPendingChange's
+    /// own remarks). A Platform Operator is expected to run this once
+    /// PendingChangeEffectiveDate has passed; nothing here re-checks the date
+    /// itself, matching how ExpireAsync/SuspendAsync trust operator judgment too.
+    /// </summary>
+    public Task<ProvisioningResult<SubscriptionSummary>> ApplyPendingChangeAsync(
+        Guid subscriptionId, Guid operatorIdentityId, CancellationToken ct = default)
+        => TransitionAsync(subscriptionId, operatorIdentityId, "PendingChangeApplied", s => s.ApplyPendingChange(), ct);
+
+    /// <summary>
     /// Every Workspace's commercial state, for the admin console's
     /// Subscriptions table — attention-needing statuses first (§9's ordering
     /// convention, same reasoning as the Workspaces provisioning view: an
@@ -118,7 +130,10 @@ public class CommercialOpsService(
             .Where(w => subscriptions.Select(s => s.WorkspaceId).Contains(w.Id))
             .ToDictionaryAsync(w => w.Id, ct);
 
-        var snapshotIds = subscriptions.Select(s => s.CurrentConfigurationSnapshotId).ToList();
+        var snapshotIds = subscriptions.Select(s => s.CurrentConfigurationSnapshotId)
+            .Concat(subscriptions.Where(s => s.PendingConfigurationSnapshotId is not null)
+                                  .Select(s => s.PendingConfigurationSnapshotId!.Value))
+            .Distinct().ToList();
         var planCodeBySnapshot = await db.ConfigurationSnapshots.AsNoTracking()
             .Where(s => snapshotIds.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id, s => s.PlanCode, ct);
@@ -146,6 +161,9 @@ public class CommercialOpsService(
                     BillingCycle: s.BillingCycle.ToString(),
                     CurrentPeriodEnd: s.CurrentPeriodEnd,
                     CancellationEffectiveDate: s.CancellationEffectiveDate,
+                    PendingPlanCode: s.PendingConfigurationSnapshotId is { } pendingId
+                        ? planCodeBySnapshot.GetValueOrDefault(pendingId) : null,
+                    PendingChangeEffectiveDate: s.PendingChangeEffectiveDate,
                     CurrentInvoiceId: invoice?.Id,
                     CurrentInvoiceStatus: invoice?.Status.ToString(),
                     CurrentInvoiceDueDate: invoice?.DueDate,

@@ -97,9 +97,16 @@ public class CommercialSubscriptionService(
         return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
     }
 
-    /// <summary>SUB-004: cancelling doesn't end access mid-period — the License stays Active until CancellationEffectiveDate.</summary>
+    /// <summary>
+    /// SUB-004: cancelling doesn't end access mid-period — the License stays
+    /// Active until CancellationEffectiveDate. Reason is optional, customer-
+    /// supplied, free text — recorded on the SubscriptionEvent audit trail
+    /// (same mechanism CommercialOpsService uses for "InvoiceMarkedPaid" etc.)
+    /// purely as a churn signal for Product Advisory (Product Advisory
+    /// Architecture §72), never validated or required.
+    /// </summary>
     public async Task<ProvisioningResult<SubscriptionSummary>> CancelAsync(
-        string slug, Guid callerIdentityId, CancellationToken ct = default)
+        string slug, Guid callerIdentityId, string? reason, CancellationToken ct = default)
     {
         var ctx = await ResolveAsync(slug, callerIdentityId, requireBillingRole: true, ct);
         if (ctx.Error is not null) return Fail(ctx.Error.Value);
@@ -110,11 +117,85 @@ public class CommercialSubscriptionService(
         try { subscription.Cancel(); }
         catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
 
+        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "Cancelled", callerIdentityId, reason));
+
         await db.SaveChangesAsync(ct);
         await licensing.RecomputeLicenseAsync(subscription.Id, ct);
 
         return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
     }
+
+    /// <summary>
+    /// §17-18: Downgrade is scheduled for period end, not immediate, and only
+    /// after Impact Analysis confirms current usage fits the target plan.
+    /// Only tutor-seat capacity is checked in this pass (§18's own worked
+    /// example) — the same active-seats-plus-open-invitations count
+    /// WorkspaceMemberService.CheckTutorCapacityAsync already enforces on
+    /// invite, mirrored here rather than shared to avoid coupling this
+    /// service to Workspace Access's internals for one query.
+    /// </summary>
+    public async Task<ProvisioningResult<SubscriptionSummary>> DowngradeAsync(
+        string slug, Guid callerIdentityId, DowngradeRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, callerIdentityId, requireBillingRole: true, ct);
+        if (ctx.Error is not null) return Fail(ctx.Error.Value);
+
+        var subscription = await CurrentSubscriptionAsync(ctx.Workspace!.Id, tracked: true, ct);
+        if (subscription is null) return Fail((ProvisioningError.NotFound, "This workspace has no subscription."));
+
+        var configResult = await configuration.ResolveAsync(
+            ctx.Workspace.Id, request.PlanCode, request.PackCodes, subscription.BillingCycle, ct);
+        if (!configResult.Ok) return Fail((configResult.Error, configResult.Message!));
+        var snapshot = configResult.Value!;
+
+        var tutorSeats = await db.Memberships
+            .Where(m => m.WorkspaceId == ctx.Workspace.Id && m.Status == MembershipStatus.Active)
+            .Where(m => m.Roles.Any(r => TutorSeatRoles.Contains(r.Name)))
+            .CountAsync(ct);
+        var openTutorInvites = await db.Invitations
+            .Where(i => i.WorkspaceId == ctx.Workspace.Id && TutorSeatRoles.Contains(i.IntendedRole))
+            .ToListAsync(ct);
+        var pendingTutorSeats = openTutorInvites.Count(i => i.IsOpen());
+
+        if (tutorSeats + pendingTutorSeats > snapshot.TutorCapacity)
+            return Fail((ProvisioningError.Conflict,
+                $"This workspace currently has {tutorSeats + pendingTutorSeats} tutor seat(s) in use "
+                + $"(active or pending). The selected plan supports {snapshot.TutorCapacity}. "
+                + "Remove a member or let a pending invitation lapse before downgrading."));
+
+        try { subscription.ScheduleDowngrade(snapshot.Id); }
+        catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
+
+        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "DowngradeScheduled", callerIdentityId,
+            $"To {snapshot.PlanCode}, effective {subscription.PendingChangeEffectiveDate:yyyy-MM-dd}."));
+
+        await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
+    }
+
+    /// <summary>The "Never mind" path for a scheduled Downgrade — no Impact Analysis needed to undo, only to schedule.</summary>
+    public async Task<ProvisioningResult<SubscriptionSummary>> CancelPendingChangeAsync(
+        string slug, Guid callerIdentityId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, callerIdentityId, requireBillingRole: true, ct);
+        if (ctx.Error is not null) return Fail(ctx.Error.Value);
+
+        var subscription = await CurrentSubscriptionAsync(ctx.Workspace!.Id, tracked: true, ct);
+        if (subscription is null) return Fail((ProvisioningError.NotFound, "This workspace has no subscription."));
+
+        try { subscription.CancelPendingChange(); }
+        catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
+
+        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "PendingChangeCancelled", callerIdentityId, null));
+        await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
+    }
+
+    /// <summary>Same TutorRoles set as WorkspaceMemberService — Owner/Administrator/Teacher/AssistantTeacher draw against tutor-capacity, Learner/Parent/FinanceManager don't.</summary>
+    private static readonly List<WorkspaceRoleName> TutorSeatRoles =
+        [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher, WorkspaceRoleName.AssistantTeacher];
 
     public async Task<ProvisioningResult<SubscriptionSummary>> GetCurrentAsync(
         string slug, Guid callerIdentityId, CancellationToken ct = default)
@@ -154,6 +235,13 @@ public class CommercialSubscriptionService(
             .Include(l => l.Entitlements)
             .FirstOrDefaultAsync(l => l.WorkspaceId == subscription.WorkspaceId, ct);
 
+        string? pendingPlanCode = null;
+        if (subscription.PendingConfigurationSnapshotId is { } pendingId)
+        {
+            pendingPlanCode = (await db.ConfigurationSnapshots.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == pendingId, ct))?.PlanCode;
+        }
+
         return new SubscriptionSummary(
             SubscriptionId: subscription.Id,
             Status: subscription.Status.ToString(),
@@ -164,6 +252,8 @@ public class CommercialSubscriptionService(
             CurrentPeriodEnd: subscription.CurrentPeriodEnd,
             RenewalDate: subscription.RenewalDate,
             CancellationEffectiveDate: subscription.CancellationEffectiveDate,
+            PendingPlanCode: pendingPlanCode,
+            PendingChangeEffectiveDate: subscription.PendingChangeEffectiveDate,
             CurrentInvoiceId: invoice?.Id,
             CurrentInvoiceStatus: invoice?.Status.ToString(),
             CurrentInvoiceDueDate: invoice?.DueDate,

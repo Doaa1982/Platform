@@ -267,6 +267,11 @@ const en = {
     notBuiltBody: "Courses, lessons, enrolments, scheduling and payments aren't part of the platform yet. When they arrive they'll appear here with real numbers — you won't see invented ones in the meantime.",
     reachableAt: "Reachable at",
     notReachable: "Not publicly reachable yet",
+    plansSectionTitle: "Plans",
+    plansSectionLead: "Choose a plan to subscribe on this platform.",
+    plansSectionLeadActive: "What you pay for on this platform — separate from what you charge your own students.",
+    currentPlanBadge: "Current plan",
+    managePlan: "Manage plan",
   },
 
   roles: {
@@ -792,6 +797,9 @@ const en = {
     close: "Close",
 
     previousEndedNote: "Your previous {plan} subscription ended on {date}.",
+    previousActiveNote: "Your {plan} subscription is still active until {date}. Choosing a new plan replaces it.",
+    backToCurrentPlan: "Back to my current plan",
+    chooseNewPlan: "Choose a new plan",
 
     statusPending: "Pending", statusActive: "Active", statusPastDue: "Past Due",
     statusGrace: "Grace Period", statusSuspended: "Suspended",
@@ -799,8 +807,10 @@ const en = {
 
     planLabel: "Plan",
     billingCycleLabel: "Billing cycle",
+    startDateLabel: "Started",
     currentPeriodEndLabel: "Current period ends",
     renewalDateLabel: "Renews",
+    accessUntilLabel: "Access until",
     accessContinuesUntil: "Access continues until {date}",
 
     invoiceAwaiting: "An invoice for {amount} {currency} is awaiting confirmation (due {date}). A platform administrator will confirm it once payment is settled outside this platform.",
@@ -810,10 +820,20 @@ const en = {
     aiAssistanceLabel: "AI assistance",
     capabilityProfileLabel: "Capability",
 
+    changeNote: "To switch plans or add-ons, cancel this subscription — you can pick a new plan once your current access ends.",
     cancelSubscription: "Cancel subscription",
     cancelConfirmPrompt: "Access continues until {date}. Cancel your subscription?",
     confirmCancel: "Confirm cancel",
     neverMind: "Never mind",
+
+    cancelReasonLabel: "Mind telling us why? (optional)",
+    cancelReasonSkip: "Prefer not to say",
+    cancelReasonTooExpensive: "Too expensive",
+    cancelReasonNotUsingEnough: "Not using it enough",
+    cancelReasonMissingFeature: "Missing a feature I need",
+    cancelReasonSwitchingTools: "Switching to a different tool",
+    cancelReasonTakingBreak: "Just taking a break",
+    cancelReasonOther: "Other",
 
     errNoWorkspace: "No workspace selected.",
     toastSubscribed: "Subscribed to {plan}.",
@@ -833,6 +853,8 @@ const en = {
     pointBranded: "Your own branded academy",
     pointInvite: "Invite learners directly",
     pointCommission: "No commission on your teaching",
+    plansTitle: "Simple, transparent pricing",
+    plansLead: "One plan for your academy. Upgrade whenever you need more.",
     footer: "Already teaching somewhere? Your academy has its own address — use the link your tutor gave you.",
   },
 
@@ -1126,6 +1148,11 @@ const ar = {
     notBuiltBody: "الدورات والدروس والتسجيلات والجدولة والمدفوعات ليست جزءًا من المنصة بعد. عند وصولها ستظهر هنا بأرقام حقيقية — لن ترى أرقامًا مُختلقة في هذه الأثناء.",
     reachableAt: "يمكن الوصول إليها على",
     notReachable: "غير قابلة للوصول علنًا بعد",
+    plansSectionTitle: "الخطط",
+    plansSectionLead: "اختر خطة للاشتراك في هذه المنصة.",
+    plansSectionLeadActive: "ما تدفعه مقابل استخدام هذه المنصة — منفصل عمّا تتقاضاه من طلابك.",
+    currentPlanBadge: "الخطة الحالية",
+    managePlan: "إدارة الخطة",
   },
 
   roles: {
@@ -1651,6 +1678,9 @@ const ar = {
     close: "إغلاق",
 
     previousEndedNote: "انتهى اشتراكك السابق في {plan} بتاريخ {date}.",
+    previousActiveNote: "اشتراكك في {plan} ما زال ساريًا حتى {date}. اختيار خطة جديدة سيستبدله.",
+    backToCurrentPlan: "العودة إلى خطتي الحالية",
+    chooseNewPlan: "اختيار خطة جديدة",
 
     statusPending: "قيد الانتظار", statusActive: "نشط", statusPastDue: "متأخر السداد",
     statusGrace: "فترة سماح", statusSuspended: "موقوف",
@@ -1658,8 +1688,10 @@ const ar = {
 
     planLabel: "الخطة",
     billingCycleLabel: "دورة الفوترة",
+    startDateLabel: "بدأت في",
     currentPeriodEndLabel: "تنتهي الفترة الحالية في",
     renewalDateLabel: "التجديد في",
+    accessUntilLabel: "الوصول حتى",
     accessContinuesUntil: "يستمر الوصول حتى {date}",
 
     invoiceAwaiting: "هناك فاتورة بقيمة {amount} {currency} بانتظار التأكيد (تاريخ الاستحقاق {date}). سيقوم مسؤول المنصة بتأكيدها بعد تسوية الدفع خارج هذه المنصة.",
@@ -1669,10 +1701,20 @@ const ar = {
     aiAssistanceLabel: "مساعدة الذكاء الاصطناعي",
     capabilityProfileLabel: "القدرة",
 
+    changeNote: "لتغيير الخطة أو الإضافات، ألغِ هذا الاشتراك — يمكنك اختيار خطة جديدة بعد انتهاء وصولك الحالي.",
     cancelSubscription: "إلغاء الاشتراك",
     cancelConfirmPrompt: "يستمر الوصول حتى {date}. هل تريد إلغاء اشتراكك؟",
     confirmCancel: "تأكيد الإلغاء",
     neverMind: "تراجع",
+
+    cancelReasonLabel: "هل تخبرنا بالسبب؟ (اختياري)",
+    cancelReasonSkip: "أفضل عدم الإفصاح",
+    cancelReasonTooExpensive: "السعر مرتفع",
+    cancelReasonNotUsingEnough: "لا أستخدمه بشكل كافٍ",
+    cancelReasonMissingFeature: "تنقصه ميزة أحتاجها",
+    cancelReasonSwitchingTools: "أنتقل إلى أداة أخرى",
+    cancelReasonTakingBreak: "أخذ استراحة فقط",
+    cancelReasonOther: "سبب آخر",
 
     errNoWorkspace: "لم يتم اختيار مساحة عمل.",
     toastSubscribed: "تم الاشتراك في {plan}.",
@@ -1692,6 +1734,8 @@ const ar = {
     pointBranded: "أكاديمية خاصة بهويتك البصرية",
     pointInvite: "ادعُ المتعلمين مباشرة",
     pointCommission: "بلا عمولة على تدريسك",
+    plansTitle: "أسعار بسيطة وواضحة",
+    plansLead: "خطة واحدة لأكاديميتك. يمكنك الترقية متى احتجت إلى المزيد.",
     footer: "تُدرّس في مكان آخر؟ لأكاديميتك عنوانها الخاص — استخدم الرابط الذي زوّدك به معلمك.",
   },
 

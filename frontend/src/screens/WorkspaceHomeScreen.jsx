@@ -7,6 +7,8 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+import PlanPickerCards, { PLAN_PICKER_CARDS_CSS } from "../components/PlanPickerCards";
+import CurrentPlanCard, { CURRENT_PLAN_CARD_CSS } from "../components/CurrentPlanCard";
 
 /* =========================================================================
    WORKSPACE HOME — what an owner sees on arrival.
@@ -33,6 +35,9 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   const [setup, setSetup] = useState(null);
   const [members, setMembers] = useState(null);
   const [requests, setRequests] = useState([]);
+  const [plans, setPlans] = useState(null);
+  const [packs, setPacks] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -42,10 +47,14 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
       api.getMembers(session.token, slug),
       // Only owners and admins can read this; anyone else simply has no queue
       api.getJoinRequests(session.token, slug).catch(() => []),
+      api.getCommercialPlans().catch(() => []),
+      api.getCommercialPacks().catch(() => []),
+      // 404 just means no subscription exists yet — a normal state, not an error
+      api.getSubscription(session.token, slug).catch(() => null),
     ])
-      .then(([s, m, j]) => {
+      .then(([s, m, j, p, k, sub]) => {
         if (cancelled) return;
-        setSetup(s); setMembers(m); setRequests(j); setError(null);
+        setSetup(s); setMembers(m); setRequests(j); setPlans(p); setPacks(k); setSubscription(sub); setError(null);
       })
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
@@ -63,6 +72,10 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   }
 
   const isLive = setup.status === "Active";
+  // Mirrors SubscriptionScreen's isLive: a Cancelled subscription still has
+  // access until cancellationEffectiveDate (SUB-004) — licenseStatus is
+  // Licensing's own authoritative answer, not re-derived here.
+  const subscriptionLive = subscription && subscription.licenseStatus !== "Expired";
   const activeMembers = members.members.filter((m) => m.status === "Active");
   const learners = activeMembers.filter((m) => m.roles.includes("Learner"));
   const teachers = activeMembers.filter((m) =>
@@ -108,6 +121,13 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
         <div className="lw-home__live">
           <Rocket size={16} /> {t("home.liveBanner", { name: setup.name })}
         </div>
+      )}
+
+      {/* ── This Workspace's subscription plans, Shopify-style ───────────
+          A comparison grid right on the home page, not buried three clicks
+          deep in Billing — the current plan (if any) is marked in place. */}
+      {plans && plans.length > 0 && (
+        <PlansSection plans={plans} packs={packs} subscription={subscription} live={subscriptionLive} onNavigate={onNavigate} />
       )}
 
       {/* ── Measured facts only ──────────────────────────────────────── */}
@@ -185,6 +205,38 @@ function Stat({ icon: Icon, color, label, value, note, urgent }) {
   );
 }
 
+function PlansSection({ plans, packs, subscription, live, onNavigate }) {
+  const { t } = useLanguage();
+
+  if (live) {
+    const plan = plans.find((p) => p.code === subscription.planCode);
+    return (
+      <div className="lw-home__planssection">
+        <div className="lw-home__planshead">
+          <div>
+            <h2 className="lw-sectiontitle">{t("home.plansSectionTitle")}</h2>
+            <p className="lw-home__planslead">{t("home.plansSectionLeadActive")}</p>
+          </div>
+        </div>
+
+        <CurrentPlanCard plan={plan} packs={packs} subscription={subscription}>
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => onNavigate("billing")}>
+            {t("home.managePlan")} <ArrowRight size={13} />
+          </button>
+        </CurrentPlanCard>
+      </div>
+    );
+  }
+
+  return (
+    <PlanPickerCards
+      plans={plans} packs={packs}
+      title={t("home.plansSectionTitle")} lead={t("home.plansSectionLead")}
+      onChoosePlan={() => onNavigate("billing")}
+    />
+  );
+}
+
 function Step({ done, label, action, onNavigate }) {
   return (
     <li className={done ? "is-done" : ""}>
@@ -218,6 +270,14 @@ const CSS = `
     color: var(--accent-2); font-weight: 600; font-size: 0.9rem;
     border-radius: var(--radius-sm); padding: 13px 16px; margin-bottom: 20px;
   }
+
+  .lw-home__planssection { margin-bottom: 26px; }
+  .lw-home__planshead {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+    flex-wrap: wrap; margin-bottom: 14px;
+  }
+  .lw-home__planshead .lw-sectiontitle { margin: 0; }
+  .lw-home__planslead { font-size: 0.85rem; color: var(--ink-soft); margin: 4px 0 0; max-width: 60ch; }
 
   .lw-home__stats {
     display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px;
@@ -274,4 +334,7 @@ const CSS = `
   .lw-home__spin { animation: lwHomeSpin 0.9s linear infinite; }
   @keyframes lwHomeSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .lw-home__spin { animation: none; } }
+
+  ${PLAN_PICKER_CARDS_CSS}
+  ${CURRENT_PLAN_CARD_CSS}
 `;

@@ -229,6 +229,11 @@ public class AdminController(
     public async Task<ActionResult<SubscriptionSummary>> ExpireSubscription(Guid id, CancellationToken ct)
         => await RunCommercialTransition(id, ct, commercialOps.ExpireAsync);
 
+    /// <summary>A Platform Operator applies a scheduled Downgrade once its PendingChangeEffectiveDate has arrived — same manual pattern as the transitions above.</summary>
+    [HttpPost("subscriptions/{id:guid}/apply-pending-change")]
+    public async Task<ActionResult<SubscriptionSummary>> ApplyPendingSubscriptionChange(Guid id, CancellationToken ct)
+        => await RunCommercialTransition(id, ct, commercialOps.ApplyPendingChangeAsync);
+
     private async Task<ActionResult<SubscriptionSummary>> RunCommercialTransition(
         Guid subscriptionId, CancellationToken ct,
         Func<Guid, Guid, CancellationToken, Task<ProvisioningResult<SubscriptionSummary>>> transition)

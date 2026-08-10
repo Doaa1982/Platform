@@ -3,6 +3,11 @@ import { ArrowRight, Check } from "lucide-react";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
+import * as api from "../api/client";
+import {
+  levelLabel, aiLabel, domainLabel, ENTITLEMENT_DOMAINS, planProfileForDomain,
+  aiLevelForProfile, parseRequirement, packGrants,
+} from "../i18n/subscriptionLabels";
 
 /* =========================================================================
    LANDING — https://platform.com/
@@ -34,6 +39,18 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
   /* The rotating proof line. Concrete tutor outcomes, not platform features —
      the page is a pitch, not a description. */
   const CLAIMS = [t("landing.claim0"), t("landing.claim1"), t("landing.claim2"), t("landing.claim3")];
+
+  // The public Solo plan catalog — no auth required, same source the
+  // subscribed-tutor Billing screen reads. A stranger deciding whether to
+  // apply should be able to see what it costs without signing in first.
+  const [plans, setPlans] = useState(null);
+  const [packs, setPacks] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.getCommercialPlans().then((p) => { if (!cancelled) setPlans(p); }).catch(() => {});
+    api.getCommercialPacks().then((p) => { if (!cancelled) setPacks(p); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Entrance transition, run once after mount
   useEffect(() => {
@@ -119,6 +136,8 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
         <WorkspacePreview />
       </section>
 
+      {plans && plans.length > 0 && <PlansSection plans={plans} packs={packs} onBecomeTutor={onBecomeTutor} />}
+
       <footer className="pl-land__foot">
         <span>{t("landing.footer")}</span>
       </footer>
@@ -155,6 +174,106 @@ function WorkspacePreview() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* Shopify-style pricing teaser. Every card's button is the SAME call to
+   action as the hero (onBecomeTutor) — ADR-EA-002 permits exactly one CTA
+   on this page, so pricing here sells the plan, it doesn't open a second
+   funnel. There is no checkout to send a stranger into: only a Workspace
+   Owner with a real Workspace can subscribe, on the Billing screen. */
+function PlansSection({ plans, packs, onBecomeTutor }) {
+  const { t } = useLanguage();
+  const [billingCycle, setBillingCycle] = useState("Monthly");
+
+  return (
+    <section className="pl-plans">
+      <h2 className="pl-plans__title">{t("landing.plansTitle")}</h2>
+      <p className="pl-plans__lead">{t("landing.plansLead")}</p>
+
+      <div className="pl-plans__cycle" role="tablist">
+        <button type="button" role="tab" aria-selected={billingCycle === "Monthly"}
+                className={billingCycle === "Monthly" ? "is-active" : ""} onClick={() => setBillingCycle("Monthly")}>
+          {t("subscription.billingMonthly")}
+        </button>
+        <button type="button" role="tab" aria-selected={billingCycle === "Annual"}
+                className={billingCycle === "Annual" ? "is-active" : ""} onClick={() => setBillingCycle("Annual")}>
+          {t("subscription.billingAnnual")}
+        </button>
+      </div>
+
+      <div className="pl-plans__grid">
+        {plans.map((plan) => (
+          <div className="pl-plans__card" key={plan.code}>
+            <div className="pl-plans__name">{plan.name}</div>
+            <div className="pl-plans__price">
+              {billingCycle === "Annual" ? plan.annualPrice : plan.monthlyPrice} {plan.currency}
+              <span>{billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</span>
+            </div>
+
+            <ul className="pl-plans__features">
+              <li><span>{t("subscription.tutorCapacity")}</span>
+                <strong>
+                  {plan.tutorCapacityMax > plan.tutorCapacityBase
+                    ? `${plan.tutorCapacityBase}–${plan.tutorCapacityMax}` : plan.tutorCapacityBase}
+                </strong>
+              </li>
+              <li><span>{t("subscription.aiCredits")}</span><strong>{plan.aiCreditsIncluded.toLocaleString()}</strong></li>
+              {ENTITLEMENT_DOMAINS.map((domain) => {
+                const level = planProfileForDomain(plan, domain);
+                return (
+                  <li key={domain}>
+                    <span>{domainLabel(t, domain)}</span>
+                    <strong>
+                      {levelLabel(t, level)}
+                      <em className="pl-plans__aitag">{aiLabel(t, aiLevelForProfile(level))}</em>
+                    </strong>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <button className="pl-plans__cta" onClick={onBecomeTutor}>
+              {t("landing.cta")} <ArrowRight size={15} aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add-ons are the same catalog regardless of plan (only AI Assessment
+          carries a dependency) — one shared list under the grid rather than
+          repeating it per card. Still no second CTA: same onBecomeTutor. */}
+      {packs && packs.length > 0 && (
+        <div className="pl-plans__addons">
+          <h3 className="pl-plans__addonstitle">{t("subscription.addOns")}</h3>
+          <ul className="pl-plans__addonlist">
+            {packs.map((pack) => {
+              const req = parseRequirement(pack.requiresMinProfile);
+              return (
+                <li className="pl-plans__addon" key={pack.code}>
+                  <div className="pl-plans__addonhead">
+                    <span className="pl-plans__addonname">{pack.name}</span>
+                    <span className="pl-plans__addonprice">
+                      +{pack.monthlyPrice} {pack.currency}<span>{t("subscription.perMonth")}</span>
+                    </span>
+                  </div>
+                  <span className="pl-plans__addonwhat">
+                    {packGrants(pack).map(({ domain, level }) => `${domainLabel(t, domain)} → ${levelLabel(t, level)}`)
+                      .concat(pack.extraTutorCapacity > 0 ? [`+${pack.extraTutorCapacity} ${t("subscription.tutorCapacity")}`] : [])
+                      .join(" · ")}
+                  </span>
+                  {req && (
+                    <span className="pl-plans__addonnote">
+                      {t("subscription.packRequires", { domain: domainLabel(t, req.domain), level: levelLabel(t, req.level) })}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -218,6 +337,10 @@ const CSS = `
     transition: opacity .6s ease .05s, transform .6s ease .05s;
   }
   .pl-land__title {
+    /* index.css's global "h1, h2 { color: var(--text-h) }" (leftover
+       template default) otherwise wins over this element's inherited
+       .pl-land color, since it sets the h1's color explicitly. */
+    color: var(--ink);
     font-family: 'Fraunces', Georgia, serif; font-weight: 600;
     font-size: clamp(2.6rem, 8vw, 5.2rem); line-height: 1.02;
     letter-spacing: -0.025em; margin: 0 0 20px;
@@ -299,6 +422,77 @@ const CSS = `
   .pl-prev__cover.is-alt2 { background: linear-gradient(120deg, #E0A83E, #C4533F); }
   .pl-prev__bar-fill { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.09); margin-top: 9px; overflow: hidden; }
   .pl-prev__bar-fill i { display: block; height: 100%; background: #7FD3B8; border-radius: 3px; }
+
+  /* ── Plans ──────────────────────────────────────────────────────────── */
+  .pl-plans {
+    /* .pl-land__stage ends in a negative bottom margin (-8vh) that pulls
+       whatever follows up underneath it — compensate so this section clears
+       the preview mockup instead of sliding under it. */
+    position: relative; z-index: 2;
+    margin: calc(8vh + clamp(48px, 7vw, 88px)) auto 0; padding: 0 24px;
+    width: min(1040px, 94vw); text-align: center;
+  }
+  .pl-plans__title {
+    color: var(--ink);
+    font-family: 'Fraunces', Georgia, serif; font-weight: 600;
+    font-size: clamp(1.7rem, 3.4vw, 2.3rem); margin: 0 0 10px;
+  }
+  .pl-plans__lead { color: var(--ink-soft); font-size: 0.94rem; margin: 0 0 22px; }
+
+  .pl-plans__cycle {
+    display: inline-flex; border: 1px solid rgba(255,255,255,0.14); border-radius: 999px;
+    padding: 3px; margin-bottom: 28px;
+  }
+  .pl-plans__cycle button {
+    border: none; background: transparent; padding: 7px 18px; border-radius: 999px;
+    font-family: inherit; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); cursor: pointer;
+  }
+  .pl-plans__cycle button.is-active { background: var(--accent); color: #08111F; }
+
+  .pl-plans__grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px;
+    text-align: start;
+  }
+  .pl-plans__card {
+    display: flex; flex-direction: column; gap: 14px;
+    background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px; padding: 22px;
+  }
+  .pl-plans__name { font-weight: 700; font-size: 1.02rem; }
+  .pl-plans__price { font-family: 'Fraunces', Georgia, serif; font-size: 1.7rem; color: var(--accent); }
+  .pl-plans__price span { font-family: inherit; font-size: 0.78rem; color: var(--ink-soft); margin-inline-start: 5px; }
+
+  .pl-plans__features { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.84rem; }
+  .pl-plans__features li { display: flex; justify-content: space-between; gap: 10px; }
+  .pl-plans__features li span { color: var(--ink-soft); }
+  .pl-plans__features li strong { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+  .pl-plans__aitag { font-style: normal; font-size: 0.68rem; font-weight: 600; color: var(--ink-soft); }
+
+  .pl-plans__cta {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: inherit; font-size: 0.88rem; font-weight: 700; color: #08111F;
+    background: linear-gradient(100deg, #7FB0FF, #5B8DEF);
+    border: none; border-radius: 10px; padding: 11px 18px; cursor: pointer;
+    margin-top: auto; transition: transform .18s, box-shadow .18s;
+  }
+  .pl-plans__cta:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(91,141,239,0.4); }
+  .pl-plans__cta:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+  .pl-plans__addons { margin-top: 34px; text-align: start; }
+  .pl-plans__addonstitle { color: var(--ink); font-size: 1rem; font-weight: 700; margin: 0 0 14px; }
+  .pl-plans__addonlist {
+    list-style: none; margin: 0; padding: 0;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+  }
+  .pl-plans__addon {
+    background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .pl-plans__addonhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .pl-plans__addonname { font-weight: 700; font-size: 0.88rem; }
+  .pl-plans__addonprice { font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
+  .pl-plans__addonwhat { font-size: 0.78rem; color: var(--ink-soft); }
+  .pl-plans__addonnote { font-size: 0.72rem; color: #E0A83E; }
 
   /* ── Foot ───────────────────────────────────────────────────────────── */
   .pl-land__foot {
