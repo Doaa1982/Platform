@@ -38,9 +38,20 @@ public class SubscriptionController(CommercialSubscriptionService subscriptions)
         string slug, [FromBody] DowngradeRequest request, CancellationToken ct)
         => Run(await subscriptions.DowngradeAsync(slug, Caller(), request, ct));
 
+    /// <summary>Applies a plan/pack change immediately with a prorated invoice (Subscription Management Architecture §15-16, Billing Architecture §25-27).</summary>
+    [HttpPost("upgrade")]
+    public async Task<ActionResult<SubscriptionSummary>> Upgrade(
+        string slug, [FromBody] UpgradeRequest request, CancellationToken ct)
+        => Run(await subscriptions.UpgradeAsync(slug, Caller(), request, ct));
+
     [HttpPost("cancel-pending-change")]
     public async Task<ActionResult<SubscriptionSummary>> CancelPendingChange(string slug, CancellationToken ct)
         => Run(await subscriptions.CancelPendingChangeAsync(slug, Caller(), ct));
+
+    /// <summary>Undoes a Cancel while still within the paid period (SUB-004) — the "changed my mind" counterpart to Cancel itself.</summary>
+    [HttpPost("reactivate")]
+    public async Task<ActionResult<SubscriptionSummary>> Reactivate(string slug, CancellationToken ct)
+        => Run(await subscriptions.ReactivateAsync(slug, Caller(), ct));
 
     private ActionResult<T> Run<T>(ProvisioningResult<T> result) => result.Error switch
     {

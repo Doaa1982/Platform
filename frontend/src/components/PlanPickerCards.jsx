@@ -103,11 +103,23 @@ export default function PlanPickerCards({ plans, packs, title, lead, onChoosePla
                       +{pack.monthlyPrice} {pack.currency}<span>{t("subscription.perMonth")}</span>
                     </span>
                   </div>
-                  <span className="lw-plancards__addonwhat">
-                    {packGrants(pack).map(({ domain, level }) => `${domainLabel(t, domain)} → ${levelLabel(t, level)}`)
-                      .concat(pack.extraTutorCapacity > 0 ? [`+${pack.extraTutorCapacity} ${t("subscription.tutorCapacity")}`] : [])
-                      .join(" · ")}
-                  </span>
+                  <ul className="lw-plancards__addongrants">
+                    {packGrants(pack).map(({ domain, level }) => (
+                      <li key={domain}>
+                        <span>{domainLabel(t, domain)}</span>
+                        <strong>
+                          {levelLabel(t, level)}
+                          <em className="lw-plancards__aitag">{aiLabel(t, aiLevelForProfile(level))}</em>
+                        </strong>
+                      </li>
+                    ))}
+                    {pack.extraTutorCapacity > 0 && (
+                      <li>
+                        <span>{t("subscription.tutorCapacity")}</span>
+                        <strong>+{pack.extraTutorCapacity}</strong>
+                      </li>
+                    )}
+                  </ul>
                   {req && (
                     <span className="lw-plancards__addonnote">
                       {t("subscription.packRequires", { domain: domainLabel(t, req.domain), level: levelLabel(t, req.level) })}
@@ -172,6 +184,9 @@ export const PLAN_PICKER_CARDS_CSS = `
   .lw-plancards__addonhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .lw-plancards__addonname { font-weight: 600; font-size: 0.84rem; }
   .lw-plancards__addonprice { font-size: 0.74rem; color: var(--ink-soft); white-space: nowrap; }
-  .lw-plancards__addonwhat { font-size: 0.74rem; color: var(--ink-soft); }
+  .lw-plancards__addongrants { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 0.74rem; }
+  .lw-plancards__addongrants li { display: flex; justify-content: space-between; gap: 10px; }
+  .lw-plancards__addongrants li span { color: var(--ink-soft); }
+  .lw-plancards__addongrants li strong { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
   .lw-plancards__addonnote { font-size: 0.7rem; color: var(--danger); }
 `;

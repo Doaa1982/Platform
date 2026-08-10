@@ -1,5 +1,5 @@
 import { useLanguage } from "../i18n/useLanguage";
-import { domainLabel, levelLabel, packGrants, fmtDate } from "../i18n/subscriptionLabels";
+import { domainLabel, levelLabel, aiLabel, aiLevelForProfile, packGrants, fmtDate } from "../i18n/subscriptionLabels";
 
 /* =========================================================================
    CURRENT PLAN CARD — the measured facts about a Workspace's live
@@ -47,11 +47,23 @@ export default function CurrentPlanCard({ plan, packs, subscription, children })
                   +{pack.monthlyPrice} {pack.currency}<span>{t("subscription.perMonth")}</span>
                 </span>
               </div>
-              <span className="lw-plancards__addonwhat">
-                {packGrants(pack).map(({ domain, level }) => `${domainLabel(t, domain)} → ${levelLabel(t, level)}`)
-                  .concat(pack.extraTutorCapacity > 0 ? [`+${pack.extraTutorCapacity} ${t("subscription.tutorCapacity")}`] : [])
-                  .join(" · ")}
-              </span>
+              <ul className="lw-plancards__addongrants">
+                {packGrants(pack).map(({ domain, level }) => (
+                  <li key={domain}>
+                    <span>{domainLabel(t, domain)}</span>
+                    <strong>
+                      {levelLabel(t, level)}
+                      <em className="lw-plancards__aitag">{aiLabel(t, aiLevelForProfile(level))}</em>
+                    </strong>
+                  </li>
+                ))}
+                {pack.extraTutorCapacity > 0 && (
+                  <li>
+                    <span>{t("subscription.tutorCapacity")}</span>
+                    <strong>+{pack.extraTutorCapacity}</strong>
+                  </li>
+                )}
+              </ul>
             </li>
           ))}
         </ul>

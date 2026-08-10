@@ -75,7 +75,8 @@ public enum OverrideStatus { Active, Expired, Revoked }
 public enum InvoiceStatus { Draft, Issued, Paid, Overdue, Voided }
 
 /// <summary>What an Invoice Line prices (recommended invoice structure, Billing Architecture §66).</summary>
-public enum InvoiceComponentType { BasePlan, CapabilityPack, Capacity }
+/// <summary>Proration added 2026-08-10 for immediate Upgrade billing (Billing Architecture §25-27) — string-backed column (PlatformDbContext), so a new member needs no migration.</summary>
+public enum InvoiceComponentType { BasePlan, CapabilityPack, Capacity, Proration }
 
 /// <summary>
 /// Lifecycle shared by every catalog entity (CommercialProduct/CommercialProductVersion/

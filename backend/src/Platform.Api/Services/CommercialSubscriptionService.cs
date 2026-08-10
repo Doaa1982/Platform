@@ -93,6 +93,7 @@ public class CommercialSubscriptionService(
         db.Invoices.Add(invoice);
 
         await db.SaveChangesAsync(ct);
+        await licensing.RecomputeLicenseAsync(subscription.Id, ct);
 
         return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
     }
@@ -170,6 +171,98 @@ public class CommercialSubscriptionService(
             $"To {snapshot.PlanCode}, effective {subscription.PendingChangeEffectiveDate:yyyy-MM-dd}."));
 
         await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
+    }
+
+    /// <summary>
+    /// §15-16 / Billing Architecture §25-27: an Upgrade applies immediately
+    /// and bills a prorated difference for the remainder of the current
+    /// period, rather than waiting for period end like Downgrade. Rejected
+    /// if the target isn't actually more expensive at the current billing
+    /// cycle — that direction is Downgrade's job, which has its own Impact
+    /// Analysis this path doesn't need (an upgrade can only ever grant more
+    /// capacity, never less).
+    /// </summary>
+    public async Task<ProvisioningResult<SubscriptionSummary>> UpgradeAsync(
+        string slug, Guid callerIdentityId, UpgradeRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, callerIdentityId, requireBillingRole: true, ct);
+        if (ctx.Error is not null) return Fail(ctx.Error.Value);
+
+        var subscription = await CurrentSubscriptionAsync(ctx.Workspace!.Id, tracked: true, ct);
+        if (subscription is null) return Fail((ProvisioningError.NotFound, "This workspace has no subscription."));
+
+        var oldSnapshot = await db.ConfigurationSnapshots.AsNoTracking()
+            .FirstAsync(s => s.Id == subscription.CurrentConfigurationSnapshotId, ct);
+
+        var configResult = await configuration.ResolveAsync(
+            ctx.Workspace.Id, request.PlanCode, request.PackCodes, subscription.BillingCycle, ct);
+        if (!configResult.Ok) return Fail((configResult.Error, configResult.Message!));
+        var newSnapshot = configResult.Value!;
+
+        if (newSnapshot.PriceAmount <= oldSnapshot.PriceAmount)
+            return Fail((ProvisioningError.Invalid,
+                $"{newSnapshot.PlanCode} ({newSnapshot.PriceAmount} {newSnapshot.PriceCurrency}) is not more expensive than "
+                + $"the current plan ({oldSnapshot.PriceAmount} {oldSnapshot.PriceCurrency}). Use Downgrade instead."));
+
+        // §26: (Unused Old Plan Value) vs (Remaining New Plan Value) — this codebase's own
+        // worked example computes the charge as New minus Old, not Old minus New as the
+        // section header's operand order literally reads; the arithmetic below matches the
+        // example, not the header. Period start is derived from CurrentPeriodEnd rather than
+        // stored, since no Renew() exists yet to keep a running "period start" field honest
+        // across multiple cycles (see Subscription.ApplyPendingChange's own remarks).
+        var now = DateTime.UtcNow;
+        var periodStart = subscription.BillingCycle == BillingCycle.Annual
+            ? subscription.CurrentPeriodEnd.AddYears(-1) : subscription.CurrentPeriodEnd.AddMonths(-1);
+        var totalDays = (subscription.CurrentPeriodEnd - periodStart).TotalDays;
+        var remainingDays = Math.Clamp((subscription.CurrentPeriodEnd - now).TotalDays, 0, totalDays);
+        var prorationFraction = totalDays > 0 ? remainingDays / totalDays : 0;
+        var prorationAmount = Math.Round((newSnapshot.PriceAmount - oldSnapshot.PriceAmount) * (decimal)prorationFraction, 2);
+
+        try { subscription.ApplyUpgrade(newSnapshot.Id); }
+        catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
+
+        var billingAccount = await db.BillingAccounts.FirstOrDefaultAsync(b => b.WorkspaceId == ctx.Workspace.Id, ct);
+        if (billingAccount is null)
+            return Fail((ProvisioningError.Conflict, "This workspace has no billing account to invoice the upgrade against."));
+
+        var invoice = Invoice.Create(
+            billingAccount.Id, subscription.Id, newSnapshot.Id,
+            billingPeriodStart: now, billingPeriodEnd: subscription.CurrentPeriodEnd,
+            dueDate: now.AddDays(7), newSnapshot.PriceCurrency);
+        invoice.AddLine(
+            $"Upgrade proration: {oldSnapshot.PlanCode} → {newSnapshot.PlanCode}",
+            InvoiceComponentType.Proration, prorationAmount);
+        invoice.Issue();
+        db.Invoices.Add(invoice);
+
+        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "Upgraded", callerIdentityId,
+            $"From {oldSnapshot.PlanCode} to {newSnapshot.PlanCode}, prorated {prorationAmount} {newSnapshot.PriceCurrency}."));
+
+        await db.SaveChangesAsync(ct);
+        await licensing.RecomputeLicenseAsync(subscription.Id, ct);
+
+        return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
+    }
+
+    /// <summary>The "Never mind" path for a Cancel itself, mirroring CancelPendingChangeAsync below — undoing is unconditional, no Impact Analysis needed (SUB-004: the Workspace never lost access, so there is nothing to re-check).</summary>
+    public async Task<ProvisioningResult<SubscriptionSummary>> ReactivateAsync(
+        string slug, Guid callerIdentityId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, callerIdentityId, requireBillingRole: true, ct);
+        if (ctx.Error is not null) return Fail(ctx.Error.Value);
+
+        var subscription = await CurrentSubscriptionAsync(ctx.Workspace!.Id, tracked: true, ct);
+        if (subscription is null) return Fail((ProvisioningError.NotFound, "This workspace has no subscription."));
+
+        try { subscription.Reactivate(); }
+        catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
+
+        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "Reactivated", callerIdentityId, null));
+
+        await db.SaveChangesAsync(ct);
+        await licensing.RecomputeLicenseAsync(subscription.Id, ct);
 
         return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
     }

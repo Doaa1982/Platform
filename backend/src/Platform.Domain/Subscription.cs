@@ -106,6 +106,27 @@ public class Subscription
         SubscriptionStatus.Cancelled, SubscriptionStatus.Suspended);
 
     /// <summary>
+    /// Undoes a pending Cancel before it takes effect — the same "changed my
+    /// mind" pattern as <see cref="CancelPendingChange"/>, but for Cancel
+    /// itself. Only valid while still within the paid period (SUB-004): once
+    /// <see cref="CancellationEffectiveDate"/> passes, the License has
+    /// already lapsed and there is nothing left to reactivate — the
+    /// Workspace has to check out fresh instead.
+    /// </summary>
+    public void Reactivate()
+    {
+        if (Status != SubscriptionStatus.Cancelled)
+            throw new InvalidOperationException(
+                $"A Subscription that is {Status} cannot be reactivated. Only a Cancelled subscription can.");
+        if (CancellationEffectiveDate is { } effectiveDate && DateTime.UtcNow >= effectiveDate)
+            throw new InvalidOperationException("This subscription's cancellation has already taken effect and can no longer be reactivated.");
+
+        Status = SubscriptionStatus.Active;
+        CancellationEffectiveDate = null;
+        Touch();
+    }
+
+    /// <summary>
     /// Schedules a plan change for the end of the current billing period
     /// (§14, §17) rather than applying it immediately — the caller must have
     /// already run Impact Analysis (§18) before reaching here. Only one
@@ -123,6 +144,30 @@ public class Subscription
 
         PendingConfigurationSnapshotId = targetConfigurationSnapshotId;
         PendingChangeEffectiveDate = CurrentPeriodEnd;
+        Touch();
+    }
+
+    /// <summary>
+    /// §15-16 / Billing Architecture §27: an Upgrade applies immediately,
+    /// mid-period, unlike Downgrade — the caller (CommercialSubscriptionService)
+    /// is responsible for pricing and issuing the prorated Invoice before or
+    /// after calling this; this method only ever changes which Configuration
+    /// Snapshot is current. Supersedes any pending Downgrade, since scheduling
+    /// a future downgrade while upgrading right now would leave two
+    /// contradictory changes queued.
+    /// </summary>
+    public void ApplyUpgrade(Guid newConfigurationSnapshotId)
+    {
+        if (Status != SubscriptionStatus.Active)
+            throw new InvalidOperationException(
+                $"A Subscription that is {Status} cannot be upgraded. Only an Active subscription can.");
+        if (newConfigurationSnapshotId == Guid.Empty)
+            throw new ArgumentException(
+                "An upgrade must reference a Configuration Snapshot.", nameof(newConfigurationSnapshotId));
+
+        CurrentConfigurationSnapshotId = newConfigurationSnapshotId;
+        PendingConfigurationSnapshotId = null;
+        PendingChangeEffectiveDate = null;
         Touch();
     }
 

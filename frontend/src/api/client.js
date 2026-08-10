@@ -674,6 +674,28 @@ export function cancelSubscription(token, slug, reason) {
     { method: "POST", body: { reason: reason || null }, token });
 }
 
+/** POST .../subscription/downgrade — schedules a plan/pack change for the end of the current billing period (not immediate). Blocked with a message if current usage doesn't fit the target plan. */
+export function downgradeSubscription(token, slug, planCode, packCodes) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/downgrade`,
+    { method: "POST", body: { planCode, packCodes: packCodes ?? [] }, token });
+}
+
+/** POST .../subscription/upgrade — applies a plan/pack change immediately and issues a prorated invoice for the remainder of the current period. */
+export function upgradeSubscription(token, slug, planCode, packCodes) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/upgrade`,
+    { method: "POST", body: { planCode, packCodes: packCodes ?? [] }, token });
+}
+
+/** POST .../subscription/cancel-pending-change — backs out of a scheduled downgrade before it takes effect. */
+export function cancelPendingSubscriptionChange(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/cancel-pending-change`, { method: "POST", token });
+}
+
+/** POST .../subscription/reactivate — undoes a Cancel while still within the paid period. */
+export function reactivateSubscription(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/reactivate`, { method: "POST", token });
+}
+
 /* ── Platform admin: subscriptions & invoices ────────────────────────────
    Manual Commercial Activation — a Platform Operator recording that
    commercial terms were satisfied outside this platform, in place of a
@@ -695,7 +717,7 @@ export function sweepOverdueInvoices(token) {
   return request("/admin/invoices/sweep-overdue", { method: "POST", token });
 }
 
-/** POST /api/admin/subscriptions/{id}/{action} — advance-to-grace | suspend | expire */
+/** POST /api/admin/subscriptions/{id}/{action} — advance-to-grace | suspend | expire | apply-pending-change */
 export function subscriptionAdminAction(token, subscriptionId, action) {
   return request(`/admin/subscriptions/${subscriptionId}/${action}`, { method: "POST", token });
 }

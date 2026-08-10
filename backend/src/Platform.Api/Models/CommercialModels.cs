@@ -49,6 +49,16 @@ public record CancelSubscriptionRequest(string? Reason);
 /// </summary>
 public record DowngradeRequest(string PlanCode, IReadOnlyList<string>? PackCodes);
 
+/// <summary>
+/// An Upgrade request — same shape as DowngradeRequest, but applied
+/// immediately with a prorated Invoice rather than scheduled (Billing
+/// Architecture §25-29: Upgrade is Immediate/Prorated, Downgrade is
+/// Next-Period/No-Refund). Rejected if the target plan isn't actually more
+/// expensive than the current one at the subscription's billing cycle —
+/// use Downgrade for that direction instead.
+/// </summary>
+public record UpgradeRequest(string PlanCode, IReadOnlyList<string>? PackCodes);
+
 /// <summary>One resolved entry from a Workspace's effective Entitlement Set.</summary>
 public record EntitlementRow(
     string Type,

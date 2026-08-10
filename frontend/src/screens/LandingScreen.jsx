@@ -257,11 +257,23 @@ function PlansSection({ plans, packs, onBecomeTutor }) {
                       +{pack.monthlyPrice} {pack.currency}<span>{t("subscription.perMonth")}</span>
                     </span>
                   </div>
-                  <span className="pl-plans__addonwhat">
-                    {packGrants(pack).map(({ domain, level }) => `${domainLabel(t, domain)} → ${levelLabel(t, level)}`)
-                      .concat(pack.extraTutorCapacity > 0 ? [`+${pack.extraTutorCapacity} ${t("subscription.tutorCapacity")}`] : [])
-                      .join(" · ")}
-                  </span>
+                  <ul className="pl-plans__addongrants">
+                    {packGrants(pack).map(({ domain, level }) => (
+                      <li key={domain}>
+                        <span>{domainLabel(t, domain)}</span>
+                        <strong>
+                          {levelLabel(t, level)}
+                          <em className="pl-plans__aitag">{aiLabel(t, aiLevelForProfile(level))}</em>
+                        </strong>
+                      </li>
+                    ))}
+                    {pack.extraTutorCapacity > 0 && (
+                      <li>
+                        <span>{t("subscription.tutorCapacity")}</span>
+                        <strong>+{pack.extraTutorCapacity}</strong>
+                      </li>
+                    )}
+                  </ul>
                   {req && (
                     <span className="pl-plans__addonnote">
                       {t("subscription.packRequires", { domain: domainLabel(t, req.domain), level: levelLabel(t, req.level) })}
@@ -491,7 +503,10 @@ const CSS = `
   .pl-plans__addonhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .pl-plans__addonname { font-weight: 700; font-size: 0.88rem; }
   .pl-plans__addonprice { font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
-  .pl-plans__addonwhat { font-size: 0.78rem; color: var(--ink-soft); }
+  .pl-plans__addongrants { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; }
+  .pl-plans__addongrants li { display: flex; justify-content: space-between; gap: 10px; }
+  .pl-plans__addongrants li span { color: var(--ink-soft); }
+  .pl-plans__addongrants li strong { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
   .pl-plans__addonnote { font-size: 0.72rem; color: #E0A83E; }
 
   /* ── Foot ───────────────────────────────────────────────────────────── */

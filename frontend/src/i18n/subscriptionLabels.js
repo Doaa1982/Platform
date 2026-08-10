@@ -33,9 +33,13 @@ export function parseRequirement(raw) {
   return domain && level ? { domain, level } : null;
 }
 
-/** { Learning: "AiPlus" } → [{ domain: "Learning", level: "AiPlus" }] */
+/** { Learning: "AiPlus" } → [{ domain: "Learning", level: "AiPlus" }], in the same
+ * canonical Learning/Assessment/Analytics/Branding order as ENTITLEMENT_DOMAINS —
+ * not object key order, which just mirrors however the backend happened to serialize it. */
 export function packGrants(pack) {
-  return Object.entries(pack.domainGrants ?? {}).map(([domain, level]) => ({ domain, level }));
+  return Object.entries(pack.domainGrants ?? {})
+    .map(([domain, level]) => ({ domain, level }))
+    .sort((a, b) => ENTITLEMENT_DOMAINS.indexOf(a.domain) - ENTITLEMENT_DOMAINS.indexOf(b.domain));
 }
 
 export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : "");

@@ -448,6 +448,11 @@ export default function AdminScreen() {
                           <span className="pl-admin__muted pl-admin__terminalnote">{t("admin.suspendedTerminalNote")}</span>
                         </>
                       )}
+                      {s.pendingPlanCode && (
+                        <button disabled={busy} onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "apply-pending-change"), t("admin.toastPendingChangeApplied", { name: s.workspaceName }))}>
+                          <Check size={12} aria-hidden="true" /> {t("admin.applyPendingChange")}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -685,6 +690,7 @@ const CSS = `
     border-radius: 6px; padding: 4px 8px;
   }
   .pl-admin__terminalnote { font-size: 10.5px; max-width: 22ch; line-height: 1.4; }
+  .pl-admin__pendingchange { display: block; font-size: 10.5px; color: var(--accent-2); margin-top: 2px; }
 
   .pl-admin__actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .pl-admin__actions button {
