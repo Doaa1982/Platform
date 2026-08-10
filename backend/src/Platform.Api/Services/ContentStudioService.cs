@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Platform.Api.AI;
 using Platform.Api.Models;
 using Platform.Domain;
 using Platform.Infrastructure;
@@ -17,8 +18,14 @@ namespace Platform.Api.Services;
 /// product with no curriculum and a product with an empty one are different
 /// things, and only the first should be the starting state.
 /// </summary>
-public class ContentStudioService(PlatformDbContext db)
+public class ContentStudioService(
+    PlatformDbContext db, EntitlementResolutionService entitlements,
+    TranscriptionQueue transcriptionQueue, ILearningAssetStorage assetStorage)
 {
+    /// <summary>Speechmatics' supported input formats (AI Video Transcript Implementation Plan §4/§7) — checked against the uploaded file's extension before a job is ever submitted.</summary>
+    private static readonly string[] SupportedTranscriptionExtensions =
+        [".wav", ".mp3", ".aac", ".ogg", ".mpeg", ".amr", ".m4a", ".mp4", ".flac"];
+
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
 
@@ -118,7 +125,8 @@ public class ContentStudioService(PlatformDbContext db)
                 r.Id, r.Version, r.Title, r.Body, r.EstimatedMinutes, r.DeliveryMode.ToString(), r.Status.ToString(), r.UpdatedAt,
                 r.VideoAssetId,
                 r.VideoAssetId is { } videoId && assets.TryGetValue(videoId, out var video) ? LearningAssetService.Describe(video) : null,
-                r.VideoUrl, a?.Questions.Count ?? 0, submissionCount);
+                r.VideoUrl, a?.Questions.Count ?? 0, submissionCount,
+                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptError);
         }
 
         return ProvisioningResult<LessonDetailResponse>.Success(new LessonDetailResponse(
@@ -376,6 +384,63 @@ public class ContentStudioService(PlatformDbContext db)
                 ?? throw new InvalidOperationException("This lesson has no open draft.");
             draft.RemoveVideo();
         }, ct);
+
+    /// <summary>
+    /// Kicks off AI transcription (AI Video Transcript Implementation Plan) for
+    /// whichever revision is currently open for editing — the draft if one
+    /// exists, else the published revision, same "target revision" rule
+    /// AssessmentService uses for its own AI surfaces. Cross-aggregate (needs
+    /// the Learning Asset's storage location), so this cannot go through
+    /// MutateLessonAsync's single-aggregate mutate delegate. Returns as soon
+    /// as the job is queued — the actual transcription runs on
+    /// TranscriptionBackgroundService, not inside this request.
+    /// </summary>
+    public async Task<ProvisioningResult<LessonDetailResponse>> GenerateTranscriptAsync(
+        string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return Fail<LessonDetailResponse>((ProvisioningError.Forbidden,
+                "AI transcription needs the Professional plan or an AI-enabled Learning pack. Upgrade to use this."));
+
+        var lesson = await db.Lessons.Include(l => l.Revisions)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
+        if (revision is null)
+            return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This lesson has no revision to transcribe yet."));
+
+        if (revision.VideoAssetId is null)
+            return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
+                revision.VideoUrl is not null
+                    ? "Only an uploaded video can be transcribed — an externally-linked video isn't supported yet."
+                    : "This revision has no video to transcribe yet."));
+
+        var asset = await db.LearningAssets.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == revision.VideoAssetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (asset is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such learning asset."));
+
+        var extension = Path.GetExtension(asset.OriginalFileName);
+        if (!SupportedTranscriptionExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
+                $"\"{extension}\" videos aren't supported for transcription yet. Supported formats: {string.Join(", ", SupportedTranscriptionExtensions)}."));
+
+        try { revision.BeginTranscription(); }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+
+        transcriptionQueue.Enqueue(new TranscriptionJob(
+            ctx.Workspace!.Id, lessonId, revision.Id,
+            assetStorage.ResolvePath(asset.ObjectKey), asset.OriginalFileName));
+
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
 
     // ── Plumbing ─────────────────────────────────────────────────────────────
 

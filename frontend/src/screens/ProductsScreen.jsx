@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   LoaderCircle, Plus, RefreshCw, Send, Undo2,
-  Globe, Archive, Pencil, BookOpen, Layers, X,
+  Globe, Archive, Pencil, BookOpen, Layers, X, Sparkles,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -163,6 +163,8 @@ export default function ProductsScreen({ onOpenStudio }) {
             <ProductForm
               busy={busy}
               product={editing === "new" ? null : liveEditing}
+              session={session}
+              slug={slug}
               onCancel={() => setEditing(null)}
               onSubmit={async (body, newSequential) => {
                 const saved = await run(() => editing === "new"
@@ -278,7 +280,7 @@ export default function ProductsScreen({ onOpenStudio }) {
   );
 }
 
-function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) {
+function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, session, slug }) {
   const { t } = useLanguage();
   const [title, setTitle] = useState(product?.title ?? "");
   const [description, setDescription] = useState(product?.description ?? "");
@@ -287,6 +289,26 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
   const [enrollmentMode, setEnrollmentMode] = useState(product?.enrollmentMode ?? "Open");
   const [defaultLanguage, setDefaultLanguage] = useState(product?.defaultLanguage ?? "");
   const [attempted, setAttempted] = useState(false);
+
+  // AI Capability Architecture §8 "Generate Description" — drafts from
+  // whatever's typed so far; works before the product is even saved.
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState(null);
+
+  async function suggestDescription() {
+    if (!title.trim()) { setAttempted(true); return; }
+    setAiBusy(true);
+    setAiError(null);
+    try {
+      const r = await api.suggestProductDescription(session.token, slug, {
+        title: title.trim(),
+        category: category.trim() || null,
+        tags: tags.split(",").map((tg) => tg.trim()).filter(Boolean),
+      });
+      setDescription(r.description);
+    } catch (e) { setAiError(e.message); }
+    finally { setAiBusy(false); }
+  }
 
   /* No product exists yet while creating, so there is nothing to toggle live
      against (setSequentialUnlock needs a real product id) — this is just
@@ -321,9 +343,18 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential }) 
                style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
       </label>
       <label>
-        <span>{t("products.descriptionLabel")}</span>
+        <span className="lw-prod__desclabel">
+          {t("products.descriptionLabel")}
+          <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={suggestDescription}
+                  disabled={busy || aiBusy || !title.trim()} title={t("products.aiSuggestDescription")}>
+            {aiBusy
+              ? <LoaderCircle size={12} className="lw-prod__spin" />
+              : <Sparkles size={12} />} {t("products.aiSuggestDescription")}
+          </button>
+        </span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
                   placeholder={t("products.descPlaceholder")} disabled={busy} />
+        {aiError && <Message type="error">{aiError}</Message>}
       </label>
       <label>
         <span>{t("products.whoCanJoin")} <InfoTip text={t(ENROLLMENT.find((m) => m.value === enrollmentMode)?.helpKey ?? "")} /></span>
@@ -383,6 +414,8 @@ const CSS = `
     border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
   }
   .lw-prod__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+  .lw-prod__desclabel { display: flex !important; align-items: center; gap: 8px; white-space: normal !important; }
+  .lw-btn--xs { font-size: 0.72rem; padding: 3px 8px; gap: 4px; }
   @media (max-width: 560px) {
     .lw-prod__form { grid-template-columns: 1fr; }
     .lw-prod__form > label { display: flex; flex-direction: column; gap: 5px; }

@@ -52,7 +52,12 @@ public record LessonRevisionRow(
     Guid Id, int Version, string Title, string? Body,
     int? EstimatedMinutes, string DeliveryMode, string Status, DateTime UpdatedAt,
     Guid? VideoAssetId, LearningAssetResponse? Video, string? VideoUrl,
-    int QuestionCount, int SubmissionCount);
+    int QuestionCount, int SubmissionCount,
+    /// <summary>AI-generated transcript of this revision's video, once ready. Null while None/Processing/Failed.</summary>
+    string? Transcript,
+    /// <summary>"None" | "Processing" | "Ready" | "Failed" (TranscriptStatus).</summary>
+    string TranscriptStatus,
+    string? TranscriptError);
 
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);

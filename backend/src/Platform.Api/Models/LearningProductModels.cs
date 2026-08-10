@@ -42,3 +42,13 @@ public record SaveLearningProductRequest(
     string? Pacing,
     string? EnrollmentMode,
     string? DefaultLanguage);
+
+/// <summary>
+/// What the AI needs to draft a description — exactly what a tutor has
+/// already typed into the product form, whether or not the product has been
+/// saved yet. Deliberately not keyed by product id: this works while
+/// creating a brand-new product too, before any row exists to load.
+/// </summary>
+public record AiSuggestDescriptionRequest(string Title, string? Category, IReadOnlyList<string>? Tags);
+
+public record AiSuggestDescriptionResponse(string Description);

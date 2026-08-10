@@ -973,6 +973,32 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   const videoUrl = revision?.videoUrl;
   const hasVideo = !!video || !!videoUrl;
 
+  // AI Video Transcript — only an uploaded video (not an external URL) can be
+  // transcribed (Implementation Plan §3). Poll while Processing since the
+  // real work happens on a background job, not this request.
+  const transcriptStatus = revision?.transcriptStatus ?? "None";
+  const [transcriptError, setTranscriptError] = useState(null);
+  const [startingTranscript, setStartingTranscript] = useState(false);
+
+  useEffect(() => {
+    if (transcriptStatus !== "Processing") return;
+    const id = setInterval(() => { onChanged(); }, 5000);
+    return () => clearInterval(id);
+  }, [transcriptStatus, onChanged]);
+
+  async function handleGenerateTranscript() {
+    setTranscriptError(null);
+    setStartingTranscript(true);
+    try {
+      await api.generateLessonTranscript(session.token, slug, lesson.id);
+      onChanged();
+    } catch (e) {
+      setTranscriptError(e.message);
+    } finally {
+      setStartingTranscript(false);
+    }
+  }
+
   async function handleFile(file) {
     if (!file) return;
     setUploading(true);
@@ -1114,6 +1140,42 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                 <UploadCloud size={13} /> {t("studio.replaceVideo")}
               </button>
             ))}
+          </div>
+
+          <div className="lw-transcript" style={{ padding: "12px 16px", borderTop: "1px solid var(--line)" }}>
+            {transcriptError && <Message type="error">{transcriptError}</Message>}
+
+            {transcriptStatus === "None" && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span className="muted">{t("studio.transcriptNone")}</span>
+                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={startingTranscript} onClick={handleGenerateTranscript}>
+                  {startingTranscript ? <LoaderCircle size={13} className="lw-studio__spin" /> : <Sparkles size={13} />} {t("studio.generateTranscript")}
+                </button>
+              </div>
+            )}
+
+            {transcriptStatus === "Processing" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <LoaderCircle size={13} className="lw-studio__spin" />
+                <span className="muted">{t("studio.transcriptProcessing")}</span>
+              </div>
+            )}
+
+            {transcriptStatus === "Failed" && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span className="muted">{revision.transcriptError ?? t("studio.transcriptFailed")}</span>
+                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={startingTranscript} onClick={handleGenerateTranscript}>
+                  {startingTranscript ? <LoaderCircle size={13} className="lw-studio__spin" /> : <Sparkles size={13} />} {t("studio.retryTranscript")}
+                </button>
+              </div>
+            )}
+
+            {transcriptStatus === "Ready" && (
+              <details>
+                <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.85rem" }}>{t("studio.transcriptReady")}</summary>
+                <p className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{revision.transcript}</p>
+              </details>
+            )}
           </div>
         </div>
       )}

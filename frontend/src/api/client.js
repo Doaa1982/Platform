@@ -220,6 +220,11 @@ export function productTransition(token, slug, id, transition) {
   return request(`/workspaces/${encodeURIComponent(slug)}/products/${id}/${transition}`, { method: "POST", token });
 }
 
+/** POST /api/workspaces/{slug}/products/ai-suggest-description — drafts a listing description; no product needs to exist yet. */
+export function suggestProductDescription(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/ai-suggest-description`, { method: "POST", body, token });
+}
+
 /* ── Content Studio (curriculum, units, lessons) ───────────────────────────
    A Curriculum is created lazily by the API the first time a tutor adds a
    unit or a lesson — there is no separate "create curriculum" call.
@@ -410,6 +415,17 @@ export function removeLessonVideo(token, slug, lessonId) {
 export function setLessonVideoUrl(token, slug, lessonId, url) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/video-url`, {
     method: "PUT", body: { url }, token,
+  });
+}
+
+/**
+ * POST .../lessons/{lessonId}/transcript/generate — starts AI transcription
+ * of the open revision's uploaded video. Returns immediately with
+ * TranscriptStatus "Processing"; poll getLesson to see when it's Ready.
+ */
+export function generateLessonTranscript(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/transcript/generate`, {
+    method: "POST", token,
   });
 }
 

@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Platform.Api;
+using Platform.Api.AI;
+using Platform.Api.AI.Skills;
 using Platform.Api.Authorization;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -100,6 +102,31 @@ builder.Services.AddScoped<LearningAssetService>();
 builder.Services.AddScoped<AssessmentService>();
 builder.Services.AddScoped<LearningDeliveryService>();
 builder.Services.AddScoped<NotificationService>();
+
+// ── AI (AIModelProviderArchitecture / AIOrchestrationArchitecture / AISkillArchitecture) ──
+// Provider sits behind IAiModelProvider — swapping vendors later means adding
+// a new implementation here, with no change to AiOrchestrator or any Skill.
+var aiOptions = builder.Configuration.GetSection(AiOptions.Section).Get<AiOptions>() ?? new AiOptions();
+builder.Services.AddSingleton(aiOptions);
+builder.Services.AddHttpClient<IAiModelProvider, ClaudeModelProvider>();
+builder.Services.AddScoped<AiOrchestrator>();
+builder.Services.AddScoped<GenerateQuestionsSkill>();
+builder.Services.AddScoped<GradeAssessmentSkill>();
+builder.Services.AddScoped<GenerateProductDescriptionSkill>();
+
+// ── Video transcription (AI Video Transcript Implementation Plan) ──────────
+// A separate provider boundary from the text-completion one above: Claude
+// doesn't do speech-to-text, and Speechmatics accepts the stored video file
+// directly (mp4 is a supported input format), so no audio-extraction step.
+var speechmaticsOptions = builder.Configuration.GetSection(SpeechmaticsOptions.Section).Get<SpeechmaticsOptions>() ?? new SpeechmaticsOptions();
+builder.Services.AddSingleton(speechmaticsOptions);
+builder.Services.AddHttpClient<IAudioTranscriptionProvider, SpeechmaticsTranscriptionProvider>(client =>
+{
+    client.BaseAddress = new Uri("https://eu1.asr.api.speechmatics.com/v2/");
+    client.Timeout = Timeout.InfiniteTimeSpan; // polling loop manages its own MaxWaitMinutes deadline
+});
+builder.Services.AddSingleton<TranscriptionQueue>();
+builder.Services.AddHostedService<TranscriptionBackgroundService>();
 
 // Commercial Domain — core spine (V1a)
 builder.Services.AddScoped<CatalogQueryService>();

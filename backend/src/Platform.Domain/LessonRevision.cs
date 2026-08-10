@@ -50,6 +50,12 @@ public class LessonRevision
     public DateTime UpdatedAt { get; private set; }
     public DateTime? PublishedAt { get; private set; }
 
+    /// <summary>AI-generated transcript of this revision's video (AI Capability Architecture §8, "Generate Transcript"). Null until a transcription job has ever run.</summary>
+    public string? Transcript { get; private set; }
+    public TranscriptStatus TranscriptStatus { get; private set; } = TranscriptStatus.None;
+    /// <summary>Why the last transcription attempt failed, if TranscriptStatus is Failed. Null otherwise.</summary>
+    public string? TranscriptError { get; private set; }
+
     private LessonRevision() { }
 
     internal static LessonRevision Draft(
@@ -98,6 +104,7 @@ public class LessonRevision
             throw new ArgumentException("A video reference cannot be empty.", nameof(learningAssetId));
         VideoAssetId = learningAssetId;
         VideoUrl = null;
+        ClearTranscript();
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -108,6 +115,7 @@ public class LessonRevision
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         VideoUrl = url.Trim();
         VideoAssetId = null;
+        ClearTranscript();
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -116,7 +124,54 @@ public class LessonRevision
         RequireDraft();
         VideoAssetId = null;
         VideoUrl = null;
+        ClearTranscript();
         UpdatedAt = DateTime.UtcNow;
+    }
+
+    // ── Transcript (AI Capability Architecture §8, "Generate Transcript") ──────
+    //
+    // Deliberately not Draft-only like the video/content edits above: a tutor
+    // should be able to transcribe a video that's already published and live,
+    // not just while still drafting it.
+
+    /// <summary>Starts a transcription attempt. Refuses to start a second one while one is already running.</summary>
+    public void BeginTranscription()
+    {
+        if (VideoAssetId is null)
+            throw new InvalidOperationException("This revision has no uploaded video to transcribe.");
+        if (TranscriptStatus == TranscriptStatus.Processing)
+            throw new InvalidOperationException("A transcription is already running for this revision.");
+
+        TranscriptStatus = TranscriptStatus.Processing;
+        TranscriptError = null;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Records a successful transcription. Only valid while one is running — a stray completion for a job that was never started or already resolved is ignored rather than trusted.</summary>
+    public void CompleteTranscription(string text)
+    {
+        if (TranscriptStatus != TranscriptStatus.Processing) return;
+        Transcript = text;
+        TranscriptStatus = TranscriptStatus.Ready;
+        TranscriptError = null;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Records a failed transcription attempt. Same "only while Processing" guard as <see cref="CompleteTranscription"/>.</summary>
+    public void FailTranscription(string reason)
+    {
+        if (TranscriptStatus != TranscriptStatus.Processing) return;
+        TranscriptStatus = TranscriptStatus.Failed;
+        TranscriptError = reason;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>The video changed underneath an existing transcript, so it no longer describes the current video — back to None rather than leaving stale text in place.</summary>
+    private void ClearTranscript()
+    {
+        Transcript = null;
+        TranscriptStatus = TranscriptStatus.None;
+        TranscriptError = null;
     }
 
     private void RequireDraft()

@@ -28,6 +28,12 @@ public class LearningProductsController(LearningProductService products) : Contr
         string slug, [FromBody] SaveLearningProductRequest request, CancellationToken ct)
         => Run(await products.CreateAsync(slug, Caller(), request, ct));
 
+    /// <summary>Drafts a listing description from whatever the tutor has typed so far — no product needs to exist yet.</summary>
+    [HttpPost("ai-suggest-description")]
+    public async Task<ActionResult<AiSuggestDescriptionResponse>> SuggestDescription(
+        string slug, [FromBody] AiSuggestDescriptionRequest request, CancellationToken ct)
+        => Run(await products.SuggestDescriptionAsync(slug, Caller(), request, ct));
+
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<LearningProductRow>> Update(
         string slug, Guid id, [FromBody] SaveLearningProductRequest request, CancellationToken ct)

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Platform.Api.AI;
+using Platform.Api.AI.Skills;
 using Platform.Api.Models;
 using Platform.Domain;
 using Platform.Infrastructure;
@@ -8,23 +10,29 @@ namespace Platform.Api.Services;
 /// <summary>
 /// The interactive questions attached to one lesson's video.
 ///
-/// Two AI-shaped operations live here in simulated form — matching every
-/// other "AI" surface already in this prototype (App.jsx's PSEUDO-AI HELPERS
-/// remark): templated and deterministic rather than a live model call, but
-/// shaped exactly like what the real thing would return.
+/// Two AI-shaped operations live here:
 ///
 ///   SuggestQuestionsAsync — AI Interactive Video Lesson Generator §3/§7:
 ///     proposes timestamped checkpoints for the tutor to accept, edit or
 ///     remove. Nothing is persisted; a suggestion becomes real only once
-///     accepted through AddQuestionAsync.
+///     accepted through AddQuestionAsync. Backed by a real model call via
+///     <see cref="GenerateQuestionsSkill"/> (AISkillArchitecture.md).
 ///
 ///   PreviewAsync — Assessment and Submission Aggregate Design §10's "AI
 ///     Evaluation" method: grades a set of answers against the real answer
 ///     key a tutor authored. A preview only — Assessment INV-002 means an
 ///     unpublished assessment cannot receive a real Submission at all, so no
-///     Submission is recorded here.
+///     Submission is recorded here. Scoring is deterministic (a fixed answer
+///     key is not an AI judgment call, AIC-005) — the AI part is the
+///     narrative feedback, via <see cref="GradeAssessmentSkill"/>, which
+///     reads what the learner actually wrote for OpenAnswer questions
+///     instead of a generic "reviewed for participation" line. Falls back to
+///     the old templated line if the model call fails, since a broken AI
+///     narrative should never block a tutor from seeing their preview score.
 /// </summary>
-public class AssessmentService(PlatformDbContext db, EntitlementResolutionService entitlements)
+public class AssessmentService(
+    PlatformDbContext db, EntitlementResolutionService entitlements,
+    GenerateQuestionsSkill generateQuestions, GradeAssessmentSkill gradeAssessment)
 {
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
@@ -79,42 +87,10 @@ public class AssessmentService(PlatformDbContext db, EntitlementResolutionServic
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
         => MutateAsync(slug, caller, lessonId, (a, _) => a.Unpublish(), ct);
 
-    // ── Simulated AI ─────────────────────────────────────────────────────────
+    // ── AI ────────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Instructional placement rules from AI Interactive Video Lesson
-    /// Generator §6, rotating across all four Question Event types
-    /// (Learning Delivery Context §4.1) rather than defaulting everything to
-    /// multiple choice — each type is placed where AI Interactive Video
-    /// Lesson Generator §5 says it fits best.
-    /// </summary>
-    private static readonly (double Fraction, QuestionType Type, string Prompt, string[]? Options, int? CorrectOptionIndex, string[]? AcceptedAnswers, string Explanation)[] Templates =
-    [
-        (0.2, QuestionType.MultipleChoice,
-         "What is the main idea the video just explained?",
-         ["The point just introduced", "A common misconception about it", "An unrelated topic", "Something covered later"], 0, null,
-         "Multiple choice for knowledge checking, placed right after an explanation while it's fresh (§6, \"After Explanation\"; AI doc §5)."),
-
-        (0.38, QuestionType.TrueFalse,
-         "True or false: what the video just showed is the only correct way to think about this.",
-         null, 1, null,
-         "True/false for misconception detection (AI doc §5) — most single ideas admit more than one valid framing."),
-
-        (0.55, QuestionType.OpenAnswer,
-         "Before the video continues — what do you predict happens next, and why?",
-         null, null, null,
-         "Open answer for reasoning and prediction (AI doc §5), placed before the example (§6, \"Before Example\"). Reviewed for participation, not auto-scored."),
-
-        (0.72, QuestionType.CompleteTheSentence,
-         "Complete the sentence: the term the video just used for this idea is ______.",
-         null, null, ["<edit: the actual term from the video>"],
-         "Complete-the-sentence for vocabulary and terminology (AI doc §5) — replace the accepted answer with the term actually used before publishing."),
-
-        (0.9, QuestionType.MultipleChoice,
-         "Looking back at the whole video — which statement best summarizes it?",
-         ["A correct summary of what was taught", "A summary of a different lesson", "A definition unrelated to the content", "A random restatement of the title"], 0, null,
-         "A closing knowledge checkpoint, covering the video as a whole."),
-    ];
+    /// <summary>Caps how many checkpoints one request can ask for — roughly one per three minutes of video, AI doc §6: "AI should not randomly insert questions."</summary>
+    private const int MaxSuggestedQuestions = 5;
 
     public async Task<ProvisioningResult<IReadOnlyList<SuggestedQuestion>>> SuggestQuestionsAsync(
         string slug, Guid caller, Guid lessonId, AiSuggestQuestionsRequest request, CancellationToken ct = default)
@@ -129,22 +105,35 @@ public class AssessmentService(PlatformDbContext db, EntitlementResolutionServic
         if (request.VideoDurationSeconds <= 0)
             return Fail<IReadOnlyList<SuggestedQuestion>>((ProvisioningError.Invalid, "A video duration is needed before checkpoints can be placed."));
 
-        // Roughly one checkpoint per three minutes of video, one to five total —
-        // AI doc §6: "AI should not randomly insert questions."
-        var count = Math.Clamp(request.VideoDurationSeconds / 180, 1, Templates.Length);
+        var count = Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions);
+        var lessonBody = await LoadLessonBodyAsync(ctx.Workspace!.Id, lessonId, ctx.TargetRevisionId, ct);
 
-        var suggestions = Templates.Take(count).Select(t => new SuggestedQuestion(
-            Type: t.Type.ToString(),
-            Prompt: t.Prompt,
-            Options: t.Type == QuestionType.TrueFalse ? ["True", "False"] : (t.Options ?? []),
-            CorrectOptionIndex: t.CorrectOptionIndex,
-            AcceptedAnswers: t.AcceptedAnswers ?? [],
-            Explanation: t.Explanation,
-            VideoTimestampSeconds: (int)(t.Fraction * request.VideoDurationSeconds),
-            Points: 1
-        )).ToList();
+        IReadOnlyList<SuggestedQuestion> suggestions;
+        try
+        {
+            suggestions = await generateQuestions.SuggestAsync(
+                ctx.LessonTitle ?? "Untitled lesson", lessonBody, request.VideoDurationSeconds, count, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Model unavailable, misconfigured key, or unparseable output —
+            // surfaced as a normal failure rather than a 500, so the tutor
+            // sees a clear message instead of a crash.
+            return Fail<IReadOnlyList<SuggestedQuestion>>((ProvisioningError.Conflict, $"AI question generation failed: {ex.Message}"));
+        }
 
         return ProvisioningResult<IReadOnlyList<SuggestedQuestion>>.Success(suggestions);
+    }
+
+    /// <summary>The lesson's written content for the target revision, used as AI context. Best-effort — null just means the skill falls back to the title alone.</summary>
+    private async Task<string?> LoadLessonBodyAsync(Guid workspaceId, Guid lessonId, Guid? revisionId, CancellationToken ct)
+    {
+        if (revisionId is null) return null;
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == workspaceId, ct);
+
+        return lesson?.Revisions.FirstOrDefault(r => r.Id == revisionId)?.Body;
     }
 
     public async Task<ProvisioningResult<PreviewResult>> PreviewAsync(
@@ -167,18 +156,36 @@ public class AssessmentService(PlatformDbContext db, EntitlementResolutionServic
         try { graded = assessment.Grade(byQuestion); }
         catch (InvalidOperationException ex) { return Fail<PreviewResult>((ProvisioningError.Conflict, ex.Message)); }
 
-        var gradedCount = graded.PerQuestion.Count(q => q.Correct is not null);
         var correctCount = graded.PerQuestion.Count(q => q.Correct == true);
-        var openCount = graded.PerQuestion.Count - gradedCount;
-        var openNote = openCount > 0
-            ? $" {openCount} open-ended response{(openCount == 1 ? "" : "s")} reviewed for participation, not scored."
-            : "";
+        var gradedCount = graded.PerQuestion.Count(q => q.Correct is not null);
 
-        var feedback = gradedCount == 0
-            ? $"Simulated AI grading: every question here is open-ended, so this was reviewed for participation only — nothing to score.{openNote}"
-            : (graded.Passed
-                ? $"Simulated AI grading: {correctCount} of {gradedCount} correct ({graded.ScorePercent}%) — at or above the {assessment.PassingThresholdPercent}% passing threshold.{openNote}"
-                : $"Simulated AI grading: {correctCount} of {gradedCount} correct ({graded.ScorePercent}%) — below the {assessment.PassingThresholdPercent}% passing threshold.{openNote}");
+        var openAnswers = graded.PerQuestion
+            .Where(q => q.Correct is null)
+            .Select(q => (Question: assessment.Questions.First(aq => aq.Id == q.QuestionId), Result: q))
+            .Select(x => (x.Question.Prompt, Answer: byQuestion.TryGetValue(x.Question.Id, out var a) ? a.TextAnswer ?? "" : ""))
+            .ToList();
+
+        string feedback;
+        try
+        {
+            feedback = await gradeAssessment.ReviewAsync(
+                ctx.LessonTitle ?? "This lesson", graded.ScorePercent, graded.Passed,
+                assessment.PassingThresholdPercent, openAnswers, ct);
+        }
+        catch (InvalidOperationException)
+        {
+            // Model unavailable/misconfigured — fall back to the deterministic
+            // summary rather than failing a preview the score itself already
+            // computed successfully.
+            var openNote = openAnswers.Count > 0
+                ? $" {openAnswers.Count} open-ended response{(openAnswers.Count == 1 ? "" : "s")} reviewed for participation, not scored."
+                : "";
+            feedback = gradedCount == 0
+                ? $"Every question here is open-ended, so this was reviewed for participation only — nothing to score.{openNote}"
+                : (graded.Passed
+                    ? $"{correctCount} of {gradedCount} correct ({graded.ScorePercent}%) — at or above the {assessment.PassingThresholdPercent}% passing threshold.{openNote}"
+                    : $"{correctCount} of {gradedCount} correct ({graded.ScorePercent}%) — below the {assessment.PassingThresholdPercent}% passing threshold.{openNote}");
+        }
 
         return ProvisioningResult<PreviewResult>.Success(new PreviewResult(
             graded.ScorePercent, graded.Passed, assessment.PassingThresholdPercent, feedback,

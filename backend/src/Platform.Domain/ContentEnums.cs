@@ -30,3 +30,10 @@ public enum LessonRevisionStatus { Draft, Published, Superseded }
 /// which would act on it (booking, calendar, a join link), is not built yet.
 /// </summary>
 public enum LessonDeliveryMode { Recorded, LiveSession }
+
+/// <summary>
+/// Where a Lesson Revision's AI-generated transcript stands.
+/// None -&gt; Processing -&gt; Ready | Failed. A fresh Processing attempt after
+/// Failed goes back to Processing — there is no separate "retry" state.
+/// </summary>
+public enum TranscriptStatus { None, Processing, Ready, Failed }

@@ -159,6 +159,15 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     public async Task<ActionResult<LessonDetailResponse>> RemoveVideo(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.RemoveVideoAsync(slug, Caller(), lessonId, ct));
 
+    /// <summary>
+    /// Starts AI transcription of the open revision's uploaded video. Returns
+    /// immediately with TranscriptStatus "Processing" — the transcript itself
+    /// lands asynchronously; poll GET (this lesson) to see when it's Ready.
+    /// </summary>
+    [HttpPost("transcript/generate")]
+    public async Task<ActionResult<LessonDetailResponse>> GenerateTranscript(string slug, Guid lessonId, CancellationToken ct)
+        => Run(await studio.GenerateTranscriptAsync(slug, Caller(), lessonId, ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {
         ProvisioningError.None      => Ok(r.Value),

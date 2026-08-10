@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Platform.Api.AI.Skills;
 using Platform.Api.Models;
 using Platform.Domain;
 using Platform.Infrastructure;
@@ -14,8 +15,13 @@ namespace Platform.Api.Services;
 /// INV-006 — no publishing without an active, published Curriculum — is now
 /// enforceable and enforced. Each product reports whether it has one, so a
 /// client can say what is missing before the tutor tries to publish.
+///
+/// SuggestDescriptionAsync is the one AI-shaped operation here (AI Capability
+/// Architecture §8, "Generate Description"), gated the same way Assessment's
+/// AI surfaces are (LIC-008) but against CapabilityDomain.Learning instead.
 /// </summary>
-public class LearningProductService(PlatformDbContext db)
+public class LearningProductService(
+    PlatformDbContext db, EntitlementResolutionService entitlements, GenerateProductDescriptionSkill generateDescription)
 {
     /// <summary>
     /// Who may author. Teachers are included deliberately: authoring is the job
@@ -144,6 +150,37 @@ public class LearningProductService(PlatformDbContext db)
                 default: throw new ArgumentException($"\"{transition}\" is not a learning product transition.");
             }
         }, ct);
+    }
+
+    // ── AI ────────────────────────────────────────────────────────────────────
+
+    public async Task<ProvisioningResult<AiSuggestDescriptionResponse>> SuggestDescriptionAsync(
+        string slug, Guid callerIdentityId, AiSuggestDescriptionRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, callerIdentityId, requireAuthor: true, ct);
+        if (ctx.Error is not null)
+            return ProvisioningResult<AiSuggestDescriptionResponse>.Fail(ctx.Error.Value.Error, ctx.Error.Value.Message);
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return ProvisioningResult<AiSuggestDescriptionResponse>.Fail(ProvisioningError.Forbidden,
+                "AI-suggested descriptions need the Professional plan or an AI-enabled Learning pack. Upgrade to use this.");
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return ProvisioningResult<AiSuggestDescriptionResponse>.Fail(ProvisioningError.Invalid,
+                "A title is needed before a description can be suggested.");
+
+        try
+        {
+            var description = await generateDescription.SuggestAsync(request.Title, request.Category, request.Tags, ct);
+            return ProvisioningResult<AiSuggestDescriptionResponse>.Success(new AiSuggestDescriptionResponse(description));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ProvisioningResult<AiSuggestDescriptionResponse>.Fail(
+                ProvisioningError.Conflict, $"AI description generation failed: {ex.Message}");
+        }
     }
 
     private async Task<ProvisioningResult<LearningProductRow>> MutateAsync(
