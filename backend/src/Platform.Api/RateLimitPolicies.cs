@@ -28,8 +28,9 @@ namespace Platform.Api;
 /// </summary>
 public static class RateLimitPolicies
 {
-    public const string JoinRequests = "join-requests";
-    public const string PublicRead   = "public-read";
+    public const string JoinRequests   = "join-requests";
+    public const string PublicRead     = "public-read";
+    public const string PasswordReset  = "password-reset";
 
     public static IServiceCollection AddPlatformRateLimiting(
         this IServiceCollection services, IConfiguration config)
@@ -41,6 +42,8 @@ public static class RateLimitPolicies
         var submitWindow = config.GetValue("RateLimits:JoinRequests:WindowMinutes", 10);
         var readLimit    = config.GetValue("RateLimits:PublicRead:Permits", 60);
         var readWindow   = config.GetValue("RateLimits:PublicRead:WindowMinutes", 1);
+        var resetLimit   = config.GetValue("RateLimits:PasswordReset:Permits", 5);
+        var resetWindow  = config.GetValue("RateLimits:PasswordReset:WindowMinutes", 15);
 
         services.AddRateLimiter(options =>
         {
@@ -68,6 +71,20 @@ public static class RateLimitPolicies
                     {
                         PermitLimit = readLimit,
                         Window = TimeSpan.FromMinutes(readWindow),
+                        QueueLimit = 0,
+                    }));
+
+            // Forgot/reset password: creates no Identity, but is the one place
+            // a stranger can trigger an email to any address, repeatedly — the
+            // proportionate limit here bounds spam and brute-force guessing of
+            // a live reset token, not account creation.
+            options.AddPolicy(PasswordReset, context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: ClientKey(context),
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = resetLimit,
+                        Window = TimeSpan.FromMinutes(resetWindow),
                         QueueLimit = 0,
                     }));
 

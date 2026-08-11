@@ -1,11 +1,13 @@
 import { AuthProvider } from "./auth/AuthProvider";
-import { sideFromPath } from "./auth/sides";
+import { sideFromPath, SIDE_KEYS } from "./auth/sides";
 import { useRoute } from "./hooks/useRoute";
 import InviteScreen from "./screens/InviteScreen";
 import JoinScreen from "./screens/JoinScreen";
 import RootGate from "./RootGate";
 import ApplyScreen from "./screens/ApplyScreen";
 import SignupStatusScreen from "./screens/SignupStatusScreen";
+import ForgotPasswordScreen from "./screens/ForgotPasswordScreen";
+import ResetPasswordScreen from "./screens/ResetPasswordScreen";
 import AuthGate from "./AuthGate";
 import AdminGate from "./AdminGate";
 
@@ -20,6 +22,8 @@ import AdminGate from "./AdminGate";
      /admin           platform operations (deliberately unlinked anywhere)
      /invite/{token}  accepting an invitation
      /join/{slug}     asking to join a workspace
+     /forgot-password/{side}   requesting a password reset link
+     /reset-password/{token}   redeeming one
 
    There is deliberately no route that lists workspaces. Discovery happens
    entirely off-platform, permanently (Join Request BA-007, ADR-EA-002): a
@@ -54,6 +58,28 @@ export default function AppRoot() {
           slug={joinSlug}
           onSignIn={() => navigate("/learn")}
         />
+      </AuthProvider>
+    );
+  }
+
+  // Requesting a link needs no session; opening a reset link is the same
+  // Invitation-style pattern (a token stands in for authentication). The
+  // `side` segment carries no authority — see ForgotPasswordScreen's remarks.
+  const forgotSide = match(pathname, /^\/forgot-password\/([^/]+)\/?$/);
+  if (forgotSide) {
+    const side = SIDE_KEYS.includes(forgotSide) ? forgotSide : "teach";
+    return (
+      <AuthProvider side={null}>
+        <ForgotPasswordScreen side={side} onBack={() => navigate(`/${side}`)} />
+      </AuthProvider>
+    );
+  }
+
+  const resetToken = match(pathname, /^\/reset-password\/([^/]+)\/?$/);
+  if (resetToken) {
+    return (
+      <AuthProvider side={null}>
+        <ResetPasswordScreen token={resetToken} onDone={() => navigate("/", { replace: true })} />
       </AuthProvider>
     );
   }

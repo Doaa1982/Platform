@@ -21,7 +21,7 @@ import Message from "../components/Message";
    (Technical Debt Backlog TD-006).
    ========================================================================= */
 
-export default function LoginScreen({ side, onBack }) {
+export default function LoginScreen({ side, onBack, onForgotPassword }) {
   useFonts();
   const { signIn } = useAuth();
   const { t } = useLanguage();
@@ -119,7 +119,17 @@ export default function LoginScreen({ side, onBack }) {
             </div>
 
             <div className="pl-field">
-              <label htmlFor="password">{t("login.password")}</label>
+              <div className="pl-field__labelrow">
+                <label htmlFor="password">{t("login.password")}</label>
+                <button
+                  type="button"
+                  className="pl-field__forgot"
+                  onClick={onForgotPassword}
+                  disabled={submitting}
+                >
+                  {t("login.forgotPassword")}
+                </button>
+              </div>
               <div className="pl-field__control">
                 <input
                   id="password"
@@ -239,6 +249,18 @@ const CSS = `
     display: block; font-size: 0.82rem; font-weight: 600;
     margin-bottom: 6px; color: var(--pl-ink);
   }
+  .pl-field__labelrow {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  }
+  .pl-field__labelrow label { margin-bottom: 6px; }
+  .pl-field__forgot {
+    background: transparent; border: none; padding: 0; margin-bottom: 6px;
+    font-family: inherit; font-size: 0.8rem; font-weight: 600;
+    color: var(--pl-accent); cursor: pointer; white-space: nowrap;
+  }
+  .pl-field__forgot:hover:not(:disabled) { text-decoration: underline; }
+  .pl-field__forgot:disabled { opacity: 0.55; cursor: not-allowed; }
+  .pl-field__forgot:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; border-radius: 4px; }
   .pl-field__control { position: relative; display: flex; }
   .pl-field input {
     width: 100%;

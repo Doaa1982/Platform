@@ -38,7 +38,13 @@ export default function AuthGate({ side, navigate }) {
   }
 
   if (status === "anonymous") {
-    return <LoginScreen side={side} onBack={() => navigate("/")} />;
+    return (
+      <LoginScreen
+        side={side}
+        onBack={() => navigate("/")}
+        onForgotPassword={() => navigate(`/forgot-password/${side}`)}
+      />
+    );
   }
 
   if (!workspace) {

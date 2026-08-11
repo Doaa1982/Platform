@@ -57,6 +57,19 @@ public class Identity
     }
 
     /// <summary>
+    /// Replaces the credential (INV-005). Used both when someone changes their
+    /// own password knowingly and when a Password Reset link is redeemed —
+    /// either way, the caller has already proven they are entitled to do this
+    /// (a matching current password, or a valid single-use reset token), so
+    /// nothing further is checked here.
+    /// </summary>
+    public void SetPassword(string newPasswordHash)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(newPasswordHash);
+        PasswordHash = newPasswordHash;
+    }
+
+    /// <summary>
     /// Suspends the Identity. IdentityStatus → Suspended.
     /// </summary>
     public void Suspend() => Status = IdentityStatus.Suspended;

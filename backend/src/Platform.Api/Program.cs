@@ -168,9 +168,11 @@ builder.Services.AddScoped<CommercialSubscriptionService>();
 builder.Services.AddScoped<CommercialOpsService>();
 builder.Services.AddScoped<CatalogAdminService>();
 
-// Guards the one endpoint a stranger can reach that creates an Identity
+// Guards the one endpoint a stranger can reach that creates an Identity, and
+// the forgot/reset-password endpoints (create nothing, but reachable by anyone)
 builder.Services.AddPlatformRateLimiting(builder.Configuration);
 builder.Services.AddScoped<TokenService>();
+builder.Services.AddScoped<PasswordResetService>();
 
 // ── Invitation delivery ────────────────────────────────────────────────────────
 // A platform-level notification, not a Communication Context message: an
@@ -185,6 +187,15 @@ else
     // Logs the link and reports honestly that nothing was sent, so the console
     // tells the admin to deliver it by hand rather than implying mail is coming.
     builder.Services.AddScoped<IInvitationDelivery, LoggingInvitationDelivery>();
+
+// ── Password reset delivery ─────────────────────────────────────────────────
+// Its own interface and its own copy (PasswordResetDelivery.cs), sharing only
+// EmailOptions/the SMTP settings with invitation delivery above — see that
+// file's remarks for why the message itself is never reused.
+if (emailOptions.Enabled)
+    builder.Services.AddScoped<IPasswordResetDelivery, SmtpPasswordResetDelivery>();
+else
+    builder.Services.AddScoped<IPasswordResetDelivery, LoggingPasswordResetDelivery>();
 
 var app = builder.Build();
 

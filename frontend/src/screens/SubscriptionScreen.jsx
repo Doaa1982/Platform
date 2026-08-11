@@ -346,26 +346,34 @@ function SubscriptionStatus({ subscription, plans, packs, busy, onCancel, onResu
 
       <CurrentPlanCard plan={plan} packs={packs} subscription={subscription} />
 
-      <h2 className="lw-bill__sectiontitle">{t("subscription.entitlementsTitle")}</h2>
-      <div className="lw-bill__entgrid">
-        <div className="lw-bill__enthead" />
-        <div className="lw-bill__enthead">{t("subscription.capabilityProfileLabel")}</div>
-        <div className="lw-bill__enthead">{t("subscription.aiAssistanceLabel")}</div>
-        {ENTITLEMENT_DOMAINS.flatMap((domain) => {
-          const profile = entitlement(`profile:${domain}`, domain);
-          const ai = entitlement(`ai:${domain}`, domain);
-          return [
-            <div className="lw-bill__entdomain" key={`${domain}-d`}>{domainLabel(t, domain)}</div>,
-            <div key={`${domain}-p`}>{profile ? levelLabel(t, profile.value) : "—"}</div>,
-            <div key={`${domain}-a`}>{ai ? aiLabel(t, ai.value) : "—"}</div>,
-          ];
-        })}
-      </div>
-      <div className="lw-bill__proplist">
-        <span className="lw-bill__proplabel">{t("subscription.tutorCapacity")}</span>
-        <span className="lw-bill__propvalue">{tutorCapacity ?? "—"}</span>
-        <span className="lw-bill__proplabel">{t("subscription.aiCredits")}</span>
-        <span className="lw-bill__propvalue">{aiCredits ? Number(aiCredits).toLocaleString() : "—"}</span>
+      <div className="lw-bill__entcard">
+        <h2 className="lw-bill__sectiontitle">{t("subscription.entitlementsTitle")}</h2>
+        <table className="lw-bill__enttable">
+          <tbody>
+            {ENTITLEMENT_DOMAINS.flatMap((domain) => {
+              const profile = entitlement(`profile:${domain}`, domain);
+              const ai = entitlement(`ai:${domain}`, domain);
+              return [
+                <tr key={`${domain}-p`}>
+                  <th scope="row">{domainLabel(t, domain)} — {t("subscription.capabilityProfileLabel")}</th>
+                  <td>{profile ? levelLabel(t, profile.value) : "—"}</td>
+                </tr>,
+                <tr key={`${domain}-a`}>
+                  <th scope="row">{domainLabel(t, domain)} — {t("subscription.aiAssistanceLabel")}</th>
+                  <td>{ai ? aiLabel(t, ai.value) : "—"}</td>
+                </tr>,
+              ];
+            })}
+            <tr>
+              <th scope="row">{t("subscription.tutorCapacity")}</th>
+              <td>{tutorCapacity ?? "—"}</td>
+            </tr>
+            <tr>
+              <th scope="row">{t("subscription.aiCredits")}</th>
+              <td>{aiCredits ? Number(aiCredits).toLocaleString() : "—"}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       {subscription.status === "Active" && pricierPlans.length > 0 && (
@@ -621,12 +629,17 @@ const CSS = `
 
   .lw-bill__backbtn { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px; }
 
-  .lw-bill__proplist {
-    display: grid; grid-template-columns: max-content 1fr;
-    row-gap: 7px; column-gap: 12px; font-size: 0.84rem; margin-bottom: 16px;
+  .lw-bill__entcard {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px;
+    margin-bottom: 16px;
   }
-  .lw-bill__proplabel { color: var(--ink-soft); white-space: nowrap; }
-  .lw-bill__propvalue { color: var(--ink); text-align: end; }
+  .lw-bill__entcard .lw-bill__sectiontitle { margin-top: 0; }
+  .lw-bill__enttable { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-bottom: 0; }
+  .lw-bill__enttable tr { border-top: 1px solid var(--line); }
+  .lw-bill__enttable tr:first-child { border-top: none; }
+  .lw-bill__enttable th, .lw-bill__enttable td { padding: 7px 0; text-align: start; font-weight: 400; }
+  .lw-bill__enttable th { color: var(--ink-soft); white-space: nowrap; padding-inline-end: 14px; }
+  .lw-bill__enttable td { color: var(--ink); width: 100%; }
 
   .lw-bill__packlist { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
   .lw-bill__pack {
@@ -663,12 +676,6 @@ const CSS = `
   .lw-bill__reactivatebanneractions { display: flex; gap: 8px; flex-shrink: 0; }
 
   .lw-bill__sectiontitle { font-size: 0.98rem; margin: 22px 0 10px; }
-  .lw-bill__entgrid {
-    display: grid; grid-template-columns: max-content 1fr 1fr; gap: 8px 14px;
-    font-size: 0.84rem; align-items: center; margin-bottom: 16px;
-  }
-  .lw-bill__enthead { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
-  .lw-bill__entdomain { font-weight: 600; }
 
   .lw-bill__actions { margin-top: 18px; }
   .lw-bill__changenote { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 10px; max-width: 60ch; }

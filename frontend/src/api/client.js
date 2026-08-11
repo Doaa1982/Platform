@@ -125,6 +125,29 @@ export function getMe(token) {
   return request("/me", { token });
 }
 
+/* ── Account recovery (anonymous — a forgotten password needs no session) ───
+   Deliberately mirrors the Invitations shape: the token in the URL is the
+   credential. forgotPassword() always resolves the same way regardless of
+   whether the email has an account — never branch the UI on its content.
+   ------------------------------------------------------------------------ */
+
+/** POST /api/auth/forgot-password → { message } — same response either way */
+export function forgotPassword(email) {
+  return request("/auth/forgot-password", { method: "POST", body: { email } });
+}
+
+/** GET /api/auth/reset-password/{token} → { email, expiresAt } */
+export function previewPasswordReset(resetToken) {
+  return request(`/auth/reset-password/${encodeURIComponent(resetToken)}`);
+}
+
+/** POST /api/auth/reset-password/{token} → { token, expiresAt, fullName } — signs the caller in */
+export function resetPassword(resetToken, newPassword) {
+  return request(`/auth/reset-password/${encodeURIComponent(resetToken)}`, {
+    method: "POST", body: { newPassword },
+  });
+}
+
 /** GET /api/me/workspaces/{slug} → roles held in one Workspace */
 export function getWorkspaceAccess(token, slug) {
   return request(`/me/workspaces/${encodeURIComponent(slug)}`, { token });
