@@ -3,7 +3,7 @@ import {
   LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
   UploadCloud, Sparkles, Bot, PlayCircle, Link as LinkIcon, ChevronUp, ChevronDown,
-  ClipboardCheck, Paperclip, Download,
+  ClipboardCheck, Paperclip, Download, ClipboardList,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -749,7 +749,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
   /** Lesson Editing & Publication UX, Scenario 3 — no new revision, no republish. */
   function handleQuickSave() {
-    if (!title.trim() || !body.trim()) { setAttempted(true); return; }
+    if (!title.trim() || !body.trim()) { setActiveTab("content"); setAttempted(true); return; }
     run(() => api.quickEditPublishedLesson(session.token, slug, lessonId, {
       title: title.trim(), body: body.trim() || null, whatYoullLearn: whatYoullLearn.trim() || null,
       learningObjectives: learningObjectives.trim() || null, glossary: glossary.trim() || null,
@@ -841,6 +841,9 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
               <button type="button" className={activeTab === "content" ? "active" : ""} onClick={() => setActiveTab("content")}>
                 <FileText size={13} /> {t("studio.tabContent")}
               </button>
+              <button type="button" className={activeTab === "homework" ? "active" : ""} onClick={() => setActiveTab("homework")}>
+                <ClipboardList size={13} /> {t("studio.tabHomework")}
+              </button>
               <button type="button" className={activeTab === "delivery" ? "active" : ""} onClick={() => setActiveTab("delivery")}>
                 <PlayCircle size={13} /> {t("studio.tabDelivery")}
               </button>
@@ -929,24 +932,6 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                             placeholder={t("studio.glossaryPlaceholder")}
                             disabled={busy || !editable} />
                   {aiGlossaryError && <Message type="error">{aiGlossaryError}</Message>}
-                </label>
-
-                <label>
-                  <span className="lw-studio__contentlabel">
-                    {t("studio.homeworkLabel")}
-                    {editable && (
-                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestHomework}
-                              disabled={busy || aiHomeworkBusy || !title.trim()} title={t("studio.aiSuggestHomework")}>
-                        {aiHomeworkBusy
-                          ? <LoaderCircle size={12} className="lw-studio__spin" />
-                          : <Sparkles size={12} />} {t("studio.aiSuggestHomework")}
-                      </button>
-                    )}
-                  </span>
-                  <textarea rows={4} value={homework} onChange={(e) => setHomework(e.target.value)}
-                            placeholder={t("studio.homeworkPlaceholder")}
-                            disabled={busy || !editable} />
-                  {aiHomeworkError && <Message type="error">{aiHomeworkError}</Message>}
                 </label>
 
                 <label>
@@ -1061,23 +1046,6 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
                 <label>
                   <span className="lw-studio__contentlabel">
-                    {t("studio.homeworkLabel")}
-                    {editable && (
-                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestHomework}
-                              disabled={busy || aiHomeworkBusy || !title.trim()} title={t("studio.aiSuggestHomework")}>
-                        {aiHomeworkBusy
-                          ? <LoaderCircle size={12} className="lw-studio__spin" />
-                          : <Sparkles size={12} />} {t("studio.aiSuggestHomework")}
-                      </button>
-                    )}
-                  </span>
-                  <textarea rows={4} value={homework} onChange={(e) => setHomework(e.target.value)}
-                            placeholder={t("studio.homeworkPlaceholder")}
-                            disabled={busy || !editable} />
-                  {aiHomeworkError && <Message type="error">{aiHomeworkError}</Message>}
-                </label>
-                <label>
-                  <span className="lw-studio__contentlabel">
                     {t("studio.contentLabel")}<RequiredMark />
                     {editable && (
                       <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestBody}
@@ -1098,16 +1066,9 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                          onChange={(e) => setMinutes(e.target.value)} disabled={busy || !editable} />
                 </label>
                 {editable && (
-                  <>
-                    <p className="muted" style={{ margin: 0 }}>
-                      {t("studio.publishedDirectNotePrefix")} <strong>{t("studio.publishedDirectNoteBold")}</strong> {t("studio.publishedDirectNoteSuffix")}
-                    </p>
-                    <div className="lw-studio__panelactions">
-                      <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handleQuickSave}>
-                        {t("studio.saveChanges")}
-                      </button>
-                    </div>
-                  </>
+                  <p className="muted" style={{ margin: 0 }}>
+                    {t("studio.publishedDirectNotePrefix")} <strong>{t("studio.publishedDirectNoteBold")}</strong> {t("studio.publishedDirectNoteSuffix")}
+                  </p>
                 )}
               </div>
             ) : (
@@ -1121,6 +1082,32 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                 )}
               </div>
             ))}
+
+            {activeTab === "homework" && (
+              (lesson.currentRevision || lesson.draftRevision) ? (
+                <div className="lw-studio__draftform">
+                  <label>
+                    <span className="lw-studio__contentlabel">
+                      {t("studio.homeworkLabel")}
+                      {editable && (
+                        <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestHomework}
+                                disabled={busy || aiHomeworkBusy || !title.trim()} title={t("studio.aiSuggestHomework")}>
+                          {aiHomeworkBusy
+                            ? <LoaderCircle size={12} className="lw-studio__spin" />
+                            : <Sparkles size={12} />} {t("studio.aiSuggestHomework")}
+                        </button>
+                      )}
+                    </span>
+                    <textarea rows={8} value={homework} onChange={(e) => setHomework(e.target.value)}
+                              placeholder={t("studio.homeworkPlaceholder")}
+                              disabled={busy || !editable} />
+                    {aiHomeworkError && <Message type="error">{aiHomeworkError}</Message>}
+                  </label>
+                </div>
+              ) : (
+                <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForHomework")}</p>
+              )
+            )}
 
             {activeTab === "delivery" && (
               (lesson.currentRevision || lesson.draftRevision) ? (
@@ -1211,6 +1198,11 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
             {editable && (
               <div className="lw-studio__panelfooter">
+                {!lesson.draftRevision && lesson.currentRevision && (
+                  <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handleQuickSave}>
+                    {t("studio.saveChanges")}
+                  </button>
+                )}
                 {lesson.draftRevision && (
                   <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleSaveDraft}>
                     {t("studio.saveDraft")}
@@ -2734,12 +2726,12 @@ const CSS = `
      between, rather than a row of independent buttons like .lw-segctrl's
      other uses (a value picker sitting under a single label). */
   .lw-studio__tabs {
-    display: flex; gap: 4px; flex-wrap: wrap;
+    display: flex; gap: 4px; flex-wrap: nowrap; overflow-x: auto;
     background: var(--surface-2); padding: 4px; border-radius: 10px;
-    width: fit-content; margin: 14px 0 20px;
+    width: fit-content; max-width: 100%; margin: 14px 0 20px;
   }
   .lw-studio__tabs button {
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap;
     padding: 7px 14px; border-radius: 7px; border: none; background: transparent;
     color: var(--ink-soft); font-family: var(--font-body); font-size: 0.85rem; cursor: pointer;
     transition: background .12s, color .12s;
