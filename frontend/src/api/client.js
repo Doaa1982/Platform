@@ -429,6 +429,29 @@ export function generateLessonTranscript(token, slug, lessonId) {
   });
 }
 
+/**
+ * POST .../lessons/{lessonId}/draft/ai-suggest-body — drafts (if empty) or
+ * improves (if not) lesson body content from whatever's currently typed in
+ * the form. Nothing is saved — the caller still has to Save themselves.
+ */
+export function suggestLessonBody(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/ai-suggest-body`, {
+    method: "POST", body, token,
+  });
+}
+
+/**
+ * POST .../lessons/{lessonId}/draft/ai-suggest-what-youll-learn — drafts the
+ * short learner-facing "what you'll learn" preview from the form's current
+ * title/body, preferring a Ready transcript server-side if one exists.
+ * Nothing is saved — the caller still has to Save themselves.
+ */
+export function suggestWhatYoullLearn(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/ai-suggest-what-youll-learn`, {
+    method: "POST", body, token,
+  });
+}
+
 /* ── Reference data ───────────────────────────────────────────────────── */
 
 /** GET .../reference/question-types — the QuestionType enum's values + display labels */

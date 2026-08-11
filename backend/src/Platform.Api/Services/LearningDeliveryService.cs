@@ -255,7 +255,7 @@ public class LearningDeliveryService(PlatformDbContext db)
 
         return ProvisioningResult<LearnerLessonResponse>.Success(new LearnerLessonResponse(
             lesson.Id, revision.Title, revision.Body, revision.DeliveryMode.ToString(), video, revision.VideoUrl,
-            questions, progress.Status.ToString(), progress.VideoWatched));
+            questions, progress.Status.ToString(), progress.VideoWatched, revision.WhatYoullLearn));
     }
 
     // ── Interaction ──────────────────────────────────────────────────────────

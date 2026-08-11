@@ -42,7 +42,9 @@ public record LearnerLessonResponse(
     Guid Id, string Title, string? Body, string DeliveryMode,
     LearningAssetResponse? Video, string? VideoUrl,
     IReadOnlyList<LearnerQuestionRow> Questions,
-    string ProgressStatus, bool VideoWatched);
+    string ProgressStatus, bool VideoWatched,
+    /// <summary>Short AI-drafted preview of what this lesson teaches, shown before the learner starts it. Null if the tutor hasn't set one.</summary>
+    string? WhatYoullLearn = null);
 
 public record LearnerQuestionRow(
     Guid Id, string Type, string Prompt,

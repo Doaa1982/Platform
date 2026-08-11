@@ -108,11 +108,34 @@ builder.Services.AddScoped<NotificationService>();
 // a new implementation here, with no change to AiOrchestrator or any Skill.
 var aiOptions = builder.Configuration.GetSection(AiOptions.Section).Get<AiOptions>() ?? new AiOptions();
 builder.Services.AddSingleton(aiOptions);
-builder.Services.AddHttpClient<IAiModelProvider, ClaudeModelProvider>();
+if (aiOptions.Provider.Equals("OpenAI", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHttpClient<IAiModelProvider, OpenAiModelProvider>();
+}
+else if (aiOptions.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+{
+    // Free-tier-eligible alternative (Gemini 2.5 Flash: 250 requests/day, no
+    // card required, as of when this was wired up — check current limits at
+    // ai.google.dev/gemini-api/docs/rate-limits, they change). Own options
+    // class, not AiOptions, since it needs its own API key — a Gemini key
+    // can't reuse a Claude/OpenAI one.
+    var geminiOptions = builder.Configuration.GetSection(GeminiOptions.Section).Get<GeminiOptions>() ?? new GeminiOptions();
+    builder.Services.AddSingleton(geminiOptions);
+    builder.Services.AddHttpClient<IAiModelProvider, GeminiModelProvider>(client =>
+    {
+        client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");
+    });
+}
+else
+{
+    builder.Services.AddHttpClient<IAiModelProvider, ClaudeModelProvider>();
+}
 builder.Services.AddScoped<AiOrchestrator>();
 builder.Services.AddScoped<GenerateQuestionsSkill>();
 builder.Services.AddScoped<GradeAssessmentSkill>();
 builder.Services.AddScoped<GenerateProductDescriptionSkill>();
+builder.Services.AddScoped<GenerateLessonBodySkill>();
+builder.Services.AddScoped<GenerateWhatYoullLearnSkill>();
 
 // ── Video transcription (AI Video Transcript Implementation Plan) ──────────
 // A separate provider boundary from the text-completion one above: Claude

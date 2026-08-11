@@ -360,6 +360,11 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.VideoUrl).HasMaxLength(2048);
 
             entity.Property(e => e.DeliveryMode).HasConversion<string>().HasMaxLength(32);
+
+            entity.Property(e => e.TranscriptStatus).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.TranscriptError).HasMaxLength(2000);
+
+            entity.Property(e => e.WhatYoullLearn).HasMaxLength(1000);
         });
 
         modelBuilder.Entity<LearningAsset>(entity =>

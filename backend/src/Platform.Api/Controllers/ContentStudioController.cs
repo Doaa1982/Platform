@@ -168,6 +168,18 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     public async Task<ActionResult<LessonDetailResponse>> GenerateTranscript(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.GenerateTranscriptAsync(slug, Caller(), lessonId, ct));
 
+    /// <summary>Drafts or improves lesson body content from whatever's currently typed in the form. Nothing is saved — the tutor still hits Save themselves.</summary>
+    [HttpPost("draft/ai-suggest-body")]
+    public async Task<ActionResult<AiSuggestBodyResponse>> SuggestBody(
+        string slug, Guid lessonId, [FromBody] AiSuggestBodyRequest request, CancellationToken ct)
+        => Run(await studio.SuggestBodyAsync(slug, Caller(), lessonId, request, ct));
+
+    /// <summary>Drafts the short learner-facing "what you'll learn" preview, preferring a Ready transcript over the form's current title/body. Nothing is saved — the tutor still hits Save themselves.</summary>
+    [HttpPost("draft/ai-suggest-what-youll-learn")]
+    public async Task<ActionResult<AiSuggestWhatYoullLearnResponse>> SuggestWhatYoullLearn(
+        string slug, Guid lessonId, [FromBody] AiSuggestWhatYoullLearnRequest request, CancellationToken ct)
+        => Run(await studio.SuggestWhatYoullLearnAsync(slug, Caller(), lessonId, request, ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {
         ProvisioningError.None      => Ok(r.Value),

@@ -521,6 +521,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [whatYoullLearn, setWhatYoullLearn] = useState("");
   const [minutes, setMinutes] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("Recorded");
   const [videoDuration, setVideoDuration] = useState(null);
@@ -536,6 +537,53 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
   const [versionDialogTrigger, setVersionDialogTrigger] = useState(null);
   const [pendingDeliveryMode, setPendingDeliveryMode] = useState(null);
 
+  // AI Capability Architecture §8 — drafts from the title if Content is
+  // empty, improves it otherwise. Uses whatever's currently typed, not the
+  // saved revision, so it reflects unsaved edits.
+  const [aiBodyBusy, setAiBodyBusy] = useState(false);
+  const [aiBodyError, setAiBodyError] = useState(null);
+
+  async function handleSuggestBody() {
+    if (!title.trim()) { setAttempted(true); return; }
+    setAiBodyError(null);
+    setAiBodyBusy(true);
+    try {
+      const r = await api.suggestLessonBody(session.token, slug, lessonId, {
+        title: title.trim(),
+        body: body.trim() || null,
+        estimatedMinutes: minutes === "" ? null : Number(minutes),
+      });
+      setBody(r.body);
+    } catch (e) {
+      setAiBodyError(e.message);
+    } finally {
+      setAiBodyBusy(false);
+    }
+  }
+
+  // AI "What You'll Learn" - Implementation Plan §4 — same fill-the-field
+  // pattern as handleSuggestBody. The transcript, if any, is looked up
+  // server-side off the lesson's own revision, not sent from here.
+  const [aiOutcomesBusy, setAiOutcomesBusy] = useState(false);
+  const [aiOutcomesError, setAiOutcomesError] = useState(null);
+
+  async function handleSuggestWhatYoullLearn() {
+    if (!title.trim()) { setAttempted(true); return; }
+    setAiOutcomesError(null);
+    setAiOutcomesBusy(true);
+    try {
+      const r = await api.suggestWhatYoullLearn(session.token, slug, lessonId, {
+        title: title.trim(),
+        body: body.trim() || null,
+      });
+      setWhatYoullLearn(r.whatYoullLearn);
+    } catch (e) {
+      setAiOutcomesError(e.message);
+    } finally {
+      setAiOutcomesBusy(false);
+    }
+  }
+
   const load = useCallback(
     () => api.getLesson(session.token, slug, lessonId).then((l) => {
       setLesson(l);
@@ -545,6 +593,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
       const source = l.draftRevision ?? l.currentRevision;
       setTitle(source?.title ?? l.title);
       setBody(source?.body ?? "");
+      setWhatYoullLearn(source?.whatYoullLearn ?? "");
       setMinutes(source?.estimatedMinutes ?? "");
       setDeliveryMode(source?.deliveryMode ?? "Recorded");
       setError(null);
@@ -571,6 +620,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
     return {
       title: title.trim(),
       body: body.trim() || null,
+      whatYoullLearn: whatYoullLearn.trim() || null,
       estimatedMinutes: minutes === "" ? null : Number(minutes),
       deliveryMode,
       ...overrides,
@@ -600,7 +650,8 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
   function handleQuickSave() {
     if (!title.trim() || !body.trim()) { setAttempted(true); return; }
     run(() => api.quickEditPublishedLesson(session.token, slug, lessonId, {
-      title: title.trim(), body: body.trim() || null, estimatedMinutes: minutes === "" ? null : Number(minutes),
+      title: title.trim(), body: body.trim() || null, whatYoullLearn: whatYoullLearn.trim() || null,
+      estimatedMinutes: minutes === "" ? null : Number(minutes),
     }), t("studio.toastChangesSaved")).then((l) => l && setLesson(l));
   }
 
@@ -707,11 +758,40 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                 </label>
 
                 <label>
-                  <span>{t("studio.contentLabel")}<RequiredMark /></span>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.whatYoullLearnLabel")}
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestWhatYoullLearn}
+                              disabled={busy || aiOutcomesBusy || !title.trim()} title={t("studio.aiSuggestWhatYoullLearn")}>
+                        {aiOutcomesBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestWhatYoullLearn")}
+                      </button>
+                    )}
+                  </span>
+                  <textarea rows={3} value={whatYoullLearn} onChange={(e) => setWhatYoullLearn(e.target.value)}
+                            placeholder={t("studio.whatYoullLearnPlaceholder")}
+                            disabled={busy || !editable} />
+                  {aiOutcomesError && <Message type="error">{aiOutcomesError}</Message>}
+                </label>
+
+                <label>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.contentLabel")}<RequiredMark />
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestBody}
+                              disabled={busy || aiBodyBusy || !title.trim()} title={t("studio.aiSuggestBody")}>
+                        {aiBodyBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestBody")}
+                      </button>
+                    )}
+                  </span>
                   <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)}
                             placeholder={t("studio.contentPlaceholder")}
                             disabled={busy || !editable}
                             style={publishAttempted && !body.trim() ? invalidFieldStyle : undefined} />
+                  {aiBodyError && <Message type="error">{aiBodyError}</Message>}
                 </label>
                 <label className="lw-studio__minsfield">
                   <span>{t("studio.estimatedMinutes")}</span>
@@ -741,9 +821,37 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                          style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
                 </label>
                 <label>
-                  <span>{t("studio.contentLabel")}<RequiredMark /></span>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.whatYoullLearnLabel")}
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestWhatYoullLearn}
+                              disabled={busy || aiOutcomesBusy || !title.trim()} title={t("studio.aiSuggestWhatYoullLearn")}>
+                        {aiOutcomesBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestWhatYoullLearn")}
+                      </button>
+                    )}
+                  </span>
+                  <textarea rows={3} value={whatYoullLearn} onChange={(e) => setWhatYoullLearn(e.target.value)}
+                            placeholder={t("studio.whatYoullLearnPlaceholder")}
+                            disabled={busy || !editable} />
+                  {aiOutcomesError && <Message type="error">{aiOutcomesError}</Message>}
+                </label>
+                <label>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.contentLabel")}<RequiredMark />
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestBody}
+                              disabled={busy || aiBodyBusy || !title.trim()} title={t("studio.aiSuggestBody")}>
+                        {aiBodyBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestBody")}
+                      </button>
+                    )}
+                  </span>
                   <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} disabled={busy || !editable}
                             style={attempted && !body.trim() ? invalidFieldStyle : undefined} />
+                  {aiBodyError && <Message type="error">{aiBodyError}</Message>}
                 </label>
                 <label className="lw-studio__minsfield">
                   <span>{t("studio.estimatedMinutes")}</span>
@@ -2003,6 +2111,8 @@ const CSS = `
   .lw-studio__minsfield input { max-width: 120px; }
   .lw-studio__panelactions { display: flex; justify-content: flex-end; gap: 8px; }
   .lw-studio__fielderror { display: block; color: var(--danger); font-size: 0.78rem; margin-top: 4px; }
+  .lw-studio__contentlabel { display: flex !important; align-items: center; gap: 8px; white-space: normal !important; }
+  .lw-btn--xs { font-size: 0.72rem; padding: 3px 8px; gap: 4px; }
   @media (max-width: 560px) {
     .lw-studio__draftform { grid-template-columns: 1fr; }
     .lw-studio__draftform > label, .lw-studio__draftform > .lw-studio__minsfield { display: flex; flex-direction: column; gap: 5px; }

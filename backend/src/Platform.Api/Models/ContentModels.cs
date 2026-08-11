@@ -57,7 +57,9 @@ public record LessonRevisionRow(
     string? Transcript,
     /// <summary>"None" | "Processing" | "Ready" | "Failed" (TranscriptStatus).</summary>
     string TranscriptStatus,
-    string? TranscriptError);
+    string? TranscriptError,
+    /// <summary>Short learner-facing "what you'll learn" preview, AI-drafted and tutor-editable. Null until set.</summary>
+    string? WhatYoullLearn);
 
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);
@@ -67,6 +69,23 @@ public record ReorderUnitsRequest(IReadOnlyList<Guid> UnitIds);
 /// <summary>Every lesson id currently in the unit, once each, in the desired order.</summary>
 public record ReorderLessonsRequest(IReadOnlyList<Guid> LessonIds);
 public record SetSequentialUnlockRequest(bool Enabled);
-public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode);
+public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode, string? WhatYoullLearn = null);
 public record AttachVideoRequest(Guid LearningAssetId);
 public record SetVideoUrlRequest(string Url);
+
+/// <summary>
+/// Whatever the tutor currently has typed into the content form — not
+/// reloaded from the saved revision, so this reflects unsaved edits and
+/// works before a draft has ever been saved.
+/// </summary>
+public record AiSuggestBodyRequest(string Title, string? Body, int? EstimatedMinutes);
+public record AiSuggestBodyResponse(string Body);
+
+/// <summary>
+/// Title/Body come from whatever the tutor currently has typed (unsaved or
+/// not); the transcript, if any, is read server-side off the lesson's own
+/// revision rather than trusted from the client — see "AI 'What You'll Learn'
+/// - Implementation Plan" §3.
+/// </summary>
+public record AiSuggestWhatYoullLearnRequest(string Title, string? Body);
+public record AiSuggestWhatYoullLearnResponse(string WhatYoullLearn);
