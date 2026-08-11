@@ -50,10 +50,70 @@ public record LearnerLessonResponse(
     /// <summary>Key terms and one-line definitions ("Term: Definition" per line), AI-drafted and tutor-editable. Null if the tutor hasn't set any.</summary>
     string? Glossary = null,
     /// <summary>Suggested homework/practical exercises, one per line, AI-drafted and tutor-editable. Null if the tutor hasn't set any.</summary>
-    string? Homework = null);
+    string? Homework = null,
+    /// <summary>The lesson's Standalone quiz (see AssessmentKind), if a tutor has published one — null if there is none, same "absent means doesn't exist" convention as WhatYoullLearn etc.</summary>
+    LearnerStandaloneAssessmentSummary? StandaloneAssessment = null,
+    /// <summary>Supplementary files (slides, worksheets, handouts) the tutor attached to this lesson — empty if none.</summary>
+    IReadOnlyList<LearningAssetResponse>? Resources = null);
 
 public record LearnerQuestionRow(
     Guid Id, string Type, string Prompt,
     IReadOnlyList<string> Options, int? VideoTimestampSeconds, int Points);
 
+/// <summary>
+/// The lesson's Standalone Assessment (a separate, non-video-synced quiz —
+/// see AssessmentKind), from this learner's own point of view. Answer keys
+/// are stripped from Questions exactly like the Interactive ones. Attempted
+/// reflects this learner's own most recent Graded submission on it only.
+/// </summary>
+public record LearnerStandaloneAssessmentSummary(
+    Guid AssessmentId, string Title, int PassingThresholdPercent,
+    IReadOnlyList<LearnerQuestionRow> Questions,
+    bool Attempted, int? ScorePercent, bool? Passed);
+
 public record SubmitAnswersRequest(IReadOnlyList<PreviewAnswer> Answers);
+
+/// <summary>A learner's question to the in-lesson AI Assistant (<see cref="Platform.Api.AI.Skills.LessonAssistantSkill"/>).</summary>
+public record AskLessonAssistantRequest(string Question);
+
+/// <summary>The Assistant's answer — grounded in this lesson's material only, never general knowledge.</summary>
+public record AskLessonAssistantResponse(string Answer);
+
+/// <summary>
+/// A learner's request for a Studio-style practice quiz on the current
+/// lesson. QuestionCount is clamped server-side (1–15); Difficulty is
+/// "Easy"/"Medium"/"Hard" (case-insensitive, defaults to Medium if
+/// unrecognised); Topic is an optional free-text focus within the lesson.
+/// </summary>
+public record GenerateLessonQuizRequest(int QuestionCount, string? Difficulty, string? Topic);
+
+/// <summary>One self-check question — MultipleChoice only, ungraded, never persisted.</summary>
+public record PracticeQuizQuestion(string Prompt, IReadOnlyList<string> Options, int CorrectOptionIndex, string? Explanation);
+
+public record GenerateLessonQuizResponse(IReadOnlyList<PracticeQuizQuestion> Questions);
+
+// ── Learner's own assessments overview ──────────────────────────────────────
+//
+// Every real (Published) Assessment across every product this learner is
+// enrolled in, one row per lesson per Assessment (a lesson may have both an
+// Interactive and a Standalone one — see AssessmentKind — which then
+// contribute two separate rows) — not just the one they happen to be
+// viewing right now. Built the same way LearnerCurriculumResponse's Locked
+// flag is: a preview of what LearningDeliveryService already enforces
+// server-side when a learner actually opens the lesson, not a new rule.
+
+/// <summary>
+/// One lesson's Assessment, from this learner's own point of view.
+/// AssessmentStatus is always "Published" — a Draft assessment is never
+/// learner-visible, same as GetLessonAsync. Attempted reflects this
+/// learner's own most recent Graded submission only; ScorePercent/Passed/
+/// SubmittedAt are null until Attempted is true.
+/// </summary>
+public record LearnerAssessmentRow(
+    Guid LessonId, string LessonTitle, Guid ProductId, string ProductTitle,
+    Guid AssessmentId, string Kind, int PassingThresholdPercent,
+    bool Attempted, int? ScorePercent, bool? Passed, DateTime? SubmittedAt,
+    /// <summary>Same rule as LearnerCurriculumResponse's per-lesson Locked — sequential unlock, previous lesson not yet Completed.</summary>
+    bool Locked);
+
+public record LearnerAssessmentsResponse(IReadOnlyList<LearnerAssessmentRow> Assessments);

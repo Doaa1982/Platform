@@ -13,6 +13,8 @@ namespace Platform.Domain;
 /// </summary>
 public class LessonRevision
 {
+    private readonly List<LessonResource> _resources = [];
+
     public Guid Id { get; private set; }
     public Guid LessonId { get; private set; }
 
@@ -103,6 +105,16 @@ public class LessonRevision
     /// </summary>
     public string? Homework { get; private set; }
 
+    /// <summary>
+    /// Supplementary files (slides, worksheets, handouts) attached to this
+    /// revision — any number, unlike the single mutually-exclusive video slot.
+    /// Addable/removable regardless of Draft or Published status, same "safe
+    /// metadata" treatment as WhatYoullLearn/Glossary/Homework — attaching a
+    /// handout doesn't change what's being taught, so it doesn't need a new
+    /// revision cycle the way the video or delivery mode does.
+    /// </summary>
+    public IReadOnlyCollection<LessonResource> Resources => _resources.AsReadOnly();
+
     private LessonRevision() { }
 
     internal static LessonRevision Draft(
@@ -177,6 +189,24 @@ public class LessonRevision
         VideoAssetId = null;
         VideoUrl = null;
         ClearTranscript();
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Attaches a supplementary file by reference (Learning Asset Aggregate Design INV-003). Not Draft-only — see <see cref="Resources"/>.</summary>
+    public LessonResource AddResource(Guid learningAssetId)
+    {
+        if (learningAssetId == Guid.Empty)
+            throw new ArgumentException("A resource must reference a learning asset.", nameof(learningAssetId));
+
+        var resource = LessonResource.Create(Id, learningAssetId, _resources.Count);
+        _resources.Add(resource);
+        UpdatedAt = DateTime.UtcNow;
+        return resource;
+    }
+
+    public void RemoveResource(Guid resourceId)
+    {
+        _resources.RemoveAll(r => r.Id == resourceId);
         UpdatedAt = DateTime.UtcNow;
     }
 

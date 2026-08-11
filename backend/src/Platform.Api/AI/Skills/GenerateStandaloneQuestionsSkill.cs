@@ -1,0 +1,108 @@
+using Platform.Api.Models;
+
+namespace Platform.Api.AI.Skills;
+
+/// <summary>
+/// AssessmentService.SuggestStandaloneQuestionsAsync's one caller — drafts
+/// questions for a lesson's Standalone quiz (see AssessmentKind).
+///
+/// Deliberately distinct from <see cref="GenerateQuestionsSkill"/>: that one
+/// places checkpoints at specific video timestamps, grounded in duration and
+/// (optionally) chapter timing. This one has no video to place anything on —
+/// it's grounded in the lesson's own text (title, body, transcript, the
+/// tutor's supporting notes) the same way <see cref="GenerateLessonQuizSkill"/>
+/// grounds the learner's practice quiz, but unlike that one, every question
+/// here carries a real answer key (Options/CorrectOptionIndex/AcceptedAnswers)
+/// since these become real, graded Assessment questions once the tutor
+/// accepts them — never auto-saved.
+/// </summary>
+public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
+{
+    private const int MaxTranscriptChars = 12000;
+
+    private const string SystemPrompt = """
+        You are the Learning Workspace Platform's AI question generator for a
+        lesson's standalone quiz — a separate self-contained quiz for one
+        lesson, not tied to any video timeline. You are given the lesson's own
+        material (title, written body, video transcript if any, and the
+        tutor's supporting notes) and must propose draft questions for the
+        tutor to review, edit, and accept or remove. Nothing you suggest is
+        saved automatically.
+
+        Rules:
+        - Question types are exactly one of: MultipleChoice, TrueFalse,
+          CompleteTheSentence, OpenAnswer.
+        - Rotate across multiple question types rather than defaulting
+          everything to MultipleChoice.
+        - Base every question on the actual lesson material given to you, not
+          generic filler or outside knowledge.
+        - MultipleChoice needs 4 Options and a zero-based CorrectOptionIndex.
+        - TrueFalse needs Options ["True", "False"] and a CorrectOptionIndex.
+        - CompleteTheSentence needs AcceptedAnswers (no Options,
+          no CorrectOptionIndex).
+        - OpenAnswer needs no Options, no CorrectOptionIndex, no
+          AcceptedAnswers — it is reviewed for participation, not graded.
+        - Write a short Explanation for each question: why the correct answer
+          is correct, referencing the lesson's material.
+        - Produce exactly the requested number of questions.
+
+        Respond with JSON only — an array of objects, no prose, no markdown
+        code fences — matching exactly this shape:
+
+        [
+          {
+            "type": "MultipleChoice" | "TrueFalse" | "CompleteTheSentence" | "OpenAnswer",
+            "prompt": "string",
+            "options": ["string", ...],
+            "correctOptionIndex": number | null,
+            "acceptedAnswers": ["string", ...],
+            "explanation": "string",
+            "points": number
+          }
+        ]
+        """;
+
+    public async Task<IReadOnlyList<SuggestedStandaloneQuestion>> SuggestAsync(
+        string lessonTitle, string? body, string? transcript,
+        string? whatYoullLearn, string? learningObjectives, string? glossary,
+        int questionCount, CancellationToken ct = default)
+    {
+        var truncatedTranscript = Truncate(transcript, MaxTranscriptChars);
+
+        var userPrompt = $"""
+            Lesson: {lessonTitle}
+
+            Lesson body:
+            {body ?? "(none)"}
+
+            What learners will learn:
+            {whatYoullLearn ?? "(none)"}
+
+            Learning objectives:
+            {learningObjectives ?? "(none)"}
+
+            Glossary:
+            {glossary ?? "(none)"}
+
+            Video transcript:
+            {truncatedTranscript ?? "(no video, or not yet transcribed)"}
+
+            Propose exactly {questionCount} question(s).
+            """;
+
+        var suggestions = await orchestrator.RunAsync<List<SuggestedStandaloneQuestion>>(SystemPrompt, userPrompt, ct);
+
+        // Defensive clamp: a model that ignores the requested count or omits
+        // Points shouldn't hand the tutor a malformed or oversized draft set.
+        return suggestions
+            .Select(s => s.Points <= 0 ? s with { Points = 1 } : s)
+            .Take(questionCount)
+            .ToList();
+    }
+
+    private static string? Truncate(string? text, int maxChars)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxChars) return text;
+        return text[..maxChars] + " …(transcript truncated)";
+    }
+}

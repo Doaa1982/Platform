@@ -7,16 +7,19 @@ Companion to [AI-Student-Capabilities-One-Pager.md](./AI-Student-Capabilities-On
 **Goal:** stand up the grounding infrastructure and ship the highest-impact, lowest-complexity feature.
 
 - **Content indexing pipeline** — ingest and chunk syllabus, slides, readings, and lecture transcripts per course so they're retrievable by AI. *Effort: Medium. Impact: Enabling (blocks everything below).*
-- **Grounded Q&A over course materials** — chat interface scoped to one course's indexed content, with citations to the source slide/timestamp. *Effort: Medium. Impact: High.* This is the flagship NotebookLM-style feature and should ship first.
+- **Grounded Q&A over course materials** — chat interface scoped to one course's indexed content, with citations to the source slide/timestamp. *Effort: Medium. Impact: High.* This is the flagship NotebookLM-style feature and should ship first. **Status: built** — the in-lesson AI Assistant, grounded in that lesson's body/transcript/objectives/glossary only.
 - **Accessibility layer** — auto-transcripts and read-aloud for existing video/audio content. *Effort: Low–Medium. Impact: Medium, broad reach.* Can run in parallel with Q&A since it doesn't depend on the indexing pipeline in the same way.
 
-## Phase 2 — Study Aids (3–6 months)
+## Phase 2 — Study Aids ("Studio") (3–6 months)
 
-**Goal:** turn indexed content into active study tools, building directly on Phase 1's pipeline.
+**Goal:** turn indexed content into active study tools, building directly on Phase 1's pipeline. NotebookLM's own reference point here is its "Studio" panel — a set of on-demand outputs generated from the same grounded source material as the chat, not a separate content system:
 
-- **Auto-generated summaries, flashcards, and quizzes** from a specific lecture or reading. *Effort: Medium. Impact: High, daily-use feature.*
-- **Audio overviews** (podcast-style recap of a lecture). *Effort: Medium–High (TTS + dialogue generation). Impact: Medium-High, strong differentiator and shareable/viral within student base.*
-- **Multi-source synthesis** — combine several weeks of materials into one study guide or mind map. *Effort: Medium. Impact: Medium-High.*
+- **Practice quiz** — self-check multiple-choice questions generated on demand from the current lesson, with configurable question count, difficulty, and an optional topic focus. Deliberately separate from the tutor-authored graded Assessment: ungraded, not persisted, purely for the learner's own review. *Effort: Low–Medium (reuses the grounding pipeline from the Assistant). Impact: High, daily-use feature.* **Status: built.**
+- **Flashcards** — term/definition pairs drawn from the lesson's glossary and body, for quick recall practice. *Effort: Low. Impact: Medium-High.*
+- **Mind map** — a visual breakdown of the lesson's structure and key concepts. *Effort: Medium (needs a rendering component, e.g. a simple tree/graph view). Impact: Medium.*
+- **Audio overview** (podcast-style recap of a lecture). *Effort: Medium–High (TTS + dialogue generation). Impact: Medium-High, strong differentiator and shareable/viral within student base.*
+- **Multi-source synthesis** — combine several weeks of materials into one study guide or mind map spanning more than one lesson. *Effort: Medium. Impact: Medium-High.*
+- **Auto-generated summaries** — a short recap of what a lesson covered, on demand. *Effort: Low. Impact: Medium.*
 
 ## Phase 3 — Personalization (6–9 months)
 
@@ -36,3 +39,4 @@ Companion to [AI-Student-Capabilities-One-Pager.md](./AI-Student-Capabilities-On
 - Phase 1's indexing pipeline is the dependency everything else sits on — don't skip ahead.
 - Socratic tutoring and rubric feedback are the two features most likely to draw scrutiny from instructors/parents (academic integrity concerns) — pilot both with a small instructor group and clear opt-in before broad rollout.
 - Audio overviews are optional/parallel — deprioritize if engineering bandwidth is tight, since they add cost (TTS) without being core to learning outcomes.
+- The Studio pattern (chat + a panel of on-demand generated outputs, all grounded in the same source material) is worth keeping as the standing UI model for Phase 2 features rather than inventing a new layout per feature — Quiz already follows it; Flashcards and Mind Map should slot into the same panel next.

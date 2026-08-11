@@ -25,6 +25,10 @@ public class LearningDeliveryController(LearningDeliveryService delivery) : Cont
     public async Task<ActionResult<LearnerStatsResponse>> GetStats(string slug, CancellationToken ct)
         => Run(await delivery.GetStatsAsync(slug, Caller(), ct));
 
+    [HttpGet("assessments")]
+    public async Task<ActionResult<LearnerAssessmentsResponse>> GetMyAssessments(string slug, CancellationToken ct)
+        => Run(await delivery.GetMyAssessmentsAsync(slug, Caller(), ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {
         ProvisioningError.None      => Ok(r.Value),
@@ -60,6 +64,24 @@ public class LearnerLessonsController(LearningDeliveryService delivery) : Contro
     public async Task<ActionResult<PreviewResult>> Submit(
         string slug, Guid lessonId, [FromBody] SubmitAnswersRequest request, CancellationToken ct)
         => Run(await delivery.SubmitAssessmentAsync(slug, Caller(), lessonId, request, ct));
+
+    /// <summary>Grades and persists a real Submission against the lesson's Standalone quiz — see LearningDeliveryService.SubmitStandaloneAssessmentAsync.</summary>
+    [HttpPost("standalone-assessment/submit")]
+    public async Task<ActionResult<PreviewResult>> SubmitStandalone(
+        string slug, Guid lessonId, [FromBody] SubmitAnswersRequest request, CancellationToken ct)
+        => Run(await delivery.SubmitStandaloneAssessmentAsync(slug, Caller(), lessonId, request, ct));
+
+    /// <summary>The in-lesson AI Assistant — answers grounded in this lesson's own material only. See LearningDeliveryService.AskAssistantAsync.</summary>
+    [HttpPost("ask")]
+    public async Task<ActionResult<AskLessonAssistantResponse>> Ask(
+        string slug, Guid lessonId, [FromBody] AskLessonAssistantRequest request, CancellationToken ct)
+        => Run(await delivery.AskAssistantAsync(slug, Caller(), lessonId, request.Question, ct));
+
+    /// <summary>Studio "Quiz" — an on-demand, ungraded self-check generated from this lesson. See LearningDeliveryService.GenerateLessonQuizAsync.</summary>
+    [HttpPost("practice-quiz")]
+    public async Task<ActionResult<GenerateLessonQuizResponse>> GenerateQuiz(
+        string slug, Guid lessonId, [FromBody] GenerateLessonQuizRequest request, CancellationToken ct)
+        => Run(await delivery.GenerateLessonQuizAsync(slug, Caller(), lessonId, request, ct));
 
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {

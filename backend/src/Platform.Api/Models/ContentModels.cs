@@ -65,7 +65,12 @@ public record LessonRevisionRow(
     /// <summary>Key terms and one-line definitions ("Term: Definition" per line), AI-drafted and tutor-editable. Null until set.</summary>
     string? Glossary,
     /// <summary>Suggested homework/practical exercises, one per line, AI-drafted and tutor-editable. Null until set.</summary>
-    string? Homework);
+    string? Homework,
+    /// <summary>Supplementary files (slides, worksheets, handouts) attached to this revision — any number, unlike the single video slot.</summary>
+    IReadOnlyList<LessonResourceRow> Resources);
+
+/// <summary>One supplementary file attached to a Lesson Revision (LessonResource), with its Learning Asset's details inlined for display.</summary>
+public record LessonResourceRow(Guid Id, LearningAssetResponse Asset);
 
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);
@@ -77,6 +82,7 @@ public record ReorderLessonsRequest(IReadOnlyList<Guid> LessonIds);
 public record SetSequentialUnlockRequest(bool Enabled);
 public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode, string? WhatYoullLearn = null, string? LearningObjectives = null, string? Glossary = null, string? Homework = null);
 public record AttachVideoRequest(Guid LearningAssetId);
+public record AttachResourceRequest(Guid LearningAssetId);
 public record SetVideoUrlRequest(string Url);
 
 /// <summary>

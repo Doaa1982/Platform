@@ -357,11 +357,12 @@ export function duplicateLesson(token, slug, lessonId) {
    goes.
    ------------------------------------------------------------------------ */
 
-/** POST /api/workspaces/{slug}/learning-assets — multipart upload, returns the asset */
-export function uploadLearningAsset(token, slug, file, title, onProgress) {
+/** POST /api/workspaces/{slug}/learning-assets — multipart upload, returns the asset. `category` is "Video" (default) or "Resource". */
+export function uploadLearningAsset(token, slug, file, title, onProgress, category) {
   const form = new FormData();
   form.append("file", file);
   if (title) form.append("title", title);
+  if (category) form.append("category", category);
 
   // Plain fetch (via requestForm) has no upload-progress event, so an actual
   // learner-facing progress bar needs XHR. Kept simple here since this only
@@ -415,6 +416,22 @@ export function removeLessonVideo(token, slug, lessonId) {
 export function setLessonVideoUrl(token, slug, lessonId, url) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/video-url`, {
     method: "PUT", body: { url }, token,
+  });
+}
+
+/* ── Lesson resources (supplementary files: slides, worksheets, handouts) ── */
+
+/** POST .../lessons/{lessonId}/resources — attaches an uploaded Learning Asset to whichever revision is open for editing */
+export function addLessonResource(token, slug, lessonId, learningAssetId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/resources`, {
+    method: "POST", body: { learningAssetId }, token,
+  });
+}
+
+/** DELETE .../lessons/{lessonId}/resources/{resourceId} */
+export function removeLessonResource(token, slug, lessonId, resourceId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/resources/${resourceId}`, {
+    method: "DELETE", token,
   });
 }
 
@@ -548,6 +565,80 @@ export function assessmentTransition(token, slug, lessonId, transition) {
   });
 }
 
+/* ── Standalone assessment (the lesson's separate, non-video-synced quiz) ──
+   Same shape as the Interactive block above, pinned to its own route — the
+   two never share an Assessment row (see AssessmentKind). No ai-suggest: a
+   Standalone quiz isn't timestamped against a video, so checkpoints don't apply.
+   ------------------------------------------------------------------------ */
+
+/** GET .../lessons/{lessonId}/standalone-assessment */
+export function getStandaloneAssessment(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment`, { token });
+}
+
+/** PUT .../lessons/{lessonId}/standalone-assessment — title + passing threshold; creates lazily */
+export function saveStandaloneAssessment(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment`, {
+    method: "PUT", body, token,
+  });
+}
+
+/** POST .../standalone-assessment/questions */
+export function addStandaloneQuestion(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment/questions`, {
+    method: "POST", body, token,
+  });
+}
+
+/** PUT .../standalone-assessment/questions/{questionId} */
+export function updateStandaloneQuestion(token, slug, lessonId, questionId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment/questions/${questionId}`, {
+    method: "PUT", body, token,
+  });
+}
+
+/** DELETE .../standalone-assessment/questions/{questionId} */
+export function removeStandaloneQuestion(token, slug, lessonId, questionId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment/questions/${questionId}`, {
+    method: "DELETE", token,
+  });
+}
+
+/** POST .../standalone-assessment/ai-suggest — AI-drafted questions grounded in the lesson's text, nothing persisted */
+export function suggestStandaloneQuestions(token, slug, lessonId, questionCount) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment/ai-suggest`, {
+    method: "POST", body: { questionCount }, token,
+  });
+}
+
+/** POST .../standalone-assessment/{transition} — publish | unpublish */
+export function standaloneAssessmentTransition(token, slug, lessonId, transition) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment/${transition}`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../standalone-assessment/preview — simulated AI grading against the authored answer key; nothing persisted */
+export function previewStandaloneAssessment(token, slug, lessonId, answers) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment/preview`, {
+    method: "POST", body: { answers }, token,
+  });
+}
+
+/* ── Assessments overview (tutor gradebook) ──────────────────────────────
+   Workspace-wide and read-only — distinct from the per-lesson editor above.
+   ------------------------------------------------------------------------ */
+
+/** GET .../assessments — every assessment across every product, with submission counts/avg score/pass rate */
+export function getAssessmentsOverview(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/assessments`, { token });
+}
+
+/** GET .../assessments/{assessmentId} — per-question stats + submitter list */
+export function getAssessmentDetail(token, slug, assessmentId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/assessments/${assessmentId}`, { token });
+}
+
 /** POST .../assessment/ai-suggest — simulated AI: proposes timestamped checkpoints, nothing persisted */
 export function suggestQuestions(token, slug, lessonId, videoDurationSeconds) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/ai-suggest`, {
@@ -579,6 +670,11 @@ export function getLearnerCurriculum(token, slug, productId) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/products/${productId}/curriculum`, { token });
 }
 
+/** GET .../learn/assessments — every Published assessment across this learner's enrolled products, with their own attempt if any */
+export function getMyAssessments(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/assessments`, { token });
+}
+
 /** GET .../learn/lessons/{lessonId} — the Published revision + answer-key-stripped questions + progress */
 export function getLearnerLesson(token, slug, lessonId) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}`, { token });
@@ -595,6 +691,27 @@ export function markVideoWatched(token, slug, lessonId) {
 export function submitLearnerAssessment(token, slug, lessonId, answers) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/submit`, {
     method: "POST", body: { answers }, token,
+  });
+}
+
+/** POST .../learn/lessons/{lessonId}/standalone-assessment/submit — grades and persists a real Submission against the lesson's Standalone quiz */
+export function submitStandaloneAssessment(token, slug, lessonId, answers) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/standalone-assessment/submit`, {
+    method: "POST", body: { answers }, token,
+  });
+}
+
+/** POST .../learn/lessons/{lessonId}/ask — in-lesson AI Assistant, grounded in this lesson's material only */
+export function askLessonAssistant(token, slug, lessonId, question) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/ask`, {
+    method: "POST", body: { question }, token,
+  });
+}
+
+/** POST .../learn/lessons/{lessonId}/practice-quiz — Studio "Quiz": on-demand, ungraded self-check */
+export function generateLessonQuiz(token, slug, lessonId, { questionCount, difficulty, topic }) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/practice-quiz`, {
+    method: "POST", body: { questionCount, difficulty, topic }, token,
   });
 }
 

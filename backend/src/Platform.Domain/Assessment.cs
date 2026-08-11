@@ -177,6 +177,9 @@ public class Assessment
     public string Title { get; private set; } = string.Empty;
     public int PassingThresholdPercent { get; private set; } = 70;
     public AssessmentStatus Status { get; private set; }
+
+    /// <summary>Interactive (in-video checkpoints) or Standalone (a separate lesson quiz) — see AssessmentKind. Immutable once created: converting one into the other would silently repoint every past Submission's meaning.</summary>
+    public AssessmentKind Kind { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
@@ -184,7 +187,7 @@ public class Assessment
 
     private Assessment() { }
 
-    public static Assessment Create(Guid workspaceId, Guid lessonId, Guid lessonRevisionId, string title)
+    public static Assessment Create(Guid workspaceId, Guid lessonId, Guid lessonRevisionId, string title, AssessmentKind kind)
     {
         if (workspaceId == Guid.Empty)
             throw new ArgumentException("An Assessment belongs to exactly one Workspace.", nameof(workspaceId));
@@ -203,6 +206,7 @@ public class Assessment
             LessonRevisionId = lessonRevisionId,
             Title = title.Trim(),
             Status = AssessmentStatus.Draft,
+            Kind = kind,
             CreatedAt = now,
             UpdatedAt = now
         };

@@ -18,12 +18,15 @@ public class LearningAssetsController(LearningAssetService assets) : ControllerB
     [RequestSizeLimit(500_000_000)]
     [RequestFormLimits(MultipartBodyLengthLimit = 500_000_000)]
     public async Task<ActionResult<LearningAssetResponse>> Upload(
-        string slug, IFormFile file, [FromForm] string? title, CancellationToken ct)
+        string slug, IFormFile file, [FromForm] string? title, [FromForm] string? category, CancellationToken ct)
     {
         if (file is null || file.Length == 0) return BadRequest(new { message = "No file was uploaded." });
 
+        var parsedCategory = Enum.TryParse<Platform.Domain.LearningAssetCategory>(category, ignoreCase: true, out var c)
+            ? c : Platform.Domain.LearningAssetCategory.Video;
+
         await using var stream = file.OpenReadStream();
-        return Run(await assets.UploadAsync(slug, Caller(), file.FileName, file.ContentType, file.Length, stream, title, ct));
+        return Run(await assets.UploadAsync(slug, Caller(), file.FileName, file.ContentType, file.Length, stream, title, parsedCategory, ct));
     }
 
     /// <summary>Streams the file back with range support, so a browser &lt;video&gt; element can seek.</summary>

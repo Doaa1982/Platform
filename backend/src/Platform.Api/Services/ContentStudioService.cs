@@ -92,23 +92,29 @@ public class ContentStudioService(
         var ctx = await ResolveAsync(slug, caller, requireAuthor: false, ct);
         if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
 
-        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.Resources).AsNoTracking()
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
         if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
 
         var assetIds = lesson.Revisions.Where(r => r.VideoAssetId is not null)
-            .Select(r => r.VideoAssetId!.Value).Distinct().ToList();
+            .Select(r => r.VideoAssetId!.Value)
+            .Concat(lesson.Revisions.SelectMany(r => r.Resources).Select(res => res.LearningAssetId))
+            .Distinct().ToList();
         var assets = assetIds.Count == 0
             ? new Dictionary<Guid, LearningAsset>()
             : await db.LearningAssets.AsNoTracking().Where(a => assetIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, ct);
 
-        // One Assessment per Lesson Revision (Assessment.cs remarks) — loaded
-        // here purely to show each past revision's question/submission counts
-        // in revision history, proof that superseding a revision never drops
-        // its interactive questions or the Submissions graded against them.
+        // A revision may carry up to two Assessments now (Assessment.cs
+        // remarks: one Interactive, one Standalone) — loaded here purely to
+        // show each past revision's question/submission counts in revision
+        // history, proof that superseding a revision never drops its
+        // questions or the Submissions graded against them. Revision history
+        // only ever showed the Interactive one's counts (what the "Questions"
+        // tab itself reflects), so that's preserved here rather than trying
+        // to fit two assessments into LessonRevisionRow's single count pair.
         var revisionIds = lesson.Revisions.Select(r => r.Id).ToList();
         var assessmentsByRevision = await db.Assessments.Include(a => a.Questions).AsNoTracking()
-            .Where(a => revisionIds.Contains(a.LessonRevisionId))
+            .Where(a => revisionIds.Contains(a.LessonRevisionId) && a.Kind == AssessmentKind.Interactive)
             .ToDictionaryAsync(a => a.LessonRevisionId, ct);
 
         var assessmentIds = assessmentsByRevision.Values.Select(a => a.Id).ToList();
@@ -130,7 +136,9 @@ public class ContentStudioService(
                 r.VideoAssetId,
                 r.VideoAssetId is { } videoId && assets.TryGetValue(videoId, out var video) ? LearningAssetService.Describe(video) : null,
                 r.VideoUrl, a?.Questions.Count ?? 0, submissionCount,
-                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptError, r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework);
+                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptError, r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework,
+                r.Resources.OrderBy(res => res.Position).Where(res => assets.ContainsKey(res.LearningAssetId))
+                    .Select(res => new LessonResourceRow(res.Id, LearningAssetService.Describe(assets[res.LearningAssetId]))).ToList());
         }
 
         return ProvisioningResult<LessonDetailResponse>.Success(new LessonDetailResponse(
@@ -296,18 +304,27 @@ public class ContentStudioService(
         return await GetLessonAsync(slug, caller, clone.Id, ct);
     }
 
-    /// <summary>Copies a revision's Assessment (if it has one) onto another revision — used by both StartRevisionAsync and DuplicateLessonAsync.</summary>
+    /// <summary>
+    /// Copies a revision's Assessments onto another revision — used by both
+    /// StartRevisionAsync and DuplicateLessonAsync. A revision may carry up
+    /// to two (Assessment.cs remarks: one Interactive, one Standalone), so
+    /// every one it actually has is cloned, not just the first found —
+    /// dropping the Standalone one silently on a new revision would be a
+    /// real, easy-to-miss data-loss bug now that Kind exists.
+    /// </summary>
     private async Task CloneAssessmentAsync(Guid workspaceId, Guid targetLessonId, Guid sourceRevisionId, Guid targetRevisionId, CancellationToken ct)
     {
-        var source = await db.Assessments.Include(a => a.Questions)
-            .FirstOrDefaultAsync(a => a.LessonRevisionId == sourceRevisionId, ct);
-        if (source is null) return;
+        var sources = await db.Assessments.Include(a => a.Questions)
+            .Where(a => a.LessonRevisionId == sourceRevisionId).ToListAsync(ct);
 
-        var clone = Assessment.Create(workspaceId, targetLessonId, targetRevisionId, source.Title);
-        if (source.PassingThresholdPercent != 70) clone.SetPassingThreshold(source.PassingThresholdPercent);
-        foreach (var q in source.Questions.OrderBy(q => q.Position))
-            clone.AddQuestion(q.Type, q.Prompt, q.Options, q.CorrectOptionIndex, q.AcceptedAnswers, q.Explanation, q.VideoTimestampSeconds, q.Points);
-        db.Assessments.Add(clone);
+        foreach (var source in sources)
+        {
+            var clone = Assessment.Create(workspaceId, targetLessonId, targetRevisionId, source.Title, source.Kind);
+            if (source.PassingThresholdPercent != 70) clone.SetPassingThreshold(source.PassingThresholdPercent);
+            foreach (var q in source.Questions.OrderBy(q => q.Position))
+                clone.AddQuestion(q.Type, q.Prompt, q.Options, q.CorrectOptionIndex, q.AcceptedAnswers, q.Explanation, q.VideoTimestampSeconds, q.Points);
+            db.Assessments.Add(clone);
+        }
     }
 
     /// <summary>
@@ -388,6 +405,61 @@ public class ContentStudioService(
                 ?? throw new InvalidOperationException("This lesson has no open draft.");
             draft.RemoveVideo();
         }, ct);
+
+    /// <summary>
+    /// Attaches an uploaded supplementary file to whichever revision is
+    /// currently open for editing — the draft if one exists, else the
+    /// published revision, same "target revision" rule GenerateTranscriptAsync
+    /// uses. Cross-aggregate (needs the Learning Asset), so — like
+    /// <see cref="AttachVideoAsync"/> — it cannot go through MutateLessonAsync's
+    /// single-aggregate mutate delegate.
+    /// </summary>
+    public async Task<ProvisioningResult<LessonDetailResponse>> AddResourceAsync(
+        string slug, Guid caller, Guid lessonId, Guid learningAssetId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.Resources)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var asset = await db.LearningAssets
+            .FirstOrDefaultAsync(a => a.Id == learningAssetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (asset is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such learning asset."));
+
+        try
+        {
+            asset.RequireAttachable();
+            var revision = lesson.DraftRevision ?? lesson.CurrentRevision
+                ?? throw new InvalidOperationException("This lesson has no revision to attach a resource to yet.");
+            revision.AddResource(asset.Id);
+        }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    /// <summary>Removes a resource from whichever revision it's attached to — cross-aggregate for the same reason as <see cref="AddResourceAsync"/>.</summary>
+    public async Task<ProvisioningResult<LessonDetailResponse>> RemoveResourceAsync(
+        string slug, Guid caller, Guid lessonId, Guid resourceId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.Resources)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.Revisions.FirstOrDefault(r => r.Resources.Any(res => res.Id == resourceId));
+        if (revision is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such resource."));
+
+        revision.RemoveResource(resourceId);
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
 
     /// <summary>
     /// Kicks off AI transcription (AI Video Transcript Implementation Plan) for

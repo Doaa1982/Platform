@@ -19,6 +19,13 @@ import ContentStudioScreen from "./screens/ContentStudioScreen";
 import LearnerHomeScreen from "./screens/LearnerHomeScreen";
 import LearnerCoursesScreen from "./screens/LearnerCoursesScreen";
 import LearnerLessonScreen from "./screens/LearnerLessonScreen";
+import AiAssistantScreen from "./screens/AiAssistantScreen";
+import QuizScreen from "./screens/QuizScreen";
+import LessonContentScreen from "./screens/LessonContentScreen";
+import HomeworkScreen from "./screens/HomeworkScreen";
+import ResourcesScreen from "./screens/ResourcesScreen";
+import AssessmentsOverviewScreen from "./screens/AssessmentsOverviewScreen";
+import LearnerAssessmentsScreen from "./screens/LearnerAssessmentsScreen";
 import * as api from "./api/client";
 
 /* =========================================================================
@@ -721,14 +728,48 @@ export default function App() {
                   lessonId={learnerLessonId}
                   onBack={() => setLearnerScreen("courses")}
                   onProgress={() => setLessonProgressTick((t) => t + 1)}
+                  onOpenAssistant={() => setLearnerScreen("ai")}
+                  onOpenQuiz={() => setLearnerScreen("quiz")}
+                  onOpenContent={() => setLearnerScreen("content")}
+                  onOpenHomework={() => setLearnerScreen("homework")}
+                  onOpenResources={() => setLearnerScreen("resources")}
                 />
               : <NotBuiltYet area={t("notBuilt.lessonArea")} onNavigate={setLearnerScreen}
                   blurb={t("notBuilt.lessonBlurb")}
                   next={{ text: t("notBuilt.goToMyLearnings"), to: "courses" }} />
           )}
+          {role === "learner" && learnerScreen === "quiz" && (
+            <QuizScreen
+              lessonId={learnerLessonId}
+              onGoToLessons={() => goToLearnerScreen("courses")}
+              onBackToLesson={learnerLessonId ? () => setLearnerScreen("lesson") : null}
+            />
+          )}
+          {role === "learner" && learnerScreen === "content" && (
+            <LessonContentScreen
+              lessonId={learnerLessonId}
+              onGoToLessons={() => goToLearnerScreen("courses")}
+              onBackToLesson={learnerLessonId ? () => setLearnerScreen("lesson") : null}
+            />
+          )}
+          {role === "learner" && learnerScreen === "homework" && (
+            <HomeworkScreen
+              lessonId={learnerLessonId}
+              onGoToLessons={() => goToLearnerScreen("courses")}
+              onBackToLesson={learnerLessonId ? () => setLearnerScreen("lesson") : null}
+            />
+          )}
+          {role === "learner" && learnerScreen === "resources" && (
+            <ResourcesScreen
+              lessonId={learnerLessonId}
+              onGoToLessons={() => goToLearnerScreen("courses")}
+              onBackToLesson={learnerLessonId ? () => setLearnerScreen("lesson") : null}
+            />
+          )}
           {role === "learner" && learnerScreen === "assessments" && (
-            <NotBuiltYet area={t("notBuilt.assessmentsArea")} onNavigate={setLearnerScreen}
-              blurb={t("notBuilt.assessmentsBlurb")} />
+            <LearnerAssessmentsScreen
+              onOpenLesson={(id) => { setLearnerLessonId(id); setLearnerScreen("lesson"); }}
+            />
           )}
           {role === "learner" && learnerScreen === "certificates" && (
             <NotBuiltYet area={t("notBuilt.certificatesArea")} onNavigate={setLearnerScreen}
@@ -747,8 +788,12 @@ export default function App() {
               blurb={t("notBuilt.communityBlurb")} />
           )}
           {role === "learner" && learnerScreen === "ai" && (
-            <NotBuiltYet area={t("notBuilt.aiArea")} onNavigate={setLearnerScreen}
-              blurb={t("notBuilt.aiBlurb")} />
+            <AiAssistantScreen
+              lessonId={learnerLessonId}
+              onGoToLessons={() => goToLearnerScreen("courses")}
+              onBackToLesson={learnerLessonId ? () => setLearnerScreen("lesson") : null}
+              onOpenQuiz={() => setLearnerScreen("quiz")}
+            />
           )}
 
           {/* Owner screens. Only overview, members and setup are real; the rest
@@ -779,8 +824,7 @@ export default function App() {
               next={{ text: t("notBuilt.inviteSomeone"), to: "members" }} />
           )}
           {role === "owner" && ownerScreen === "assessment" && (
-            <NotBuiltYet area={t("notBuilt.assessmentCertArea")} onNavigate={setOwnerScreen}
-              blurb={t("notBuilt.assessmentCertBlurb")} />
+            <AssessmentsOverviewScreen />
           )}
           {role === "owner" && ownerScreen === "settings" && (
             <NotBuiltYet area={t("notBuilt.settingsArea")} onNavigate={setOwnerScreen}

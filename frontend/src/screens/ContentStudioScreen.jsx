@@ -3,6 +3,7 @@ import {
   LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
   UploadCloud, Sparkles, Bot, PlayCircle, Link as LinkIcon, ChevronUp, ChevronDown,
+  ClipboardCheck, Paperclip, Download,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -846,6 +847,12 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
               <button type="button" className={activeTab === "questions" ? "active" : ""} onClick={() => setActiveTab("questions")}>
                 <Sparkles size={13} /> {t("studio.tabQuestions")}
               </button>
+              <button type="button" className={activeTab === "standaloneQuiz" ? "active" : ""} onClick={() => setActiveTab("standaloneQuiz")}>
+                <ClipboardCheck size={13} /> {t("studio.tabStandaloneQuiz")}
+              </button>
+              <button type="button" className={activeTab === "resources" ? "active" : ""} onClick={() => setActiveTab("resources")}>
+                <Paperclip size={13} /> {t("studio.tabResources")}
+              </button>
             </div>
 
             {activeTab === "content" && (lesson.draftRevision ? (
@@ -1179,6 +1186,26 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                 />
               ) : (
                 <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForQuestions")}</p>
+              )
+            )}
+
+            {activeTab === "standaloneQuiz" && (
+              (lesson.currentRevision || lesson.draftRevision) ? (
+                <StandaloneAssessmentSection lessonId={lesson.id} editable={editable} />
+              ) : (
+                <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForQuestions")}</p>
+              )
+            )}
+
+            {activeTab === "resources" && (
+              (lesson.currentRevision || lesson.draftRevision) ? (
+                <ResourcesSection
+                  lesson={lesson}
+                  editable={editable}
+                  onChanged={load}
+                />
+              ) : (
+                <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForResources")}</p>
               )
             )}
 
@@ -1549,6 +1576,115 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   );
 }
 
+/**
+ * Supplementary files (slides, worksheets, handouts) attached to whichever
+ * revision is currently open for editing — the draft if one exists, else
+ * the published revision (ContentStudioService.AddResourceAsync's "target
+ * revision" rule). Unlike VideoSection, not gated on hasDraft: attaching a
+ * handout is safe metadata (LessonRevision.Resources remarks), so a tutor
+ * can do it without starting a new revision first.
+ */
+function ResourcesSection({ lesson, editable, onChanged }) {
+  const { session, workspace } = useAuth();
+  const { t } = useLanguage();
+  const slug = workspace?.slug;
+  const fileInputRef = useRef(null);
+
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+
+  const revision = lesson.draftRevision ?? lesson.currentRevision;
+  const resources = revision?.resources ?? [];
+
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList ?? []);
+    if (files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of files) {
+        setProgress(0);
+        const asset = await api.uploadLearningAsset(session.token, slug, file, file.name, setProgress, "Resource");
+        await api.addLessonResource(session.token, slug, lesson.id, asset.id);
+      }
+      setSuccess(t("studio.toastResourceUploaded"));
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleRemove(resourceId) {
+    setError(null);
+    try {
+      await api.removeLessonResource(session.token, slug, lesson.id, resourceId);
+      setSuccess(t("studio.toastResourceRemoved"));
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  return (
+    <div className="lw-studio__section">
+      <h2 className="lw-sectiontitle">{t("studio.resourcesTitle")}</h2>
+      <p className="muted" style={{ marginTop: -8, marginBottom: 14 }}>{t("studio.resourcesHint")}</p>
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
+
+      {editable && (
+        uploading ? (
+          <div className="lw-dropzone lw-dropzone--compact" style={{ marginBottom: 14 }}>
+            <LoaderCircle size={24} className="lw-studio__spin" />
+            <span className="lw-dropzone__title">{t("studio.uploadingPct", { pct: Math.round(progress * 100) })}</span>
+          </div>
+        ) : (
+          <div className="lw-dropzone" style={{ marginBottom: 14 }} onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
+            <UploadCloud size={26} />
+            <span className="lw-dropzone__title">{t("studio.uploadResource")}</span>
+            <span className="lw-dropzone__meta">{t("studio.resourceHint")}</span>
+            <input
+              ref={fileInputRef} type="file" multiple style={{ display: "none" }}
+              onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+            />
+          </div>
+        )
+      )}
+
+      {resources.length === 0 && (
+        <div className="lw-studio__unitempty">{t("studio.noResources")}</div>
+      )}
+
+      {resources.length > 0 && (
+        <div className="lw-player">
+          {resources.map((r, i) => (
+            <div key={r.id} className="lw-videosource"
+                 style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTop: i > 0 ? "1px solid var(--line)" : "none" }}>
+              <a href={api.learningAssetDownloadUrl(session.token, slug, r.asset.id)} target="_blank" rel="noreferrer"
+                 style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ink)", textDecoration: "none", minWidth: 0 }}>
+                <Paperclip size={14} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.asset.title}</span>
+                <span className="lw-tag lw-tag--source" style={{ flexShrink: 0 }}>{Math.round(r.asset.fileSizeBytes / 1024)} KB</span>
+              </a>
+              {editable ? (
+                <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => handleRemove(r.id)}>
+                  <Trash2 size={13} /> {t("studio.remove")}
+                </button>
+              ) : (
+                <Download size={14} className="muted" />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Interactive assessment ────────────────────────────────────────────
    AI Interactive Video Lesson Generator: AI proposes timestamped checkpoints
    (simulated — templated, per App.jsx's PSEUDO-AI HELPERS remark) for the
@@ -1758,6 +1894,211 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
   );
 }
 
+/* ── Standalone assessment ────────────────────────────────────────────
+   The lesson's second, separate quiz (see AssessmentKind) — its own title,
+   own passing threshold, own Submission trail, not synced to the video at
+   all. Same shape as AssessmentSection above, with one difference in each
+   direction: AI-suggested questions here are grounded in the lesson's text
+   (GenerateStandaloneQuestionsSkill) instead of placed against a video
+   timestamp, and the question-time field itself is dropped entirely
+   (QuestionForm's requireTimestamp=false) since there's no timeline to place
+   anything on.
+   ========================================================================= */
+
+const STANDALONE_ANALYZE_STEP_KEYS = ["studio.standaloneAnalyzeStep0", "studio.standaloneAnalyzeStep1", "studio.standaloneAnalyzeStep2"];
+
+function StandaloneAssessmentSection({ lessonId, editable }) {
+  const { session, workspace } = useAuth();
+  const { t } = useLanguage();
+  const slug = workspace?.slug;
+
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const [suggesting, setSuggesting] = useState(false);
+  const [analyzeStep, setAnalyzeStep] = useState(0);
+  const [suggestions, setSuggestions] = useState([]);
+
+  const [formMode, setFormMode] = useState(null); // null | "new" | Question being edited
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const load = useCallback(
+    () => api.getStandaloneAssessment(session.token, slug, lessonId)
+      .then((d) => { setData(d); setError(null); return d; })
+      .catch((e) => { setError(e.message); return null; }),
+    [session.token, slug, lessonId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function run(fn, successMessage) {
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const r = await fn();
+      if (successMessage) setSuccess(successMessage);
+      return r;
+    }
+    catch (e) { setError(e.message); return null; }
+    finally { setBusy(false); }
+  }
+
+  async function handleAiSuggest() {
+    setSuggesting(true);
+    setError(null);
+    for (let i = 0; i < STANDALONE_ANALYZE_STEP_KEYS.length; i++) {
+      setAnalyzeStep(i);
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    }
+    try {
+      const result = await api.suggestStandaloneQuestions(session.token, slug, lessonId, 5);
+      setSuggestions(result.map((s, i) => ({ ...s, key: `suggestion-${Date.now()}-${i}` })));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  async function acceptSuggestion(s) {
+    const result = await run(() => api.addStandaloneQuestion(session.token, slug, lessonId, {
+      type: s.type, prompt: s.prompt, options: s.options, correctOptionIndex: s.correctOptionIndex,
+      acceptedAnswers: s.acceptedAnswers, explanation: s.explanation,
+      videoTimestampSeconds: null, points: s.points,
+    }), t("studio.toastQuestionAdded"));
+    if (result) {
+      setData(result);
+      setSuggestions((prev) => prev.filter((x) => x.key !== s.key));
+    }
+  }
+
+  function rejectSuggestion(key) {
+    setSuggestions((prev) => prev.filter((x) => x.key !== key));
+  }
+
+  async function saveQuestion(body) {
+    const result = formMode === "new"
+      ? await run(() => api.addStandaloneQuestion(session.token, slug, lessonId, body), t("studio.toastQuestionAdded"))
+      : await run(() => api.updateStandaloneQuestion(session.token, slug, lessonId, formMode.id, body), t("studio.toastQuestionUpdated"));
+    if (result) { setData(result); setFormMode(null); }
+  }
+
+  async function removeQuestion(questionId) {
+    const result = await run(() => api.removeStandaloneQuestion(session.token, slug, lessonId, questionId), t("studio.toastQuestionRemoved"));
+    if (result) setData(result);
+  }
+
+  if (!data) {
+    return (
+      <div className="lw-studio__section">
+        <h2 className="lw-sectiontitle">{t("studio.standaloneQuiz")}</h2>
+        <div className="lw-studio__loading"><LoaderCircle size={16} className="lw-studio__spin" /> {t("studio.loading")}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="lw-studio__section">
+      <div className="lw-studio__heading">
+        <h2 className="lw-sectiontitle" style={{ margin: 0 }}>{t("studio.standaloneQuiz")}</h2>
+        <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(t, data.status)}</span>
+      </div>
+      <p className="muted" style={{ margin: "-6px 0 14px" }}>{t("studio.standaloneQuizHint")}</p>
+
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
+
+      {editable && (
+        <div className="lw-studio__bar">
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy || suggesting} onClick={handleAiSuggest}>
+            <Sparkles size={13} /> {t("studio.askAiSuggestQuestions")}
+          </button>
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setFormMode("new")}>
+            <Plus size={13} /> {t("studio.addQuestion")}
+          </button>
+          {data.questions.length > 0 && (
+            <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setPreviewOpen(true)}>
+              <Bot size={13} /> {t("studio.previewAiGrading")}
+            </button>
+          )}
+          {data.status === "Published" ? (
+            <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
+                    onClick={() => run(() => api.standaloneAssessmentTransition(session.token, slug, lessonId, "unpublish"), t("studio.toastQuestionsUnpublished")).then((r) => r && setData(r))}>
+              <Undo2 size={13} /> {t("studio.unpublish")}
+            </button>
+          ) : (
+            <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
+                    onClick={() => run(() => api.standaloneAssessmentTransition(session.token, slug, lessonId, "publish"), t("studio.toastQuestionsPublished")).then((r) => r && setData(r))}>
+              <Globe size={13} /> {t("studio.publishQuestions")}
+            </button>
+          )}
+        </div>
+      )}
+
+      {data.publicationBlocker && (
+        <div className="lw-studio__blocker"><AlertCircle size={14} /> {data.publicationBlocker}</div>
+      )}
+
+      {suggesting && (
+        <div className="lw-analyzing">
+          <div className="lw-spinner" />
+          <ul className="lw-analyzing__steps">
+            {STANDALONE_ANALYZE_STEP_KEYS.map((stepKey, i) => (
+              <li key={stepKey} className={i < analyzeStep ? "done" : i === analyzeStep ? "active" : ""}>
+                {i < analyzeStep ? <Check size={13} /> : <LoaderCircle size={13} className={i === analyzeStep ? "lw-studio__spin" : ""} />}
+                {t(stepKey)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {suggestions.length > 0 && (
+        <div className="lw-studio__units" style={{ marginTop: 14 }}>
+          {suggestions.map((s) => (
+            <SuggestionRow key={s.key} s={s} busy={busy} onAccept={acceptSuggestion} onReject={rejectSuggestion} />
+          ))}
+        </div>
+      )}
+
+      {formMode && (
+        <QuestionForm
+          initial={formMode === "new" ? null : formMode}
+          busy={busy}
+          onSave={saveQuestion}
+          onCancel={() => setFormMode(null)}
+          existingQuestions={data.questions}
+          requireTimestamp={false}
+        />
+      )}
+
+      {data.questions.length === 0 && suggestions.length === 0 && !formMode && (
+        <div className="lw-empty">
+          {editable ? t("studio.noQuestionsEditable") : t("studio.noQuestionsReadonly")}
+        </div>
+      )}
+
+      {data.questions.length > 0 && (
+        <div className="lw-studio__units" style={{ marginTop: 14 }}>
+          {data.questions.map((q) => (
+            <QuestionRow key={q.id} q={q} editable={editable} onEdit={setFormMode} onRemove={removeQuestion} />
+          ))}
+        </div>
+      )}
+
+      {previewOpen && (
+        <PreviewPanel
+          questions={data.questions}
+          onClose={() => setPreviewOpen(false)}
+          onSubmit={(answers) => api.previewStandaloneAssessment(session.token, slug, lessonId, answers)}
+        />
+      )}
+    </div>
+  );
+}
+
 /**
  * The QuestionType enum's values + display labels (backend/src/Platform.Domain/AssessmentEnums.cs),
  * fetched once from GET /reference/question-types and cached module-wide so no
@@ -1847,7 +2188,7 @@ function QuestionRow({ q, editable, onEdit, onRemove }) {
   );
 }
 
-function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, videoDurationSeconds }) {
+function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, videoDurationSeconds, requireTimestamp = true }) {
   const types = useQuestionTypes();
   const { t } = useLanguage();
   const [type, setType] = useState(initial?.type ?? types[0]?.value ?? "MultipleChoice");
@@ -1890,15 +2231,16 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
     !prompt.trim() && t("studio.enterQuestionText"),
     type === "MultipleChoice" && options.filter((o) => o.trim()).length < 2 && t("studio.addAtLeast2Options"),
     type === "CompleteTheSentence" && !acceptedAnswers.some((a) => a.trim()) && t("studio.addAtLeastOneAcceptedAnswer"),
-    String(timestamp).trim() === "" && t("studio.enterQuestionTime"),
-    timestamp !== "" && videoDurationSeconds != null && Number(timestamp) >= videoDurationSeconds
+    requireTimestamp && String(timestamp).trim() === "" && t("studio.enterQuestionTime"),
+    requireTimestamp && timestamp !== "" && videoDurationSeconds != null && Number(timestamp) >= videoDurationSeconds
       && t("studio.questionTimeLess"),
   ].filter(Boolean);
   const valid = validationMessages.length === 0;
 
   // Informational only — two questions at the same second is unusual, not
-  // invalid, so this warns the tutor without blocking Save.
-  const sameTimeQuestion = timestamp !== "" && existingQuestions?.find(
+  // invalid, so this warns the tutor without blocking Save. Not applicable
+  // when this form isn't timestamp-driven (the Standalone quiz).
+  const sameTimeQuestion = requireTimestamp && timestamp !== "" && existingQuestions?.find(
     (q) => q.id !== initial?.id && Number(q.videoTimestampSeconds) === Number(timestamp));
 
   return (
@@ -1915,7 +2257,7 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
           correctOptionIndex: (type === "MultipleChoice" || type === "TrueFalse") ? correctOptionIndex : null,
           acceptedAnswers: type === "CompleteTheSentence" ? acceptedAnswers.map((a) => a.trim()).filter(Boolean) : [],
           explanation: explanation.trim() || null,
-          videoTimestampSeconds: timestamp === "" ? null : Number(timestamp),
+          videoTimestampSeconds: !requireTimestamp || timestamp === "" ? null : Number(timestamp),
           points: Number(points) || 1,
         });
       }}
@@ -2015,11 +2357,13 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
         <textarea rows={2} value={explanation} onChange={(e) => setExplanation(e.target.value)} disabled={busy} />
       </label>
 
-      <div className="lw-studio__minsfield">
-        <span>{t("studio.questionTime")} <em>{t("studio.seconds")}</em><RequiredMark /></span>
-        <input type="number" min="0" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} disabled={busy} required
-               style={attempted && (String(timestamp).trim() === "" || (videoDurationSeconds != null && Number(timestamp) >= videoDurationSeconds)) ? invalidFieldStyle : undefined} />
-      </div>
+      {requireTimestamp && (
+        <div className="lw-studio__minsfield">
+          <span>{t("studio.questionTime")} <em>{t("studio.seconds")}</em><RequiredMark /></span>
+          <input type="number" min="0" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} disabled={busy} required
+                 style={attempted && (String(timestamp).trim() === "" || (videoDurationSeconds != null && Number(timestamp) >= videoDurationSeconds)) ? invalidFieldStyle : undefined} />
+        </div>
+      )}
       {sameTimeQuestion && (
         <div className="lw-studio__blocker">
           <AlertCircle size={14} />

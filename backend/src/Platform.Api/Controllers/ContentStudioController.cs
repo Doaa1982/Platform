@@ -159,6 +159,17 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     public async Task<ActionResult<LessonDetailResponse>> RemoveVideo(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.RemoveVideoAsync(slug, Caller(), lessonId, ct));
 
+    /// <summary>Attaches an uploaded supplementary file (a Learning Asset) to whichever revision is currently open for editing.</summary>
+    [HttpPost("resources")]
+    public async Task<ActionResult<LessonDetailResponse>> AddResource(
+        string slug, Guid lessonId, [FromBody] AttachResourceRequest request, CancellationToken ct)
+        => Run(await studio.AddResourceAsync(slug, Caller(), lessonId, request.LearningAssetId, ct));
+
+    [HttpDelete("resources/{resourceId:guid}")]
+    public async Task<ActionResult<LessonDetailResponse>> RemoveResource(
+        string slug, Guid lessonId, Guid resourceId, CancellationToken ct)
+        => Run(await studio.RemoveResourceAsync(slug, Caller(), lessonId, resourceId, ct));
+
     /// <summary>
     /// Starts AI transcription of the open revision's uploaded video. Returns
     /// immediately with TranscriptStatus "Processing" — the transcript itself

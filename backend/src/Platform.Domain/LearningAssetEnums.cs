@@ -2,10 +2,11 @@ namespace Platform.Domain;
 
 /// <summary>
 /// What kind of digital resource a Learning Asset holds (Learning Asset
-/// Aggregate Design §6). Only Video is authored today; the enum exists so
-/// future categories (Audio, Image, Document, …) do not change the aggregate.
+/// Aggregate Design §6). Video is a lesson's single teaching recording;
+/// Resource is any supplementary file (slides, worksheet, handout) a tutor
+/// attaches alongside it — see LessonRevision.Resources.
 /// </summary>
-public enum LearningAssetCategory { Video }
+public enum LearningAssetCategory { Video, Resource }
 
 /// <summary>
 /// Learning Asset Aggregate Design §15. No asynchronous processing pipeline

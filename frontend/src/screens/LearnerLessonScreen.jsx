@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio,
+  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio, HelpCircle, FileText, ClipboardList, Paperclip,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -19,7 +19,7 @@ import Message from "../components/Message";
    tutor's preview; only the *reveal* is deferred here, not the collection.
    ========================================================================= */
 
-export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
+export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOpenAssistant, onOpenQuiz, onOpenContent, onOpenHomework, onOpenResources }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -157,6 +157,31 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
         <div className="lw-learn__heading">
           <h1>{lesson.title}</h1>
           {done && <span className="lw-learn__donepill"><CheckCircle2 size={12} /> {t("learnerCourses.completed")}</span>}
+          {onOpenContent && (
+            <button type="button" className="lw-learn__askai" onClick={onOpenContent}>
+              <FileText size={13} /> {t("learnerContent.eyebrow")}
+            </button>
+          )}
+          {onOpenHomework && (
+            <button type="button" className="lw-learn__askai" onClick={onOpenHomework}>
+              <ClipboardList size={13} /> {t("learnerHomework.eyebrow")}
+            </button>
+          )}
+          {onOpenResources && (
+            <button type="button" className="lw-learn__askai" onClick={onOpenResources}>
+              <Paperclip size={13} /> {t("learnerResources.eyebrow")}
+            </button>
+          )}
+          {onOpenQuiz && (
+            <button type="button" className="lw-learn__askai" onClick={onOpenQuiz}>
+              <HelpCircle size={13} /> {t("learnerStudio.quiz")}
+            </button>
+          )}
+          {onOpenAssistant && (
+            <button type="button" className="lw-learn__askai" onClick={onOpenAssistant}>
+              <Bot size={13} /> {t("aiAssistant.eyebrow")}
+            </button>
+          )}
         </div>
 
         {error && <Message type="error">{error}</Message>}
@@ -168,7 +193,12 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress }) {
           </p>
         )}
 
-        {lesson.body && <p className="lw-learn__body">{lesson.body}</p>}
+        {lesson.whatYoullLearn ? (
+          <div className="lw-learn__outcomes">
+            <div className="lw-learn__outcomeskicker"><Sparkles size={13} /> {t("studio.whatYoullLearnLabel")}</div>
+            <p className="lw-learn__outcomestext">{lesson.whatYoullLearn}</p>
+          </div>
+        ) : lesson.body && <p className="lw-learn__body">{lesson.body}</p>}
 
         {(lesson.video || lesson.videoUrl) && (
           <div className="lw-learn__playerframe">
@@ -298,7 +328,24 @@ const CSS = `
     font-family: var(--font-mono); font-size: 10px; border-radius: 20px; padding: 3px 9px;
     background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2);
   }
+  .lw-learn__askai {
+    display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto;
+    font-family: var(--font-body); font-size: 0.8rem; cursor: pointer;
+    background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 20px; padding: 5px 12px;
+  }
+  .lw-learn__askai:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
   .lw-learn__body { font-size: 0.92rem; color: var(--ink); line-height: 1.7; margin: 14px 0 20px; white-space: pre-wrap; }
+
+  .lw-learn__outcomes {
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+    border-radius: var(--radius-sm); padding: 14px 16px; margin: 14px 0 20px;
+  }
+  .lw-learn__outcomeskicker {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);
+  }
+  .lw-learn__outcomestext { font-size: 0.92rem; color: var(--ink); line-height: 1.7; margin: 8px 0 0; white-space: pre-wrap; }
 
   .lw-learn__playerframe { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; }
   .lw-learn__checkpoint {

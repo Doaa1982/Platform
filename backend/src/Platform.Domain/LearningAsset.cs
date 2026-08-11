@@ -41,7 +41,7 @@ public class LearningAsset
     private LearningAsset() { }
 
     public static LearningAsset Upload(
-        Guid workspaceId, Guid uploadedByMembershipId, string title,
+        Guid workspaceId, Guid uploadedByMembershipId, LearningAssetCategory category, string title,
         string originalFileName, string contentType, long fileSizeBytes,
         string storageProvider, string objectKey)
     {
@@ -61,7 +61,7 @@ public class LearningAsset
             Id = Guid.NewGuid(),
             WorkspaceId = workspaceId,
             UploadedByMembershipId = uploadedByMembershipId,
-            Category = LearningAssetCategory.Video,
+            Category = category,
             Title = title.Trim(),
             OriginalFileName = originalFileName.Trim(),
             ContentType = contentType.Trim(),

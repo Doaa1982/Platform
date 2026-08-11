@@ -15,17 +15,28 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
 
+    /// <summary>500MB cap on any single resource file — comfortably above a slide deck, far below "someone's whole hard drive".</summary>
+    private const long MaxResourceBytes = 500_000_000;
+
     public async Task<ProvisioningResult<LearningAssetResponse>> UploadAsync(
         string slug, Guid caller, string fileName, string contentType, long length, Stream content,
-        string? title, CancellationToken ct = default)
+        string? title, LearningAssetCategory category = LearningAssetCategory.Video, CancellationToken ct = default)
     {
         var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<LearningAssetResponse>(ctx.Error.Value);
 
         if (length <= 0)
             return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "The uploaded file is empty."));
-        if (!contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-            return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "Only video files can be uploaded as a lesson's video today."));
+
+        if (category == LearningAssetCategory.Video)
+        {
+            if (!contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "Only video files can be uploaded as a lesson's video today."));
+        }
+        else if (length > MaxResourceBytes)
+        {
+            return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "A resource file cannot be larger than 500MB."));
+        }
 
         var objectKey = await storage.SaveAsync(ctx.Workspace!.Id, fileName, content, ct);
 
@@ -33,7 +44,7 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
         try
         {
             asset = LearningAsset.Upload(
-                ctx.Workspace!.Id, ctx.MembershipId,
+                ctx.Workspace!.Id, ctx.MembershipId, category,
                 title: string.IsNullOrWhiteSpace(title) ? fileName : title,
                 originalFileName: fileName, contentType: contentType, fileSizeBytes: length,
                 storageProvider: storage.ProviderName, objectKey: objectKey);

@@ -23,6 +23,7 @@ public class PlatformDbContext : DbContext
     public DbSet<Curriculum> Curricula => Set<Curriculum>();
     public DbSet<Lesson> Lessons => Set<Lesson>();
     public DbSet<LearningAsset> LearningAssets => Set<LearningAsset>();
+    public DbSet<LessonResource> LessonResources => Set<LessonResource>();
     public DbSet<Assessment> Assessments => Set<Assessment>();
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<Submission> Submissions => Set<Submission>();
@@ -365,6 +366,25 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.TranscriptError).HasMaxLength(2000);
 
             entity.Property(e => e.WhatYoullLearn).HasMaxLength(1000);
+
+            entity.HasMany(e => e.Resources).WithOne()
+                  .HasForeignKey(r => r.LessonRevisionId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.Resources).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<LessonResource>(entity =>
+        {
+            entity.ToTable("lesson_resources");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.LessonRevisionId).IsRequired();
+            // Reference by identifier only (Learning Asset Aggregate Design
+            // INV-003), same reasoning as LessonRevision.VideoAssetId above —
+            // deliberately not a foreign key.
+            entity.Property(e => e.LearningAssetId).IsRequired();
+
+            entity.HasIndex(e => e.LessonRevisionId);
         });
 
         modelBuilder.Entity<LearningAsset>(entity =>
@@ -400,10 +420,13 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.LessonRevisionId).IsRequired();
             entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Kind).HasConversion<string>().HasMaxLength(32);
 
-            // One interactive-quiz Assessment per Lesson Revision (Assessment.cs
-            // remarks) — LessonId is a denormalized convenience, not unique.
-            entity.HasIndex(e => e.LessonRevisionId).IsUnique();
+            // At most one Assessment per (Lesson Revision, Kind) — a revision
+            // may carry one Interactive and one Standalone Assessment side by
+            // side (Assessment.cs remarks), but never two of the same kind.
+            // LessonId is a denormalized convenience, not unique.
+            entity.HasIndex(e => new { e.LessonRevisionId, e.Kind }).IsUnique();
 
             entity.HasMany(e => e.Questions).WithOne()
                   .HasForeignKey(q => q.AssessmentId).OnDelete(DeleteBehavior.Cascade);
