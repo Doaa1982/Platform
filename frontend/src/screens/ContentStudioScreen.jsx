@@ -522,6 +522,9 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [whatYoullLearn, setWhatYoullLearn] = useState("");
+  const [learningObjectives, setLearningObjectives] = useState("");
+  const [glossary, setGlossary] = useState("");
+  const [homework, setHomework] = useState("");
   const [minutes, setMinutes] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("Recorded");
   const [videoDuration, setVideoDuration] = useState(null);
@@ -584,6 +587,97 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
     }
   }
 
+  // AI Capability Architecture §8 "Generate Lesson Title" — grounded in Body
+  // (or a Ready transcript, looked up server-side), not the "empty vs.
+  // non-empty" fill pattern the other fields use, since a lesson always has
+  // some title by the time a tutor is here.
+  const [aiTitleBusy, setAiTitleBusy] = useState(false);
+  const [aiTitleError, setAiTitleError] = useState(null);
+
+  async function handleSuggestTitle() {
+    if (!body.trim()) { setActiveTab("content"); return; }
+    setAiTitleError(null);
+    setAiTitleBusy(true);
+    try {
+      const r = await api.suggestLessonTitle(session.token, slug, lessonId, {
+        title: title.trim() || null,
+        body: body.trim() || null,
+      });
+      setTitle(r.title);
+    } catch (e) {
+      setAiTitleError(e.message);
+    } finally {
+      setAiTitleBusy(false);
+    }
+  }
+
+  // AI Authoring Assistant Architecture Stage 5 — same fill-the-field
+  // pattern as handleSuggestWhatYoullLearn; the transcript, if any, is
+  // looked up server-side off the lesson's own revision.
+  const [aiObjectivesBusy, setAiObjectivesBusy] = useState(false);
+  const [aiObjectivesError, setAiObjectivesError] = useState(null);
+
+  async function handleSuggestLearningObjectives() {
+    if (!title.trim()) { setAttempted(true); return; }
+    setAiObjectivesError(null);
+    setAiObjectivesBusy(true);
+    try {
+      const r = await api.suggestLearningObjectives(session.token, slug, lessonId, {
+        title: title.trim(),
+        body: body.trim() || null,
+      });
+      setLearningObjectives(r.learningObjectives);
+    } catch (e) {
+      setAiObjectivesError(e.message);
+    } finally {
+      setAiObjectivesBusy(false);
+    }
+  }
+
+  // AI Capability Architecture §8 "Generate Glossary"/"Generate Keywords" —
+  // same fill-the-field pattern; transcript, if any, looked up server-side.
+  const [aiGlossaryBusy, setAiGlossaryBusy] = useState(false);
+  const [aiGlossaryError, setAiGlossaryError] = useState(null);
+
+  async function handleSuggestGlossary() {
+    if (!title.trim()) { setAttempted(true); return; }
+    setAiGlossaryError(null);
+    setAiGlossaryBusy(true);
+    try {
+      const r = await api.suggestGlossary(session.token, slug, lessonId, {
+        title: title.trim(),
+        body: body.trim() || null,
+      });
+      setGlossary(r.glossary);
+    } catch (e) {
+      setAiGlossaryError(e.message);
+    } finally {
+      setAiGlossaryBusy(false);
+    }
+  }
+
+  // AI Authoring Assistant Architecture Stage 8 "Supporting Resources" —
+  // same fill-the-field pattern; transcript, if any, looked up server-side.
+  const [aiHomeworkBusy, setAiHomeworkBusy] = useState(false);
+  const [aiHomeworkError, setAiHomeworkError] = useState(null);
+
+  async function handleSuggestHomework() {
+    if (!title.trim()) { setAttempted(true); return; }
+    setAiHomeworkError(null);
+    setAiHomeworkBusy(true);
+    try {
+      const r = await api.suggestHomework(session.token, slug, lessonId, {
+        title: title.trim(),
+        body: body.trim() || null,
+      });
+      setHomework(r.homework);
+    } catch (e) {
+      setAiHomeworkError(e.message);
+    } finally {
+      setAiHomeworkBusy(false);
+    }
+  }
+
   const load = useCallback(
     () => api.getLesson(session.token, slug, lessonId).then((l) => {
       setLesson(l);
@@ -594,6 +688,9 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
       setTitle(source?.title ?? l.title);
       setBody(source?.body ?? "");
       setWhatYoullLearn(source?.whatYoullLearn ?? "");
+      setLearningObjectives(source?.learningObjectives ?? "");
+      setGlossary(source?.glossary ?? "");
+      setHomework(source?.homework ?? "");
       setMinutes(source?.estimatedMinutes ?? "");
       setDeliveryMode(source?.deliveryMode ?? "Recorded");
       setError(null);
@@ -621,6 +718,9 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
       title: title.trim(),
       body: body.trim() || null,
       whatYoullLearn: whatYoullLearn.trim() || null,
+      learningObjectives: learningObjectives.trim() || null,
+      glossary: glossary.trim() || null,
+      homework: homework.trim() || null,
       estimatedMinutes: minutes === "" ? null : Number(minutes),
       deliveryMode,
       ...overrides,
@@ -651,6 +751,8 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
     if (!title.trim() || !body.trim()) { setAttempted(true); return; }
     run(() => api.quickEditPublishedLesson(session.token, slug, lessonId, {
       title: title.trim(), body: body.trim() || null, whatYoullLearn: whatYoullLearn.trim() || null,
+      learningObjectives: learningObjectives.trim() || null, glossary: glossary.trim() || null,
+      homework: homework.trim() || null,
       estimatedMinutes: minutes === "" ? null : Number(minutes),
     }), t("studio.toastChangesSaved")).then((l) => l && setLesson(l));
   }
@@ -752,9 +854,20 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                   <Message type="error">{t("studio.titleRequired")}</Message>
                 )}
                 <label>
-                  <span>{t("studio.titleLabel")}<RequiredMark /></span>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.titleLabel")}<RequiredMark />
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestTitle}
+                              disabled={busy || aiTitleBusy || !body.trim()} title={t("studio.aiSuggestTitle")}>
+                        {aiTitleBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestTitle")}
+                      </button>
+                    )}
+                  </span>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy || !editable} required
                          style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
+                  {aiTitleError && <Message type="error">{aiTitleError}</Message>}
                 </label>
 
                 <label>
@@ -773,6 +886,60 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                             placeholder={t("studio.whatYoullLearnPlaceholder")}
                             disabled={busy || !editable} />
                   {aiOutcomesError && <Message type="error">{aiOutcomesError}</Message>}
+                </label>
+
+                <label>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.learningObjectivesLabel")}
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestLearningObjectives}
+                              disabled={busy || aiObjectivesBusy || !title.trim()} title={t("studio.aiSuggestLearningObjectives")}>
+                        {aiObjectivesBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestLearningObjectives")}
+                      </button>
+                    )}
+                  </span>
+                  <textarea rows={4} value={learningObjectives} onChange={(e) => setLearningObjectives(e.target.value)}
+                            placeholder={t("studio.learningObjectivesPlaceholder")}
+                            disabled={busy || !editable} />
+                  {aiObjectivesError && <Message type="error">{aiObjectivesError}</Message>}
+                </label>
+
+                <label>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.glossaryLabel")}
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestGlossary}
+                              disabled={busy || aiGlossaryBusy || !title.trim()} title={t("studio.aiSuggestGlossary")}>
+                        {aiGlossaryBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestGlossary")}
+                      </button>
+                    )}
+                  </span>
+                  <textarea rows={4} value={glossary} onChange={(e) => setGlossary(e.target.value)}
+                            placeholder={t("studio.glossaryPlaceholder")}
+                            disabled={busy || !editable} />
+                  {aiGlossaryError && <Message type="error">{aiGlossaryError}</Message>}
+                </label>
+
+                <label>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.homeworkLabel")}
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestHomework}
+                              disabled={busy || aiHomeworkBusy || !title.trim()} title={t("studio.aiSuggestHomework")}>
+                        {aiHomeworkBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestHomework")}
+                      </button>
+                    )}
+                  </span>
+                  <textarea rows={4} value={homework} onChange={(e) => setHomework(e.target.value)}
+                            placeholder={t("studio.homeworkPlaceholder")}
+                            disabled={busy || !editable} />
+                  {aiHomeworkError && <Message type="error">{aiHomeworkError}</Message>}
                 </label>
 
                 <label>
@@ -816,9 +983,20 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                   <Message type="error">{t("studio.titleContentRequired")}</Message>
                 )}
                 <label>
-                  <span>{t("studio.titleLabel")}<RequiredMark /></span>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.titleLabel")}<RequiredMark />
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestTitle}
+                              disabled={busy || aiTitleBusy || !body.trim()} title={t("studio.aiSuggestTitle")}>
+                        {aiTitleBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestTitle")}
+                      </button>
+                    )}
+                  </span>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy || !editable} required
                          style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
+                  {aiTitleError && <Message type="error">{aiTitleError}</Message>}
                 </label>
                 <label>
                   <span className="lw-studio__contentlabel">
@@ -836,6 +1014,60 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                             placeholder={t("studio.whatYoullLearnPlaceholder")}
                             disabled={busy || !editable} />
                   {aiOutcomesError && <Message type="error">{aiOutcomesError}</Message>}
+                </label>
+
+                <label>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.learningObjectivesLabel")}
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestLearningObjectives}
+                              disabled={busy || aiObjectivesBusy || !title.trim()} title={t("studio.aiSuggestLearningObjectives")}>
+                        {aiObjectivesBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestLearningObjectives")}
+                      </button>
+                    )}
+                  </span>
+                  <textarea rows={4} value={learningObjectives} onChange={(e) => setLearningObjectives(e.target.value)}
+                            placeholder={t("studio.learningObjectivesPlaceholder")}
+                            disabled={busy || !editable} />
+                  {aiObjectivesError && <Message type="error">{aiObjectivesError}</Message>}
+                </label>
+
+                <label>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.glossaryLabel")}
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestGlossary}
+                              disabled={busy || aiGlossaryBusy || !title.trim()} title={t("studio.aiSuggestGlossary")}>
+                        {aiGlossaryBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestGlossary")}
+                      </button>
+                    )}
+                  </span>
+                  <textarea rows={4} value={glossary} onChange={(e) => setGlossary(e.target.value)}
+                            placeholder={t("studio.glossaryPlaceholder")}
+                            disabled={busy || !editable} />
+                  {aiGlossaryError && <Message type="error">{aiGlossaryError}</Message>}
+                </label>
+
+                <label>
+                  <span className="lw-studio__contentlabel">
+                    {t("studio.homeworkLabel")}
+                    {editable && (
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestHomework}
+                              disabled={busy || aiHomeworkBusy || !title.trim()} title={t("studio.aiSuggestHomework")}>
+                        {aiHomeworkBusy
+                          ? <LoaderCircle size={12} className="lw-studio__spin" />
+                          : <Sparkles size={12} />} {t("studio.aiSuggestHomework")}
+                      </button>
+                    )}
+                  </span>
+                  <textarea rows={4} value={homework} onChange={(e) => setHomework(e.target.value)}
+                            placeholder={t("studio.homeworkPlaceholder")}
+                            disabled={busy || !editable} />
+                  {aiHomeworkError && <Message type="error">{aiHomeworkError}</Message>}
                 </label>
                 <label>
                   <span className="lw-studio__contentlabel">

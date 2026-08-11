@@ -136,6 +136,10 @@ builder.Services.AddScoped<GradeAssessmentSkill>();
 builder.Services.AddScoped<GenerateProductDescriptionSkill>();
 builder.Services.AddScoped<GenerateLessonBodySkill>();
 builder.Services.AddScoped<GenerateWhatYoullLearnSkill>();
+builder.Services.AddScoped<GenerateLessonTitleSkill>();
+builder.Services.AddScoped<GenerateLearningObjectivesSkill>();
+builder.Services.AddScoped<GenerateGlossarySkill>();
+builder.Services.AddScoped<GenerateHomeworkSkill>();
 
 // ── Video transcription (AI Video Transcript Implementation Plan) ──────────
 // A separate provider boundary from the text-completion one above: Claude

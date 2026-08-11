@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Platform.Domain;
 using Platform.Infrastructure;
@@ -42,11 +43,11 @@ public class TranscriptionBackgroundService(
         var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
         var provider = scope.ServiceProvider.GetRequiredService<IAudioTranscriptionProvider>();
 
-        string? text = null;
+        TranscriptionResult? result = null;
         string? failure = null;
         try
         {
-            text = await provider.TranscribeAsync(job.FilePath, job.FileName, ct);
+            result = await provider.TranscribeAsync(job.FilePath, job.FileName, ct);
         }
         catch (Exception ex)
         {
@@ -70,8 +71,19 @@ public class TranscriptionBackgroundService(
             return;
         }
 
-        if (text is not null) revision.CompleteTranscription(text);
-        else revision.FailTranscription(failure ?? "Transcription failed for an unknown reason.");
+        if (result is not null)
+        {
+            // No chapters is a normal outcome (short video, unsupported
+            // language) — AI Video-Grounded Questions Implementation Plan §2 —
+            // stored as null, not an empty-array string, so downstream code's
+            // "is chapters present" check stays a simple null check.
+            var chaptersJson = result.Chapters.Count > 0 ? JsonSerializer.Serialize(result.Chapters) : null;
+            revision.CompleteTranscription(result.Text, chaptersJson);
+        }
+        else
+        {
+            revision.FailTranscription(failure ?? "Transcription failed for an unknown reason.");
+        }
 
         await db.SaveChangesAsync(ct);
     }

@@ -57,12 +57,51 @@ public class LessonRevision
     public string? TranscriptError { get; private set; }
 
     /// <summary>
+    /// Speechmatics Auto Chapters for this transcript, as JSON
+    /// (<c>[{title, summary, startSeconds, endSeconds}, ...]</c>) — real,
+    /// deterministic chapter boundaries used to place quiz-checkpoint
+    /// timestamps without an LLM guessing one (AI Video-Grounded Questions
+    /// Implementation Plan §4). Null until a transcription with chapters has
+    /// completed; a video too short for chaptering completes with this still
+    /// null even though TranscriptStatus is Ready. Cleared alongside Transcript.
+    /// </summary>
+    public string? TranscriptChaptersJson { get; private set; }
+
+    /// <summary>
     /// Short (~3 line) learner-facing preview of what this lesson teaches, shown
     /// before a learner starts it — AI-drafted, tutor-editable, optional. Distinct
     /// from <see cref="Body"/>, which only renders once a learner is already in
     /// the lesson.
     /// </summary>
     public string? WhatYoullLearn { get; private set; }
+
+    /// <summary>
+    /// Bloom's-taxonomy-style "Learners will be able to..." statements (AI
+    /// Authoring Assistant Architecture Stage 5), AI-drafted and
+    /// tutor-editable, optional. Distinct from <see cref="WhatYoullLearn"/> —
+    /// this is the more formal instructional-design artifact; that one is
+    /// the short marketing-style preview. Persisted and shown to learners,
+    /// same visibility as WhatYoullLearn.
+    /// </summary>
+    public string? LearningObjectives { get; private set; }
+
+    /// <summary>
+    /// AI-extracted key terms and one-line definitions specific to this
+    /// lesson (AI Capability Architecture §8, "Generate Glossary"/"Generate
+    /// Keywords"), one "Term: Definition" per line, AI-drafted and
+    /// tutor-editable, optional. Persisted and shown to learners, same
+    /// visibility as WhatYoullLearn and LearningObjectives.
+    /// </summary>
+    public string? Glossary { get; private set; }
+
+    /// <summary>
+    /// AI-suggested homework and practical exercises tied to this lesson's
+    /// content (AI Authoring Assistant Architecture Stage 8, "Supporting
+    /// Resources"), one suggestion per line, AI-drafted and tutor-editable,
+    /// optional. Persisted and shown to learners, same visibility as
+    /// WhatYoullLearn, LearningObjectives, and Glossary.
+    /// </summary>
+    public string? Homework { get; private set; }
 
     private LessonRevision() { }
 
@@ -90,7 +129,8 @@ public class LessonRevision
     /// what learners are currently reading, so changing it under them would
     /// make "revision" meaningless.
     /// </summary>
-    public void Edit(string title, string? body, int? estimatedMinutes, LessonDeliveryMode deliveryMode, string? whatYoullLearn = null)
+    public void Edit(string title, string? body, int? estimatedMinutes, LessonDeliveryMode deliveryMode,
+        string? whatYoullLearn = null, string? learningObjectives = null, string? glossary = null, string? homework = null)
     {
         RequireDraft();
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
@@ -102,6 +142,9 @@ public class LessonRevision
         EstimatedMinutes = estimatedMinutes;
         DeliveryMode = deliveryMode;
         WhatYoullLearn = string.IsNullOrWhiteSpace(whatYoullLearn) ? null : whatYoullLearn.Trim();
+        LearningObjectives = string.IsNullOrWhiteSpace(learningObjectives) ? null : learningObjectives.Trim();
+        Glossary = string.IsNullOrWhiteSpace(glossary) ? null : glossary.Trim();
+        Homework = string.IsNullOrWhiteSpace(homework) ? null : homework.Trim();
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -156,11 +199,12 @@ public class LessonRevision
         UpdatedAt = DateTime.UtcNow;
     }
 
-    /// <summary>Records a successful transcription. Only valid while one is running — a stray completion for a job that was never started or already resolved is ignored rather than trusted.</summary>
-    public void CompleteTranscription(string text)
+    /// <summary>Records a successful transcription. Only valid while one is running — a stray completion for a job that was never started or already resolved is ignored rather than trusted. <paramref name="chaptersJson"/> is null when the provider detected no chapters (e.g. the video was too short) — a normal outcome, not a failure.</summary>
+    public void CompleteTranscription(string text, string? chaptersJson = null)
     {
         if (TranscriptStatus != TranscriptStatus.Processing) return;
         Transcript = text;
+        TranscriptChaptersJson = chaptersJson;
         TranscriptStatus = TranscriptStatus.Ready;
         TranscriptError = null;
         UpdatedAt = DateTime.UtcNow;
@@ -179,6 +223,7 @@ public class LessonRevision
     private void ClearTranscript()
     {
         Transcript = null;
+        TranscriptChaptersJson = null;
         TranscriptStatus = TranscriptStatus.None;
         TranscriptError = null;
     }
@@ -199,7 +244,8 @@ public class LessonRevision
     /// changes what the lesson fundamentally is (Rule 12's "Major" class),
     /// so those still go through <see cref="Lesson.StartRevision"/>.
     /// </summary>
-    public void QuickEditPublished(string title, string? body, int? estimatedMinutes, string? whatYoullLearn = null)
+    public void QuickEditPublished(string title, string? body, int? estimatedMinutes,
+        string? whatYoullLearn = null, string? learningObjectives = null, string? glossary = null, string? homework = null)
     {
         if (Status != LessonRevisionStatus.Published)
             throw new InvalidOperationException("Only the currently published revision can be edited this way.");
@@ -211,6 +257,9 @@ public class LessonRevision
         Body = string.IsNullOrWhiteSpace(body) ? null : body.Trim();
         EstimatedMinutes = estimatedMinutes;
         WhatYoullLearn = string.IsNullOrWhiteSpace(whatYoullLearn) ? null : whatYoullLearn.Trim();
+        LearningObjectives = string.IsNullOrWhiteSpace(learningObjectives) ? null : learningObjectives.Trim();
+        Glossary = string.IsNullOrWhiteSpace(glossary) ? null : glossary.Trim();
+        Homework = string.IsNullOrWhiteSpace(homework) ? null : homework.Trim();
         UpdatedAt = DateTime.UtcNow;
     }
 

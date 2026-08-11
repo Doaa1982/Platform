@@ -180,6 +180,30 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
         string slug, Guid lessonId, [FromBody] AiSuggestWhatYoullLearnRequest request, CancellationToken ct)
         => Run(await studio.SuggestWhatYoullLearnAsync(slug, Caller(), lessonId, request, ct));
 
+    /// <summary>Proposes a sharper lesson title grounded in the form's current body (or a Ready transcript). Nothing is saved — the tutor still hits Save themselves.</summary>
+    [HttpPost("draft/ai-suggest-title")]
+    public async Task<ActionResult<AiSuggestTitleResponse>> SuggestTitle(
+        string slug, Guid lessonId, [FromBody] AiSuggestTitleRequest request, CancellationToken ct)
+        => Run(await studio.SuggestTitleAsync(slug, Caller(), lessonId, request, ct));
+
+    /// <summary>Drafts Bloom's-taxonomy-style learning objectives, preferring a Ready transcript over the form's current title/body. Nothing is saved — the tutor still hits Save themselves.</summary>
+    [HttpPost("draft/ai-suggest-learning-objectives")]
+    public async Task<ActionResult<AiSuggestLearningObjectivesResponse>> SuggestLearningObjectives(
+        string slug, Guid lessonId, [FromBody] AiSuggestLearningObjectivesRequest request, CancellationToken ct)
+        => Run(await studio.SuggestLearningObjectivesAsync(slug, Caller(), lessonId, request, ct));
+
+    /// <summary>Extracts a glossary of key terms, preferring a Ready transcript over the form's current title/body. Nothing is saved — the tutor still hits Save themselves.</summary>
+    [HttpPost("draft/ai-suggest-glossary")]
+    public async Task<ActionResult<AiSuggestGlossaryResponse>> SuggestGlossary(
+        string slug, Guid lessonId, [FromBody] AiSuggestGlossaryRequest request, CancellationToken ct)
+        => Run(await studio.SuggestGlossaryAsync(slug, Caller(), lessonId, request, ct));
+
+    /// <summary>Suggests homework/practical exercises, preferring a Ready transcript over the form's current title/body. Nothing is saved — the tutor still hits Save themselves.</summary>
+    [HttpPost("draft/ai-suggest-homework")]
+    public async Task<ActionResult<AiSuggestHomeworkResponse>> SuggestHomework(
+        string slug, Guid lessonId, [FromBody] AiSuggestHomeworkRequest request, CancellationToken ct)
+        => Run(await studio.SuggestHomeworkAsync(slug, Caller(), lessonId, request, ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {
         ProvisioningError.None      => Ok(r.Value),

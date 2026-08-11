@@ -452,6 +452,53 @@ export function suggestWhatYoullLearn(token, slug, lessonId, body) {
   });
 }
 
+/**
+ * POST .../lessons/{lessonId}/draft/ai-suggest-title — proposes a sharper
+ * title grounded in the form's current body (or a Ready transcript, read
+ * server-side). Nothing is saved — the caller still has to Save themselves.
+ */
+export function suggestLessonTitle(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/ai-suggest-title`, {
+    method: "POST", body, token,
+  });
+}
+
+/**
+ * POST .../lessons/{lessonId}/draft/ai-suggest-learning-objectives — drafts
+ * Bloom's-taxonomy-style objectives, preferring a Ready transcript (read
+ * server-side) over the form's current title/body. Nothing is saved — the
+ * caller still has to Save themselves.
+ */
+export function suggestLearningObjectives(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/ai-suggest-learning-objectives`, {
+    method: "POST", body, token,
+  });
+}
+
+/**
+ * POST .../lessons/{lessonId}/draft/ai-suggest-glossary — extracts key terms
+ * and one-line definitions, preferring a Ready transcript (read
+ * server-side) over the form's current title/body. Nothing is saved — the
+ * caller still has to Save themselves.
+ */
+export function suggestGlossary(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/ai-suggest-glossary`, {
+    method: "POST", body, token,
+  });
+}
+
+/**
+ * POST .../lessons/{lessonId}/draft/ai-suggest-homework — suggests
+ * homework/practical exercises, preferring a Ready transcript (read
+ * server-side) over the form's current title/body. Nothing is saved — the
+ * caller still has to Save themselves.
+ */
+export function suggestHomework(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/ai-suggest-homework`, {
+    method: "POST", body, token,
+  });
+}
+
 /* ── Reference data ───────────────────────────────────────────────────── */
 
 /** GET .../reference/question-types — the QuestionType enum's values + display labels */

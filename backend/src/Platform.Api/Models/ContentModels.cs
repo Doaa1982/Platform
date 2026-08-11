@@ -59,7 +59,13 @@ public record LessonRevisionRow(
     string TranscriptStatus,
     string? TranscriptError,
     /// <summary>Short learner-facing "what you'll learn" preview, AI-drafted and tutor-editable. Null until set.</summary>
-    string? WhatYoullLearn);
+    string? WhatYoullLearn,
+    /// <summary>Bloom's-taxonomy-style "Learners will be able to..." statements, AI-drafted and tutor-editable. Null until set.</summary>
+    string? LearningObjectives,
+    /// <summary>Key terms and one-line definitions ("Term: Definition" per line), AI-drafted and tutor-editable. Null until set.</summary>
+    string? Glossary,
+    /// <summary>Suggested homework/practical exercises, one per line, AI-drafted and tutor-editable. Null until set.</summary>
+    string? Homework);
 
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);
@@ -69,7 +75,7 @@ public record ReorderUnitsRequest(IReadOnlyList<Guid> UnitIds);
 /// <summary>Every lesson id currently in the unit, once each, in the desired order.</summary>
 public record ReorderLessonsRequest(IReadOnlyList<Guid> LessonIds);
 public record SetSequentialUnlockRequest(bool Enabled);
-public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode, string? WhatYoullLearn = null);
+public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode, string? WhatYoullLearn = null, string? LearningObjectives = null, string? Glossary = null, string? Homework = null);
 public record AttachVideoRequest(Guid LearningAssetId);
 public record SetVideoUrlRequest(string Url);
 
@@ -89,3 +95,19 @@ public record AiSuggestBodyResponse(string Body);
 /// </summary>
 public record AiSuggestWhatYoullLearnRequest(string Title, string? Body);
 public record AiSuggestWhatYoullLearnResponse(string WhatYoullLearn);
+
+/// <summary>Title/Body come from the tutor's current unsaved form state; the transcript, if any, is read server-side off the lesson's own revision, same as AiSuggestWhatYoullLearnRequest.</summary>
+public record AiSuggestTitleRequest(string? Title, string? Body);
+public record AiSuggestTitleResponse(string Title);
+
+/// <summary>Title/Body come from the tutor's current unsaved form state; the transcript, if any, is read server-side off the lesson's own revision, same as AiSuggestWhatYoullLearnRequest.</summary>
+public record AiSuggestLearningObjectivesRequest(string Title, string? Body);
+public record AiSuggestLearningObjectivesResponse(string LearningObjectives);
+
+/// <summary>Title/Body come from the tutor's current unsaved form state; the transcript, if any, is read server-side off the lesson's own revision, same as AiSuggestWhatYoullLearnRequest.</summary>
+public record AiSuggestGlossaryRequest(string Title, string? Body);
+public record AiSuggestGlossaryResponse(string Glossary);
+
+/// <summary>Title/Body come from the tutor's current unsaved form state; the transcript, if any, is read server-side off the lesson's own revision, same as AiSuggestWhatYoullLearnRequest.</summary>
+public record AiSuggestHomeworkRequest(string Title, string? Body);
+public record AiSuggestHomeworkResponse(string Homework);

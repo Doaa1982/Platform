@@ -2,8 +2,21 @@ using Aspire.Hosting;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
+// Fixed password + fixed host port so an external client (DataGrip, psql,
+// etc.) can save one connection profile that keeps working across AppHost
+// restarts. Without this, Aspire generates a new random password and a new
+// random host port every run (CreateDefaultPasswordParameter) — harmless for
+// the API itself (it reads the connection string fresh each launch), but
+// means re-entering credentials in any external tool every time.
+//
+// The actual secret value is read from AppHost user-secrets, never
+// committed:
+//   cd backend/src/Platform.AppHost
+//   dotnet user-secrets set "Parameters:postgres-password" "<your password>"
+var postgresPassword = builder.AddParameter("postgres-password", secret: true);
+
 // Define PostgreSQL database server and database resource
-var postgres = builder.AddPostgres("PlatformDbServer")
+var postgres = builder.AddPostgres("PlatformDbServer", password: postgresPassword, port: 55432)
     .WithPgAdmin()
     .WithPgWeb()
     .WithDataVolume("PlatformData");

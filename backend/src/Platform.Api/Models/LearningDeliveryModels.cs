@@ -44,7 +44,13 @@ public record LearnerLessonResponse(
     IReadOnlyList<LearnerQuestionRow> Questions,
     string ProgressStatus, bool VideoWatched,
     /// <summary>Short AI-drafted preview of what this lesson teaches, shown before the learner starts it. Null if the tutor hasn't set one.</summary>
-    string? WhatYoullLearn = null);
+    string? WhatYoullLearn = null,
+    /// <summary>Bloom's-taxonomy-style "Learners will be able to..." statements, AI-drafted and tutor-editable. Null if the tutor hasn't set any.</summary>
+    string? LearningObjectives = null,
+    /// <summary>Key terms and one-line definitions ("Term: Definition" per line), AI-drafted and tutor-editable. Null if the tutor hasn't set any.</summary>
+    string? Glossary = null,
+    /// <summary>Suggested homework/practical exercises, one per line, AI-drafted and tutor-editable. Null if the tutor hasn't set any.</summary>
+    string? Homework = null);
 
 public record LearnerQuestionRow(
     Guid Id, string Type, string Prompt,

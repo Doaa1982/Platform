@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Platform.Api.AI;
 using Platform.Api.AI.Skills;
@@ -92,6 +93,9 @@ public class AssessmentService(
     /// <summary>Caps how many checkpoints one request can ask for — roughly one per three minutes of video, AI doc §6: "AI should not randomly insert questions."</summary>
     private const int MaxSuggestedQuestions = 5;
 
+    /// <summary>Rotated round-robin across chapters (AI Video-Grounded Questions Implementation Plan §5) — each chapter call has no memory of earlier ones, so rotation has to happen here instead of being left to the model.</summary>
+    private static readonly string[] QuestionTypeRotation = ["MultipleChoice", "TrueFalse", "CompleteTheSentence", "OpenAnswer"];
+
     public async Task<ProvisioningResult<IReadOnlyList<SuggestedQuestion>>> SuggestQuestionsAsync(
         string slug, Guid caller, Guid lessonId, AiSuggestQuestionsRequest request, CancellationToken ct = default)
     {
@@ -105,14 +109,17 @@ public class AssessmentService(
         if (request.VideoDurationSeconds <= 0)
             return Fail<IReadOnlyList<SuggestedQuestion>>((ProvisioningError.Invalid, "A video duration is needed before checkpoints can be placed."));
 
-        var count = Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions);
-        var lessonBody = await LoadLessonBodyAsync(ctx.Workspace!.Id, lessonId, ctx.TargetRevisionId, ct);
+        var revision = await LoadTargetRevisionAsync(ctx.Workspace!.Id, lessonId, ctx.TargetRevisionId, ct);
+        var chapters = ParseChapters(revision);
 
         IReadOnlyList<SuggestedQuestion> suggestions;
         try
         {
-            suggestions = await generateQuestions.SuggestAsync(
-                ctx.LessonTitle ?? "Untitled lesson", lessonBody, request.VideoDurationSeconds, count, ct);
+            suggestions = chapters is { Count: > 0 }
+                ? await SuggestFromChaptersAsync(ctx.LessonTitle ?? "Untitled lesson", chapters, request.VideoDurationSeconds, ct)
+                : await generateQuestions.SuggestAsync(
+                    ctx.LessonTitle ?? "Untitled lesson", revision?.Body, request.VideoDurationSeconds,
+                    Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions), ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -125,15 +132,68 @@ public class AssessmentService(
         return ProvisioningResult<IReadOnlyList<SuggestedQuestion>>.Success(suggestions);
     }
 
-    /// <summary>The lesson's written content for the target revision, used as AI context. Best-effort — null just means the skill falls back to the title alone.</summary>
-    private async Task<string?> LoadLessonBodyAsync(Guid workspaceId, Guid lessonId, Guid? revisionId, CancellationToken ct)
+    /// <summary>
+    /// One question per chapter, capped at MaxSuggestedQuestions — same cap
+    /// today's duration-based path uses, so a long, heavily-chaptered video
+    /// doesn't flood the tutor with more checkpoints than the duration-based
+    /// path ever would. VideoTimestampSeconds is always the chapter's own
+    /// real start time, never whatever the model returned (AI Video-Grounded
+    /// Questions Implementation Plan §5).
+    /// </summary>
+    private async Task<IReadOnlyList<SuggestedQuestion>> SuggestFromChaptersAsync(
+        string lessonTitle, IReadOnlyList<TranscriptChapter> chapters, int videoDurationSeconds, CancellationToken ct)
+    {
+        var results = new List<SuggestedQuestion>();
+        var picked = chapters.Take(MaxSuggestedQuestions).ToList();
+
+        for (var i = 0; i < picked.Count; i++)
+        {
+            var chapter = picked[i];
+            var questionType = QuestionTypeRotation[i % QuestionTypeRotation.Length];
+            var suggestion = await generateQuestions.SuggestForChapterAsync(
+                lessonTitle, chapter.Title, chapter.Summary, questionType, ct);
+
+            var timestamp = Math.Clamp((int)chapter.StartSeconds, 0, Math.Max(videoDurationSeconds - 1, 0));
+            results.Add(suggestion with { VideoTimestampSeconds = timestamp });
+        }
+
+        return results;
+    }
+
+    /// <summary>The target revision itself, used both for AI context (Body, transcript chapters) — AsNoTracking, this never mutates it.</summary>
+    private async Task<LessonRevision?> LoadTargetRevisionAsync(Guid workspaceId, Guid lessonId, Guid? revisionId, CancellationToken ct)
     {
         if (revisionId is null) return null;
 
         var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == workspaceId, ct);
 
-        return lesson?.Revisions.FirstOrDefault(r => r.Id == revisionId)?.Body;
+        return lesson?.Revisions.FirstOrDefault(r => r.Id == revisionId);
+    }
+
+    /// <summary>
+    /// Only trusts chapters when the transcript is actually Ready — a
+    /// Processing/Failed transcript might still have stale
+    /// TranscriptChaptersJson from a prior video sitting on the revision
+    /// (shouldn't happen given ClearTranscript's discipline, but Ready is the
+    /// authoritative check, not "is the JSON non-null").
+    /// </summary>
+    private static IReadOnlyList<TranscriptChapter>? ParseChapters(LessonRevision? revision)
+    {
+        if (revision?.TranscriptStatus != TranscriptStatus.Ready || string.IsNullOrWhiteSpace(revision.TranscriptChaptersJson))
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<TranscriptChapter>>(revision.TranscriptChaptersJson);
+        }
+        catch (JsonException)
+        {
+            // Malformed stored JSON should never block question generation —
+            // fall back to the duration-based path exactly as if there were
+            // no chapters at all.
+            return null;
+        }
     }
 
     public async Task<ProvisioningResult<PreviewResult>> PreviewAsync(

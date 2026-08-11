@@ -89,4 +89,73 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
             .Take(count)
             .ToList();
     }
+
+    // ── Chapter-grounded generation (AI Video-Grounded Questions Implementation Plan §5) ──
+    //
+    // One question per Speechmatics-detected chapter, instead of the whole
+    // lesson at once. The model is given only one chapter's own content and
+    // asked for exactly one question of a caller-chosen type — type rotation
+    // moves to AssessmentService (round-robin across chapters), since each
+    // call here has no memory of what type earlier chapters got. The
+    // timestamp this returns is never trusted: the caller always overwrites
+    // it with the chapter's real, deterministic start time, so the prompt
+    // doesn't ask the model to reason about placement at all.
+
+    private const string ChapterSystemPrompt = """
+        You are the Learning Workspace Platform's AI Interactive Video Lesson
+        Generator. You are given one chapter of a lesson's video — its title
+        and a short summary of what's covered in that chapter specifically —
+        and must propose exactly one checkpoint question grounded in that
+        chapter's content, of a specific question type given to you. Nothing
+        you suggest is saved automatically — treat it as a draft for human
+        review.
+
+        Rules:
+        - Base the question only on the given chapter's content, not the
+          lesson as a whole — this is one checkpoint for one chapter.
+        - Use exactly the question type given to you.
+        - MultipleChoice needs 4 Options and a zero-based CorrectOptionIndex.
+        - TrueFalse needs Options ["True", "False"] and a CorrectOptionIndex.
+        - CompleteTheSentence needs AcceptedAnswers (no Options,
+          no CorrectOptionIndex).
+        - OpenAnswer needs no Options, no CorrectOptionIndex, no
+          AcceptedAnswers — it is reviewed for participation, not graded.
+        - Set videoTimestampSeconds to 0 — the caller assigns the real value
+          itself and ignores whatever is returned here.
+
+        Respond with JSON only — a single-element array, no prose, no
+        markdown code fences — matching exactly this shape:
+
+        [
+          {
+            "type": "MultipleChoice" | "TrueFalse" | "CompleteTheSentence" | "OpenAnswer",
+            "prompt": "string",
+            "options": ["string", ...],
+            "correctOptionIndex": number | null,
+            "acceptedAnswers": ["string", ...],
+            "explanation": "string",
+            "videoTimestampSeconds": 0,
+            "points": number
+          }
+        ]
+        """;
+
+    public async Task<SuggestedQuestion> SuggestForChapterAsync(
+        string lessonTitle, string chapterTitle, string? chapterSummary, string questionType, CancellationToken ct = default)
+    {
+        var userPrompt = $"""
+            Lesson title: {lessonTitle}
+
+            Chapter title: {chapterTitle}
+            Chapter summary: {(string.IsNullOrWhiteSpace(chapterSummary) ? "(none given — base the question on the chapter title alone)" : chapterSummary)}
+
+            Required question type: {questionType}
+            """;
+
+        var suggestions = await orchestrator.RunAsync<List<SuggestedQuestion>>(ChapterSystemPrompt, userPrompt, ct);
+        var suggestion = suggestions.FirstOrDefault()
+            ?? throw new InvalidOperationException("The model returned no question for this chapter.");
+
+        return suggestion.Points <= 0 ? suggestion with { Points = 1 } : suggestion;
+    }
 }

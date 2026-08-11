@@ -22,7 +22,9 @@ namespace Platform.Api.Services;
 public class ContentStudioService(
     PlatformDbContext db, EntitlementResolutionService entitlements,
     TranscriptionQueue transcriptionQueue, ILearningAssetStorage assetStorage,
-    GenerateLessonBodySkill generateLessonBody, GenerateWhatYoullLearnSkill generateWhatYoullLearn)
+    GenerateLessonBodySkill generateLessonBody, GenerateWhatYoullLearnSkill generateWhatYoullLearn,
+    GenerateLessonTitleSkill generateLessonTitle, GenerateLearningObjectivesSkill generateLearningObjectives,
+    GenerateGlossarySkill generateGlossary, GenerateHomeworkSkill generateHomework)
 {
     /// <summary>Speechmatics' supported input formats (AI Video Transcript Implementation Plan §4/§7) — checked against the uploaded file's extension before a job is ever submitted.</summary>
     private static readonly string[] SupportedTranscriptionExtensions =
@@ -128,7 +130,7 @@ public class ContentStudioService(
                 r.VideoAssetId,
                 r.VideoAssetId is { } videoId && assets.TryGetValue(videoId, out var video) ? LearningAssetService.Describe(video) : null,
                 r.VideoUrl, a?.Questions.Count ?? 0, submissionCount,
-                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptError, r.WhatYoullLearn);
+                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptError, r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework);
         }
 
         return ProvisioningResult<LessonDetailResponse>.Success(new LessonDetailResponse(
@@ -205,7 +207,7 @@ public class ContentStudioService(
             var draft = l.DraftRevision
                 ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
             var deliveryMode = Enum.TryParse<LessonDeliveryMode>(request.DeliveryMode, out var parsed) ? parsed : LessonDeliveryMode.Recorded;
-            draft.Edit(request.Title, request.Body, request.EstimatedMinutes, deliveryMode, request.WhatYoullLearn);
+            draft.Edit(request.Title, request.Body, request.EstimatedMinutes, deliveryMode, request.WhatYoullLearn, request.LearningObjectives, request.Glossary, request.Homework);
             l.Rename(request.Title);
         }, ct);
 
@@ -242,7 +244,7 @@ public class ContentStudioService(
         // a new revision because the video needs replacing is not asked to
         // re-author content that didn't change).
         if (previousRevision is not null)
-            draft.Edit(previousRevision.Title, previousRevision.Body, previousRevision.EstimatedMinutes, previousRevision.DeliveryMode, previousRevision.WhatYoullLearn);
+            draft.Edit(previousRevision.Title, previousRevision.Body, previousRevision.EstimatedMinutes, previousRevision.DeliveryMode, previousRevision.WhatYoullLearn, previousRevision.LearningObjectives, previousRevision.Glossary, previousRevision.Homework);
 
         // Interactive questions are versioned together with their revision
         // (Lesson Revision Aggregate Design §7's "Interactive Learning Event");
@@ -286,7 +288,7 @@ public class ContentStudioService(
         var clone = Lesson.Create(ctx.Workspace!.Id, source.LearningProductId, $"{sourceRevision.Title} (New Version)", ctx.MembershipId);
         db.Lessons.Add(clone);
 
-        clone.DraftRevision!.Edit(clone.DraftRevision!.Title, sourceRevision.Body, sourceRevision.EstimatedMinutes, sourceRevision.DeliveryMode, sourceRevision.WhatYoullLearn);
+        clone.DraftRevision!.Edit(clone.DraftRevision!.Title, sourceRevision.Body, sourceRevision.EstimatedMinutes, sourceRevision.DeliveryMode, sourceRevision.WhatYoullLearn, sourceRevision.LearningObjectives, sourceRevision.Glossary, sourceRevision.Homework);
 
         await CloneAssessmentAsync(ctx.Workspace!.Id, clone.Id, sourceRevision.Id, clone.DraftRevision!.Id, ct);
 
@@ -320,7 +322,7 @@ public class ContentStudioService(
         {
             var current = l.CurrentRevision
                 ?? throw new InvalidOperationException("This lesson has no published revision to edit.");
-            current.QuickEditPublished(request.Title, request.Body, request.EstimatedMinutes, request.WhatYoullLearn);
+            current.QuickEditPublished(request.Title, request.Body, request.EstimatedMinutes, request.WhatYoullLearn, request.LearningObjectives, request.Glossary, request.Homework);
             l.Rename(request.Title);
         }, ct);
 
@@ -515,6 +517,167 @@ public class ContentStudioService(
         catch (InvalidOperationException ex)
         {
             return Fail<AiSuggestWhatYoullLearnResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Proposes a sharper lesson title grounded in Body (or Transcript, read
+    /// server-side, if no body exists yet) — not a "fill a blank" skill like
+    /// the others, since a lesson always has some title by the time a tutor
+    /// is in the editor. Doesn't touch the database — nothing is saved until
+    /// the tutor hits Save themselves.
+    /// </summary>
+    public async Task<ProvisioningResult<AiSuggestTitleResponse>> SuggestTitleAsync(
+        string slug, Guid caller, Guid lessonId, AiSuggestTitleRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<AiSuggestTitleResponse>(ctx.Error.Value);
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return Fail<AiSuggestTitleResponse>((ProvisioningError.Forbidden,
+                "AI content assistance needs the Professional plan or an AI-enabled Learning pack. Upgrade to use this."));
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<AiSuggestTitleResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
+        var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+
+        if (string.IsNullOrWhiteSpace(request.Body) && string.IsNullOrWhiteSpace(transcript))
+            return Fail<AiSuggestTitleResponse>((ProvisioningError.Invalid,
+                "Write some lesson content (or wait for the transcript to finish) before asking AI to suggest a title."));
+
+        try
+        {
+            var result = await generateLessonTitle.SuggestAsync(request.Title, request.Body, transcript, ct);
+            return ProvisioningResult<AiSuggestTitleResponse>.Success(new AiSuggestTitleResponse(result));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Fail<AiSuggestTitleResponse>((ProvisioningError.Conflict, $"AI title generation failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Drafts Bloom's-taxonomy-style learning objectives (AI Authoring
+    /// Assistant Architecture Stage 5). Same source pattern as
+    /// SuggestWhatYoullLearnAsync — transcript read server-side, preferred
+    /// over the form's current Body. Doesn't touch the database — nothing is
+    /// saved until the tutor hits Save themselves.
+    /// </summary>
+    public async Task<ProvisioningResult<AiSuggestLearningObjectivesResponse>> SuggestLearningObjectivesAsync(
+        string slug, Guid caller, Guid lessonId, AiSuggestLearningObjectivesRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<AiSuggestLearningObjectivesResponse>(ctx.Error.Value);
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return Fail<AiSuggestLearningObjectivesResponse>((ProvisioningError.Forbidden,
+                "AI content assistance needs the Professional plan or an AI-enabled Learning pack. Upgrade to use this."));
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return Fail<AiSuggestLearningObjectivesResponse>((ProvisioningError.Invalid, "A title is needed before objectives can be drafted."));
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<AiSuggestLearningObjectivesResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
+        var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+
+        try
+        {
+            var result = await generateLearningObjectives.SuggestAsync(request.Title, request.Body, transcript, ct);
+            return ProvisioningResult<AiSuggestLearningObjectivesResponse>.Success(new AiSuggestLearningObjectivesResponse(result));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Fail<AiSuggestLearningObjectivesResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Extracts a glossary of key terms (AI Capability Architecture §8).
+    /// Same source pattern as SuggestLearningObjectivesAsync — transcript
+    /// read server-side, preferred over the form's current Body. Doesn't
+    /// touch the database — nothing is saved until the tutor hits Save
+    /// themselves.
+    /// </summary>
+    public async Task<ProvisioningResult<AiSuggestGlossaryResponse>> SuggestGlossaryAsync(
+        string slug, Guid caller, Guid lessonId, AiSuggestGlossaryRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<AiSuggestGlossaryResponse>(ctx.Error.Value);
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return Fail<AiSuggestGlossaryResponse>((ProvisioningError.Forbidden,
+                "AI content assistance needs the Professional plan or an AI-enabled Learning pack. Upgrade to use this."));
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return Fail<AiSuggestGlossaryResponse>((ProvisioningError.Invalid, "A title is needed before a glossary can be drafted."));
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<AiSuggestGlossaryResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
+        var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+
+        try
+        {
+            var result = await generateGlossary.SuggestAsync(request.Title, request.Body, transcript, ct);
+            return ProvisioningResult<AiSuggestGlossaryResponse>.Success(new AiSuggestGlossaryResponse(result));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Fail<AiSuggestGlossaryResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Suggests homework/practical exercises (AI Authoring Assistant
+    /// Architecture Stage 8). Same source pattern as SuggestGlossaryAsync —
+    /// transcript read server-side, preferred over the form's current Body.
+    /// Doesn't touch the database — nothing is saved until the tutor hits
+    /// Save themselves.
+    /// </summary>
+    public async Task<ProvisioningResult<AiSuggestHomeworkResponse>> SuggestHomeworkAsync(
+        string slug, Guid caller, Guid lessonId, AiSuggestHomeworkRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<AiSuggestHomeworkResponse>(ctx.Error.Value);
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return Fail<AiSuggestHomeworkResponse>((ProvisioningError.Forbidden,
+                "AI content assistance needs the Professional plan or an AI-enabled Learning pack. Upgrade to use this."));
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return Fail<AiSuggestHomeworkResponse>((ProvisioningError.Invalid, "A title is needed before homework can be drafted."));
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<AiSuggestHomeworkResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
+        var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+
+        try
+        {
+            var result = await generateHomework.SuggestAsync(request.Title, request.Body, transcript, ct);
+            return ProvisioningResult<AiSuggestHomeworkResponse>.Success(new AiSuggestHomeworkResponse(result));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Fail<AiSuggestHomeworkResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
         }
     }
 

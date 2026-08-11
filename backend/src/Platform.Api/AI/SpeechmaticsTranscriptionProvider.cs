@@ -15,12 +15,17 @@ namespace Platform.Api.AI;
 /// Accepts the video file as-is: Speechmatics' supported-format list
 /// includes `mp4` directly, so unlike a Whisper-based provider this needs no
 /// audio-extraction step before submitting (Implementation Plan §4).
+///
+/// Also requests Speechmatics' Auto Chapters on the same job (AI
+/// Video-Grounded Questions Implementation Plan §2) — real, deterministic
+/// chapter boundaries used downstream to place quiz-checkpoint timestamps
+/// without an LLM having to guess one.
 /// </summary>
 public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOptions options) : IAudioTranscriptionProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<string> TranscribeAsync(string filePath, string fileName, CancellationToken ct = default)
+    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(
@@ -28,14 +33,38 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
 
         var jobId = await SubmitJobAsync(filePath, fileName, ct);
         await WaitForCompletionAsync(jobId, ct);
-        return await FetchTranscriptAsync(jobId, ct);
+
+        // Two GET requests against the same completed job, not two jobs — no
+        // re-processing, no extra billing event, just a second read of
+        // results already computed (AI Video-Grounded Questions
+        // Implementation Plan §3). Reconstructing correctly-punctuated plain
+        // text from the JSON word-level output is fiddly enough that it's
+        // not worth risking a subtle regression in the transcript every
+        // other AI skill already reads — kept as a separate, unchanged fetch.
+        var text = await FetchTranscriptTextAsync(jobId, ct);
+        var chapters = await FetchChaptersAsync(jobId, ct);
+
+        return new TranscriptionResult(text, chapters);
     }
 
     private async Task<string> SubmitJobAsync(string filePath, string fileName, CancellationToken ct)
     {
         var config = JsonSerializer.Serialize(new JobConfig(
             Type: "transcription",
-            TranscriptionConfig: new TranscriptionConfig(options.Language, options.Model)), JsonOptions);
+            // Speaker diarization requested specifically because Speechmatics'
+            // own Auto Chapters docs recommend it for better chapter quality
+            // — not because this platform does anything with speaker labels
+            // itself. Side effect worth knowing: the plain-text transcript
+            // this job returns will now be prefixed per line with "SPEAKER
+            // S1:" (single-speaker lesson videos get one consistent label),
+            // which flows into every text-based skill reading
+            // LessonRevision.Transcript (body drafting, "what you'll learn",
+            // the duration-based question fallback). Harmless for a single
+            // tutor speaking, but worth remembering if multi-speaker lesson
+            // videos ever become common — the labels would then carry real
+            // information current skills don't use.
+            TranscriptionConfig: new TranscriptionConfig(options.Language, options.Model, "speaker"),
+            AutoChaptersConfig: new AutoChaptersConfig()), JsonOptions);
 
         await using var fileStream = File.OpenRead(filePath);
         using var content = new MultipartFormDataContent();
@@ -91,7 +120,7 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
         }
     }
 
-    private async Task<string> FetchTranscriptAsync(string jobId, CancellationToken ct)
+    private async Task<string> FetchTranscriptTextAsync(string jobId, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"jobs/{jobId}/transcript?format=txt");
         AddAuth(request);
@@ -105,20 +134,62 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
         return body.Trim();
     }
 
+    /// <summary>
+    /// Fetches the same job's JSON output solely to read its <c>chapters</c>
+    /// array. Best-effort: a video under Speechmatics' ~10-minute chaptering
+    /// minimum, an unsupported language, or a chaptering failure all legally
+    /// come back with no chapters (AI Video-Grounded Questions Implementation
+    /// Plan §2/§6) — that's a normal outcome, not an error, so this returns
+    /// an empty list rather than throwing when the array is simply absent.
+    /// </summary>
+    private async Task<IReadOnlyList<TranscriptChapter>> FetchChaptersAsync(string jobId, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"jobs/{jobId}/transcript?format=json-v2");
+        AddAuth(request);
+
+        using var response = await http.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Fetching the Speechmatics chapters failed ({(int)response.StatusCode}): {body}");
+
+        var parsed = JsonSerializer.Deserialize<ChaptersResponse>(body, JsonOptions);
+        if (parsed?.Chapters is not { Count: > 0 } chapters)
+            return [];
+
+        return chapters
+            .Where(c => c.Title is not null)
+            .Select(c => new TranscriptChapter(c.Title!, c.Summary, c.StartTime, c.EndTime))
+            .ToList();
+    }
+
     private void AddAuth(HttpRequestMessage request) =>
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
 
     private record JobConfig(
         [property: JsonPropertyName("type")] string Type,
-        [property: JsonPropertyName("transcription_config")] TranscriptionConfig TranscriptionConfig);
+        [property: JsonPropertyName("transcription_config")] TranscriptionConfig TranscriptionConfig,
+        [property: JsonPropertyName("auto_chapters_config")] AutoChaptersConfig AutoChaptersConfig);
 
     private record TranscriptionConfig(
         [property: JsonPropertyName("language")] string Language,
-        [property: JsonPropertyName("model")] string Model);
+        [property: JsonPropertyName("model")] string Model,
+        [property: JsonPropertyName("diarization")] string Diarization);
+
+    /// <summary>Empty object enables the feature with defaults — Speechmatics' documented config shape.</summary>
+    private record AutoChaptersConfig;
 
     private record CreateJobResponse([property: JsonPropertyName("id")] string? Id);
 
     private record JobStatusResponse([property: JsonPropertyName("job")] JobStatus? Job);
 
     private record JobStatus([property: JsonPropertyName("status")] string? Status);
+
+    private record ChaptersResponse([property: JsonPropertyName("chapters")] List<ChapterJson>? Chapters);
+
+    private record ChapterJson(
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("summary")] string? Summary,
+        [property: JsonPropertyName("start_time")] double StartTime,
+        [property: JsonPropertyName("end_time")] double EndTime);
 }
