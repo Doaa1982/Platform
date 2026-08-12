@@ -7,6 +7,7 @@ using Platform.Api.AI.Skills;
 using Platform.Api.Authorization;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.IdentityModel.Tokens;
 using Platform.Api.Services;
 using Platform.Domain;
@@ -135,7 +136,7 @@ else if (aiOptions.Provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
     // a reasonable default while billing/keys for the others are unsettled.
     var ollamaOptions = builder.Configuration.GetSection(OllamaOptions.Section).Get<OllamaOptions>() ?? new OllamaOptions();
     builder.Services.AddSingleton(ollamaOptions);
-    builder.Services.AddHttpClient<IAiModelProvider, OllamaModelProvider>(client =>
+    var ollamaClientBuilder = builder.Services.AddHttpClient<IAiModelProvider, OllamaModelProvider>(client =>
     {
         client.BaseAddress = new Uri(ollamaOptions.BaseUrl);
         // Local inference on CPU can be genuinely slow for a first response
@@ -143,6 +144,14 @@ else if (aiOptions.Provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
         // has been observed to cut this off on modest hardware.
         client.Timeout = TimeSpan.FromMinutes(5);
     });
+    // Aspire's AddServiceDefaults() wraps every HttpClient (via
+    // ConfigureHttpClientDefaults) in Microsoft.Extensions.Http.Resilience's
+    // standard pipeline, whose defaults — a 10s per-attempt timeout, 3
+    // retries, 30s total-request timeout — fire long before client.Timeout
+    // above ever gets a chance to. That pipeline is sized for fast internal
+    // service calls, not CPU-bound local inference, so it needs overriding
+    // here rather than left to silently cap every slow response at ~30s.
+    ExtendResilienceTimeouts(builder, ollamaClientBuilder.Name, TimeSpan.FromMinutes(5));
 }
 else
 {
@@ -164,15 +173,45 @@ builder.Services.AddScoped<GenerateStandaloneQuestionsSkill>();
 
 // ── Video transcription (AI Video Transcript Implementation Plan) ──────────
 // A separate provider boundary from the text-completion one above: Claude
-// doesn't do speech-to-text, and Speechmatics accepts the stored video file
-// directly (mp4 is a supported input format), so no audio-extraction step.
-var speechmaticsOptions = builder.Configuration.GetSection(SpeechmaticsOptions.Section).Get<SpeechmaticsOptions>() ?? new SpeechmaticsOptions();
-builder.Services.AddSingleton(speechmaticsOptions);
-builder.Services.AddHttpClient<IAudioTranscriptionProvider, SpeechmaticsTranscriptionProvider>(client =>
+// doesn't do speech-to-text. Provider sits behind IAudioTranscriptionProvider
+// — same Transcription:Provider switch pattern as Ai:Provider above.
+var transcriptionOptions = builder.Configuration.GetSection(TranscriptionOptions.Section).Get<TranscriptionOptions>() ?? new TranscriptionOptions();
+if (transcriptionOptions.Provider.Equals("FasterWhisper", StringComparison.OrdinalIgnoreCase))
 {
-    client.BaseAddress = new Uri("https://eu1.asr.api.speechmatics.com/v2/");
-    client.Timeout = Timeout.InfiniteTimeSpan; // polling loop manages its own MaxWaitMinutes deadline
-});
+    // Local model, no API key, no billing — runs entirely on the machine
+    // running the API (or another machine on the local network). Needs a
+    // faster-whisper server (e.g. `speaches`) already running before use.
+    // Intended default for local development; has no chapter-detection
+    // equivalent to Speechmatics' Auto Chapters, so TranscriptChapters stays
+    // empty for videos transcribed this way.
+    var fasterWhisperOptions = builder.Configuration.GetSection(FasterWhisperOptions.Section).Get<FasterWhisperOptions>() ?? new FasterWhisperOptions();
+    builder.Services.AddSingleton(fasterWhisperOptions);
+    var fasterWhisperClientBuilder = builder.Services.AddHttpClient<IAudioTranscriptionProvider, FasterWhisperTranscriptionProvider>(client =>
+    {
+        client.BaseAddress = new Uri(fasterWhisperOptions.BaseUrl);
+        // Local inference on CPU can be genuinely slow for a longer video —
+        // same reasoning as OllamaModelProvider's extended timeout.
+        client.Timeout = TimeSpan.FromMinutes(30);
+    });
+    ExtendResilienceTimeouts(builder, fasterWhisperClientBuilder.Name, TimeSpan.FromMinutes(30));
+}
+else
+{
+    // Hosted, production default. Speechmatics accepts the stored video file
+    // directly (mp4 is a supported input format), so no audio-extraction step.
+    var speechmaticsOptions = builder.Configuration.GetSection(SpeechmaticsOptions.Section).Get<SpeechmaticsOptions>() ?? new SpeechmaticsOptions();
+    builder.Services.AddSingleton(speechmaticsOptions);
+    var speechmaticsClientBuilder = builder.Services.AddHttpClient<IAudioTranscriptionProvider, SpeechmaticsTranscriptionProvider>(client =>
+    {
+        client.BaseAddress = new Uri("https://eu1.asr.api.speechmatics.com/v2/");
+        client.Timeout = Timeout.InfiniteTimeSpan; // the polling loop manages its own MaxWaitMinutes deadline
+    });
+    // client.Timeout above only matters if something respects it — the
+    // resilience pipeline's own attempt/total timeouts run first, so they
+    // need extending too, mainly to give a large video's upload (the one
+    // real risk for a single HTTP call here) enough room.
+    ExtendResilienceTimeouts(builder, speechmaticsClientBuilder.Name, TimeSpan.FromHours(2));
+}
 builder.Services.AddSingleton<TranscriptionQueue>();
 builder.Services.AddHostedService<TranscriptionBackgroundService>();
 
@@ -400,6 +439,33 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+/// <summary>
+/// Aspire's AddServiceDefaults() wraps every HttpClient in a standard
+/// resilience pipeline (10s per-attempt timeout, 3 retries, 30s total-request
+/// timeout by default) via ConfigureHttpClientDefaults — sized for fast
+/// internal service calls. For a client whose whole reason for a long
+/// client.Timeout is CPU-bound local inference or a slow upload, that
+/// pipeline runs first and silently kills the call long before client.Timeout
+/// ever applies. This re-targets the same named pipeline's options (matching
+/// on the HttpClient's own name, exactly what AddStandardResilienceHandler
+/// bound to when ConfigureHttpClientDefaults added it) rather than layering
+/// on a second one, and turns retries off: none of these calls are
+/// idempotent — a "timed out" request may already have been received and
+/// started work server-side — and the caller already owns its own
+/// single-attempt semantics (TranscriptionBackgroundService records one
+/// failure as terminal, no retry loop).
+/// </summary>
+static void ExtendResilienceTimeouts(WebApplicationBuilder builder, string clientName, TimeSpan timeout)
+{
+    builder.Services.Configure<HttpStandardResilienceOptions>(clientName, options =>
+    {
+        options.AttemptTimeout.Timeout = timeout;
+        options.TotalRequestTimeout.Timeout = timeout;
+        options.CircuitBreaker.SamplingDuration = timeout * 2; // must be >= 2x AttemptTimeout
+        options.Retry.MaxRetryAttempts = 0;
+    });
+}
 
 /// <summary>
 /// Polls until the database accepts connections, or gives up and rethrows.

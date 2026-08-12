@@ -94,8 +94,15 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
 
         // Defensive clamp: a model that ignores the requested count or omits
         // Points shouldn't hand the tutor a malformed or oversized draft set.
+        // Options/AcceptedAnswers get the same null-guard as
+        // GenerateQuestionsSkill — see its remarks for why.
         return suggestions
-            .Select(s => s.Points <= 0 ? s with { Points = 1 } : s)
+            .Select(s => s with
+            {
+                Points = s.Points <= 0 ? 1 : s.Points,
+                Options = s.Options ?? [],
+                AcceptedAnswers = s.AcceptedAnswers ?? []
+            })
             .Take(questionCount)
             .ToList();
     }

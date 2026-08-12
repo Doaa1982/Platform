@@ -79,12 +79,20 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
         var suggestions = await orchestrator.RunAsync<List<SuggestedQuestion>>(SystemPrompt, userPrompt, ct);
 
         // Defensive clamp: a model-proposed timestamp outside the video's
-        // actual duration would place a checkpoint nobody can reach.
+        // actual duration would place a checkpoint nobody can reach. Options
+        // and AcceptedAnswers get the same treatment — the system prompt
+        // above tells the model to omit them for question types that don't
+        // use them, and a model that complies (or just forgets the field)
+        // deserializes into a C# null despite the record's non-nullable
+        // IReadOnlyList<string> type, which the frontend was never written
+        // to expect (it crashed the whole page — see AnswerKeyDisplay).
         return suggestions
             .Select(s => s with
             {
                 VideoTimestampSeconds = Math.Clamp(s.VideoTimestampSeconds, 0, Math.Max(videoDurationSeconds - 1, 0)),
-                Points = s.Points <= 0 ? 1 : s.Points
+                Points = s.Points <= 0 ? 1 : s.Points,
+                Options = s.Options ?? [],
+                AcceptedAnswers = s.AcceptedAnswers ?? []
             })
             .Take(count)
             .ToList();
@@ -156,6 +164,14 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
         var suggestion = suggestions.FirstOrDefault()
             ?? throw new InvalidOperationException("The model returned no question for this chapter.");
 
-        return suggestion.Points <= 0 ? suggestion with { Points = 1 } : suggestion;
+        // Same null-guard as SuggestAsync above — Options/AcceptedAnswers
+        // must never reach the caller as null despite the model being told
+        // to omit them for question types that don't use them.
+        return suggestion with
+        {
+            Points = suggestion.Points <= 0 ? 1 : suggestion.Points,
+            Options = suggestion.Options ?? [],
+            AcceptedAnswers = suggestion.AcceptedAnswers ?? []
+        };
     }
 }

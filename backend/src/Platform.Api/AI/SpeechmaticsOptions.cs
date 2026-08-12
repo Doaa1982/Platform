@@ -15,7 +15,16 @@ public class SpeechmaticsOptions
     /// <summary>"standard" (cost/turnaround) or "enhanced" (accuracy) — AI Video Transcript plan §2/§8.</summary>
     public string Model { get; set; } = "standard";
 
-    public string Language { get; set; } = "en";
+    /// <summary>
+    /// "auto" (default) turns on Speechmatics' Automatic Language
+    /// Identification instead of pinning one language — lesson videos are a
+    /// mix of Arabic and English, and forcing one language onto audio
+    /// spoken in the other silently produces wrong (not failing) text, as
+    /// confirmed against faster-whisper for the same reason (see
+    /// FasterWhisperOptions.Language). Set to an ISO-639-1 code only if
+    /// every video this provider handles is known to be in one language.
+    /// </summary>
+    public string Language { get; set; } = "auto";
 
     /// <summary>How often to poll Speechmatics for job completion while a transcription is running.</summary>
     public int PollIntervalSeconds { get; set; } = 5;

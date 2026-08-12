@@ -2118,7 +2118,7 @@ function AnswerKeyDisplay({ type, options, correctOptionIndex, acceptedAnswers }
   if (type === "CompleteTheSentence") {
     return (
       <div className="discover-tag-row" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {acceptedAnswers.map((a, i) => (
+        {(acceptedAnswers ?? []).map((a, i) => (
           <span key={i} className="lw-tag" style={{ background: "var(--surface-2)" }}>{a}</span>
         ))}
       </div>
@@ -2129,7 +2129,7 @@ function AnswerKeyDisplay({ type, options, correctOptionIndex, acceptedAnswers }
   }
   return (
     <div className="lw-options">
-      {options.map((opt, i) => (
+      {(options ?? []).map((opt, i) => (
         <div key={i} className={`lw-option ${i === correctOptionIndex ? "is-correct" : ""}`} style={{ cursor: "default" }}>
           {opt}
         </div>
