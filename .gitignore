@@ -493,3 +493,6 @@ node_modules/
 # Local tooling (project-level .claude/settings.json stays shareable)
 .claude/settings.local.json
 .DS_Store
+
+# Runtime-uploaded learning assets (videos, PDFs, images) — never belongs in git
+backend/src/Platform.Api/App_Data/
