@@ -126,6 +126,24 @@ else if (aiOptions.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase)
         client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");
     });
 }
+else if (aiOptions.Provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
+{
+    // Local model, no API key, no billing — runs entirely on the machine
+    // running the API. Needs `ollama serve` running and the configured
+    // model already pulled (`ollama pull <model>`) before use. Slower and
+    // lower-quality than a hosted frontier model, but free and private —
+    // a reasonable default while billing/keys for the others are unsettled.
+    var ollamaOptions = builder.Configuration.GetSection(OllamaOptions.Section).Get<OllamaOptions>() ?? new OllamaOptions();
+    builder.Services.AddSingleton(ollamaOptions);
+    builder.Services.AddHttpClient<IAiModelProvider, OllamaModelProvider>(client =>
+    {
+        client.BaseAddress = new Uri(ollamaOptions.BaseUrl);
+        // Local inference on CPU can be genuinely slow for a first response
+        // (model load + generation) — the default HttpClient 100s timeout
+        // has been observed to cut this off on modest hardware.
+        client.Timeout = TimeSpan.FromMinutes(5);
+    });
+}
 else
 {
     builder.Services.AddHttpClient<IAiModelProvider, ClaudeModelProvider>();
