@@ -1107,6 +1107,11 @@ namespace Platform.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<string>("TranscriptSource")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<string>("TranscriptStatus")
                         .IsRequired()
                         .HasMaxLength(32)

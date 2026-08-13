@@ -136,7 +136,7 @@ public class ContentStudioService(
                 r.VideoAssetId,
                 r.VideoAssetId is { } videoId && assets.TryGetValue(videoId, out var video) ? LearningAssetService.Describe(video) : null,
                 r.VideoUrl, a?.Questions.Count ?? 0, submissionCount,
-                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptError, r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework,
+                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptSource.ToString(), r.TranscriptError, r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework,
                 r.Resources.OrderBy(res => res.Position).Where(res => assets.ContainsKey(res.LearningAssetId))
                     .Select(res => new LessonResourceRow(res.Id, LearningAssetService.Describe(assets[res.LearningAssetId]))).ToList());
         }
@@ -216,6 +216,12 @@ public class ContentStudioService(
                 ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
             var deliveryMode = Enum.TryParse<LessonDeliveryMode>(request.DeliveryMode, out var parsed) ? parsed : LessonDeliveryMode.Recorded;
             draft.Edit(request.Title, request.Body, request.EstimatedMinutes, deliveryMode, request.WhatYoullLearn, request.LearningObjectives, request.Glossary, request.Homework);
+            
+            if (!string.IsNullOrWhiteSpace(request.Transcript) && request.Transcript != draft.Transcript)
+            {
+                draft.SetManualTranscript(request.Transcript);
+            }
+            
             l.Rename(request.Title);
         }, ct);
 

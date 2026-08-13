@@ -57,6 +57,8 @@ public record LessonRevisionRow(
     string? Transcript,
     /// <summary>"None" | "Processing" | "Ready" | "Failed" (TranscriptStatus).</summary>
     string TranscriptStatus,
+    /// <summary>"None" | "Automatic" | "Manual" | "Imported" (TranscriptSource).</summary>
+    string TranscriptSource,
     string? TranscriptError,
     /// <summary>Short learner-facing "what you'll learn" preview, AI-drafted and tutor-editable. Null until set.</summary>
     string? WhatYoullLearn,
@@ -80,7 +82,7 @@ public record ReorderUnitsRequest(IReadOnlyList<Guid> UnitIds);
 /// <summary>Every lesson id currently in the unit, once each, in the desired order.</summary>
 public record ReorderLessonsRequest(IReadOnlyList<Guid> LessonIds);
 public record SetSequentialUnlockRequest(bool Enabled);
-public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode, string? WhatYoullLearn = null, string? LearningObjectives = null, string? Glossary = null, string? Homework = null);
+public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode, string? Transcript = null, string? WhatYoullLearn = null, string? LearningObjectives = null, string? Glossary = null, string? Homework = null);
 public record AttachVideoRequest(Guid LearningAssetId);
 public record AttachResourceRequest(Guid LearningAssetId);
 public record SetVideoUrlRequest(string Url);

@@ -195,6 +195,39 @@ if (transcriptionOptions.Provider.Equals("FasterWhisper", StringComparison.Ordin
     });
     ExtendResilienceTimeouts(builder, fasterWhisperClientBuilder.Name, TimeSpan.FromMinutes(30));
 }
+else if (transcriptionOptions.Provider.Equals("LocalWhisper", StringComparison.OrdinalIgnoreCase))
+{
+    // Locally-running services/transcription FastAPI (faster-whisper medium
+    // model). No API key, no billing, no data leaves the machine. Runs on
+    // port 9000 by default to avoid colliding with the speaches container on
+    // 8000. Start it with:
+    //   cd services/transcription && uvicorn app.main:app --reload --port 9000
+    var localWhisperOptions = builder.Configuration.GetSection(LocalWhisperOptions.Section).Get<LocalWhisperOptions>() ?? new LocalWhisperOptions();
+    builder.Services.AddSingleton(localWhisperOptions);
+    // ConfigureHttpClientDefaults (ServiceDefaults) wraps every client in the
+    // standard 10s/30s pipeline. For a CPU-bound local inference call that can
+    // run for an hour that pipeline fires immediately and kills the request.
+    // RemoveAllResilienceHandlers strips it so we can replace it with one
+    // sized for the actual workload. The API is experimental (EXTEXP0001) —
+    // suppressed deliberately; it's the right tool here and the call is
+    // confined to this dev-only branch.
+#pragma warning disable EXTEXP0001
+    builder.Services.AddHttpClient<IAudioTranscriptionProvider, LocalWhisperTranscriptionProvider>(client =>
+    {
+        client.BaseAddress = new Uri(localWhisperOptions.BaseUrl);
+        // Medium model on CPU transcribes in roughly real-time — a 60-minute
+        // video can take 60+ minutes. Let the resilience pipeline below own
+        // the actual deadline instead of this hard cap.
+        client.Timeout = Timeout.InfiniteTimeSpan;
+    })
+    .RemoveAllResilienceHandlers();
+    // No resilience handler added back: transcription is not idempotent
+    // (a "timed out" request may already have started work), there is no
+    // useful circuit-breaker for a single-machine dev tool, and the process
+    // has no external timeout — it will wait as long as the model needs.
+    // client.Timeout = Timeout.InfiniteTimeSpan above is the only ceiling.
+#pragma warning restore EXTEXP0001
+}
 else
 {
     // Hosted, production default. Speechmatics accepts the stored video file

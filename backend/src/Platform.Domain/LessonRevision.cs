@@ -57,6 +57,7 @@ public class LessonRevision
     public TranscriptStatus TranscriptStatus { get; private set; } = TranscriptStatus.None;
     /// <summary>Why the last transcription attempt failed, if TranscriptStatus is Failed. Null otherwise.</summary>
     public string? TranscriptError { get; private set; }
+    public TranscriptSource TranscriptSource { get; private set; } = TranscriptSource.None;
 
     /// <summary>
     /// Speechmatics Auto Chapters for this transcript, as JSON
@@ -236,6 +237,25 @@ public class LessonRevision
         Transcript = text;
         TranscriptChaptersJson = chaptersJson;
         TranscriptStatus = TranscriptStatus.Ready;
+        TranscriptSource = TranscriptSource.Automatic;
+        TranscriptError = null;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Allows the tutor to manually provide the lesson source/transcript, bypassing
+    /// the async video transcription process. Marks the transcript as Ready so AI
+    /// assistance tools can use it immediately.
+    /// </summary>
+    public void SetManualTranscript(string text)
+    {
+        RequireDraft();
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        
+        Transcript = text.Trim();
+        TranscriptChaptersJson = null; // No auto-chapters for manual text
+        TranscriptStatus = TranscriptStatus.Ready;
+        TranscriptSource = TranscriptSource.Manual;
         TranscriptError = null;
         UpdatedAt = DateTime.UtcNow;
     }
@@ -255,6 +275,7 @@ public class LessonRevision
         Transcript = null;
         TranscriptChaptersJson = null;
         TranscriptStatus = TranscriptStatus.None;
+        TranscriptSource = TranscriptSource.None;
         TranscriptError = null;
     }
 
