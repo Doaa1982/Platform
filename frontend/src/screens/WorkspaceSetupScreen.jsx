@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle, AlertCircle, AlertTriangle, Check, Circle, ArrowRight, Globe, Lock, Rocket } from "lucide-react";
+import { LoaderCircle, AlertCircle, AlertTriangle, Check, Circle, Minus, ArrowRight, Globe, Lock, Rocket } from "lucide-react";
 import QRCode from "qrcode";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -138,7 +138,6 @@ export default function WorkspaceSetupScreen() {
 
       <div className="lw-eyebrow">{t("setup.eyebrow")}</div>
       <h1>{setup.name}</h1>
-      <p className="lw-sub">{t("setup.lead", { name: setup.name })}</p>
 
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
@@ -285,19 +284,29 @@ export default function WorkspaceSetupScreen() {
   );
 }
 
-// The checklist behind INV-007 — the API already computes this on every GET
-// (WorkspaceSetupResponse.Completeness), it just wasn't surfaced anywhere.
-// Public identifier and addressability are the same field today (BA-003's
-// implicit-subdomain stopgap), so they're shown as one row rather than two
-// checks that would always move in lockstep.
+/**
+ * The checklist Learning Workspace Experience Architecture §18 defines
+ * (Blocking / Addressable / Suggested), computed from WorkspaceSetupResponse
+ * .Completeness — the API already returns this on every GET, it just wasn't
+ * surfaced anywhere until now. §18 is explicit that Suggested items never
+ * read as errors, so "unavailable" items (nothing to toggle yet — TD-006)
+ * get a muted dash and a "not built yet" badge rather than an empty circle
+ * that would imply the Owner is failing to finish something they could.
+ */
 function Readiness({ completeness, t }) {
   if (!completeness) return null;
-  const items = [
+
+  const blocking = [
     { key: "name", done: completeness.hasName, label: t("setup.readinessName") },
     { key: "slug", done: completeness.hasPublicIdentifier, label: t("setup.readinessSlug") },
-    { key: "description", done: completeness.hasDescription, label: t("setup.readinessDescription"), optional: true },
   ];
-  const remaining = items.filter((it) => !it.optional && !it.done).length;
+  const suggested = [
+    { key: "description", status: completeness.hasDescription ? "done" : "pending", label: t("setup.readinessDescription"), badge: completeness.hasDescription ? null : t("setup.readinessOptional") },
+    { key: "config", status: "unavailable", label: t("setup.readinessConfig"), badge: t("setup.readinessNotAvailable") },
+    { key: "branding", status: "unavailable", label: t("setup.readinessBranding"), badge: t("setup.readinessNotAvailable") },
+    { key: "capabilities", status: "unavailable", label: t("setup.readinessCapabilities"), badge: t("setup.readinessNotAvailable") },
+  ];
+  const remaining = blocking.filter((it) => !it.done).length;
 
   return (
     <div className={`lw-setup__readiness ${completeness.readyToPublish ? "is-ready" : ""}`}>
@@ -307,15 +316,46 @@ function Readiness({ completeness, t }) {
           {completeness.readyToPublish ? t("setup.readinessReady") : t("setup.readinessRemaining", { count: remaining })}
         </span>
       </div>
-      <ul className="lw-setup__readinesslist">
-        {items.map((it) => (
-          <li key={it.key} className={it.done ? "is-done" : ""}>
-            <span className="lw-setup__readinesscheck">{it.done ? <Check size={11} /> : <Circle size={7} />}</span>
-            <span>{it.label}</span>
-            {it.optional && <span className="lw-setup__readinessoptional">{t("setup.readinessOptional")}</span>}
-          </li>
-        ))}
-      </ul>
+
+      <div className="lw-setup__readinessgroup">
+        <span className="lw-setup__readinessgrouplabel">{t("setup.readinessBlockingTitle")}</span>
+        <ul className="lw-setup__readinesslist">
+          {blocking.map((it) => (
+            <li key={it.key} className={it.done ? "is-done" : ""}>
+              <span className="lw-setup__readinesscheck">{it.done ? <Check size={11} /> : <Circle size={7} />}</span>
+              <span>{it.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {completeness.isAddressable && (
+        <div className="lw-setup__readinessgroup">
+          <span className="lw-setup__readinessgrouplabel">{t("setup.readinessAddressableTitle")}</span>
+          <ul className="lw-setup__readinesslist">
+            <li className="is-done">
+              <span className="lw-setup__readinesscheck"><Check size={11} /></span>
+              <span>{t("setup.readinessAddressable")}</span>
+              <span className="lw-setup__readinessoptional">{t("setup.readinessAutomatic")}</span>
+            </li>
+          </ul>
+        </div>
+      )}
+
+      <div className="lw-setup__readinessgroup">
+        <span className="lw-setup__readinessgrouplabel">{t("setup.readinessSuggestedTitle")}</span>
+        <ul className="lw-setup__readinesslist">
+          {suggested.map((it) => (
+            <li key={it.key} className={it.status === "done" ? "is-done" : it.status === "unavailable" ? "is-unavailable" : ""}>
+              <span className="lw-setup__readinesscheck">
+                {it.status === "done" ? <Check size={11} /> : it.status === "unavailable" ? <Minus size={11} /> : <Circle size={7} />}
+              </span>
+              <span>{it.label}</span>
+              {it.badge && <span className="lw-setup__readinessoptional">{it.badge}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -412,9 +452,15 @@ const CSS = `
   }
   .lw-setup__readinessstatus { text-transform: none; letter-spacing: normal; font-weight: 600; }
   .lw-setup__readiness.is-ready .lw-setup__readinessstatus { color: var(--accent-2); }
-  .lw-setup__readinesslist { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; }
+  .lw-setup__readinessgroup { margin-top: 14px; }
+  .lw-setup__readinessgrouplabel { font-size: 0.72rem; font-weight: 600; color: var(--ink-soft); }
+  .lw-setup__readinesslist { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 8px; }
   .lw-setup__readinesslist li { display: flex; align-items: center; gap: 9px; font-size: 0.85rem; color: var(--ink-soft); }
   .lw-setup__readinesslist li.is-done { color: var(--ink); }
+  /* Suggested items with nothing to toggle yet (TD-006) — a dash, not an
+     empty circle, and never red: §18's Presentation Principle reserves
+     blocking/error language for the Blocking group alone. */
+  .lw-setup__readinesslist li.is-unavailable { opacity: 0.7; }
   .lw-setup__readinesscheck {
     width: 17px; height: 17px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;

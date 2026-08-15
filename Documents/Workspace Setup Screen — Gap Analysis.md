@@ -10,15 +10,17 @@
 >
 > Author: Business Analysis Team
 >
-> Scope: `frontend/src/screens/WorkspaceSetupScreen.jsx` (last modified 2026-08-09) against
-> Workspace Setup Business Analysis v1.0 (last modified 2026-08-05)
+> Scope: `frontend/src/screens/WorkspaceSetupScreen.jsx` (last modified 2026-08-15) against
+> Workspace Setup Business Analysis v1.0 (last modified 2026-08-15) and Learning Workspace
+> Experience Architecture §18 (added 2026-08-15)
 >
 > Related Documents:
 >
 > - Workspace Setup Business Analysis
 > - Workspace Aggregate Design
 > - Learning Workspace Experience Architecture
-> - Technical Debt Backlog (TD-006, TD-009)
+> - Join Request Business Analysis
+> - Technical Debt Backlog (TD-006, TD-009, TD-019, TD-020)
 
 ---
 
@@ -54,8 +56,9 @@ already accounts for the gap.
 | Enabled Capabilities selection | §3, §8 | Missing | TD-006 |
 | Entry Point (implicit-subdomain) addressability note | BA-003 | Implemented | TD-009 (Done) |
 | Setup Completeness, derived not stored | BA-005 | Implemented | — |
-| Readiness Checklist presentation | §4 | Partial | Not covered by any TD (see §6 below) |
-| Join Requests toggle + QR code | not in spec | Undocumented | Not covered by any TD (see §7 below) |
+| Readiness Checklist presentation | §4, Experience §18 | Implemented | TD-019 (Done — see §6 below) |
+| Join Requests toggle + QR code | §8, Join Request BA-008 | Documented and implemented | TD-020 (Done — see §7 below) |
+| Public Identifier change warning on a Published/Active workspace | §16 (open question) | Partial — UI mitigation only | Not a Backlog entry; §16 itself is still open (see §8 below) |
 
 ## 4. Implemented, matches spec
 
@@ -103,70 +106,112 @@ just the domain model.
 from the aggregate, so this is in fact covered, just worth flagging explicitly since it's
 easy to miss inside a combined bullet.
 
-## 6. Partial: Readiness Checklist
+## 6. Resolved: Readiness Checklist (was Partial)
 
-§4 defines the Readiness Checklist as "the Owner-facing presentation of Setup
-Completeness — what is done, what remains," explicitly owned by Learning Workspace
-Experience Architecture, "referenced here so that this document specifies *what must be
-true*, not how it is displayed."
+*(Updated 2026-08-15, same day as the original finding.)* §4 defines the Readiness
+Checklist as "the Owner-facing presentation of Setup Completeness — what is done, what
+remains," explicitly owned by Learning Workspace Experience Architecture. At the time
+this document was first drafted, that document did not define it — TD-019 was raised
+for exactly that gap.
 
-`Learning Workspace Experience Architecture.md` does not mention a Readiness Checklist,
-or any checklist, anywhere in its current text. The concept is referenced by Workspace
-Setup Business Analysis as being defined elsewhere, but nowhere actually defines it.
+Both halves are now closed. Learning Workspace Experience Architecture §18 ("Owner
+Setup Experience") defines the checklist as three groups — **Blocking** (workspace
+name, public web address), **Addressable** (satisfied automatically today via BA-003's
+implicit Entry Point, shown so the Owner understands why), and **Suggested, never
+blocking** (description, language/timezone/regional settings, branding, enabled
+capabilities) — plus a Presentation Principle that Suggested items never read as errors.
 
-The screen's stepper is not a substitute for this — it shows lifecycle *state* (which of
-the five stages the Workspace is in), not setup *completeness* (which specific fields or
-conditions are outstanding within the current stage). The only completeness signal
-surfaced today is the single `blocker` string returned by the API when there is no
-available next transition.
+`WorkspaceSetupScreen.jsx` now implements this directly: a `Readiness` component renders
+the same three groups, reading `WorkspaceSetupResponse.Completeness` (already returned by
+the API — no backend change needed). The three Suggested items with nothing to toggle yet
+(TD-006: language/timezone/regional, branding, capabilities) render with a muted dash and
+a "not built yet" badge rather than an empty circle, so they read as unavailable rather
+than as the Owner's unfinished business — matching §18's Presentation Principle. The
+stepper still shows lifecycle *state* as before; the Readiness Checklist now sits
+alongside it showing setup *completeness*, which is the distinction §4 draws.
 
-This is a documentation gap one level up from the screen: the screen cannot be checked
-against a Readiness Checklist spec that does not exist yet. Recommend raising this against
-Learning Workspace Experience Architecture directly rather than against the screen.
+## 7. Resolved: Join Requests toggle and QR code (was Undocumented)
 
-## 7. Undocumented: Join Requests toggle and QR code
+*(Updated 2026-08-15, same day as the original finding.)* The screen includes an
+`acceptsJoinRequests` toggle and a QR code linking to `/join/{slug}`. At the time this
+document was first drafted, neither Workspace Setup Business Analysis nor Join Request
+Business Analysis assigned an owner to the toggle's rules — TD-020 was raised for that gap.
 
-The screen includes an `acceptsJoinRequests` toggle and a QR code linking to
-`/join/{slug}`. Neither appears in Workspace Setup Business Analysis. `AcceptsJoinRequests`
-is a real, implemented field (present in the EF model and migrations), so this is not
-speculative or dead code — it is genuine, shipped functionality that predates or sits
-outside this document's scope.
+Join Request Business Analysis gained BA-008: authority is Owner-or-Administrator (the
+same Workspace Setup authority as everything else on this screen, BA-001), and toggling
+the setting never affects a Join Request already `Submitted` — it only gates new
+submissions. Workspace Setup Business Analysis §8 gained a matching "Accepting Join
+Requests" note pointing back at BA-008 as the owning document. The toggle's actual
+behaviour needed no code change to match BA-008 — `JoinRequestService` already did
+nothing beyond the submission-time check BA-008 confirms is the only intended effect.
 
-§5 of Workspace Setup Business Analysis explicitly excludes "Membership management inside
-the Workspace — invitations, roles, member lifecycle," attributing that territory to
-Membership Aggregate Design and Workspace_Access_Context. Whether a join-requests-open/closed
-policy flag counts as "membership management" (out of scope) or as a Workspace-level policy
-setting analogous to Visibility (in scope, just not yet written up) is genuinely ambiguous
-from the text — it is not a clear violation, but it is not covered either.
+One real gap did survive from the original finding: the toggle previously gave no
+confirmation on click, unlike every lifecycle action on this screen. It now shows a
+success toast ("Now open to join requests." / "Closed to join requests.") on the same
+`act()` path the other actions use.
 
-**Recommendation:** confirm with the domain owner which document this belongs to, then add
-it explicitly — either as a new subsection of Workspace Setup Business Analysis §8, or as a
-cross-reference from Join Request Business Analysis. Leaving it unassigned means the next
-reader of either document will not know this screen surfaces it.
+## 8. New since original analysis: Public Identifier change warning
 
-## 8. Recommendations
+*(Added 2026-08-15, same day as the original analysis.)* §16 records "Changing a Public
+Identifier after publication" as an open question: existing invitation links and any
+external references resolve through the identifier, and whether a change should be
+forbidden, redirected, or permitted destructively is unspecified.
 
-1. Treat §5 (Workspace Configuration, Branding, Capabilities, Visibility) as still blocked
-   on TD-006, not as a new defect — but extend TD-006's scope note to cover the frontend
-   surface, not just the aggregate.
-2. Raise a documentation gap against Learning Workspace Experience Architecture: define the
-   Readiness Checklist it is already cited as owning.
-3. Get an explicit ruling on where the Join Requests toggle's business rules belong, and
-   document it there.
+The screen previously let an Owner retype the Public Identifier of a Published or Active
+workspace with no more friction than editing the description — the only nearby signal was
+a general discoverability note (`/{slug}` is discoverable) rendered below the form
+regardless of what was being edited, not a warning tied to the act of changing it.
+
+`IdentityForm` now compares the typed value against the saved slug and, only when the
+workspace is already Published or Active and the two differ, renders an inline warning
+directly under the Public Identifier field naming the concrete consequence (invitations,
+bookmarks, anything already shared stop resolving once saved).
+
+This is scoped deliberately as a **warning, not a rule**: the form still permits the save.
+§16 asks whether the platform should forbid, redirect, or permit the change; this addition
+answers none of those — it only ensures the Owner sees the risk at the moment they'd cause
+it, instead of finding out after the fact. §16 stays open (see Recommendation 6, next).
+
+## 9. Recommendations
+
+1. ~~Treat §5 (Workspace Configuration, Branding, Capabilities, Visibility) as still
+   blocked on TD-006, not as a new defect — but extend TD-006's scope note to cover the
+   frontend surface, not just the aggregate.~~ **Done** — TD-006 amended 2026-08-15 to
+   record the frontend gap alongside the aggregate gap.
+2. ~~Raise a documentation gap against Learning Workspace Experience Architecture: define
+   the Readiness Checklist it is already cited as owning.~~ **Done** — TD-019 raised and
+   closed the same day; §18 defines it; the screen now implements it (§6, above).
+3. ~~Get an explicit ruling on where the Join Requests toggle's business rules belong, and
+   document it there.~~ **Done** — TD-020 raised and closed the same day; BA-008 owns it
+   (§7, above).
 4. No action needed on the lifecycle stepper, Identity (name/slug/description), or the
    Activate/Entry-Point behaviour — all three match the specification as written.
-
-These are recommendations only; no changes have been made to the Technical Debt Backlog or
-any Business Analysis document. Say the word and I can turn items 1–3 into new or amended
-Technical Debt Backlog entries in the same format as TD-001 through TD-018.
+5. **Still open:** Contact Information and Visibility Setting (§8's two remaining Identity
+   fields) stay genuinely missing — TD-006 names both, no change here. Not worth a
+   dedicated screen section on their own; revisit alongside whatever unblocks TD-006 more
+   broadly.
+6. **Still open:** §16's "Changing a Public Identifier after publication" question is not
+   resolved by the new slug-change warning added 2026-08-15 (§8, above) — that warning
+   only makes the *existing*, silently-permitted risk visible at the point of editing. It
+   does not decide whether the change should instead be forbidden, redirected, or left as
+   is. §16 should stay open until that ruling happens; the warning is a stopgap, not
+   evidence the question is settled.
 
 ---
 
 ## Summary
 
-Most of what's missing from `WorkspaceSetupScreen.jsx` against the Business Analysis is not
-a build defect — it's the already-acknowledged TD-006 scope reduction showing up on the
-frontend the same way it already shows up on the domain model. The two findings that are
-new here are that the Readiness Checklist concept is referenced but never actually defined
-anywhere in the corpus, and that the Join Requests toggle is real, shipped functionality
-with no document claiming ownership of its rules.
+*(Updated 2026-08-15, same day as the original analysis.)* At first draft, most of what
+was missing from `WorkspaceSetupScreen.jsx` against the Business Analysis was not a build
+defect — it was the already-acknowledged TD-006 scope reduction showing up on the frontend
+the same way it already showed up on the domain model. That's still true for Configuration,
+Branding, Capabilities, Contact Information and Visibility — all five remain out of scope
+until TD-006 moves.
+
+The two findings that were new to this document — the Readiness Checklist referenced but
+never defined, and the Join Requests toggle shipped with no document claiming ownership of
+its rules — are now both resolved, in documentation (TD-019, TD-020) and in the screen
+itself (the `Readiness` component; the join-requests success toast). One genuinely new
+surface was added in the same pass and is *not* fully resolved: a slug-change warning
+mitigates, but does not settle, §16's still-open question about changing a Public
+Identifier after publication.

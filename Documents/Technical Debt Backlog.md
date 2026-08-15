@@ -806,10 +806,17 @@ the checklist entirely in terms already settled by Workspace Setup Business Anal
 Suggested, never blocking: configuration, branding, capabilities) plus a presentation
 rule (Suggested items are never shown as errors) and a reminder that it is derived, not
 stored (BA-005). Workspace Setup Business Analysis §4 and §14 now cite §18 by number.
-**Not done:** the API and screen still surface only a single `blocker` string — §18 is
-a specification to build against, not yet reflected in `/api/workspaces/{slug}/setup`
-or `WorkspaceSetupScreen.jsx`. That implementation gap is intentionally left open; this
-entry closed only the documentation gap it was raised for.
+**Not done (superseded 2026-08-15, same day):** this entry originally closed only the
+documentation gap, on the assumption the implementation gap stayed open. It didn't stay
+open long — `WorkspaceSetupScreen.jsx` gained a `Readiness` component the same day,
+built directly against this section: Blocking (name, public web address) and Suggested
+(description — real and checkable; language/timezone/regional, branding, capabilities —
+shown with a "not built yet" badge and a muted dash rather than an empty circle, per
+§18's Presentation Principle, since TD-006 means there's nothing to toggle yet) render as
+separate groups, plus a standalone Addressable row. `/api/workspaces/{slug}/setup`
+needed no change — `WorkspaceSetupResponse.Completeness` already carried every field the
+checklist reads. See the Workspace Setup Screen — Gap Analysis document, §6, for the
+before/after.
 
 ---
 
@@ -892,3 +899,4 @@ check BA-008 confirms is the only intended effect).
 | 2026-08-15 | Gap analysis of `WorkspaceSetupScreen.jsx` against Workspace Setup Business Analysis (see `Documents/Workspace Setup Screen — Gap Analysis.md`). TD-006 amended — the deferred Configuration/Branding/Capabilities surfaces are confirmed missing from the frontend too, not just the aggregate. TD-019 raised — Workspace Setup Business Analysis §4 cites Learning Workspace Experience Architecture as owning the Readiness Checklist, which that document never actually defines. TD-020 raised — the shipped `AcceptsJoinRequests` toggle has no document claiming ownership of its rules. |
 | 2026-08-15 | TD-019 closed — Learning Workspace Experience Architecture gained §18 (Owner Setup Experience), appended after §17 so existing citations of its §13 stay valid, defining the Readiness Checklist in terms Workspace Setup Business Analysis §8/§10 already settled. Workspace Setup Business Analysis §4/§14 now cite §18 by number. Implementation (API + screen still expose only a single `blocker` string) intentionally left open — this closed the documentation gap only. |
 | 2026-08-15 | TD-020 closed — Join Request Business Analysis gained BA-008 (v1.1 → v1.2): `AcceptsJoinRequests` authority is Owner-or-Administrator (BA-001, same as every other Workspace Setup action), and toggling it never affects a Join Request already `Submitted`, confirmed against `WorkspaceSetupService.SetAcceptsJoinRequestsAsync` and `JoinRequestService`, neither of which does anything beyond the existing submission-time check. Workspace Setup Business Analysis §8/§14 cross-reference the owning document. No code change. |
+| 2026-08-15 | TD-019's implementation gap closed the same day — `WorkspaceSetupScreen.jsx` gained a `Readiness` component matching §18's Blocking/Addressable/Suggested groups exactly, reading the `Completeness` object `/api/workspaces/{slug}/setup` already returned. Same pass: a success toast for the `AcceptsJoinRequests` toggle (previously silent), a slug-change warning when editing a Published/Active workspace's public identifier (a UI mitigation for §16's still-open "changing a Public Identifier after publication" question, not a resolution of it), and an honest in-screen note that Configuration/Branding/Capabilities aren't built yet (TD-006). `Documents/Workspace Setup Screen — Gap Analysis.md` updated to match. |
