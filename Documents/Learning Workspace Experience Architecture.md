@@ -375,6 +375,8 @@ They should feel they own:
 
 The platform should feel like infrastructure powering their academy rather than software they rent.
 
+Before opening for learners, the Owner sees a Readiness Checklist guiding them there — see §18.
+
 ---
 
 # 9. Navigation Principles
@@ -566,3 +568,72 @@ The experience architecture is considered successful when:
 - The platform remains invisible throughout the educational experience.
 - Multiple Workspace memberships do not affect the learner's perception of academy independence.
 - Every Workspace delivers a unique, branded, and isolated learning experience while sharing the same underlying platform infrastructure.
+
+---
+
+# 18. Owner Setup Experience
+
+*(Added 2026-08-15, closing Technical Debt Backlog TD-019. Workspace Setup Business
+Analysis §4 names this document as the owner of the Readiness Checklist it defines the
+business meaning for. This section is that definition — appended rather than inserted, so
+existing section-number references elsewhere in the corpus, such as Workspace Aggregate
+Design §208's citation of §13, stay correct.)*
+
+Before a Workspace can publish, the Owner sees a Readiness Checklist.
+
+It answers one question: what is done, and what remains.
+
+It never shows the underlying state machine.
+
+Never
+
+```text
+Status: Configuring
+```
+
+Always
+
+```text
+Give your academy a name — done
+Choose your web address — done
+Open your doors — not yet
+```
+
+## What It Checks
+
+Drawn entirely from Workspace Setup Business Analysis §8 (Configuration) and §10
+(Completion Rules) — this document does not invent new completion rules, only how they
+are shown.
+
+**Blocking** — must be done before Publish is available:
+
+- Workspace name
+- Public web address (the identifier)
+
+**Addressable** — satisfied automatically today, shown so the Owner understands why:
+
+- Reachable at the public web address (Workspace Setup Business Analysis BA-003 — an
+  implicit Entry Point until the Entry Point Registry exists)
+
+**Suggested — never blocking:**
+
+- Description
+- Language, timezone, regional settings
+- Branding — logo, theme, colours
+- Enabled capabilities
+
+## Presentation Principle
+
+A Suggested item left incomplete is a nudge, not a warning.
+
+The checklist never uses red, error icons, or blocking language for anything in the
+Suggested group — that language is reserved for the Blocking group only, exactly as §10
+reserves the word "cannot" for identity and addressability and nowhere else.
+
+## Derived, Never Stored
+
+The checklist is computed from the Workspace's current data on every view.
+
+It is never a saved percentage or a stored "steps completed" counter — Workspace Setup
+Business Analysis BA-005 governs the underlying completeness question, and the checklist
+inherits that rule rather than restating it differently.

@@ -576,7 +576,10 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
 /* =========================================================================
    VIDEO SOURCE PICKER — shared by Content Studio and the Product Builder.
    Matches AI Context §13.3 "Supported Content Sources": Video Upload
-   (MP4 / recorded session) or Video URL (YouTube / Vimeo / other).
+   (MP4 / recorded session) or Video URL — a direct file link, or a
+   YouTube link (rendered via VideoPlayer's IFrame Player embed, full
+   interactive-checkpoint support). Vimeo/other embed providers aren't
+   implemented yet; a non-YouTube URL is still treated as a direct file link.
    ========================================================================= */
 
 /* =========================================================================
@@ -1082,6 +1085,7 @@ const CSS = `
 
   .lw-player { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
   .lw-player__frame { background: linear-gradient(135deg, var(--ink), var(--accent-2)); color: #fff; height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 0.85rem; opacity: 0.95; }
+  .lw-videoplayer__youtube iframe { position: absolute; inset: 0; width: 100% !important; height: 100% !important; border: 0; }
   .lw-timeline { display: flex; gap: 18px; padding: 14px 18px; flex-wrap: wrap; border-top: 1px solid var(--line); }
   .lw-timeline__event { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--ink-soft); }
   .lw-timeline__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }

@@ -69,8 +69,11 @@ public class FasterWhisperTranscriptionProvider(HttpClient http, FasterWhisperOp
             throw new InvalidOperationException("faster-whisper response did not contain any transcribed text.");
 
         // No chapter-detection equivalent to Speechmatics' Auto Chapters —
-        // an empty list is the expected, non-error result here.
-        return new TranscriptionResult(text.Trim(), []);
+        // an empty list is the expected, non-error result here. Also no
+        // segment timing: "response_format=json" returns only the joined
+        // text, not per-segment start/end (unlike LocalWhisperTranscriptionProvider's
+        // custom endpoint) — an empty segments list too.
+        return new TranscriptionResult(text.Trim(), [], []);
     }
 
     private record TranscriptionResponse([property: JsonPropertyName("text")] string? Text);

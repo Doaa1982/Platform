@@ -270,8 +270,8 @@ public class AssessmentService(
             suggestions = chapters is { Count: > 0 }
                 ? await SuggestFromChaptersAsync(ctx.LessonTitle ?? "Untitled lesson", chapters, request.VideoDurationSeconds, ct)
                 : await generateQuestions.SuggestAsync(
-                    ctx.LessonTitle ?? "Untitled lesson", revision?.Body, request.VideoDurationSeconds,
-                    Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions), ct);
+                    ctx.LessonTitle ?? "Untitled lesson", revision?.Body, revision?.Transcript, ParseSegments(revision),
+                    request.VideoDurationSeconds, Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions), ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -380,6 +380,27 @@ public class AssessmentService(
             // Malformed stored JSON should never block question generation —
             // fall back to the duration-based path exactly as if there were
             // no chapters at all.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Same "Ready + parseable" gating as <see cref="ParseChapters"/>, feeding
+    /// the duration-based (no-chapters) fallback path with real ASR segment
+    /// timing so GenerateQuestionsSkill can snap suggested checkpoints to an
+    /// actual moment in the video instead of a number the model guessed.
+    /// </summary>
+    private static IReadOnlyList<TranscriptSegment>? ParseSegments(LessonRevision? revision)
+    {
+        if (revision?.TranscriptStatus != TranscriptStatus.Ready || string.IsNullOrWhiteSpace(revision.TranscriptSegmentsJson))
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<TranscriptSegment>>(revision.TranscriptSegmentsJson);
+        }
+        catch (JsonException)
+        {
             return null;
         }
     }

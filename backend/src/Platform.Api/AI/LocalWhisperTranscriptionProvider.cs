@@ -18,8 +18,12 @@ namespace Platform.Api.AI;
 /// remains available for the <c>speaches</c> OpenAI-compatible server.
 ///
 /// The service returns a segments-based response shape — this provider joins
-/// all segment texts into a single transcript string. Like
-/// <see cref="FasterWhisperTranscriptionProvider"/>, there is no
+/// all segment texts into a single transcript string for <see cref="Transcript"/>-style
+/// reading, but also keeps each segment's own start/end time as a
+/// <see cref="TranscriptSegment"/> (AI Video-Grounded Questions Implementation
+/// Plan), since that's real ASR timing the provider computed, not something
+/// a downstream LLM should have to estimate for a checkpoint's timestamp.
+/// Like <see cref="FasterWhisperTranscriptionProvider"/>, there is no
 /// chapter-detection equivalent to Speechmatics' Auto Chapters, so
 /// <see cref="TranscribeAsync"/> always returns an empty chapters list.
 /// </summary>
@@ -85,10 +89,16 @@ public class LocalWhisperTranscriptionProvider(HttpClient http, LocalWhisperOpti
         if (string.IsNullOrWhiteSpace(text))
             throw new InvalidOperationException("Local Whisper transcript was empty after joining all segments.");
 
+        var segments = parsed.Segments
+            .Where(s => !string.IsNullOrWhiteSpace(s.Text))
+            .Select(s => new TranscriptSegment(s.Start, s.End, s.Text!.Trim()))
+            .ToList();
+
         // No chapter-detection equivalent to Speechmatics' Auto Chapters —
         // an empty list is the expected, non-error result here (same as
-        // FasterWhisperTranscriptionProvider).
-        return new TranscriptionResult(text, []);
+        // FasterWhisperTranscriptionProvider). Segments, unlike chapters, are
+        // real data this provider actually has.
+        return new TranscriptionResult(text, [], segments);
     }
 
     // ── Response shape from services/transcription (POST /api/transcriptions) ──

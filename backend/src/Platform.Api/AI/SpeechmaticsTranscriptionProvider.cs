@@ -44,7 +44,13 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
         var text = await FetchTranscriptTextAsync(jobId, ct);
         var chapters = await FetchChaptersAsync(jobId, ct);
 
-        return new TranscriptionResult(text, chapters);
+        // No per-segment timing parsed from Speechmatics today — the plain
+        // "format=txt" fetch above discards word/segment timestamps, and
+        // "format=json-v2" is only read for its chapters array (see
+        // FetchChaptersAsync). Chapters remain the accurate-timestamp source
+        // for this provider; an empty segments list is the documented,
+        // normal case (see TranscriptSegment).
+        return new TranscriptionResult(text, chapters, []);
     }
 
     private async Task<string> SubmitJobAsync(string filePath, string fileName, CancellationToken ct)

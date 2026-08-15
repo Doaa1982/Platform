@@ -2,13 +2,12 @@ import { useEffect, useState } from "react";
 import {
   LoaderCircle, ArrowRight, Check, Circle,
   Users, UserPlus, Inbox, Rocket, Globe, Lock,
+  BookOpen, Wand2, Award, Receipt, CalendarDays, Clock, Copy,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
-import PlanPickerCards, { PLAN_PICKER_CARDS_CSS } from "../components/PlanPickerCards";
-import CurrentPlanCard, { CURRENT_PLAN_CARD_CSS } from "../components/CurrentPlanCard";
 
 /* =========================================================================
    WORKSPACE HOME — what an owner sees on arrival.
@@ -29,15 +28,12 @@ import CurrentPlanCard, { CURRENT_PLAN_CARD_CSS } from "../components/CurrentPla
 
 export default function WorkspaceHomeScreen({ onNavigate }) {
   const { session, workspace, me } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const slug = workspace?.slug;
 
   const [setup, setSetup] = useState(null);
   const [members, setMembers] = useState(null);
   const [requests, setRequests] = useState([]);
-  const [plans, setPlans] = useState(null);
-  const [packs, setPacks] = useState(null);
-  const [subscription, setSubscription] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -47,14 +43,10 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
       api.getMembers(session.token, slug),
       // Only owners and admins can read this; anyone else simply has no queue
       api.getJoinRequests(session.token, slug).catch(() => []),
-      api.getCommercialPlans().catch(() => []),
-      api.getCommercialPacks().catch(() => []),
-      // 404 just means no subscription exists yet — a normal state, not an error
-      api.getSubscription(session.token, slug).catch(() => null),
     ])
-      .then(([s, m, j, p, k, sub]) => {
+      .then(([s, m, j]) => {
         if (cancelled) return;
-        setSetup(s); setMembers(m); setRequests(j); setPlans(p); setPacks(k); setSubscription(sub); setError(null);
+        setSetup(s); setMembers(m); setRequests(j); setError(null);
       })
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
@@ -72,10 +64,6 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   }
 
   const isLive = setup.status === "Active";
-  // Mirrors SubscriptionScreen's isLive: a Cancelled subscription still has
-  // access until cancellationEffectiveDate (SUB-004) — licenseStatus is
-  // Licensing's own authoritative answer, not re-derived here.
-  const subscriptionLive = subscription && subscription.licenseStatus !== "Expired";
   const activeMembers = members.members.filter((m) => m.status === "Active");
   const learners = activeMembers.filter((m) => m.roles.includes("Learner"));
   const teachers = activeMembers.filter((m) =>
@@ -87,16 +75,25 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   const isFirstRun = !isLive && activeMembers.length <= 1 && pendingInvites.length === 0;
 
   const firstName = (me?.fullName ?? "").trim().split(" ")[0];
+  const initial = (me?.fullName ?? "?").trim()[0]?.toUpperCase() ?? "?";
 
   return (
     <div className="lw-page">
       <style>{CSS}</style>
 
-      <div className="lw-eyebrow">{setup.name}</div>
-      <h1>{isFirstRun ? (firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")) : t("home.overview")}</h1>
-      <p className="lw-sub">
-        {isFirstRun ? t("home.firstRunSub") : t("home.standsToday", { name: setup.name })}
-      </p>
+      <div className="lw-home__greet">
+        <div className="lw-home__greetavatar">{initial}</div>
+        <div className="lw-home__greettext">
+          <div className="lw-eyebrow">{setup.name}</div>
+          <h1>{isFirstRun ? (firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")) : t("home.overview")}</h1>
+          <p className="lw-sub">
+            {isFirstRun ? t("home.firstRunSub") : t("home.standsToday", { name: setup.name })}
+          </p>
+        </div>
+        <LiveClock lang={lang} />
+      </div>
+
+      <QuickActions isLive={isLive} onNavigate={onNavigate} t={t} />
 
       {/* ── The one thing that matters until it's done ────────────────── */}
       {!isLive && (
@@ -117,11 +114,7 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
         </div>
       )}
 
-      {isLive && (
-        <div className="lw-home__live">
-          <Rocket size={16} /> {t("home.liveBanner", { name: setup.name })}
-        </div>
-      )}
+      {isLive && <LiveBanner setup={setup} t={t} />}
 
       {/* ── Measured facts only ──────────────────────────────────────── */}
       <div className="lw-home__stats">
@@ -136,12 +129,18 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
               urgent={pendingRequests.length > 0} />
       </div>
 
-      {/* ── This Workspace's subscription plans, Shopify-style ───────────
-          A comparison grid right on the home page, not buried three clicks
-          deep in Billing — the current plan (if any) is marked in place. */}
-      {plans && plans.length > 0 && (
-        <PlansSection plans={plans} packs={packs} subscription={subscription} live={subscriptionLive} onNavigate={onNavigate} />
-      )}
+      {/* ── Every real destination this workspace has today, one tap away ─ */}
+      <h2 className="lw-sectiontitle">{t("home.sectionsTitle")}</h2>
+      <div className="lw-home__grid">
+        {SECTION_TILES.map((s) => (
+          <button key={s.id} type="button" className="lw-home__tile" style={{ "--tile-color": s.color }} onClick={() => onNavigate(s.id)}>
+            <span className="lw-home__tileicon"><s.icon size={19} /></span>
+            <span className="lw-home__tilelabel">{t(s.labelKey)}</span>
+          </button>
+        ))}
+      </div>
+
+      <RecentActivity requests={pendingRequests} invitations={pendingInvites} onNavigate={onNavigate} t={t} />
 
       {/* ── What to do next, in the order it makes sense ─────────────────
           Only while there's a "next" left to do — once the workspace is
@@ -165,17 +164,13 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
         </>
       )}
 
-      {/* ── Honest about what does not exist ─────────────────────────── */}
-      <div className="lw-home__notyet">
-        <strong>{t("home.notBuiltTitle")}</strong>
-        <p>{t("home.notBuiltBody")}</p>
-      </div>
-
-      <p className="lw-home__addr">
-        {isLive || setup.status === "Published"
-          ? <><Globe size={13} /> {t("home.reachableAt")} <code>/{setup.slug}</code></>
-          : <><Lock size={13} /> {t("home.notReachable")}</>}
-      </p>
+      {!isLive && (
+        <p className="lw-home__addr">
+          {setup.status === "Published"
+            ? <><Globe size={13} /> {t("home.reachableAt")} <code>/{setup.slug}</code></>
+            : <><Lock size={13} /> {t("home.notReachable")}</>}
+        </p>
+      )}
     </div>
   );
 }
@@ -205,35 +200,130 @@ function Stat({ icon: Icon, color, label, value, note, urgent }) {
   );
 }
 
-function PlansSection({ plans, packs, subscription, live, onNavigate }) {
-  const { t } = useLanguage();
+// Ticks on its own so a per-second re-render stays local to the clock
+// instead of re-rendering the whole home screen (and its data fetch state).
+function LiveClock({ lang }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  // Force Latin digits in Arabic too — the rest of this UI doesn't localise
+  // numerals, so Eastern Arabic digits here would be the odd one out.
+  const locale = lang === "ar" ? "ar-EG-u-nu-latn" : "en-US";
+  const dateStr = now.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" });
+  const timeStr = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <div className="lw-home__clock">
+      <span className="lw-home__clockdate"><CalendarDays size={12} /> {dateStr}</span>
+      <span className="lw-home__clocktime"><Clock size={12} /> {timeStr}</span>
+    </div>
+  );
+}
 
-  if (live) {
-    const plan = plans.find((p) => p.code === subscription.planCode);
-    return (
-      <div className="lw-home__planssection">
-        <div className="lw-home__planshead">
-          <div>
-            <h2 className="lw-sectiontitle">{t("home.plansSectionTitle")}</h2>
-            <p className="lw-home__planslead">{t("home.plansSectionLeadActive")}</p>
-          </div>
-        </div>
+// Folds the plain "Reachable at /slug" line into the live banner itself,
+// as a clickable link plus a one-tap copy of the full URL — the address is
+// most useful exactly where a tutor is told they're open for enrolment.
+function LiveBanner({ setup, t }) {
+  const [copied, setCopied] = useState(false);
+  const path = `/${setup.slug}`;
 
-        <CurrentPlanCard plan={plan} packs={packs} subscription={subscription}>
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => onNavigate("billing")}>
-            {t("home.managePlan")} <ArrowRight size={13} />
-          </button>
-        </CurrentPlanCard>
-      </div>
-    );
+  function copyLink() {
+    navigator.clipboard.writeText(`${window.location.origin}${path}`).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
   }
 
   return (
-    <PlanPickerCards
-      plans={plans} packs={packs}
-      title={t("home.plansSectionTitle")} lead={t("home.plansSectionLead")}
-      onChoosePlan={() => onNavigate("billing")}
-    />
+    <div className="lw-home__live">
+      <span className="lw-home__livetext"><Rocket size={16} /> {t("home.liveBanner", { name: setup.name })}</span>
+      <span className="lw-home__livelink">
+        <a href={path} target="_blank" rel="noopener noreferrer">
+          <Globe size={13} /> <code>{path}</code>
+        </a>
+        <button type="button" className="lw-home__livecopy" onClick={copyLink} aria-label={t("home.copyLink")}>
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? t("home.copied") : t("home.copyLink")}
+        </button>
+      </span>
+    </div>
+  );
+}
+
+function QuickActions({ isLive, onNavigate, t }) {
+  const actions = [
+    { icon: UserPlus, label: t("home.invite"), color: CARD_COLORS.invites.icon, to: "members" },
+    { icon: BookOpen, label: t("home.quickAddProduct"), color: CARD_COLORS.teaching.icon, to: "products" },
+    isLive
+      ? { icon: Receipt, label: t("home.managePlan"), color: CARD_COLORS.learners.icon, to: "billing" }
+      : { icon: Rocket, label: t("home.setUp"), color: CARD_COLORS.learners.icon, to: "setup" },
+  ];
+  return (
+    <div className="lw-home__quickactions">
+      {actions.map((a) => (
+        <button key={a.label} type="button" className="lw-home__quickaction" style={{ "--qa-color": a.color }} onClick={() => onNavigate(a.to)}>
+          <span className="lw-home__quickactionicon"><a.icon size={20} /></span>
+          {a.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Only destinations that actually exist behind OWNER_NAV today (App.jsx) —
+// scheduling/commerce/communication/settings still render NotBuiltYet there,
+// so they're left off this grid rather than teased here as live sections.
+const SECTION_TILES = [
+  { id: "members", labelKey: "nav.members", icon: Users, color: "#3E6FE0" },
+  { id: "products", labelKey: "nav.learningProducts", icon: BookOpen, color: "#E0912E" },
+  { id: "studio", labelKey: "nav.contentStudio", icon: Wand2, color: "#8A5FD6" },
+  { id: "assessment", labelKey: "nav.assessmentCertificates", icon: Award, color: "#1FA971" },
+  { id: "billing", labelKey: "nav.billing", icon: Receipt, color: "#E0537B" },
+  { id: "setup", labelKey: "nav.workspaceSetup", icon: Rocket, color: "#2D5BD1" },
+];
+
+function humanise(t, role) {
+  return t(`roles.${role}`) !== `roles.${role}` ? t(`roles.${role}`) : role.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+// Real, already-fetched data (the same join requests and open invitations
+// MembersScreen shows) — not a fabricated activity log.
+function RecentActivity({ requests, invitations, onNavigate, t }) {
+  const items = [
+    ...requests.map((r) => ({
+      key: `req-${r.id}`, icon: Inbox, color: CARD_COLORS.requests.icon,
+      text: t("members.askedToJoinAs", { email: r.email, role: humanise(t, r.requestedRole) }),
+    })),
+    ...invitations.map((i) => ({
+      key: `inv-${i.id}`, icon: UserPlus, color: CARD_COLORS.invites.icon,
+      text: `${i.email} · ${t("members.invitedAs", { role: humanise(t, i.intendedRole), date: new Date(i.expiresAt).toLocaleDateString() })}`,
+    })),
+  ].slice(0, 5);
+
+  return (
+    <div className="lw-home__activity">
+      <div className="lw-home__activityhead">
+        <h2 className="lw-sectiontitle">{t("home.recentActivityTitle")}</h2>
+        {items.length > 0 && (
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => onNavigate("members")}>
+            {t("home.viewAll")} <ArrowRight size={13} />
+          </button>
+        )}
+      </div>
+      {items.length === 0 ? (
+        <p className="lw-home__activityempty">{t("home.noRecentActivity")}</p>
+      ) : (
+        <ul className="lw-home__activitylist">
+          {items.map((it) => (
+            <li key={it.key}>
+              <span className="lw-home__activityicon" style={{ "--activity-color": it.color }}><it.icon size={14} /></span>
+              <span className="lw-home__activitytext">{it.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -254,6 +344,76 @@ function Step({ done, label, action, onNavigate }) {
 const CSS = `
   .lw-home__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
 
+  .lw-home__greet {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
+  }
+  .lw-home__greetavatar {
+    width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent); color: #fff;
+    font-family: var(--font-display); font-size: 1.15rem; font-weight: 700;
+  }
+  .lw-home__greettext { flex: 1 1 260px; }
+  .lw-home__greettext h1 { margin: 2px 0 0; }
+  .lw-home__greettext .lw-sub { margin-top: 4px; }
+  .lw-home__clock {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    font-size: 0.8rem; color: var(--ink-soft); white-space: nowrap;
+  }
+  .lw-home__clockdate, .lw-home__clocktime { display: flex; align-items: center; gap: 6px; }
+  .lw-home__clocktime { font-family: var(--font-mono); }
+
+  .lw-home__quickactions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  .lw-home__quickaction {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 12px 16px; font-size: 0.85rem; font-weight: 600; color: var(--ink);
+    cursor: pointer; flex: 1 1 180px;
+  }
+  .lw-home__quickaction:hover { border-color: var(--qa-color, var(--line)); }
+  .lw-home__quickactionicon {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--qa-color) 18%, var(--surface));
+    color: var(--qa-color);
+  }
+
+  .lw-home__grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px; margin-bottom: 26px;
+  }
+  .lw-home__tile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px 10px; cursor: pointer; text-align: center;
+  }
+  .lw-home__tile:hover { border-color: var(--tile-color); }
+  .lw-home__tileicon {
+    width: 40px; height: 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--tile-color) 16%, var(--surface-2));
+    color: var(--tile-color);
+  }
+  .lw-home__tilelabel { font-size: 0.8rem; font-weight: 600; line-height: 1.3; }
+
+  .lw-home__activity { margin-bottom: 26px; }
+  .lw-home__activityhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .lw-home__activityhead .lw-sectiontitle { margin: 0; }
+  .lw-home__activityempty { font-size: 0.85rem; color: var(--ink-soft); margin: 6px 0 0; }
+  .lw-home__activitylist { list-style: none; padding: 0; margin: 6px 0 0; }
+  .lw-home__activitylist li {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 0.85rem;
+  }
+  .lw-home__activitylist li:last-child { border-bottom: none; }
+  .lw-home__activityicon {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--activity-color) 18%, var(--surface-2));
+    color: var(--activity-color);
+  }
+  .lw-home__activitytext { color: var(--ink-soft); }
+
   .lw-home__setup {
     display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
     background: color-mix(in srgb, var(--accent) 9%, transparent);
@@ -265,19 +425,27 @@ const CSS = `
   .lw-home__setuptext em { font-style: normal; font-family: var(--font-mono); font-size: 0.8rem; }
 
   .lw-home__live {
-    display: flex; align-items: center; gap: 9px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
     background: color-mix(in srgb, var(--accent-2) 12%, transparent);
-    color: var(--accent-2); font-weight: 600; font-size: 0.9rem;
     border-radius: var(--radius-sm); padding: 13px 16px; margin-bottom: 20px;
   }
-
-  .lw-home__planssection { margin-bottom: 26px; }
-  .lw-home__planshead {
-    display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
-    flex-wrap: wrap; margin-bottom: 14px;
+  .lw-home__livetext {
+    display: flex; align-items: center; gap: 9px;
+    color: var(--accent-2); font-weight: 600; font-size: 0.9rem;
   }
-  .lw-home__planshead .lw-sectiontitle { margin: 0; }
-  .lw-home__planslead { font-size: 0.85rem; color: var(--ink-soft); margin: 4px 0 0; max-width: 60ch; }
+  .lw-home__livelink { display: flex; align-items: center; gap: 8px; }
+  .lw-home__livelink a {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid color-mix(in srgb, var(--accent-2) 35%, transparent);
+    border-radius: 999px; padding: 5px 12px; font-size: 0.8rem; color: var(--ink);
+  }
+  .lw-home__livelink a:hover { border-color: var(--accent-2); }
+  .lw-home__livelink code { font-family: var(--font-mono); }
+  .lw-home__livecopy {
+    display: flex; align-items: center; gap: 6px;
+    background: transparent; border: none; color: var(--accent-2);
+    font-size: 0.8rem; font-weight: 600; cursor: pointer; padding: 5px 4px;
+  }
 
   .lw-home__stats {
     display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px;
@@ -315,16 +483,6 @@ const CSS = `
   .lw-home__steplabel { flex: 1; font-size: 0.9rem; }
   .lw-home__steps li.is-done .lw-home__steplabel { color: var(--ink-soft); text-decoration: line-through; }
 
-  .lw-home__notyet {
-    background: var(--surface-2); border-radius: var(--radius-sm);
-    padding: 15px 17px; margin-top: 26px;
-  }
-  .lw-home__notyet strong {
-    display: block; font-family: var(--font-mono); font-size: 10px;
-    letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 7px;
-  }
-  .lw-home__notyet p { font-size: 0.85rem; color: var(--ink-soft); margin: 0; line-height: 1.6; max-width: 66ch; }
-
   .lw-home__addr {
     display: flex; align-items: center; gap: 7px;
     font-size: 0.8rem; color: var(--ink-soft); margin-top: 16px;
@@ -334,7 +492,4 @@ const CSS = `
   .lw-home__spin { animation: lwHomeSpin 0.9s linear infinite; }
   @keyframes lwHomeSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .lw-home__spin { animation: none; } }
-
-  ${PLAN_PICKER_CARDS_CSS}
-  ${CURRENT_PLAN_CARD_CSS}
 `;

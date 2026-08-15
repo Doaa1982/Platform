@@ -13,7 +13,7 @@ namespace Platform.Api.AI;
 /// </summary>
 public class OpenAiModelProvider(HttpClient http, AiOptions options) : IAiModelProvider
 {
-    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
+    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(
@@ -26,7 +26,9 @@ public class OpenAiModelProvider(HttpClient http, AiOptions options) : IAiModelP
             [
                 new OpenAiMessage("system", systemPrompt),
                 new OpenAiMessage("user", userPrompt)
-            ]
+            ],
+            // OpenAI's own JSON mode — same reasoning as OllamaModelProvider's Format.
+            ResponseFormat: jsonMode ? new OpenAiResponseFormat("json_object") : null
         );
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions")
@@ -57,11 +59,15 @@ public class OpenAiModelProvider(HttpClient http, AiOptions options) : IAiModelP
     private record OpenAiRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("max_tokens")] int MaxTokens,
-        [property: JsonPropertyName("messages")] OpenAiMessage[] Messages);
+        [property: JsonPropertyName("messages")] OpenAiMessage[] Messages,
+        [property: JsonPropertyName("response_format")] OpenAiResponseFormat? ResponseFormat = null);
 
     private record OpenAiMessage(
         [property: JsonPropertyName("role")] string Role,
         [property: JsonPropertyName("content")] string Content);
+
+    private record OpenAiResponseFormat(
+        [property: JsonPropertyName("type")] string Type);
 
     private record OpenAiResponse(
         [property: JsonPropertyName("choices")] List<OpenAiChoice>? Choices);

@@ -17,7 +17,9 @@ class TranscriptionEngine:
     def transcribe(self, file_path: str):
         segments, info = self.model.transcribe(
             file_path,
-           language="ar", beam_size=5,
+            language="ar",
+            beam_size=5,
+            vad_filter=True,
         )
 
         result = []

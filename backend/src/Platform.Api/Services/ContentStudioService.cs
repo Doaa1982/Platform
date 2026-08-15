@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Platform.Api.AI;
 using Platform.Api.AI.Skills;
@@ -29,6 +30,15 @@ public class ContentStudioService(
     /// <summary>Speechmatics' supported input formats (AI Video Transcript Implementation Plan §4/§7) — checked against the uploaded file's extension before a job is ever submitted.</summary>
     private static readonly string[] SupportedTranscriptionExtensions =
         [".wav", ".mp3", ".aac", ".ogg", ".mpeg", ".amr", ".m4a", ".mp4", ".flac"];
+
+    /// <summary>
+    /// Same pattern as the frontend's videoEmbed.js — a YouTube link has no
+    /// direct media file to download, so it's rejected here rather than
+    /// silently trying (and failing) to GET it as a video file.
+    /// </summary>
+    private static readonly Regex YouTubeUrlPattern = new(
+        @"(?:youtube(?:-nocookie)?\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/)|youtu\.be/)[A-Za-z0-9_-]{11}",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
@@ -497,29 +507,49 @@ public class ContentStudioService(
         if (revision is null)
             return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This lesson has no revision to transcribe yet."));
 
-        if (revision.VideoAssetId is null)
-            return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
-                revision.VideoUrl is not null
-                    ? "Only an uploaded video can be transcribed — an externally-linked video isn't supported yet."
-                    : "This revision has no video to transcribe yet."));
+        TranscriptionJob job;
+        if (revision.VideoAssetId is not null)
+        {
+            var asset = await db.LearningAssets.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == revision.VideoAssetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
+            if (asset is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such learning asset."));
 
-        var asset = await db.LearningAssets.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == revision.VideoAssetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
-        if (asset is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such learning asset."));
+            var extension = Path.GetExtension(asset.OriginalFileName);
+            if (!SupportedTranscriptionExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+                return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
+                    $"\"{extension}\" videos aren't supported for transcription yet. Supported formats: {string.Join(", ", SupportedTranscriptionExtensions)}."));
 
-        var extension = Path.GetExtension(asset.OriginalFileName);
-        if (!SupportedTranscriptionExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
-            return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
-                $"\"{extension}\" videos aren't supported for transcription yet. Supported formats: {string.Join(", ", SupportedTranscriptionExtensions)}."));
+            job = new TranscriptionJob(ctx.Workspace!.Id, lessonId, revision.Id, asset.OriginalFileName,
+                FilePath: assetStorage.ResolvePath(asset.ObjectKey));
+        }
+        else if (revision.VideoUrl is not null)
+        {
+            if (YouTubeUrlPattern.IsMatch(revision.VideoUrl))
+                return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
+                    "YouTube videos can't be transcribed yet — only an uploaded video or a direct video-file link is supported."));
+
+            if (!Uri.TryCreate(revision.VideoUrl, UriKind.Absolute, out var uri))
+                return Fail<LessonDetailResponse>((ProvisioningError.Invalid, "This video link isn't a valid URL."));
+
+            var extension = Path.GetExtension(uri.AbsolutePath);
+            if (!SupportedTranscriptionExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+                return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
+                    $"This video link doesn't look like a supported video file. Supported formats: {string.Join(", ", SupportedTranscriptionExtensions)}."));
+
+            var fileName = Path.GetFileName(uri.AbsolutePath);
+            job = new TranscriptionJob(ctx.Workspace!.Id, lessonId, revision.Id, fileName, SourceUrl: revision.VideoUrl);
+        }
+        else
+        {
+            return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This revision has no video to transcribe yet."));
+        }
 
         try { revision.BeginTranscription(); }
         catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
 
         await db.SaveChangesAsync(ct);
 
-        transcriptionQueue.Enqueue(new TranscriptionJob(
-            ctx.Workspace!.Id, lessonId, revision.Id,
-            assetStorage.ResolvePath(asset.ObjectKey), asset.OriginalFileName));
+        transcriptionQueue.Enqueue(job);
 
         return await GetLessonAsync(slug, caller, lessonId, ct);
     }

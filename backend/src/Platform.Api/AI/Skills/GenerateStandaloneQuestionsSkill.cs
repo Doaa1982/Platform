@@ -45,6 +45,12 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
         - Write a short Explanation for each question: why the correct answer
           is correct, referencing the lesson's material.
         - Produce exactly the requested number of questions.
+        - Write Prompt, Options, AcceptedAnswers, and Explanation in the same
+          language as the lesson material (prefer the transcript when
+          available) unless an explicit output language is requested — except
+          TrueFalse's Options, which must stay exactly ["True", "False"] in
+          English regardless: the backend always overwrites this field to
+          that literal pair when a question is saved.
 
         Respond with JSON only — an array of objects, no prose, no markdown
         code fences — matching exactly this shape:

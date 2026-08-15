@@ -9,6 +9,7 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 import Message from "../components/Message";
+import VideoPlayer from "../components/VideoPlayer";
 import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
@@ -597,7 +598,11 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
   const [aiTitleError, setAiTitleError] = useState(null);
 
   async function handleSuggestTitle() {
-    if (!body.trim()) { setActiveTab("content"); return; }
+    // Matches the backend's own guard (ContentStudioService.SuggestTitleAsync):
+    // a title can be drafted from either the body or a Ready transcript, so
+    // this must not require body specifically — a video-only lesson with no
+    // written body yet is a normal workflow, not a blocked one.
+    if (!body.trim() && !transcript.trim()) { setActiveTab("content"); return; }
     setAiTitleError(null);
     setAiTitleBusy(true);
     try {
@@ -871,7 +876,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                     {t("studio.titleLabel")}<RequiredMark />
                     {editable && (
                       <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestTitle}
-                              disabled={busy || aiTitleBusy || !body.trim()} title={t("studio.aiSuggestTitle")}>
+                              disabled={busy || aiTitleBusy || (!body.trim() && !transcript.trim())} title={t("studio.aiSuggestTitle")}>
                         {aiTitleBusy
                           ? <LoaderCircle size={12} className="lw-studio__spin" />
                           : <Sparkles size={12} />} {t("studio.aiSuggestTitle")}
@@ -982,7 +987,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                     {t("studio.titleLabel")}<RequiredMark />
                     {editable && (
                       <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={handleSuggestTitle}
-                              disabled={busy || aiTitleBusy || !body.trim()} title={t("studio.aiSuggestTitle")}>
+                              disabled={busy || aiTitleBusy || (!body.trim() && !transcript.trim())} title={t("studio.aiSuggestTitle")}>
                         {aiTitleBusy
                           ? <LoaderCircle size={12} className="lw-studio__spin" />
                           : <Sparkles size={12} />} {t("studio.aiSuggestTitle")}
@@ -1337,9 +1342,10 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   const videoUrl = revision?.videoUrl;
   const hasVideo = !!video || !!videoUrl;
 
-  // AI Video Transcript — only an uploaded video (not an external URL) can be
-  // transcribed (Implementation Plan §3). Poll while Processing since the
-  // real work happens on a background job, not this request.
+  // AI Video Transcript — an uploaded video or a direct-file video URL can be
+  // transcribed; a YouTube link is rejected server-side (no direct file to
+  // download). Poll while Processing since the real work happens on a
+  // background job, not this request.
   const transcriptStatus = revision?.transcriptStatus ?? "None";
   const transcriptSource = revision?.transcriptSource ?? "None";
   const [transcriptError, setTranscriptError] = useState(null);
@@ -1484,12 +1490,12 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
       {video && (
         <div className="lw-player">
           <div className="lw-player__frame">
-            <video
+            <VideoPlayer
               key={video.id}
               src={api.learningAssetDownloadUrl(session.token, slug, video.id)}
               controls
               style={{ width: "100%", height: "100%" }}
-              onLoadedMetadata={(e) => onDurationKnown(Math.round(e.target.duration))}
+              onDurationChange={(sec) => onDurationKnown(Math.round(sec))}
             />
           </div>
           <div className="lw-videosource" style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -1506,79 +1512,18 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
               </button>
             ))}
           </div>
-
-          <div className="lw-transcript" style={{ padding: "12px 16px", borderTop: "1px solid var(--line)" }}>
-            {transcriptError && <Message type="error">{transcriptError}</Message>}
-
-            {editable ? (
-              <details open>
-                <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span>
-                    Transcript
-                    {transcriptSource !== "None" && (
-                      <span className="muted" style={{ marginLeft: 8, fontWeight: "normal", fontSize: "0.75rem" }}>
-                        ({transcriptSource})
-                      </span>
-                    )}
-                  </span>
-                  {transcriptStatus !== "Processing" && (
-                    <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={startingTranscript || !hasVideo} onClick={(e) => { e.preventDefault(); handleGenerateTranscript(); }} title={!hasVideo ? "Upload a video first" : ""}>
-                      {startingTranscript ? <LoaderCircle size={13} className="lw-studio__spin" /> : <Sparkles size={13} />} {t(transcriptStatus === "Failed" ? "studio.retryTranscript" : "studio.generateTranscript")}
-                    </button>
-                  )}
-                  {transcriptStatus === "Processing" && (
-                    <span className="muted" style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: 4 }}>
-                      <LoaderCircle size={13} className="lw-studio__spin" /> {t("studio.transcriptProcessing")}
-                    </span>
-                  )}
-                </summary>
-                <textarea
-                  rows={8}
-                  value={transcript}
-                  onChange={(e) => setTranscript(e.target.value)}
-                  disabled={transcriptStatus === "Processing"}
-                  placeholder="Enter or edit the lesson transcript here..."
-                  style={{ width: "100%", marginTop: 8, fontFamily: "monospace", fontSize: "13px" }}
-                />
-              </details>
-            ) : (
-              <>
-                {transcriptStatus === "None" && <span className="muted">{t("studio.transcriptNone")}</span>}
-                {transcriptStatus === "Processing" && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <LoaderCircle size={13} className="lw-studio__spin" />
-                    <span className="muted">{t("studio.transcriptProcessing")}</span>
-                  </div>
-                )}
-                {transcriptStatus === "Failed" && <span className="muted">{revision.transcriptError ?? t("studio.transcriptFailed")}</span>}
-                {transcriptStatus === "Ready" && (
-                  <details>
-                    <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.85rem" }}>
-                      {t("studio.transcriptReady")}
-                      {transcriptSource !== "None" && (
-                        <span className="muted" style={{ marginLeft: 8, fontWeight: "normal", fontSize: "0.75rem" }}>
-                          ({transcriptSource})
-                        </span>
-                      )}
-                    </summary>
-                    <p className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{revision.transcript}</p>
-                  </details>
-                )}
-              </>
-            )}
-          </div>
         </div>
       )}
 
       {videoUrl && (
         <div className="lw-player">
           <div className="lw-player__frame">
-            <video
+            <VideoPlayer
               key={videoUrl}
               src={videoUrl}
               controls
               style={{ width: "100%", height: "100%" }}
-              onLoadedMetadata={(e) => onDurationKnown(Math.round(e.target.duration))}
+              onDurationChange={(sec) => onDurationKnown(Math.round(sec))}
             />
           </div>
           <div className="lw-videosource" style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -1593,6 +1538,69 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {hasVideo && (
+        <div className="lw-transcript" style={{ padding: "12px 16px", borderTop: "1px solid var(--line)" }}>
+          {transcriptError && <Message type="error">{transcriptError}</Message>}
+
+          {editable ? (
+            <details open>
+              <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>
+                  Transcript
+                  {transcriptSource !== "None" && (
+                    <span className="muted" style={{ marginLeft: 8, fontWeight: "normal", fontSize: "0.75rem" }}>
+                      ({transcriptSource})
+                    </span>
+                  )}
+                </span>
+                {transcriptStatus !== "Processing" && (
+                  <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={startingTranscript || !hasVideo} onClick={(e) => { e.preventDefault(); handleGenerateTranscript(); }} title={!hasVideo ? "Upload a video first" : ""}>
+                    {startingTranscript ? <LoaderCircle size={13} className="lw-studio__spin" /> : <Sparkles size={13} />} {t(transcriptStatus === "Failed" ? "studio.retryTranscript" : "studio.generateTranscript")}
+                  </button>
+                )}
+                {transcriptStatus === "Processing" && (
+                  <span className="muted" style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: 4 }}>
+                    <LoaderCircle size={13} className="lw-studio__spin" /> {t("studio.transcriptProcessing")}
+                  </span>
+                )}
+              </summary>
+              <textarea
+                rows={8}
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+                disabled={transcriptStatus === "Processing"}
+                placeholder="Enter or edit the lesson transcript here..."
+                style={{ width: "100%", marginTop: 8, fontFamily: "monospace", fontSize: "13px" }}
+              />
+            </details>
+          ) : (
+            <>
+              {transcriptStatus === "None" && <span className="muted">{t("studio.transcriptNone")}</span>}
+              {transcriptStatus === "Processing" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <LoaderCircle size={13} className="lw-studio__spin" />
+                  <span className="muted">{t("studio.transcriptProcessing")}</span>
+                </div>
+              )}
+              {transcriptStatus === "Failed" && <span className="muted">{revision.transcriptError ?? t("studio.transcriptFailed")}</span>}
+              {transcriptStatus === "Ready" && (
+                <details>
+                  <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.85rem" }}>
+                    {t("studio.transcriptReady")}
+                    {transcriptSource !== "None" && (
+                      <span className="muted" style={{ marginLeft: 8, fontWeight: "normal", fontSize: "0.75rem" }}>
+                        ({transcriptSource})
+                      </span>
+                    )}
+                  </summary>
+                  <p className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{revision.transcript}</p>
+                </details>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

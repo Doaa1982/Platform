@@ -203,12 +203,22 @@ Name + Slug half; the Entry Point half cannot be checked because the registry do
 not exist. INV-006 (an Entry Point value resolves to exactly one Workspace) is
 approximated for now by a unique index on `Slug`.
 
+**Also true on the frontend (confirmed 2026-08-15).** `WorkspaceSetupScreen.jsx`
+(built 2026-08-09, closing TD-009) has no sections for Workspace Configuration,
+Branding, or Enabled Capabilities either — it only exposes Identity (name, slug,
+description) and the lifecycle stepper. That is not a separate gap; it is this
+same deferral showing up one layer up, since a screen cannot render fields the
+aggregate does not yet carry. Noted here so a future pass triggered by this
+entry knows there is frontend work to do as well as domain work — see the
+Workspace Setup Screen — Gap Analysis document for the full comparison.
+
 **Trigger:** custom domains / Workspace resolution (Entry Points), maturity-model
 tiering (Capabilities), or workspace theming (Branding). Permissions become
 necessary at the first real authorization decision.
 **Resolution sketch:** add each as its own entity/value object per the design docs.
 Restore the full INV-007 check inside `Publish()` once the Entry Point Registry
-exists.
+exists. Extend `WorkspaceSetupScreen.jsx` with a section per field once its
+backing data exists.
 
 ---
 
@@ -752,6 +762,103 @@ submission can create an Identity" should be corrected the same way.
 
 ---
 
+## TD-019 — Readiness Checklist is referenced but never defined
+
+**Raised:** 2026-08-15 (gap analysis of `WorkspaceSetupScreen.jsx` against Workspace
+Setup Business Analysis)
+**Area:** Documentation — `Documents/Workspace Setup Business Analysis.md` §4;
+`Documents/Learning Workspace Experience Architecture.md`
+**Severity:** Low — no code depends on it yet, but the next reader will assume it
+already exists somewhere
+**Status:** Done (2026-08-15)
+
+Workspace Setup Business Analysis §4 defines "Readiness Checklist (Experience
+concern)" as "the Owner-facing presentation of Setup Completeness — what is done,
+what remains," and explicitly assigns ownership elsewhere: "Owned by Learning
+Workspace Experience Architecture, referenced here so that this document specifies
+*what must be true*, not how it is displayed."
+
+`Learning Workspace Experience Architecture.md` does not mention a Readiness
+Checklist, or any comparable concept, anywhere in its current text. The concept is
+cited as being defined in a specific document and is not actually defined there.
+
+**Consequence for the built screen.** `WorkspaceSetupScreen.jsx`'s lifecycle stepper
+shows which of the five states (`Created` … `Active`) a Workspace is in — state, not
+completeness. The only completeness signal exposed today is the single `blocker`
+string the API returns when there is no available next transition. That is a
+reasonable Version 1 stand-in, but it cannot be checked against a Readiness Checklist
+specification that does not exist, and a future reader of Workspace Setup Business
+Analysis §4 would reasonably expect one to.
+
+**Trigger:** the next revision of Learning Workspace Experience Architecture, or the
+first time an Owner needs more diagnostic detail than a single blocker string can
+carry.
+**Resolution sketch:** define the Readiness Checklist in Learning Workspace
+Experience Architecture — what it enumerates, how partial progress within a stage is
+shown — then extend `/api/workspaces/{slug}/setup`'s response and
+`WorkspaceSetupScreen.jsx` to surface it.
+
+**Resolution as documented (2026-08-15):** Learning Workspace Experience Architecture
+gained §18 ("Owner Setup Experience"), appended after §17 rather than inserted, so
+`Workspace Aggregate Design`'s existing citation of its §13 stays correct. §18 defines
+the checklist entirely in terms already settled by Workspace Setup Business Analysis
+§8/§10 (Blocking: name, public identifier; Addressable: the implicit Entry Point;
+Suggested, never blocking: configuration, branding, capabilities) plus a presentation
+rule (Suggested items are never shown as errors) and a reminder that it is derived, not
+stored (BA-005). Workspace Setup Business Analysis §4 and §14 now cite §18 by number.
+**Not done:** the API and screen still surface only a single `blocker` string — §18 is
+a specification to build against, not yet reflected in `/api/workspaces/{slug}/setup`
+or `WorkspaceSetupScreen.jsx`. That implementation gap is intentionally left open; this
+entry closed only the documentation gap it was raised for.
+
+---
+
+## TD-020 — `AcceptsJoinRequests` toggle has no document claiming ownership of its rules
+
+**Raised:** 2026-08-15 (gap analysis of `WorkspaceSetupScreen.jsx` against Workspace
+Setup Business Analysis)
+**Area:** Documentation — no Business Analysis assigns `AcceptsJoinRequests`;
+`frontend/src/screens/WorkspaceSetupScreen.jsx`; `Documents/Join Request Business
+Analysis.md`
+**Severity:** Low — the feature works; only its ownership is undocumented
+**Status:** Done (2026-08-15)
+
+`WorkspaceSetupScreen.jsx` renders an `AcceptsJoinRequests` toggle and a QR code
+linking to `/join/{slug}`. This is genuine, shipped functionality, not speculative —
+`AcceptsJoinRequests` is a real field in the EF model and migrations, and Join
+Request Business Analysis §10 already depends on it as one of its Submission Rules
+("join requests enabled").
+
+Neither document states who may toggle it, when, or what happens to Join Requests
+already `Submitted` if it is turned off mid-flight. Workspace Setup Business
+Analysis §5 excludes "membership management inside the Workspace — invitations,
+roles, member lifecycle" from its own scope, which would point at Join Request
+Business Analysis — but that document currently treats "join requests enabled"
+purely as a precondition to check at submission time, not as a Workspace-level
+setting it defines or assigns an owner to.
+
+**Trigger:** the first question about who is allowed to flip this, or the next
+revision of either document.
+**Resolution sketch:** assign ownership explicitly — most likely a new subsection of
+Join Request Business Analysis defining `AcceptsJoinRequests` as Workspace-level
+policy state (who may set it, effect on in-flight Join Requests), with a
+cross-reference added from Workspace Setup Business Analysis §8.
+
+**Resolution as documented (2026-08-15):** Join Request Business Analysis gained
+BA-008 (v1.1 → v1.2) — authority is Owner or Administrator, the same Workspace Setup
+authority as everything else on that screen (BA-001), and toggling the setting never
+touches a Join Request already `Submitted`; it only gates new submissions. §8's
+"Accepting Requests" subsection now names BA-008 and states where the control is
+actually rendered. Workspace Setup Business Analysis §8 gained a matching "Accepting
+Join Requests" note pointing back at Join Request Business Analysis as the owning
+document, and §14's integration table gained a row for it. No code change — this
+closed the documentation gap the entry was raised for; the toggle's behaviour in
+`WorkspaceSetupScreen.jsx` already matched BA-008 by construction (it only ever wrote
+the flag, and nothing in `JoinRequestService` reacts to it beyond the submission-time
+check BA-008 confirms is the only intended effect).
+
+---
+
 ## Log
 
 | Date | Change |
@@ -782,3 +889,6 @@ submission can create an Identity" should be corrected the same way.
 | 2026-08-08 | TD-016 raised while re-verifying `JoinRequestService` against the restored Join Request Business Analysis §10 — `SubmitAsync` never checks for an outstanding Invitation, and approving such a Join Request fails against `InviteAsync`'s own dedupe check, leaving it stuck in `Submitted` with no way to approve it. |
 | 2026-08-08 | TD-017 split out from TD-016 — `SubmitAsync` also never checks whether the requester's email belongs to a Suspended or Archived Identity, §10's fifth Submission Rule. Narrower than TD-016: no concrete downstream failure traced, just the rule going unenforced. |
 | 2026-08-08 | TD-018 raised and closed — Join Request Business Analysis §6/§7/BA-003 described Identity Resolution happening at submission (with a password field that doesn't exist) or on approval; only §4/§5's "after Invitation acceptance" matches code. Ruled §4/§5 normative; §6, §7, BA-003, and `RateLimitPolicies.cs`'s comment corrected in place. Also corrects BA-003's and §16's stated risk — `SubmitAsync` never creates an Identity, so there is no self-serve Identity creation on this path to guard against. |
+| 2026-08-15 | Gap analysis of `WorkspaceSetupScreen.jsx` against Workspace Setup Business Analysis (see `Documents/Workspace Setup Screen — Gap Analysis.md`). TD-006 amended — the deferred Configuration/Branding/Capabilities surfaces are confirmed missing from the frontend too, not just the aggregate. TD-019 raised — Workspace Setup Business Analysis §4 cites Learning Workspace Experience Architecture as owning the Readiness Checklist, which that document never actually defines. TD-020 raised — the shipped `AcceptsJoinRequests` toggle has no document claiming ownership of its rules. |
+| 2026-08-15 | TD-019 closed — Learning Workspace Experience Architecture gained §18 (Owner Setup Experience), appended after §17 so existing citations of its §13 stay valid, defining the Readiness Checklist in terms Workspace Setup Business Analysis §8/§10 already settled. Workspace Setup Business Analysis §4/§14 now cite §18 by number. Implementation (API + screen still expose only a single `blocker` string) intentionally left open — this closed the documentation gap only. |
+| 2026-08-15 | TD-020 closed — Join Request Business Analysis gained BA-008 (v1.1 → v1.2): `AcceptsJoinRequests` authority is Owner-or-Administrator (BA-001, same as every other Workspace Setup action), and toggling it never affects a Join Request already `Submitted`, confirmed against `WorkspaceSetupService.SetAcceptsJoinRequestsAsync` and `JoinRequestService`, neither of which does anything beyond the existing submission-time check. Workspace Setup Business Analysis §8/§14 cross-reference the owning document. No code change. |

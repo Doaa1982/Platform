@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+import MarkdownText from "../components/MarkdownText";
 
 /* =========================================================================
    LESSON CONTENT — the lesson's own written material as its own subscreen,
@@ -94,7 +95,7 @@ function LessonContent({ lessonId, slug, token, onBackToLesson }) {
       {sections.map((s) => (
         <div className="lw-content__section" key={s.key}>
           <div className="lw-content__kicker"><Sparkles size={13} /> {s.label}</div>
-          {s.key === "glossary" ? <GlossaryTable text={s.text} /> : <p className="lw-content__text">{s.text}</p>}
+          {s.key === "glossary" ? <GlossaryTable text={s.text} /> : <MarkdownText className="lw-content__text" text={s.text} />}
         </div>
       ))}
     </div>

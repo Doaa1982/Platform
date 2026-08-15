@@ -71,6 +71,19 @@ public class LessonRevision
     public string? TranscriptChaptersJson { get; private set; }
 
     /// <summary>
+    /// Raw ASR segments for this transcript, as JSON
+    /// (<c>[{start, end, text}, ...]</c>) — finer-grained than
+    /// <see cref="TranscriptChaptersJson"/>, one entry per sentence/phrase the
+    /// speech-to-text engine detected. Used to snap an AI-suggested interactive
+    /// checkpoint's timestamp to a real moment in the video instead of trusting
+    /// a number the model guessed (AI Video-Grounded Questions Implementation
+    /// Plan). Null when the provider doesn't expose segment-level timing (e.g.
+    /// Speechmatics, which relies on <see cref="TranscriptChaptersJson"/>
+    /// instead) or for a manually-entered transcript. Cleared alongside Transcript.
+    /// </summary>
+    public string? TranscriptSegmentsJson { get; private set; }
+
+    /// <summary>
     /// Short (~3 line) learner-facing preview of what this lesson teaches, shown
     /// before a learner starts it — AI-drafted, tutor-editable, optional. Distinct
     /// from <see cref="Body"/>, which only renders once a learner is already in
@@ -220,8 +233,8 @@ public class LessonRevision
     /// <summary>Starts a transcription attempt. Refuses to start a second one while one is already running.</summary>
     public void BeginTranscription()
     {
-        if (VideoAssetId is null)
-            throw new InvalidOperationException("This revision has no uploaded video to transcribe.");
+        if (VideoAssetId is null && VideoUrl is null)
+            throw new InvalidOperationException("This revision has no video to transcribe.");
         if (TranscriptStatus == TranscriptStatus.Processing)
             throw new InvalidOperationException("A transcription is already running for this revision.");
 
@@ -230,12 +243,13 @@ public class LessonRevision
         UpdatedAt = DateTime.UtcNow;
     }
 
-    /// <summary>Records a successful transcription. Only valid while one is running — a stray completion for a job that was never started or already resolved is ignored rather than trusted. <paramref name="chaptersJson"/> is null when the provider detected no chapters (e.g. the video was too short) — a normal outcome, not a failure.</summary>
-    public void CompleteTranscription(string text, string? chaptersJson = null)
+    /// <summary>Records a successful transcription. Only valid while one is running — a stray completion for a job that was never started or already resolved is ignored rather than trusted. <paramref name="chaptersJson"/> and <paramref name="segmentsJson"/> are null when the provider detected none (e.g. the video was too short, or this provider doesn't expose that granularity) — a normal outcome, not a failure.</summary>
+    public void CompleteTranscription(string text, string? chaptersJson = null, string? segmentsJson = null)
     {
         if (TranscriptStatus != TranscriptStatus.Processing) return;
         Transcript = text;
         TranscriptChaptersJson = chaptersJson;
+        TranscriptSegmentsJson = segmentsJson;
         TranscriptStatus = TranscriptStatus.Ready;
         TranscriptSource = TranscriptSource.Automatic;
         TranscriptError = null;
@@ -254,6 +268,7 @@ public class LessonRevision
         
         Transcript = text.Trim();
         TranscriptChaptersJson = null; // No auto-chapters for manual text
+        TranscriptSegmentsJson = null; // No auto-segments for manual text
         TranscriptStatus = TranscriptStatus.Ready;
         TranscriptSource = TranscriptSource.Manual;
         TranscriptError = null;
@@ -274,6 +289,7 @@ public class LessonRevision
     {
         Transcript = null;
         TranscriptChaptersJson = null;
+        TranscriptSegmentsJson = null;
         TranscriptStatus = TranscriptStatus.None;
         TranscriptSource = TranscriptSource.None;
         TranscriptError = null;

@@ -10,11 +10,24 @@ namespace Platform.Api.AI;
 public record TranscriptChapter(string Title, string? Summary, double StartSeconds, double EndSeconds);
 
 /// <summary>
+/// One raw ASR segment (a sentence or short phrase) with its own real start/end
+/// time, as the speech-to-text engine produced it — finer-grained than
+/// <see cref="TranscriptChapter"/>. Used to ground AI-suggested interactive
+/// checkpoint timestamps in an actual moment from the video instead of a
+/// number an LLM estimated (AI Video-Grounded Questions Implementation Plan).
+/// Empty for providers that don't expose segment-level timing (e.g.
+/// Speechmatics here, which is read only for its chapters).
+/// </summary>
+public record TranscriptSegment(double Start, double End, string Text);
+
+/// <summary>
 /// The result of one transcription attempt: the plain-text transcript, plus
 /// whatever chapters the provider was able to detect (empty, not null, if
-/// none — e.g. the video was too short for the provider's chaptering minimum).
+/// none — e.g. the video was too short for the provider's chaptering minimum),
+/// plus whatever per-segment timing the provider exposes (also empty, not
+/// null, when unavailable).
 /// </summary>
-public record TranscriptionResult(string Text, IReadOnlyList<TranscriptChapter> Chapters);
+public record TranscriptionResult(string Text, IReadOnlyList<TranscriptChapter> Chapters, IReadOnlyList<TranscriptSegment> Segments);
 
 /// <summary>
 /// The Platform's boundary to a specific speech-to-text vendor — the audio

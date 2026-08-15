@@ -16,10 +16,11 @@
 > - Workspace Context
 > - Platform Administrator Business Analysis
 > - Invitation Business Analysis
+> - Join Request Business Analysis
 > - Membership Aggregate Design
 > - Learning Workspace Experience Architecture
 > - IdentityAndWorkspaceAccess
-> - Technical Debt Backlog (TD-006, TD-009)
+> - Technical Debt Backlog (TD-006, TD-009, TD-019, TD-020)
 
 ---
 
@@ -76,7 +77,7 @@ Whether a Workspace holds enough information to be published. Derived, never sto
 
 ## Readiness Checklist (Experience concern)
 
-The Owner-facing presentation of Setup Completeness — what is done, what remains. Owned by Learning Workspace Experience Architecture, referenced here so that this document specifies *what must be true*, not how it is displayed.
+The Owner-facing presentation of Setup Completeness — what is done, what remains. Owned by Learning Workspace Experience Architecture §18 (added 2026-08-15, closing TD-019), referenced here so that this document specifies *what must be true*, not how it is displayed.
 
 ---
 
@@ -195,6 +196,10 @@ Logo, theme, colour tokens, typography (Workspace Aggregate Design §8). Never b
 
 Which platform capabilities this Workspace uses, per Learning Workspace Capability Model. A Workspace may publish with the default set; capabilities can be turned on and off throughout its life (INV-008 governs what happens to data when one is turned off).
 
+## Accepting Join Requests
+
+*(Added 2026-08-15, closing Technical Debt Backlog TD-020.)* This screen also renders a toggle for whether the Workspace accepts unsolicited Join Requests. The setting itself, its off-by-default rule, and who may change it are owned by Join Request Business Analysis §8 and BA-005/BA-008, not by this document — Workspace Setup only surfaces the control. Toggling it never blocks publication and never affects a Join Request already `Submitted` (Join Request Business Analysis BA-008).
+
 ---
 
 # 9. Lifecycle
@@ -290,7 +295,8 @@ Counting provisioned Workspaces as active tenants overstates the platform's real
 | Platform Administrator Business Analysis | Hands over at ownership transfer; resumes only for suspend/archive. |
 | Membership Aggregate Design | Supplies the Owner/Administrator roles this workflow's authority is checked against. |
 | Workspace_Access_Context | Owns Entry Points and Workspace Resolution, which INV-007's publication rule depends on. |
-| Learning Workspace Experience Architecture | Owns the Readiness Checklist presentation and the branding defaults an unbranded Workspace falls back to. |
+| Learning Workspace Experience Architecture | Owns the Readiness Checklist presentation (§18) and the branding defaults an unbranded Workspace falls back to. |
+| Join Request Business Analysis | Owns the Accepting Join Requests setting this screen surfaces as a toggle (§8, above). |
 | Learning Workspace Capability Model | Supplies the capability set an Owner selects from. |
 | Learning Product Context | Begins where this ends: a published Workspace is one that can now hold Learning Products. |
 

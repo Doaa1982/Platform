@@ -31,7 +31,7 @@ public class AiOrchestrator(IAiModelProvider provider)
     public async Task<T> RunAsync<T>(
         string systemPrompt, string userPrompt, CancellationToken ct = default)
     {
-        var raw = await provider.CompleteAsync(systemPrompt, userPrompt, ct);
+        var raw = await provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: true, ct);
 
         var result = TryParse<T>(raw);
         if (result is not null) return result;
@@ -39,7 +39,7 @@ public class AiOrchestrator(IAiModelProvider provider)
         var retryPrompt = userPrompt +
             "\n\nYour previous response could not be parsed as the requested JSON shape. " +
             "Respond with JSON only — no prose, no markdown code fences.";
-        var retryRaw = await provider.CompleteAsync(systemPrompt, retryPrompt, ct);
+        var retryRaw = await provider.CompleteAsync(systemPrompt, retryPrompt, jsonMode: true, ct);
 
         var retryResult = TryParse<T>(retryRaw);
         if (retryResult is not null) return retryResult;
@@ -56,7 +56,7 @@ public class AiOrchestrator(IAiModelProvider provider)
     /// exceptions (unreachable model, bad key, etc.) the same way <see cref="RunAsync{T}"/> callers do.
     /// </summary>
     public Task<string> RunTextAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
-        => provider.CompleteAsync(systemPrompt, userPrompt, ct);
+        => provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: false, ct);
 
     private static T? TryParse<T>(string raw)
     {
@@ -67,7 +67,42 @@ public class AiOrchestrator(IAiModelProvider provider)
         }
         catch (JsonException)
         {
-            return default;
+            // A model asked for a bare top-level array will still sometimes
+            // wrap it in an envelope object instead — e.g. {"checkpoints":
+            // [...]} rather than [...] — even when told not to. Common
+            // enough (seen from a local Ollama model in practice, not
+            // theoretical) that it's worth unwrapping automatically rather
+            // than burning the one real retry on a formatting quirk: if the
+            // response is an object with exactly one array-valued property,
+            // try that property's contents instead.
+            var unwrapped = TryUnwrapSingleArrayProperty(json);
+            if (unwrapped is null) return default;
+
+            try { return JsonSerializer.Deserialize<T>(unwrapped, JsonOptions); }
+            catch (JsonException) { return default; }
+        }
+    }
+
+    private static string? TryUnwrapSingleArrayProperty(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+
+            JsonElement? arrayProperty = null;
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind != JsonValueKind.Array) continue;
+                if (arrayProperty is not null) return null; // ambiguous — more than one array property
+                arrayProperty = property.Value;
+            }
+
+            return arrayProperty?.GetRawText();
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 

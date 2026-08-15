@@ -151,7 +151,7 @@ else if (aiOptions.Provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
     // above ever gets a chance to. That pipeline is sized for fast internal
     // service calls, not CPU-bound local inference, so it needs overriding
     // here rather than left to silently cap every slow response at ~30s.
-    ExtendResilienceTimeouts(builder, ollamaClientBuilder.Name, TimeSpan.FromMinutes(5));
+    ExtendResilienceTimeouts(ollamaClientBuilder, TimeSpan.FromMinutes(5));
 }
 else
 {
@@ -193,7 +193,7 @@ if (transcriptionOptions.Provider.Equals("FasterWhisper", StringComparison.Ordin
         // same reasoning as OllamaModelProvider's extended timeout.
         client.Timeout = TimeSpan.FromMinutes(30);
     });
-    ExtendResilienceTimeouts(builder, fasterWhisperClientBuilder.Name, TimeSpan.FromMinutes(30));
+    ExtendResilienceTimeouts(fasterWhisperClientBuilder, TimeSpan.FromMinutes(30));
 }
 else if (transcriptionOptions.Provider.Equals("LocalWhisper", StringComparison.OrdinalIgnoreCase))
 {
@@ -243,8 +243,19 @@ else
     // resilience pipeline's own attempt/total timeouts run first, so they
     // need extending too, mainly to give a large video's upload (the one
     // real risk for a single HTTP call here) enough room.
-    ExtendResilienceTimeouts(builder, speechmaticsClientBuilder.Name, TimeSpan.FromHours(2));
+    ExtendResilienceTimeouts(speechmaticsClientBuilder, TimeSpan.FromHours(2));
 }
+// A lesson's video can also be a direct-file URL instead of an uploaded
+// asset (TranscriptionBackgroundService downloads it to a temp file before
+// handing it to the provider above) — same "can run long" reasoning as the
+// transcription clients themselves, sized for a large video download rather
+// than a typical API call.
+var videoDownloadClientBuilder = builder.Services.AddHttpClient("VideoDownload", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(30);
+});
+ExtendResilienceTimeouts(videoDownloadClientBuilder, TimeSpan.FromMinutes(30));
+
 builder.Services.AddSingleton<TranscriptionQueue>();
 builder.Services.AddHostedService<TranscriptionBackgroundService>();
 
@@ -480,23 +491,40 @@ app.Run();
 /// internal service calls. For a client whose whole reason for a long
 /// client.Timeout is CPU-bound local inference or a slow upload, that
 /// pipeline runs first and silently kills the call long before client.Timeout
-/// ever applies. This re-targets the same named pipeline's options (matching
-/// on the HttpClient's own name, exactly what AddStandardResilienceHandler
-/// bound to when ConfigureHttpClientDefaults added it) rather than layering
-/// on a second one, and turns retries off: none of these calls are
-/// idempotent — a "timed out" request may already have been received and
-/// started work server-side — and the caller already owns its own
-/// single-attempt semantics (TranscriptionBackgroundService records one
-/// failure as terminal, no retry loop).
+/// ever applies.
+///
+/// This used to re-target that pipeline's options via
+/// <c>Configure&lt;HttpStandardResilienceOptions&gt;(clientBuilder.Name, ...)</c>,
+/// which looked right but silently did nothing: the handler
+/// ConfigureHttpClientDefaults attaches is keyed by target *authority*
+/// (Microsoft.Extensions.Http.Resilience's ByAuthorityPipelineKeyProvider),
+/// not by the HttpClient's own name, so the override configured a pipeline
+/// key nothing ever reads. Confirmed live — Ollama calls kept timing out at
+/// exactly 10s (Polly's default) despite this override supposedly setting 5
+/// minutes. <see cref="LocalWhisperTranscriptionProvider"/>'s registration
+/// already worked around the same issue with RemoveAllResilienceHandlers;
+/// this does the same, then adds back a correctly-scoped handler (called
+/// directly on the builder, so it binds by client name, not authority) with
+/// retries off — none of these calls are idempotent, a "timed out" request
+/// may already have been received and started work server-side.
 /// </summary>
-static void ExtendResilienceTimeouts(WebApplicationBuilder builder, string clientName, TimeSpan timeout)
+static void ExtendResilienceTimeouts(IHttpClientBuilder clientBuilder, TimeSpan timeout)
 {
-    builder.Services.Configure<HttpStandardResilienceOptions>(clientName, options =>
+#pragma warning disable EXTEXP0001
+    clientBuilder.RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
+    clientBuilder.AddStandardResilienceHandler(options =>
     {
         options.AttemptTimeout.Timeout = timeout;
         options.TotalRequestTimeout.Timeout = timeout;
         options.CircuitBreaker.SamplingDuration = timeout * 2; // must be >= 2x AttemptTimeout
-        options.Retry.MaxRetryAttempts = 0;
+        // HttpRetryStrategyOptions validates MaxRetryAttempts >= 1, so 0 isn't
+        // a legal way to disable retries here (this now actually gets
+        // validated at startup — the previous, silently-ignored override
+        // never tripped this). ShouldHandle returning false unconditionally
+        // achieves the same "never retry" outcome the comment above already
+        // explains the need for.
+        options.Retry.ShouldHandle = _ => ValueTask.FromResult(false);
     });
 }
 

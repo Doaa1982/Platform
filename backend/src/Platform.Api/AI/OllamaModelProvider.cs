@@ -23,7 +23,7 @@ public class OllamaModelProvider(HttpClient http, OllamaOptions options) : IAiMo
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
+    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, CancellationToken ct = default)
     {
         var requestBody = new OllamaRequest(
             Model: options.Model,
@@ -32,7 +32,14 @@ public class OllamaModelProvider(HttpClient http, OllamaOptions options) : IAiMo
             [
                 new OllamaMessage("system", systemPrompt),
                 new OllamaMessage("user", userPrompt)
-            ]
+            ],
+            // Ollama's own JSON mode — constrains decoding to syntactically
+            // valid JSON. Doesn't guarantee every field gets meaningful
+            // content from a small model, but it's a large, well-documented
+            // improvement over hoping the prompt alone is followed, which is
+            // what smaller local models (llama3.2 in particular) are prone
+            // to ignore, wrap in prose, or fill with nulls.
+            Format: jsonMode ? "json" : null
         );
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "api/chat")
@@ -72,7 +79,8 @@ public class OllamaModelProvider(HttpClient http, OllamaOptions options) : IAiMo
     private record OllamaRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("stream")] bool Stream,
-        [property: JsonPropertyName("messages")] OllamaMessage[] Messages);
+        [property: JsonPropertyName("messages")] OllamaMessage[] Messages,
+        [property: JsonPropertyName("format")] string? Format = null);
 
     private record OllamaMessage(
         [property: JsonPropertyName("role")] string Role,

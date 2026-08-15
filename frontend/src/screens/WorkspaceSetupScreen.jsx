@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle, AlertCircle, Check, Circle, ArrowRight, Globe, Lock, Rocket } from "lucide-react";
+import { LoaderCircle, AlertCircle, AlertTriangle, Check, Circle, ArrowRight, Globe, Lock, Rocket } from "lucide-react";
 import QRCode from "qrcode";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -161,6 +161,11 @@ export default function WorkspaceSetupScreen() {
         })}
       </ol>
 
+      {/* ── Readiness — INV-007, before Publish becomes available ────────── */}
+      {currentIndex >= 0 && currentIndex < 3 && (
+        <Readiness completeness={setup.completeness} t={t} />
+      )}
+
       {/* Suspended and Archived are platform-driven and sit outside the journey */}
       {currentIndex === -1 && (
         <Message type="error">{t("setup.statusAlert", { status: setup.status, blocker: setup.blocker })}</Message>
@@ -240,7 +245,10 @@ export default function WorkspaceSetupScreen() {
           <button
             className={`lw-btn ${setup.acceptsJoinRequests ? "lw-btn--ghost" : "lw-btn--accent"} lw-btn--sm`}
             disabled={busy}
-            onClick={() => act(() => api.setAcceptsJoinRequests(session.token, slug, !setup.acceptsJoinRequests))}
+            onClick={() => act(
+              () => api.setAcceptsJoinRequests(session.token, slug, !setup.acceptsJoinRequests),
+              setup.acceptsJoinRequests ? t("setup.toastJoinRequestsOff") : t("setup.toastJoinRequestsOn"),
+            )}
           >
             {busy
               ? <LoaderCircle size={14} className="lw-setup__spin" />
@@ -262,6 +270,52 @@ export default function WorkspaceSetupScreen() {
       {!setup.canManage && (
         <p className="lw-setup__readonly">{t("setup.readonlyNote")}</p>
       )}
+
+      {/* ── Honest about what this screen doesn't do yet ─────────────────
+          Workspace Setup Business Analysis §3 scopes this screen to also
+          cover Configuration, Branding and Capabilities — none of which
+          exist yet, on either side of the API. Silently omitting them would
+          look like the screen just doesn't have more to offer, rather than
+          the truth: those are unbuilt, not decided against. */}
+      <div className="lw-setup__notyet">
+        <strong>{t("setup.notYetTitle")}</strong>
+        <p>{t("setup.notYetBody")}</p>
+      </div>
+    </div>
+  );
+}
+
+// The checklist behind INV-007 — the API already computes this on every GET
+// (WorkspaceSetupResponse.Completeness), it just wasn't surfaced anywhere.
+// Public identifier and addressability are the same field today (BA-003's
+// implicit-subdomain stopgap), so they're shown as one row rather than two
+// checks that would always move in lockstep.
+function Readiness({ completeness, t }) {
+  if (!completeness) return null;
+  const items = [
+    { key: "name", done: completeness.hasName, label: t("setup.readinessName") },
+    { key: "slug", done: completeness.hasPublicIdentifier, label: t("setup.readinessSlug") },
+    { key: "description", done: completeness.hasDescription, label: t("setup.readinessDescription"), optional: true },
+  ];
+  const remaining = items.filter((it) => !it.optional && !it.done).length;
+
+  return (
+    <div className={`lw-setup__readiness ${completeness.readyToPublish ? "is-ready" : ""}`}>
+      <div className="lw-setup__readinesshead">
+        <span>{t("setup.readinessTitle")}</span>
+        <span className="lw-setup__readinessstatus">
+          {completeness.readyToPublish ? t("setup.readinessReady") : t("setup.readinessRemaining", { count: remaining })}
+        </span>
+      </div>
+      <ul className="lw-setup__readinesslist">
+        {items.map((it) => (
+          <li key={it.key} className={it.done ? "is-done" : ""}>
+            <span className="lw-setup__readinesscheck">{it.done ? <Check size={11} /> : <Circle size={7} />}</span>
+            <span>{it.label}</span>
+            {it.optional && <span className="lw-setup__readinessoptional">{t("setup.readinessOptional")}</span>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -280,6 +334,12 @@ function IdentityForm({ setup, onSubmit, onCancel, busy }) {
   const [name, setName] = useState(setup.name);
   const [slug, setSlug] = useState(setup.slug);
   const [description, setDescription] = useState(setup.description ?? "");
+
+  // Changing the address after publication breaks any link people already
+  // have to it (Workspace Setup Business Analysis §16, open question) — the
+  // form doesn't forbid it, but it shouldn't happen by accident either.
+  const isPublished = setup.status === "Published" || setup.status === "Active";
+  const slugChanged = slug.trim() !== setup.slug;
 
   return (
     <form
@@ -301,6 +361,11 @@ function IdentityForm({ setup, onSubmit, onCancel, busy }) {
           required disabled={busy}
         />
       </label>
+      {isPublished && slugChanged && (
+        <div className="lw-setup__slugwarning">
+          <AlertTriangle size={13} /> {t("setup.slugChangeWarning", { old: setup.slug })}
+        </div>
+      )}
       <label className="lw-setup__wide">
         <span>{t("setup.descriptionLabel")}</span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} disabled={busy} />
@@ -335,6 +400,31 @@ const CSS = `
   .lw-setup__steplabel { display: block; font-weight: 600; font-size: 0.9rem; }
   .lw-setup__step.is-todo .lw-setup__steplabel { color: var(--ink-soft); }
   .lw-setup__stepblurb { display: block; font-size: 0.8rem; color: var(--ink-soft); margin-top: 2px; }
+
+  .lw-setup__readiness {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 14px 18px; margin-bottom: 16px;
+  }
+  .lw-setup__readiness.is-ready { border-color: color-mix(in srgb, var(--accent-2) 35%, transparent); }
+  .lw-setup__readinesshead {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-soft);
+  }
+  .lw-setup__readinessstatus { text-transform: none; letter-spacing: normal; font-weight: 600; }
+  .lw-setup__readiness.is-ready .lw-setup__readinessstatus { color: var(--accent-2); }
+  .lw-setup__readinesslist { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; }
+  .lw-setup__readinesslist li { display: flex; align-items: center; gap: 9px; font-size: 0.85rem; color: var(--ink-soft); }
+  .lw-setup__readinesslist li.is-done { color: var(--ink); }
+  .lw-setup__readinesscheck {
+    width: 17px; height: 17px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-soft);
+  }
+  .lw-setup__readinesslist li.is-done .lw-setup__readinesscheck { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .lw-setup__readinessoptional {
+    font-size: 0.72rem; color: var(--ink-soft); background: var(--surface-2);
+    border-radius: 999px; padding: 1px 8px;
+  }
 
   .lw-setup__action {
     display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
@@ -377,6 +467,13 @@ const CSS = `
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
   }
+  .lw-setup__slugwarning {
+    grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px;
+    background: color-mix(in srgb, #E0912E 12%, transparent);
+    border: 1px solid color-mix(in srgb, #E0912E 35%, transparent);
+    color: #E0912E; border-radius: var(--radius-sm); padding: 9px 12px;
+    font-size: 0.8rem; line-height: 1.5;
+  }
   .lw-setup__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
   @media (max-width: 560px) {
     .lw-setup__form { grid-template-columns: 1fr; }
@@ -410,6 +507,16 @@ const CSS = `
   }
   .lw-setup__note code { font-family: var(--font-mono); }
   .lw-setup__readonly { font-size: 0.83rem; color: var(--ink-soft); margin-top: 16px; font-style: italic; }
+
+  .lw-setup__notyet {
+    background: var(--surface-2); border-radius: var(--radius-sm);
+    padding: 15px 17px; margin-top: 26px;
+  }
+  .lw-setup__notyet strong {
+    display: block; font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 7px;
+  }
+  .lw-setup__notyet p { font-size: 0.85rem; color: var(--ink-soft); margin: 0; line-height: 1.6; max-width: 66ch; }
 
   .lw-setup__spin { animation: lwSetupSpin 0.9s linear infinite; }
   @keyframes lwSetupSpin { to { transform: rotate(360deg); } }

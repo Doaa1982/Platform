@@ -25,7 +25,7 @@ public class GeminiModelProvider(HttpClient http, GeminiOptions options) : IAiMo
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
+    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(
@@ -33,7 +33,9 @@ public class GeminiModelProvider(HttpClient http, GeminiOptions options) : IAiMo
 
         var requestBody = new GenerateContentRequest(
             SystemInstruction: new ContentPart(new[] { new TextPart(systemPrompt) }),
-            Contents: new[] { new ContentPart(new[] { new TextPart(userPrompt) }) });
+            Contents: new[] { new ContentPart(new[] { new TextPart(userPrompt) }) },
+            // Gemini's own JSON mode — same reasoning as OllamaModelProvider's Format.
+            GenerationConfig: jsonMode ? new GenerationConfig("application/json") : null);
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post, $"models/{options.Model}:generateContent")
@@ -60,7 +62,11 @@ public class GeminiModelProvider(HttpClient http, GeminiOptions options) : IAiMo
 
     private record GenerateContentRequest(
         [property: JsonPropertyName("system_instruction")] ContentPart SystemInstruction,
-        [property: JsonPropertyName("contents")] ContentPart[] Contents);
+        [property: JsonPropertyName("contents")] ContentPart[] Contents,
+        [property: JsonPropertyName("generationConfig")] GenerationConfig? GenerationConfig = null);
+
+    private record GenerationConfig(
+        [property: JsonPropertyName("responseMimeType")] string ResponseMimeType);
 
     private record ContentPart([property: JsonPropertyName("parts")] TextPart[] Parts);
 

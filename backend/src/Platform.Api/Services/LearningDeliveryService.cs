@@ -75,8 +75,20 @@ public class LearningDeliveryService(
             .Where(c => productIds.Contains(c.LearningProductId) && c.Status == CurriculumStatus.Published)
             .ToListAsync(ct);
 
-        var totalLessons = curricula.SelectMany(c => c.Units).SelectMany(u => u.Lessons)
-            .Select(l => l.LessonId).Distinct().Count();
+        // A curriculum's unit/lesson placements include Draft lessons a
+        // learner can't even see yet (same distinction GetCurriculumAsync
+        // below makes) — filter down to Published ones before counting,
+        // otherwise a course with unfinished draft lessons could never show
+        // 100%, and the "X of Y" denominator wouldn't match what the course
+        // content sidebar actually lists.
+        var placedLessonIds = curricula.SelectMany(c => c.Units).SelectMany(u => u.Lessons)
+            .Select(l => l.LessonId).Distinct().ToList();
+        var publishedLessonIdSet = placedLessonIds.Count == 0 ? [] : (await db.Lessons.AsNoTracking()
+            .Where(l => placedLessonIds.Contains(l.Id) && l.Status == LessonStatus.Published)
+            .Select(l => l.Id)
+            .ToListAsync(ct)).ToHashSet();
+
+        var totalLessons = publishedLessonIdSet.Count;
 
         // A product counts as completed only once every one of its published
         // lessons has been — an empty curriculum (no lessons yet) is not
@@ -86,7 +98,7 @@ public class LearningDeliveryService(
             .Count(g =>
             {
                 var lessonIds = g.SelectMany(c => c.Units).SelectMany(u => u.Lessons)
-                    .Select(l => l.LessonId).Distinct().ToList();
+                    .Select(l => l.LessonId).Distinct().Where(publishedLessonIdSet.Contains).ToList();
                 return lessonIds.Count > 0 && lessonIds.All(completedLessonIdSet.Contains);
             });
 

@@ -15,7 +15,12 @@ public class ClaudeModelProvider(HttpClient http, AiOptions options) : IAiModelP
 {
     private const string ApiVersion = "2023-06-01";
 
-    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
+    // jsonMode is unused here — Claude has no simple "constrain to JSON"
+    // request flag equivalent to Ollama's/OpenAI's/Gemini's (forcing valid
+    // JSON would mean switching to tool-use with a forced tool_choice, a
+    // bigger structural change than this fix warrants); AiOrchestrator's
+    // prompt instructions + parse-retry are what keep Claude's output in shape.
+    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(

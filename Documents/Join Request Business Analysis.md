@@ -1,6 +1,6 @@
 # Join Request Business Analysis
 
-> Version: 1.1
+> Version: 1.2
 >
 > Status: Draft
 >
@@ -11,6 +11,8 @@
 > Author: Business Analysis Team (drafted to close the gap recorded in Technical Debt Backlog, TD-010: nobody can ask to join a Workspace)
 >
 > Revision Note (v1.1): Added BA-007, resolving Section 16's former "Where requesters find Workspaces" open question — the platform provides no directory or discovery of any kind, by permanent decision rather than Future scope. See ExperienceArchitecture.md, ADR-EA-002.
+>
+> Revision Note (v1.2): Added BA-008, closing Technical Debt Backlog TD-020 — assigns authority over the Accepting Requests toggle (Owner or Administrator, per Workspace Setup Business Analysis BA-001) and states that toggling it does not affect a Join Request already `Submitted`. §8 cross-references where the control is actually rendered.
 >
 > Related Documents:
 >
@@ -23,7 +25,7 @@
 > - Identity Aggregate Design
 > - Enrollment_Aggregate_Design
 > - ExperienceArchitecture
-> - Technical Debt Backlog (TD-006, TD-010, TD-013)
+> - Technical Debt Backlog (TD-006, TD-010, TD-013, TD-020)
 
 ---
 
@@ -225,7 +227,7 @@ Join Request: Withdrawn
 
 ## Accepting Requests
 
-Per Workspace, off by default (BA-005). An Owner turns it on deliberately.
+Per Workspace, off by default (BA-005). An Owner or Administrator turns it on deliberately — see BA-008 for authority and for what toggling it does to requests already in flight. Rendered today as a toggle on Workspace Setup Business Analysis's own screen (`WorkspaceSetupScreen.jsx`), not a page of its own.
 
 ## Requestable Roles
 
@@ -421,6 +423,27 @@ This document's own premise — "a person has already found a published Workspac
 Reasoning: this platform's paying customer is the Tutor, who brings their own students (Platform Administrator Business Analysis, Section 1; ExperienceArchitecture.md, ADR-EA-002, Business Model Note). Providing discovery would put the platform in competition with its own customers for their students' attention — the same reasoning Shopify applies by giving merchants a signup site with no consumer-facing store directory.
 
 **Consequence for `Workspace.Visibility`:** `Published` continues to mean only "not hidden from someone who already has the link," per Workspace Aggregate Design §15 — it does not mean "listed" anywhere, and BA-005's per-Workspace opt-in for accepting Join Requests governs a separate concern (whether a found Workspace accepts unsolicited requests at all, not how it was found).
+
+---
+
+## BA-008
+
+*(Added 2026-08-15, closing Technical Debt Backlog TD-020.)*
+
+**Toggling Accepting Requests is Owner-or-Administrator authority, same as every other Workspace Setup action, and does not affect a Join Request already `Submitted`.**
+
+Neither half of this was previously stated anywhere, even though the toggle has shipped on `WorkspaceSetupScreen.jsx` since 2026-08-09.
+
+**Authority.** Accepting Requests is Workspace configuration (BA-005), and Workspace configuration authority is already settled: Owner or Administrator, per Workspace Setup Business Analysis BA-001. No new authority model is needed for one more toggle — it is checked the same way every other field on that screen is.
+
+**Effect on requests already in flight.** Turning the setting off is a decision about new arrivals, not a verdict on requests already made. A person who submitted while the door was open should not lose their place in the reviewer's queue because the Owner changed their mind about default openness afterward. Turning it off:
+
+- Refuses new submissions from that point on (§10, Submission Rules — unchanged).
+- Does **not** withdraw, decline, or otherwise touch any Join Request already `Submitted`. The reviewer still sees it and may approve or decline it on its own merits, exactly as before.
+
+Turning it back on does not require re-submission of anything — there is nothing to restore, since nothing already `Submitted` was ever affected.
+
+**Where the control lives.** The setting is rendered on Workspace Setup Business Analysis's own screen, cross-referenced from that document's §8.
 
 ---
 

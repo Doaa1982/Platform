@@ -6,6 +6,8 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+import VideoPlayer from "../components/VideoPlayer";
+import MarkdownText from "../components/MarkdownText";
 
 /* =========================================================================
    LESSON — watch the video, answer its questions, get graded for real.
@@ -92,16 +94,14 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lesson, activeQuestion, answeredIds, videoEnded, result, submitting, completed]);
 
-  function handleTimeUpdate() {
+  function handleTimeUpdate(currentTime) {
     if (activeQuestion || videoEnded || !lesson || completed) return;
-    const video = videoRef.current;
-    if (!video) return;
     const next = lesson.questions
       .filter((q) => q.videoTimestampSeconds != null && !answeredIds.has(q.id))
       .sort((a, b) => a.videoTimestampSeconds - b.videoTimestampSeconds)
-      .find((q) => video.currentTime >= q.videoTimestampSeconds);
+      .find((q) => currentTime >= q.videoTimestampSeconds);
     if (next) {
-      video.pause();
+      videoRef.current?.pause?.();
       setActiveQuestion(next);
     }
   }
@@ -196,19 +196,19 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
         {lesson.whatYoullLearn ? (
           <div className="lw-learn__outcomes">
             <div className="lw-learn__outcomeskicker"><Sparkles size={13} /> {t("studio.whatYoullLearnLabel")}</div>
-            <p className="lw-learn__outcomestext">{lesson.whatYoullLearn}</p>
+            <MarkdownText className="lw-learn__outcomestext" text={lesson.whatYoullLearn} />
           </div>
-        ) : lesson.body && <p className="lw-learn__body">{lesson.body}</p>}
+        ) : lesson.body && <MarkdownText className="lw-learn__body" text={lesson.body} />}
 
         {(lesson.video || lesson.videoUrl) && (
           <div className="lw-learn__playerframe">
-            <video
+            <VideoPlayer
               ref={videoRef}
               src={lesson.video ? api.learningAssetDownloadUrl(session.token, slug, lesson.video.id) : lesson.videoUrl}
               controls={!activeQuestion}
               onTimeUpdate={handleTimeUpdate}
               onEnded={handleVideoEnded}
-              style={{ width: "100%", display: "block" }}
+              style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
             />
             {activeQuestion && (
               <div className="lw-learn__checkpoint">
@@ -347,7 +347,7 @@ const CSS = `
   }
   .lw-learn__outcomestext { font-size: 0.92rem; color: var(--ink); line-height: 1.7; margin: 8px 0 0; white-space: pre-wrap; }
 
-  .lw-learn__playerframe { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; }
+  .lw-learn__playerframe { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; background: #000; }
   .lw-learn__checkpoint {
     position: absolute; inset: 0; background: rgba(10,12,15,0.88);
     display: flex; align-items: center; justify-content: center; padding: 24px;

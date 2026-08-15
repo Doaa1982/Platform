@@ -5,9 +5,14 @@ namespace Platform.Api.AI;
 /// <summary>
 /// One transcription request, enough for the background worker to find the
 /// revision again and load the video file without re-deriving anything the
-/// controller already resolved.
+/// controller already resolved. Exactly one of <see cref="FilePath"/> (an
+/// uploaded asset, already on local disk) or <see cref="SourceUrl"/> (a
+/// direct-file video URL — the worker downloads it to a temp file first) is
+/// set; the worker deletes the file afterward only when it downloaded it.
 /// </summary>
-public record TranscriptionJob(Guid WorkspaceId, Guid LessonId, Guid LessonRevisionId, string FilePath, string FileName);
+public record TranscriptionJob(
+    Guid WorkspaceId, Guid LessonId, Guid LessonRevisionId, string FileName,
+    string? FilePath = null, string? SourceUrl = null);
 
 /// <summary>
 /// In-process work queue for transcription jobs (AI Video Transcript
