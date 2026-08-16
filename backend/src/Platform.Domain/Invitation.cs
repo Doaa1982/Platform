@@ -44,6 +44,13 @@ public class Invitation
     public DateTime? AcceptedAt { get; private set; }
     public DateTime? ClosedAt { get; private set; }
 
+    /// <summary>
+    /// The Invitation Batch this was issued as part of, if any (§4.3).
+    /// Reference by identifier only — an Invitation Batch never owns or
+    /// gates this Invitation's own lifecycle.
+    /// </summary>
+    public Guid? BatchId { get; private set; }
+
     // Required by EF Core — not for application use
     private Invitation() { }
 
@@ -56,7 +63,8 @@ public class Invitation
         string email,
         WorkspaceRoleName intendedRole,
         Guid issuedBy,
-        TimeSpan validFor)
+        TimeSpan validFor,
+        Guid? batchId = null)
     {
         if (workspaceId == Guid.Empty)
             throw new ArgumentException("An Invitation must name exactly one Workspace.", nameof(workspaceId));
@@ -79,7 +87,8 @@ public class Invitation
             Status = InvitationStatus.Created,
             IssuedAt = now,
             ExpiresAt = now.Add(validFor),
-            IssuedBy = issuedBy
+            IssuedBy = issuedBy,
+            BatchId = batchId
         };
 
         return (invitation, raw);

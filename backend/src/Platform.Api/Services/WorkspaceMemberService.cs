@@ -48,6 +48,14 @@ public class WorkspaceMemberService(
 
     private TimeSpan ValidFor => TimeSpan.FromDays(config.GetValue("Invitations:ValidForDays", 7));
 
+    /// <summary>
+    /// Ceiling on recipients per bulk-invite request (§4). SMTP delivery has no
+    /// connection pooling — a fresh connect/send/disconnect per message — so an
+    /// unbounded batch risks a slow or timed-out request rather than a domain
+    /// problem. Configurable so ops can tune it without a redeploy.
+    /// </summary>
+    private int MaxBulkRecipients => config.GetValue("Invitations:MaxBulkRecipients", 50);
+
     // ── Reading ──────────────────────────────────────────────────────────────
 
     public async Task<ProvisioningResult<WorkspaceMembersResponse>> ListAsync(
@@ -112,7 +120,8 @@ public class WorkspaceMemberService(
                                                  : i.Status.ToString(),
                                IssuedAt:     i.IssuedAt,
                                ExpiresAt:    i.ExpiresAt,
-                               IsOpen:       i.IsOpen(now))).ToList()));
+                               IsOpen:       i.IsOpen(now),
+                               BatchId:      i.BatchId)).ToList()));
     }
 
     // ── Inviting ─────────────────────────────────────────────────────────────
@@ -177,9 +186,7 @@ public class WorkspaceMemberService(
         db.Invitations.Add(invitation);
         await db.SaveChangesAsync(ct);
 
-        var outcome = await delivery.SendInvitationAsync(
-            invitation.Email, workspace.Name, invitation.IntendedRole.ToString(),
-            AbsoluteLink(rawToken), invitation.ExpiresAt, ct);
+        var outcome = await SendInvitationEmailAsync(invitation, rawToken, workspace.Name, ct);
 
         return ProvisioningResult<InvitationIssuedResponse>.Success(new InvitationIssuedResponse(
             InvitationId:    invitation.Id,
@@ -190,6 +197,179 @@ public class WorkspaceMemberService(
             Delivered:       outcome.Delivered,
             DeliveryChannel: outcome.Channel,
             DeliveryDetail:  outcome.Detail));
+    }
+
+    /// <summary>
+    /// Invites many recipients at once under one Invitation Batch (§4). Each
+    /// recipient still gets its own independent Invitation with its own status
+    /// (Rule 4) — a bad recipient (already a member, a duplicate open invite,
+    /// or one that would exceed tutor capacity) is skipped individually rather
+    /// than failing the whole request. Role, source and authority are resolved
+    /// once for the batch, not per recipient (§13's UI picks one role per
+    /// bulk-invite operation).
+    /// </summary>
+    public async Task<ProvisioningResult<BulkInvitationIssuedResponse>> InviteBulkAsync(
+        string slug, Guid callerIdentityId, BulkInviteMemberRequest request, CancellationToken ct = default)
+    {
+        var context = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (context.Error is not null)
+            return ProvisioningResult<BulkInvitationIssuedResponse>.Fail(context.Error.Value.Error, context.Error.Value.Message);
+
+        var workspace = context.Workspace!;
+
+        if (!Enum.TryParse<WorkspaceRoleName>(request.Role, out var role))
+            return FailBulk($"\"{request.Role}\" is not a workspace role.", ProvisioningError.Invalid);
+
+        // BA-006: ownership moves by transfer, never by inviting a second claimant
+        if (role == WorkspaceRoleName.Owner)
+            return FailBulk("Ownership is transferred, not invited. Invite an Administrator instead.", ProvisioningError.Invalid);
+
+        if (!Enum.TryParse<InvitationBatchSource>(request.Source, out var source))
+            return FailBulk($"\"{request.Source}\" is not a recognised invitation source.", ProvisioningError.Invalid);
+
+        var emails = (request.Recipients ?? [])
+            .Select(r => r.Email?.ToLowerInvariant().Trim() ?? string.Empty)
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Distinct()
+            .ToList();
+
+        if (emails.Count == 0)
+            return FailBulk("At least one recipient email is required.", ProvisioningError.Invalid);
+
+        if (emails.Count > MaxBulkRecipients)
+            return FailBulk(
+                $"A bulk invitation may include at most {MaxBulkRecipients} recipients at a time; this one has {emails.Count}.",
+                ProvisioningError.Invalid);
+
+        // Already-active-member and §8 duplicate-open-invitation checks,
+        // batched once for the whole request rather than per recipient.
+        var activeMemberEmails = await (
+            from m in db.Memberships
+            join i in db.Identities on m.IdentityId equals i.Id
+            where m.WorkspaceId == workspace.Id && emails.Contains(i.Email) && m.Status == MembershipStatus.Active
+            select i.Email).ToListAsync(ct);
+        var activeMemberSet = activeMemberEmails.ToHashSet();
+
+        var candidateInvitations = await db.Invitations
+            .Where(i => i.WorkspaceId == workspace.Id && emails.Contains(i.Email))
+            .ToListAsync(ct);
+        var openInviteSet = candidateInvitations.Where(i => i.IsOpen()).Select(i => i.Email).ToHashSet();
+
+        // Tutor capacity is a batch-wide question (one role for the whole
+        // request), computed once — not re-checked per recipient.
+        int? remainingTutorSeats = null;
+        if (TutorRoles.Contains(role))
+        {
+            var capacityValue = await entitlements.GetEntitlementValueAsync(
+                workspace.Id, EntitlementResolutionService.TutorCapacityKey, ct);
+            if (capacityValue is not null && int.TryParse(capacityValue, out var capacity))
+            {
+                var (activeTutorSeats, pendingTutorSeats) = await GetTutorSeatUsageAsync(workspace.Id, ct);
+                remainingTutorSeats = Math.Max(0, capacity - activeTutorSeats - pendingTutorSeats);
+            }
+        }
+
+        var batch = InvitationBatch.Create(workspace.Id, callerIdentityId, source, emails.Count);
+        db.InvitationBatches.Add(batch);
+
+        // Phase 1 (sequential, DB-bound): decide each recipient's outcome and
+        // issue+persist the ones that pass, in one SaveChanges for the batch.
+        var pending = new List<(Invitation Invitation, string RawToken)>();
+        var results = new List<BulkInvitationRecipientResult>();
+
+        foreach (var recipientEmail in emails)
+        {
+            if (activeMemberSet.Contains(recipientEmail))
+            {
+                results.Add(new BulkInvitationRecipientResult(
+                    recipientEmail, "skipped", "Already an active member of this workspace.", null, null, null, null));
+                continue;
+            }
+
+            if (openInviteSet.Contains(recipientEmail))
+            {
+                results.Add(new BulkInvitationRecipientResult(
+                    recipientEmail, "skipped", "There's already an open invitation for that email.", null, null, null, null));
+                continue;
+            }
+
+            if (remainingTutorSeats is 0)
+            {
+                results.Add(new BulkInvitationRecipientResult(
+                    recipientEmail, "skipped", "This workspace's plan has no remaining tutor seats.", null, null, null, null));
+                continue;
+            }
+
+            var (invitation, rawToken) = Invitation.Issue(
+                workspaceId:  workspace.Id,
+                email:        recipientEmail,
+                intendedRole: role,
+                issuedBy:     callerIdentityId,
+                validFor:     ValidFor,
+                batchId:      batch.Id);
+
+            invitation.MarkSent();
+            db.Invitations.Add(invitation);
+            pending.Add((invitation, rawToken));
+
+            if (remainingTutorSeats is not null)
+                remainingTutorSeats--;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        // Phase 2 (network-bound): deliver the issued invitations with bounded
+        // concurrency — SMTP has no connection pooling, and sending 50 emails
+        // strictly sequentially would make the request needlessly slow.
+        // Delivery never throws (failure is captured in the outcome), so
+        // Task.WhenAll needs no exception-aggregation handling here.
+        using var deliveryThrottle = new SemaphoreSlim(8);
+        var deliveryTasks = pending.Select(async p =>
+        {
+            await deliveryThrottle.WaitAsync(ct);
+            try
+            {
+                var outcome = await SendInvitationEmailAsync(p.Invitation, p.RawToken, workspace.Name, ct);
+                return new BulkInvitationRecipientResult(
+                    p.Invitation.Email, "issued", null, p.Invitation.Id, $"/invite/{p.RawToken}",
+                    outcome.Delivered, outcome.Detail);
+            }
+            finally { deliveryThrottle.Release(); }
+        });
+
+        results.AddRange(await Task.WhenAll(deliveryTasks));
+
+        // Preserve the caller's original recipient order in the response.
+        var order = emails.Select((e, i) => (e, i)).ToDictionary(x => x.e, x => x.i);
+        results = results.OrderBy(r => order[r.Email]).ToList();
+
+        return ProvisioningResult<BulkInvitationIssuedResponse>.Success(new BulkInvitationIssuedResponse(
+            BatchId:         batch.Id,
+            TotalRecipients: emails.Count,
+            IssuedCount:     results.Count(r => r.Outcome == "issued"),
+            SkippedCount:    results.Count(r => r.Outcome == "skipped"),
+            Results:         results));
+    }
+
+    /// <summary>
+    /// Counts active tutor Memberships plus still-open tutor Invitations —
+    /// the two ingredients of the tutor-capacity check (LIC-008 consumer),
+    /// extracted so a bulk invite can compute this once for the whole batch
+    /// instead of once per recipient.
+    /// </summary>
+    private async Task<(int ActiveTutorSeats, int PendingTutorSeats)> GetTutorSeatUsageAsync(Guid workspaceId, CancellationToken ct)
+    {
+        var activeTutorSeats = await db.Memberships
+            .Where(m => m.WorkspaceId == workspaceId && m.Status == MembershipStatus.Active)
+            .Where(m => m.Roles.Any(r => TutorRoles.Contains(r.Name)))
+            .CountAsync(ct);
+
+        var openTutorInvites = await db.Invitations
+            .Where(i => i.WorkspaceId == workspaceId && TutorRoles.Contains(i.IntendedRole))
+            .ToListAsync(ct);
+        var pendingTutorSeats = openTutorInvites.Count(i => i.IsOpen());
+
+        return (activeTutorSeats, pendingTutorSeats);
     }
 
     /// <summary>
@@ -206,15 +386,7 @@ public class WorkspaceMemberService(
         if (capacityValue is null || !int.TryParse(capacityValue, out var capacity))
             return null;
 
-        var activeTutorSeats = await db.Memberships
-            .Where(m => m.WorkspaceId == workspaceId && m.Status == MembershipStatus.Active)
-            .Where(m => m.Roles.Any(r => TutorRoles.Contains(r.Name)))
-            .CountAsync(ct);
-
-        var openTutorInvites = await db.Invitations
-            .Where(i => i.WorkspaceId == workspaceId && TutorRoles.Contains(i.IntendedRole))
-            .ToListAsync(ct);
-        var pendingTutorSeats = openTutorInvites.Count(i => i.IsOpen());
+        var (activeTutorSeats, pendingTutorSeats) = await GetTutorSeatUsageAsync(workspaceId, ct);
 
         if (activeTutorSeats + pendingTutorSeats + 1 <= capacity)
             return null;
@@ -223,6 +395,12 @@ public class WorkspaceMemberService(
             ? $"This workspace's plan allows up to {capacity} tutor seat{(capacity == 1 ? "" : "s")} ({activeTutorSeats} active, {pendingTutorSeats} pending). Remove a member, wait for a pending invitation to lapse, or upgrade the plan."
             : $"This workspace's plan allows up to {capacity} tutor seat{(capacity == 1 ? "" : "s")} and is already at capacity. Remove a member or upgrade the plan to invite another tutor.";
     }
+
+    private Task<DeliveryOutcome> SendInvitationEmailAsync(
+        Invitation invitation, string rawToken, string workspaceName, CancellationToken ct) =>
+        delivery.SendInvitationAsync(
+            invitation.Email, workspaceName, invitation.IntendedRole.ToString(),
+            AbsoluteLink(rawToken), invitation.ExpiresAt, ct);
 
     private string AbsoluteLink(string rawToken) =>
         $"{email.PublicBaseUrl.TrimEnd('/')}/invite/{rawToken}";
@@ -350,6 +528,9 @@ public class WorkspaceMemberService(
 
     private static ProvisioningResult<InvitationIssuedResponse> Fail(string message, ProvisioningError error)
         => ProvisioningResult<InvitationIssuedResponse>.Fail(error, message);
+
+    private static ProvisioningResult<BulkInvitationIssuedResponse> FailBulk(string message, ProvisioningError error)
+        => ProvisioningResult<BulkInvitationIssuedResponse>.Fail(error, message);
 
     private static ProvisioningResult<T> Fail<T>(string message, ProvisioningError error)
         => ProvisioningResult<T>.Fail(error, message);

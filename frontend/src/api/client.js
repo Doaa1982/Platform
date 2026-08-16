@@ -200,6 +200,11 @@ export function inviteMember(token, slug, body) {
   return request(`/workspaces/${encodeURIComponent(slug)}/invitations`, { method: "POST", body, token });
 }
 
+/** POST /api/workspaces/{slug}/invitations/bulk → invite many people at once, under one batch */
+export function inviteMembersBulk(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/invitations/bulk`, { method: "POST", body, token });
+}
+
 /** POST /api/workspaces/{slug}/members/{id}/{action} — activate | suspend | reinstate | archive | remove */
 export function memberAction(token, slug, membershipId, action) {
   return request(`/workspaces/${encodeURIComponent(slug)}/members/${membershipId}/${action}`, {

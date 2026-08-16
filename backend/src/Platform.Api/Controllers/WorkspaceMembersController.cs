@@ -32,6 +32,16 @@ public class WorkspaceMembersController(WorkspaceMemberService members) : Contro
         => Run(await members.InviteAsync(slug, Caller(), request, ct));
 
     /// <summary>
+    /// POST /api/workspaces/{slug}/invitations/bulk — invite many people at
+    /// once (§4). Each recipient gets its own independent Invitation; a bad
+    /// recipient is skipped, not a reason to fail the whole request (Rule 4).
+    /// </summary>
+    [HttpPost("invitations/bulk")]
+    public async Task<ActionResult<BulkInvitationIssuedResponse>> InviteBulk(
+        string slug, [FromBody] BulkInviteMemberRequest request, CancellationToken ct)
+        => Run(await members.InviteBulkAsync(slug, Caller(), request, ct));
+
+    /// <summary>
     /// Pending → Active. Acceptance already activates a Membership, so this is
     /// for the ones created another way, and for reversing an archive decision
     /// before it takes hold.

@@ -1,5 +1,18 @@
 # Student Workspace Access & Admission Architecture
 
+> **Document status:** Business-level overview. For detailed lifecycles, field-level rules, and edge cases, the following documents are normative and take precedence over this one where they differ:
+> - Invitation lifecycle, resend/cancel rules, and acceptance edge cases — **Invitation Business Analysis.md** §9 is normative for Invitation (see Technical Debt Backlog TD-008 for the reconciliation history).
+> - Join Request lifecycle and edge cases — **Join Request Business Analysis.md**.
+> - Membership fields, roles, and removal — **Membership Aggregate Design.md**.
+> - Enrollment states, including enrollment offered via invitation — **Enrollment_Aggregate_Design.md**.
+>
+> **Terminology note:** This document uses **Student** and **Course/Class** as plain-language, tutor-facing terms. Elsewhere in the platform's domain model the same concepts are **Learner** and **Learning Product**. The terms are equivalent; see Section 17.
+>
+> **Change log:**
+> - 2026-08-16 — added Section 12 (Workspace Admission vs. Course Enrollment), reconciled the Direct Invitation lifecycle with Invitation Business Analysis §9, and cross-referenced Membership removal and existing-member edge cases.
+> - 2026-08-16 — resolved three open items: invitation authorization is out of scope for V1 (single tutor/Owner only; see Section 3.1 and Section 20), added a Pending Invitations view (Sections 13–14), and settled the batch course-assignment question as one course per bulk invite (Section 12.3).
+> - 2026-08-16 — corrected Section 12.3's Invite + Enroll sequencing: the Enrollment record cannot be created until the Workspace Membership is active (Enrollment_Aggregate_Design INV-002), so it is created at acceptance time, not invite time. Flagged as an open dependency that capacity/eligibility handling for this specific trigger (vs. the Commerce/payment trigger INV-006 describes) is not yet confirmed with Enrollment_Aggregate_Design's owner.
+
 ## 1. Purpose
 
 This document defines how students gain access to a tutor's workspace.
@@ -45,6 +58,8 @@ Student access follows this model:
                                ▼
                     Course / Class Enrollment
 ```
+
+*Enrollment is shown here as a step that follows membership; Section 12 refines this — enrollment may be offered together with the invitation (via an Intended Learning Product) but only activates once membership exists.*
 
 ## Key Principle
 
@@ -96,6 +111,8 @@ A direct invitation represents:
 No separate tutor approval should be required after the invited student accepts the invitation.
 
 > **Note:** A direct invitation may optionally be paired with a course enrollment as part of the "Invite & Enroll" convenience workflow. See Section 12 for how these two actions relate.
+
+> **V1 scope — who can invite:** A workspace has a single tutor (its Owner), and only that tutor sends invitations. This document does not define an authorization/permission model for multiple inviters (e.g., co-teachers or assistants) because V1 does not need one. Extending invitation rights beyond the sole tutor is deferred to Future Extensions (Section 20).
 
 ---
 
@@ -165,6 +182,8 @@ Invitation Batch
 The batch provides operational visibility without changing the lifecycle of each individual invitation.
 
 Each student still has an independent invitation.
+
+If the batch was created via "Invite + Enroll" (Section 12.3), the same course is applied to every invitation in the batch as its Intended Learning Product — one course per batch, not per student (Section 12.3).
 
 ---
 
@@ -298,27 +317,37 @@ The exact lifecycle may be refined during detailed domain design.
 
 # 9. Direct Invitation Lifecycle
 
-Direct invitations have a different lifecycle.
+Direct invitations have a different lifecycle from Join Requests.
+
+This is the reconciled Version 1 lifecycle as specified in **Invitation Business Analysis.md §9** (normative for Invitation — see Technical Debt Backlog TD-008): an Invitation reaches exactly one of `Accepted`, `Expired`, or `Cancelled`, never more than one.
 
 ```text
 Created
    │
-   ▼
-Sent
+   ├──────────────► Cancelled   (sender cancels before ever sending)
    │
+   ▼
+Sent  ◄─────────────┐
+   │                 │ resend
+   │                 │ (invalidates old token,
+   │                 │  resets expiration)
    ├──────────────► Accepted
    │                    │
    │                    ▼
    │             Workspace Membership
    │
-   ├──────────────► Declined
-   │
    ├──────────────► Expired
    │
-   └──────────────► Failed
+   └──────────────► Cancelled   (sender cancels before acceptance)
 ```
 
-The important distinction is:
+Notes:
+
+- There is no `Declined` state — an invitee who does not want to join simply lets the Invitation expire, or the sender cancels it. There is no `Failed` state at the Invitation level in Version 1; delivery failure is a Future concern (see Invitation Business Analysis §16).
+- Cancel is only available before acceptance. Removing someone who has already become a Member is a Membership concern, not an Invitation one (Section 10).
+- Resend invalidates the previous token and resets the expiration date — it does not create a second, parallel Invitation. At most one `Created`/`Sent` Invitation may exist per (invitee email, Workspace) pair.
+
+The important distinction between the two admission mechanisms is:
 
 | Mechanism | Initiated by | Tutor approval after request? |
 |---|---|---|
@@ -349,6 +378,14 @@ The platform should not create two different types of membership depending on ho
        Invitation                 Join Request
        Accepted                  Approved
 ```
+
+## 10.1 Membership Removal (Out of Scope Here)
+
+This document covers admission only. Ending a membership is a separate concern, owned by `Membership.Remove` (Membership Aggregate Design §13), which is deliberately distinct from cancelling an outstanding Invitation (Section 9): Cancel undoes an offer that was never accepted, while Remove ends a relationship that already exists. Detailed removal/offboarding rules live in Membership Aggregate Design and Workspace_Access_Context, not here.
+
+## 10.2 Existing-Member Edge Case
+
+If an Invitation's or Join Request's target email already resolves to an Identity with an active Membership in the target Workspace, acceptance/approval is rejected as a no-op — the person is told they are already a member rather than a second Membership being silently created (Rule 2; detailed in Invitation Business Analysis, "Acceptance Edge Cases").
 
 ---
 
@@ -435,6 +472,8 @@ Course:
 [ Send Invitations ]
 ```
 
+**V1 decision:** one course applies to the entire batch. When the tutor chooses "Enroll them in a course," the selected course is set as the Intended Learning Product on every Invitation created in that batch — there is no per-student course selection within a single bulk invite. A tutor who needs to enroll different groups of students into different courses runs the "Invite Students" flow separately per course (i.e., one batch per course, not one mixed batch). Per-student course assignment within a single batch is deferred to Future Extensions (Section 20) if it turns out to be needed.
+
 Business meaning of this flow:
 
 ```text
@@ -445,12 +484,16 @@ Invite + Enroll
     └── Enroll in Course      (performed only if the tutor opts in)
 ```
 
-Under the hood, this convenience workflow still produces the same two underlying outcomes as if the tutor had performed the actions separately:
+Under the hood, this convenience workflow does not introduce a new domain concept. It reuses fields/states that already exist for exactly this purpose:
 
-1. An Invitation (Section 3) is created and sent for each selected student.
-2. If the tutor chose "Enroll them in a course," a pending/queued Course Enrollment is associated with the invitation, to be activated once the student accepts the invitation and becomes a Workspace Member (Section 10).
+1. An Invitation (Section 3) is created and sent for each selected student. Its optional **Intended Learning Product** field (Invitation Business Analysis §7, adopted from IdentityAndWorkspaceAccess §1) is set to the selected course if the tutor chose "Enroll them in a course," and left empty otherwise. No Enrollment record exists yet at this point.
+2. When the student accepts the Invitation, the Workspace Membership is created and activated (Section 10).
+3. Only once the Membership is Active does the Enrollment get created, in the **Invited** state (Enrollment_Aggregate_Design §"Status"), referencing the Intended Learning Product from step 1. This ordering is required, not just a convenience: Enrollment_Aggregate_Design INV-002 states an Enrollment cannot be created without an active Workspace Membership, so the Enrollment must not be created at invite time — only the Intended Learning Product field can exist before membership.
+4. The Enrollment then moves from `Invited` toward `Active` subject to eligibility rules Enrollment_Aggregate_Design owns (§14, INV-006) — for example, course capacity. Reaching `Invited` is not a guarantee of `Active`.
 
-The system must not create the course enrollment before the workspace membership exists — admission still precedes enrollment (Rule 3).
+> **Open dependency:** INV-006 states this explicitly for the Commerce/payment trigger ("a completed payment does not automatically guarantee an Active Enrollment"). It is a reasonable assumption that the same principle holds when activation is triggered by Invite + Enroll instead of payment, but Enrollment_Aggregate_Design does not say so directly, and what happens to an Invited Enrollment that fails eligibility (e.g., a full course) is not fully specified — capacity-based Waitlisting is listed there as Future Evolution (§18), not a built mechanism. This document does not attempt to resolve that; it should be confirmed with whoever owns Enrollment_Aggregate_Design before Invite + Enroll is built against a capacity-constrained course.
+
+This document should not maintain its own description of the Enrollment mechanism beyond this sequencing; Invitation Business Analysis and Enrollment_Aggregate_Design are the source of truth for the field, the state, and the transition rules.
 
 ## 12.4 Principle Statement
 
@@ -486,6 +529,28 @@ Invite students
 ```
 
 After the tutor selects students, the flow may offer the "Invite + Enroll" convenience step described in Section 12.3, letting the tutor choose between admitting students to the workspace only, or admitting and enrolling them in a specific course in one action.
+
+---
+
+### Pending Invitations
+
+The tutor needs somewhere to see outstanding invitations and act on them — Section 9 defines Cancel and Resend as core Invitation capabilities, so the UI must expose both, not just the "send" step.
+
+```text
+Pending Invitations
+
+Name / Email          Course              Status     Sent
+──────────────────────────────────────────────────────────
+Sarah <sarah@…>        Arabic Beginners    Sent       2 days ago    [ Resend ] [ Cancel ]
+John <john@…>           —                  Sent       2 days ago    [ Resend ] [ Cancel ]
+Maria <maria@…>        Arabic Beginners    Expired    9 days ago    [ Resend ]
+```
+
+Behavior follows Section 9 directly:
+
+- **Resend** is only available for `Sent` or `Expired` invitations. It invalidates the previous token and resets the expiration date rather than creating a second invitation.
+- **Cancel** is only available for `Created` or `Sent` invitations (i.e., before acceptance). Once an invitation is `Accepted`, this view no longer shows it — the student is now a Workspace Member, and any further change is a Membership action (Section 10.1), not an Invitation one.
+- The **Course** column reflects the Intended Learning Product set at invite time (Section 12.3), if any.
 
 ---
 
@@ -541,6 +606,14 @@ Send invitations directly to specific students.
 [ Invite Students ]
 
 
+Pending Invitations
+Invitations sent but not yet accepted.
+
+Pending: 2   Expired: 1
+
+[ Manage Invitations ]
+
+
 Join Requests
 Students can request access using your
 workspace join link.
@@ -582,7 +655,7 @@ Workspace
 
 ### Invitation
 
-Represents an explicit invitation issued by the tutor.
+Represents an explicit invitation issued by the tutor. Carries an optional **Intended Learning Product** field, which is how "Invite + Enroll" (Section 12) is represented without a separate merged concept.
 
 ### Invitation Batch
 
@@ -619,7 +692,7 @@ Join Request = Student asks
 
 Regardless of the admission method, a student should have one workspace membership.
 
-The system must prevent duplicate active memberships.
+The system must prevent duplicate active memberships. See Section 10.2 for the existing-member edge case (acceptance/approval is a no-op, not an error) when the invitee already has one.
 
 ---
 
@@ -684,7 +757,7 @@ must prevent new join requests but must not remove existing workspace members.
 
 "Invite to Workspace" and "Enroll in Course" are distinct business actions with distinct outcomes (Workspace Membership vs. Course Enrollment).
 
-The product may offer an "Invite + Enroll" convenience workflow that triggers both actions together, but this must be implemented as a composition of the two underlying actions, not as a new, merged domain concept. A queued course enrollment created through this workflow must not be activated until the corresponding workspace membership exists (see Rule 3).
+The product may offer an "Invite + Enroll" convenience workflow that triggers both actions together, but this must be implemented as a composition of the two underlying mechanisms that already exist for it — the Invitation's Intended Learning Product field and the Enrollment `Invited` status (Section 12.3) — not as a new, merged domain concept. Per Enrollment_Aggregate_Design INV-002, the Enrollment record itself must not be created until the corresponding Workspace Membership is active (see Rule 3) — before that, only the Invitation's Intended Learning Product field exists. Once created, the Enrollment reaching `Invited` does not guarantee it reaches `Active`; that is subject to Enrollment_Aggregate_Design's eligibility rules (Section 12.3).
 
 ---
 
@@ -705,6 +778,8 @@ The platform should consistently use the following terminology.
 | Invite to Workspace | Action of granting a student access to the workspace |
 | Enroll in Course | Action of granting a student participation in a specific course |
 | Invite & Enroll | Convenience workflow that performs both "Invite to Workspace" and "Enroll in Course" together |
+| Student | This document's term for **Learner**, used elsewhere in the platform's domain model (Identity & Workspace Access documents) |
+| Course / Class | This document's term for **Learning Product**, used elsewhere in the platform's domain model (Learning Product Aggregate Design) |
 
 Avoid using **Invitation** as a generic term for all student access mechanisms.
 
@@ -799,6 +874,8 @@ Potential future mechanisms include:
 - Temporary access links
 - Domain-based automatic admission
 - SSO-based workspace access
+- Multi-inviter authorization — a permission model for who besides the sole workspace tutor (Owner) may send invitations, e.g. co-teachers or assistants (Section 3.1)
+- Per-student course assignment within a single bulk invitation batch, if one-course-per-batch (Section 12.3) proves insufficient
 
 All such mechanisms should ultimately resolve to the same concept:
 
