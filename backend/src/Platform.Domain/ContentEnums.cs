@@ -23,13 +23,29 @@ public enum LessonRevisionStatus { Draft, Published, Superseded }
 
 /// <summary>
 /// How a Lesson is delivered — recorded content a learner works through on
-/// their own, or a live session the tutor runs (Learning Product Aggregate
+/// their own, a live session the tutor runs (Learning Product Aggregate
 /// Design's Instructor-Led pacing: "usually in live sessions arranged with
-/// that learner"). Descriptive only, exactly like Pacing Model: it records
-/// the tutor's intent and enforces nothing by itself — Scheduling Context,
-/// which would act on it (booking, calendar, a join link), is not built yet.
+/// that learner"), or a self-paced document-based lesson with no video at
+/// all (<see cref="Reading"/>). Descriptive only, exactly like Pacing Model:
+/// it records the tutor's intent and enforces nothing by itself — Scheduling
+/// Context, which would act on <see cref="LiveSession"/> (booking, calendar,
+/// a join link), is not built yet.
 /// </summary>
-public enum LessonDeliveryMode { Recorded, LiveSession }
+public enum LessonDeliveryMode
+{
+    Recorded,
+    LiveSession,
+
+    /// <summary>
+    /// A self-paced lesson built from text/PDF/image content, no video
+    /// required to publish (unlike <see cref="Recorded"/>) and no live
+    /// component implied (unlike <see cref="LiveSession"/>). A lesson may
+    /// still carry an optional illustrative video under this mode — Reading
+    /// only changes what's required to publish, the same relationship
+    /// LiveSession already has to its own optional recording.
+    /// </summary>
+    Reading
+}
 
 /// <summary>
 /// Where a Lesson Revision's AI-generated transcript stands.

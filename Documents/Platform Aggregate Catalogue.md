@@ -1,6 +1,6 @@
 # Platform Aggregate Catalogue
 
-> Version: 1.1
+> Version: 1.3
 >
 > Status: Draft
 >
@@ -20,7 +20,10 @@
 > - Lesson Revision Aggregate Design
 > - Enrollment Aggregate Design
 > - AI Collaboration Session Aggregate Design
+> - Assignment Aggregate Design
 > - AI / AIAssistantArchitecture (execution-layer AIOperation model)
+>
+> **Revision Note (v1.3):** This Catalogue previously omitted **Assignment**, which by the time of this revision already had full, mature Business Analysis documentation (Assignment Business Analysis, Learning Activity Assignment Business Analysis, both Version 1.3) but no entry here and no dedicated Aggregate Design document — the same gap Revision Note v1.1 had already found and closed for Learning Asset, Curriculum, and Lesson Revision. Assignment has been added to Sections 3, 4, 5, 6, and 7 below, and is now formalized in `Assignment Aggregate Design.md`. Section 1's Version line has also been corrected — it previously read 1.1 despite a v1.2 Revision Note already being recorded beneath it.
 >
 > **Revision Note (v1.2):** Section 3's AI Collaboration Session row and Section 6's AI Recommendation row now point to `AI_Collaboration_Session_Aggregate_Design.md`, which formalizes this Aggregate's root, entities, and invariants and was previously not cross-referenced from this Catalogue. `Documents/AI /AIAssistantArchitecture.md` §96 reconciles this Aggregate against that document's `AIOperation` execution model — the two are related by granularity (Session groups correlated Operations), not in conflict.
 >
@@ -91,6 +94,7 @@ Aggregates should be small enough to support transactional consistency while rem
 | Learning Asset Management | Learning Asset | Represents a reusable educational resource (video, PDF, audio, etc.) referenced by one or more Lesson Revisions. Owns the underlying file, technical metadata, and AI enrichment. |
 | Learning Delivery | Lesson | Represents a deliverable learning experience; owns business identity and publication lifecycle. |
 | Learning Delivery | Lesson Revision | Represents the instructional content of a Lesson at a specific point in time (sections, transcript, objectives, interactive events). Separate Aggregate Root from Lesson per Lesson Revision Aggregate Design. |
+| Learning Delivery | Assignment | Represents the delivery of one Learning Activity to targeted learners: availability, due date, submission and attempt policy, evaluation method. Owns no instructional content and no Submissions. Full aggregate design in Assignment Aggregate Design. |
 | Assessment | Assessment | Represents an assessable activity. |
 | Assessment | Submission | Represents a learner's submitted work. |
 | Certification | Certificate | Represents an awarded certificate. |
@@ -119,6 +123,8 @@ Learning Asset
 Lesson
 
 Lesson Revision
+
+Assignment
 
 Assessment
 
@@ -159,6 +165,9 @@ Lesson
 Lesson Revision
       │
       ▼
+Assignment
+      │
+      ▼
 Assessment
       │
       ▼
@@ -170,7 +179,9 @@ Certificate
 Enrollment
 
 (depends on Membership + Learning Product; gates access to Lesson —
- see Enrollment Aggregate Design, Section 12, for the full relationship)
+ see Enrollment Aggregate Design, Section 12, for the full relationship;
+ also read by Assignment to resolve recipients — see Assignment
+ Aggregate Design, Section 8)
 
 Learning Asset
 
@@ -183,7 +194,7 @@ AI Collaboration Session
 (references all of the above according to Business Context, but owns none of them)
 ```
 
-Note: This diagram shows the primary structural dependency chain. Enrollment and Learning Asset are shown separately because their dependencies branch off the main chain rather than extending it linearly — Enrollment depends on Membership and Learning Product but is not itself part of the Curriculum → Lesson → Assessment sequence, and Learning Asset is Workspace-scoped and reusable across many Lessons rather than owned by any single one.
+Note: This diagram shows the primary structural dependency chain. Enrollment and Learning Asset are shown separately because their dependencies branch off the main chain rather than extending it linearly — Enrollment depends on Membership and Learning Product but is not itself part of the Curriculum → Lesson → Assessment sequence, and Learning Asset is Workspace-scoped and reusable across many Lessons rather than owned by any single one. Assignment sits between Lesson Revision and Assessment in this diagram because it references a Learning Activity entity owned by Lesson Revision and precedes the Submissions recorded against Assessment, but — like every other Aggregate here — it depends on Lesson Revision only by identifier (`LearningActivityId`), not by containment; see Assignment Aggregate Design, Section 8.
 
 ---
 
@@ -199,8 +210,10 @@ Examples:
 | Lesson Chapter | Lesson Revision |
 | Learning Objective | Lesson Revision |
 | Lesson Section | Lesson Revision |
+| Learning Activity | Lesson Revision |
 | Publication State | Lesson |
 | Current Published Revision Reference | Lesson |
+| Availability / Due Date / Attempt Policy | Assignment |
 | Assessment Question | Assessment |
 | Learner Submission | Submission |
 | Membership Role | Membership |
@@ -212,6 +225,8 @@ Examples:
 Ownership determines where business rules are enforced.
 
 **Note on Transcript ownership:** Transcript appears as an owned object in two places for two different reasons, and this is intentional rather than a conflict. **Learning Asset** owns the raw, AI-generated transcript of the underlying media file (technical enrichment — see Learning Asset Aggregate Design, AI Metadata). **Lesson Revision** separately owns a transcript value object representing the curated, potentially teacher-edited transcript as it is presented within that specific lesson (see Lesson Revision Aggregate Design, Section 8). A Lesson Revision's transcript is typically initialized from its referenced Learning Asset's transcript but becomes independently editable instructional content from that point forward — editing it does not modify the underlying asset.
+
+**Note on Assignment ownership boundaries:** Assignment owns delivery and scheduling policy only. It does not own the Learning Activity it delivers (that remains an entity of Lesson Revision), and it does not own the Submissions made against it (those belong to Submission, owned by Assessment Context). See Assignment Aggregate Design, Section 6, for the explicit rationale for why Assignment owns no entities of its own.
 
 ---
 
@@ -242,9 +257,20 @@ Learning Asset
 - WorkspaceId
 - MembershipId (Owner)
 
+Assignment
+
+- LearningActivityId
+- LearningProductId
+- Creator MembershipId
+
 Assessment
 
 - LessonId
+
+Submission
+
+- AssignmentId
+- Submitter MembershipId
 
 Enrollment
 
@@ -282,6 +308,10 @@ Draft → Under Review → Published → Archived
 Learning Asset
 
 Uploaded → Processing → Ready → Archived
+
+Assignment
+
+Draft → Scheduled → Published → Active → Closed → Archived
 
 Assessment
 

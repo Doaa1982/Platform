@@ -163,12 +163,36 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     [HttpPost("resources")]
     public async Task<ActionResult<LessonDetailResponse>> AddResource(
         string slug, Guid lessonId, [FromBody] AttachResourceRequest request, CancellationToken ct)
-        => Run(await studio.AddResourceAsync(slug, Caller(), lessonId, request.LearningAssetId, ct));
+        => Run(await studio.AddResourceAsync(slug, Caller(), lessonId, request.LearningAssetId, request.VisibleToLearners, ct));
 
     [HttpDelete("resources/{resourceId:guid}")]
     public async Task<ActionResult<LessonDetailResponse>> RemoveResource(
         string slug, Guid lessonId, Guid resourceId, CancellationToken ct)
         => Run(await studio.RemoveResourceAsync(slug, Caller(), lessonId, resourceId, ct));
+
+    /// <summary>Flips whether an already-attached resource is shown to learners as a download (e.g. hiding source material uploaded purely for AI extraction, or later deciding to share it).</summary>
+    [HttpPut("resources/{resourceId:guid}/visibility")]
+    public async Task<ActionResult<LessonDetailResponse>> SetResourceVisibility(
+        string slug, Guid lessonId, Guid resourceId, [FromBody] SetResourceVisibilityRequest request, CancellationToken ct)
+        => Run(await studio.SetResourceVisibilityAsync(slug, Caller(), lessonId, resourceId, request.VisibleToLearners, ct));
+
+    /// <summary>Reads a PDF/image resource with AI and drafts title/body/what-you'll-learn/learning-objectives/glossary from its content. Nothing is saved — the tutor still hits Save themselves, same as every draft/ai-suggest-* endpoint.</summary>
+    [HttpPost("resources/{resourceId:guid}/extract")]
+    public async Task<ActionResult<ExtractResourceContentResponse>> ExtractResourceContent(
+        string slug, Guid lessonId, Guid resourceId, CancellationToken ct)
+        => Run(await studio.ExtractResourceContentAsync(slug, Caller(), lessonId, resourceId, ct));
+
+    /// <summary>Manual-entry fallback for Extract: structures text the tutor pasted in themselves (e.g. copied out of a PDF reader, or because the workspace's AI provider can't read files directly) into title/body/what-you'll-learn/learning-objectives/glossary. Nothing is saved — the tutor still hits Save themselves.</summary>
+    [HttpPost("draft/structure-pasted-content")]
+    public async Task<ActionResult<ExtractResourceContentResponse>> StructurePastedContent(
+        string slug, Guid lessonId, [FromBody] StructurePastedContentRequest request, CancellationToken ct)
+        => Run(await studio.StructurePastedContentAsync(slug, Caller(), lessonId, request.Text, ct));
+
+    /// <summary>Sets whether a video-less lesson only completes once the learner passes its Standalone Quiz, instead of on open. Default false, opt-in per lesson.</summary>
+    [HttpPut("draft/require-quiz-to-complete")]
+    public async Task<ActionResult<LessonDetailResponse>> SetRequireQuizToComplete(
+        string slug, Guid lessonId, [FromBody] SetRequireQuizToCompleteRequest request, CancellationToken ct)
+        => Run(await studio.SetRequireQuizToCompleteAsync(slug, Caller(), lessonId, request.RequireQuizToComplete, ct));
 
     /// <summary>
     /// Starts AI transcription of the open revision's uploaded video. Returns

@@ -38,4 +38,20 @@ public interface IAiModelProvider
     /// Providers without that capability may ignore it.
     /// </summary>
     Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, Type? responseType = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Same contract as the text-only overload, with one or more binary
+    /// attachments (a PDF and/or images) sent alongside the user prompt for
+    /// a model that supports multimodal input — e.g. extracting lesson
+    /// content from an uploaded document.
+    ///
+    /// Per Provider Isolation (AIModelProviderArchitecture §18 — a provider
+    /// that can't support a capability should fail clearly, not silently
+    /// degrade), this has a default implementation that throws
+    /// <see cref="NotSupportedException"/>, so a provider only needs to
+    /// override it once it actually supports attachments. Callers should
+    /// expect this to throw for any provider that hasn't opted in.
+    /// </summary>
+    Task<string> CompleteAsync(string systemPrompt, string userPrompt, IReadOnlyList<AiAttachment> attachments, bool jsonMode = false, Type? responseType = null, CancellationToken ct = default)
+        => throw new NotSupportedException($"{GetType().Name} does not support attachments (images or documents) in a model request.");
 }

@@ -373,22 +373,40 @@ public class LearningDeliveryService(
 
         var hasVideo = revision.VideoAssetId is not null || revision.VideoUrl is not null;
 
+        // Loaded before the completion recompute below (not after, as
+        // originally written) because RequireQuizToComplete needs this
+        // learner's own Standalone result to decide completion, not just to
+        // report it in the response.
+        var standaloneAssessment = await LoadStandaloneSummaryAsync(progress.LessonRevisionId, ctx.MembershipId, ct);
+
         // A lesson with no video and no gradable Interactive assessment
         // completes the moment it's opened — a Standalone quiz never gates
-        // this; it's a separate, optional thing a learner may also do.
+        // this by default; it's a separate, optional thing a learner may
+        // also do. RequireQuizToComplete (opt-in per lesson, default false)
+        // changes that for this one branch specifically: the tutor has said
+        // a video-less lesson only counts as done once its Standalone Quiz
+        // is passed, so the Standalone result becomes the gating assessment
+        // in place of the (nonexistent) Interactive one.
         var hasGradableAssessment = interactiveAssessment is not null && interactiveAssessment.Questions.Count > 0;
         if (!hasVideo && !hasGradableAssessment)
         {
-            progress.RecomputeCompletion(hasVideo: false, hasGradableAssessment: false, hasPassingSubmission: false);
+            if (revision.RequireQuizToComplete)
+                progress.RecomputeCompletion(hasVideo: false, hasGradableAssessment: true, hasPassingSubmission: standaloneAssessment?.Passed == true);
+            else
+                progress.RecomputeCompletion(hasVideo: false, hasGradableAssessment: false, hasPassingSubmission: false);
             await db.SaveChangesAsync(ct);
         }
 
-        var standaloneAssessment = await LoadStandaloneSummaryAsync(progress.LessonRevisionId, ctx.MembershipId, ct);
-
+        // Enforced here, not just left to the frontend to hide: a resource a
+        // tutor uploaded purely as AI-extraction source material (their own
+        // notes, a scanned page they don't have redistribution rights to
+        // hand out) must never reach a learner's response at all, not just
+        // stay unrendered in the UI.
         IReadOnlyList<LearningAssetResponse> resources = [];
-        if (revision.Resources.Count > 0)
+        var visibleResources = revision.Resources.Where(res => res.VisibleToLearners).ToList();
+        if (visibleResources.Count > 0)
         {
-            var resourceAssetIds = revision.Resources.OrderBy(res => res.Position).Select(res => res.LearningAssetId).ToList();
+            var resourceAssetIds = visibleResources.OrderBy(res => res.Position).Select(res => res.LearningAssetId).ToList();
             var resourceAssets = await db.LearningAssets.AsNoTracking()
                 .Where(a => resourceAssetIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, ct);
             resources = resourceAssetIds.Where(resourceAssets.ContainsKey)

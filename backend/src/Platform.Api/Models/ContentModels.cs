@@ -38,7 +38,7 @@ public record LessonDetailResponse(
     IReadOnlyList<LessonRevisionRow> History);
 
 /// <summary>
-/// DeliveryMode is "Recorded" or "LiveSession" (LessonDeliveryMode). Video and
+/// DeliveryMode is "Recorded", "LiveSession", or "Reading" (LessonDeliveryMode). Video and
 /// VideoUrl are mutually exclusive — at most one is populated at a time
 /// (LessonRevision.AttachVideo/SetVideoUrl each clear the other).
 ///
@@ -69,10 +69,15 @@ public record LessonRevisionRow(
     /// <summary>Suggested homework/practical exercises, one per line, AI-drafted and tutor-editable. Null until set.</summary>
     string? Homework,
     /// <summary>Supplementary files (slides, worksheets, handouts) attached to this revision — any number, unlike the single video slot.</summary>
-    IReadOnlyList<LessonResourceRow> Resources);
+    IReadOnlyList<LessonResourceRow> Resources,
+    /// <summary>When true, a video-less lesson only completes once the learner passes its Standalone Quiz, instead of on open. Default false.</summary>
+    bool RequireQuizToComplete);
 
 /// <summary>One supplementary file attached to a Lesson Revision (LessonResource), with its Learning Asset's details inlined for display.</summary>
-public record LessonResourceRow(Guid Id, LearningAssetResponse Asset);
+public record LessonResourceRow(
+    Guid Id, LearningAssetResponse Asset,
+    /// <summary>Whether learners see this as a download, as opposed to being attached purely as AI-extraction source material.</summary>
+    bool VisibleToLearners);
 
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);
@@ -84,7 +89,10 @@ public record ReorderLessonsRequest(IReadOnlyList<Guid> LessonIds);
 public record SetSequentialUnlockRequest(bool Enabled);
 public record SaveRevisionRequest(string Title, string? Body, int? EstimatedMinutes, string? DeliveryMode, string? Transcript = null, string? WhatYoullLearn = null, string? LearningObjectives = null, string? Glossary = null, string? Homework = null);
 public record AttachVideoRequest(Guid LearningAssetId);
-public record AttachResourceRequest(Guid LearningAssetId);
+/// <summary>VisibleToLearners defaults to true — every existing caller keeps today's "attaching means downloadable" behavior unless it explicitly opts out.</summary>
+public record AttachResourceRequest(Guid LearningAssetId, bool VisibleToLearners = true);
+public record SetResourceVisibilityRequest(bool VisibleToLearners);
+public record SetRequireQuizToCompleteRequest(bool RequireQuizToComplete);
 public record SetVideoUrlRequest(string Url);
 
 /// <summary>
@@ -119,3 +127,28 @@ public record AiSuggestGlossaryResponse(string Glossary);
 /// <summary>Title/Body come from the tutor's current unsaved form state; the transcript, if any, is read server-side off the lesson's own revision, same as AiSuggestWhatYoullLearnRequest.</summary>
 public record AiSuggestHomeworkRequest(string Title, string? Body);
 public record AiSuggestHomeworkResponse(string Homework);
+
+/// <summary>
+/// The merge of the five ai-suggest-* response shapes above, read straight
+/// out of an uploaded PDF/image resource instead of from the tutor's typed
+/// title/body/transcript. Every field is nullable — a source document may
+/// not clearly support all of them, and a field it doesn't support is left
+/// null rather than fabricated (same non-invention rule every ai-suggest-*
+/// skill's prompt already states). Homework is deliberately not part of
+/// this contract: the most assessment-authoring-flavored of the six
+/// existing fields, and the one field this v1 leaves out (see the design
+/// proposal's EXT-001). All-null is a valid, non-error result — it means
+/// the model found nothing extractable (a blank scan, an unreadable page),
+/// not that the request failed.
+/// </summary>
+public record ExtractResourceContentResponse(
+    string? Title, string? Body, string? WhatYoullLearn, string? LearningObjectives, string? Glossary);
+
+/// <summary>
+/// The manual-entry fallback for <see cref="ExtractResourceContentResponse"/>:
+/// a tutor pastes text themselves (e.g. copied out of a PDF reader, or from a
+/// provider that can't read the file directly) instead of uploading the file
+/// for AI to read. Structured through the same five-field prompt as
+/// resource extraction, just text-in instead of attachment-in.
+/// </summary>
+public record StructurePastedContentRequest(string Text);

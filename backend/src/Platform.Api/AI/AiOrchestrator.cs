@@ -42,9 +42,10 @@ public class AiOrchestrator(IAiModelProvider provider)
     /// content-free results to the caller.
     /// </summary>
     public async Task<T> RunAsync<T>(
-        string systemPrompt, string userPrompt, Func<T, bool>? isValid = null, CancellationToken ct = default)
+        string systemPrompt, string userPrompt, IReadOnlyList<AiAttachment>? attachments = null,
+        Func<T, bool>? isValid = null, CancellationToken ct = default)
     {
-        var raw = await provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: true, responseType: typeof(T), ct);
+        var raw = await CompleteAsync<T>(systemPrompt, userPrompt, attachments, ct);
 
         var result = TryParse<T>(raw);
         if (result is not null && (isValid is null || isValid(result))) return result;
@@ -52,7 +53,7 @@ public class AiOrchestrator(IAiModelProvider provider)
         var retryPrompt = userPrompt +
             "\n\nYour previous response could not be parsed as the requested JSON shape. " +
             "Respond with JSON only — no prose, no markdown code fences.";
-        var retryRaw = await provider.CompleteAsync(systemPrompt, retryPrompt, jsonMode: true, responseType: typeof(T), ct);
+        var retryRaw = await CompleteAsync<T>(systemPrompt, retryPrompt, attachments, ct);
 
         var retryResult = TryParse<T>(retryRaw);
         if (retryResult is not null && (isValid is null || isValid(retryResult))) return retryResult;
@@ -70,6 +71,11 @@ public class AiOrchestrator(IAiModelProvider provider)
     /// </summary>
     public Task<string> RunTextAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
         => provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: false, ct: ct);
+
+    private Task<string> CompleteAsync<T>(string systemPrompt, string userPrompt, IReadOnlyList<AiAttachment>? attachments, CancellationToken ct)
+        => attachments is { Count: > 0 }
+            ? provider.CompleteAsync(systemPrompt, userPrompt, attachments, jsonMode: true, responseType: typeof(T), ct)
+            : provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: true, responseType: typeof(T), ct);
 
     private static T? TryParse<T>(string raw)
     {

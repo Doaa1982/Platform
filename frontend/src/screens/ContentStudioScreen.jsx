@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
@@ -685,6 +685,64 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
     }
   }
 
+  // PDF & Image Lesson Content Extraction, EXT-005 — one click can fill up
+  // to five fields at once, so unlike every single-field Suggest button
+  // above (which always overwrites on click), this only fills a field that
+  // is currently empty. A field the tutor already started is left
+  // untouched; its own Suggest button next to it still overwrites on
+  // request, unaffected by this restriction. Owned here (not inside
+  // ResourcesSection, where the button lives) because filling these fields
+  // means touching this component's own state.
+  const [aiExtractBusyId, setAiExtractBusyId] = useState(null);
+
+  // PDF & Image Lesson Content Extraction §9 — a lesson built entirely from
+  // a PDF can't actually publish as Recorded (needs a video) or LiveSession
+  // (implies a scheduled class). A suggestion only, never applied
+  // automatically — AIA-004's non-destructive principle: extraction filling
+  // text fields is not license to change the tutor's delivery mode for them.
+  const [showReadingModeHint, setShowReadingModeHint] = useState(false);
+
+  // Shared by the AI-read (extractResourceContent) and manual-paste
+  // (structurePastedContent) paths below — both return the same five-field
+  // shape and apply with the same fill-only-if-empty rule (EXT-005).
+  function applyExtractedFields(r) {
+    const found = Boolean(r.title || r.body || r.whatYoullLearn || r.learningObjectives || r.glossary);
+    let filled = false;
+    if (r.title && !title.trim()) { setTitle(r.title); filled = true; }
+    if (r.body && !body.trim()) { setBody(r.body); filled = true; }
+    if (r.whatYoullLearn && !whatYoullLearn.trim()) { setWhatYoullLearn(r.whatYoullLearn); filled = true; }
+    if (r.learningObjectives && !learningObjectives.trim()) { setLearningObjectives(r.learningObjectives); filled = true; }
+    if (r.glossary && !glossary.trim()) { setGlossary(r.glossary); filled = true; }
+    if (!found) return { status: "empty" };
+    if (filled && deliveryMode === "Recorded" && !hasVideoNow) setShowReadingModeHint(true);
+    return { status: filled ? "filled" : "skipped" };
+  }
+
+  async function handleExtractResource(resourceId) {
+    setAiExtractBusyId(resourceId);
+    try {
+      const r = await api.extractResourceContent(session.token, slug, lessonId, resourceId);
+      return applyExtractedFields(r);
+    } finally {
+      setAiExtractBusyId(null);
+    }
+  }
+
+  // Manual-entry fallback (e.g. the AI provider can't read files directly,
+  // or the tutor just has the text handy already) — same fill rule, just
+  // sourced from pasted text instead of an uploaded file.
+  const [structuringPastedContent, setStructuringPastedContent] = useState(false);
+
+  async function handleStructurePastedContent(text) {
+    setStructuringPastedContent(true);
+    try {
+      const r = await api.structurePastedContent(session.token, slug, lessonId, text);
+      return applyExtractedFields(r);
+    } finally {
+      setStructuringPastedContent(false);
+    }
+  }
+
   const load = useCallback(
     () => api.getLesson(session.token, slug, lessonId).then((l) => {
       setLesson(l);
@@ -813,6 +871,15 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
     setPendingDeliveryMode(null);
     const clone = await run(() => api.duplicateLesson(session.token, slug, lessonId), t("studio.toastLessonDuplicated"));
     if (clone) onDuplicated(clone.id);
+  }
+
+  const revisionForVideoCheck = lesson?.draftRevision ?? lesson?.currentRevision;
+  const hasVideoNow = !!revisionForVideoCheck?.video || !!revisionForVideoCheck?.videoUrl;
+  const requireQuizToComplete = !!revisionForVideoCheck?.requireQuizToComplete;
+
+  function handleToggleRequireQuizToComplete(next) {
+    run(() => api.setLessonRequireQuizToComplete(session.token, slug, lessonId, next))
+      .then((l) => l && setLesson(l));
   }
 
   return (
@@ -1143,8 +1210,17 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                       >
                         <option value="Recorded">{t("studio.recordedVideo")}</option>
                         <option value="LiveSession">{t("studio.liveSession")}</option>
+                        <option value="Reading">{t("studio.readingLesson")}</option>
                       </select>
                     </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14 }}>
+                      <input
+                        type="checkbox" checked={requireQuizToComplete} disabled={busy || !editable}
+                        onChange={(e) => handleToggleRequireQuizToComplete(e.target.checked)}
+                      />
+                      <span style={{ fontSize: 13 }}>{t("studio.requireQuizToComplete")}</span>
+                    </label>
+                    <p className="muted" style={{ marginTop: 4 }}>{t("studio.requireQuizToCompleteHint")}</p>
                   </div>
                   <VideoSection
                     lesson={lesson}
@@ -1196,11 +1272,20 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
             {activeTab === "resources" && (
               (lesson.currentRevision || lesson.draftRevision) ? (
-                <ResourcesSection
-                  lesson={lesson}
-                  editable={editable}
-                  onChanged={load}
-                />
+                <>
+                  {showReadingModeHint && deliveryMode === "Recorded" && !hasVideoNow && (
+                    <Message type="success">{t("studio.considerReadingMode")}</Message>
+                  )}
+                  <ResourcesSection
+                    lesson={lesson}
+                    editable={editable}
+                    onChanged={load}
+                    onExtract={handleExtractResource}
+                    extractBusyId={aiExtractBusyId}
+                    onStructurePastedContent={handleStructurePastedContent}
+                    structuringPastedContent={structuringPastedContent}
+                  />
+                </>
               ) : (
                 <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForResources")}</p>
               )
@@ -1415,6 +1500,11 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   }
 
   const isLive = deliveryMode === "LiveSession";
+  const isReading = deliveryMode === "Reading";
+  // Reading, like LiveSession, doesn't require a video to publish (§9) — but
+  // deliberately doesn't reuse LiveSession's "recording" framing (title,
+  // hint copy): a reading lesson never expects a recording of anything.
+  const videoOptional = isLive || isReading;
 
   return (
     <div className="lw-studio__section">
@@ -1422,9 +1512,12 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
       {isLive && (
         <p className="muted" style={{ marginTop: -8, marginBottom: 14 }}>{t("studio.liveNote")}</p>
       )}
+      {isReading && (
+        <p className="muted" style={{ marginTop: -8, marginBottom: 14 }}>{t("studio.readingVideoNote")}</p>
+      )}
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
-      {!isLive && !hasVideo && publishAttempted && (
+      {!videoOptional && !hasVideo && publishAttempted && (
         <Message type="error">{t("studio.addVideoBeforePublish")}</Message>
       )}
 
@@ -1448,8 +1541,12 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
             ) : (
               <div className="lw-dropzone" onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
                 <UploadCloud size={26} />
-                <span className="lw-dropzone__title">{isLive ? t("studio.uploadRecordingOptional") : t("studio.uploadLessonVideo")}</span>
-                <span className="lw-dropzone__meta">{isLive ? t("studio.recordingHint") : t("studio.videoHint")}</span>
+                <span className="lw-dropzone__title">
+                  {isLive ? t("studio.uploadRecordingOptional") : isReading ? t("studio.uploadVideoOptionalReading") : t("studio.uploadLessonVideo")}
+                </span>
+                <span className="lw-dropzone__meta">
+                  {isLive ? t("studio.recordingHint") : isReading ? t("studio.videoOptionalReadingHint") : t("studio.videoHint")}
+                </span>
                 <input
                   ref={fileInputRef} type="file" accept="video/*" style={{ display: "none" }}
                   onChange={(e) => handleFile(e.target.files?.[0])}
@@ -1615,7 +1712,15 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
  * handout is safe metadata (LessonRevision.Resources remarks), so a tutor
  * can do it without starting a new revision first.
  */
-function ResourcesSection({ lesson, editable, onChanged }) {
+/** A PDF/image resource can be read by Extract; anything else (slides, worksheets, archives) can't. Same content types the backend's own pre-flight check accepts. */
+const EXTRACTABLE_CONTENT_TYPES = new Set([
+  "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+]);
+function isExtractable(asset) {
+  return EXTRACTABLE_CONTENT_TYPES.has((asset.contentType || "").toLowerCase());
+}
+
+function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyId, onStructurePastedContent, structuringPastedContent }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -1626,8 +1731,31 @@ function ResourcesSection({ lesson, editable, onChanged }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
+  // Manual-entry fallback for Extract (e.g. the AI provider can't read
+  // files directly — Ollama in this dev setup throws exactly that — or the
+  // tutor just has the text already). Which resource's "paste text" box is
+  // open, and the text typed into it; not resource-scoped server-side
+  // (structure-pasted-content takes no resourceId), so this only tracks
+  // which row's UI is expanded.
+  const [pasteOpenId, setPasteOpenId] = useState(null);
+  const [pasteText, setPasteText] = useState("");
+
+  // PDF & Image Lesson Content Extraction §5 — a PDF/image attached purely
+  // as AI source material (a tutor's own notes, a scan they don't have
+  // redistribution rights to hand out) shouldn't involuntarily become a
+  // student-facing download just because it was attached. Unchecked is the
+  // new default for those two file types; other file types (slide decks,
+  // worksheets) keep defaulting to shared, same as before this existed.
+  const [shareAsDownload, setShareAsDownload] = useState(false);
+
   const revision = lesson.draftRevision ?? lesson.currentRevision;
   const resources = revision?.resources ?? [];
+
+  function isExtractableFile(file) {
+    const type = (file.type || "").toLowerCase();
+    if (EXTRACTABLE_CONTENT_TYPES.has(type)) return true;
+    return /\.(pdf|png|jpe?g|gif|webp)$/i.test(file.name || "");
+  }
 
   async function handleFiles(fileList) {
     const files = Array.from(fileList ?? []);
@@ -1638,7 +1766,8 @@ function ResourcesSection({ lesson, editable, onChanged }) {
       for (const file of files) {
         setProgress(0);
         const asset = await api.uploadLearningAsset(session.token, slug, file, file.name, setProgress, "Resource");
-        await api.addLessonResource(session.token, slug, lesson.id, asset.id);
+        const visibleToLearners = shareAsDownload || !isExtractableFile(file);
+        await api.addLessonResource(session.token, slug, lesson.id, asset.id, visibleToLearners);
       }
       setSuccess(t("studio.toastResourceUploaded"));
       onChanged();
@@ -1660,6 +1789,52 @@ function ResourcesSection({ lesson, editable, onChanged }) {
     }
   }
 
+  async function handleToggleVisibility(resourceId, nextVisible) {
+    setError(null);
+    try {
+      await api.setLessonResourceVisibility(session.token, slug, lesson.id, resourceId, nextVisible);
+      setSuccess(t("studio.toastResourceVisibilityUpdated"));
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleExtract(resourceId) {
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await onExtract(resourceId);
+      if (result.status === "empty") setSuccess(t("studio.extractNoContent"));
+      else if (result.status === "skipped") setSuccess(t("studio.extractAllFieldsFilled"));
+      else setSuccess(t("studio.extractApplied"));
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function togglePasteBox(resourceId) {
+    setError(null);
+    setSuccess(null);
+    setPasteOpenId((current) => (current === resourceId ? null : resourceId));
+    setPasteText("");
+  }
+
+  async function handleUsePastedText() {
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await onStructurePastedContent(pasteText);
+      if (result.status === "empty") setSuccess(t("studio.pasteNoContent"));
+      else if (result.status === "skipped") setSuccess(t("studio.extractAllFieldsFilled"));
+      else setSuccess(t("studio.extractApplied"));
+      setPasteOpenId(null);
+      setPasteText("");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   return (
     <div className="lw-studio__section">
       <h2 className="lw-sectiontitle">{t("studio.resourcesTitle")}</h2>
@@ -1674,15 +1849,21 @@ function ResourcesSection({ lesson, editable, onChanged }) {
             <span className="lw-dropzone__title">{t("studio.uploadingPct", { pct: Math.round(progress * 100) })}</span>
           </div>
         ) : (
-          <div className="lw-dropzone" style={{ marginBottom: 14 }} onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
-            <UploadCloud size={26} />
-            <span className="lw-dropzone__title">{t("studio.uploadResource")}</span>
-            <span className="lw-dropzone__meta">{t("studio.resourceHint")}</span>
-            <input
-              ref={fileInputRef} type="file" multiple style={{ display: "none" }}
-              onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
-            />
-          </div>
+          <>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }} title={t("studio.resourceShareAsDownloadHint")}>
+              <input type="checkbox" checked={shareAsDownload} onChange={(e) => setShareAsDownload(e.target.checked)} />
+              <span className="muted" style={{ fontSize: 13 }}>{t("studio.resourceShareAsDownload")}</span>
+            </label>
+            <div className="lw-dropzone" style={{ marginBottom: 14 }} onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
+              <UploadCloud size={26} />
+              <span className="lw-dropzone__title">{t("studio.uploadResource")}</span>
+              <span className="lw-dropzone__meta">{t("studio.resourceHint")}</span>
+              <input
+                ref={fileInputRef} type="file" multiple style={{ display: "none" }}
+                onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+              />
+            </div>
+          </>
         )
       )}
 
@@ -1693,22 +1874,70 @@ function ResourcesSection({ lesson, editable, onChanged }) {
       {resources.length > 0 && (
         <div className="lw-player">
           {resources.map((r, i) => (
-            <div key={r.id} className="lw-videosource"
-                 style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTop: i > 0 ? "1px solid var(--line)" : "none" }}>
-              <a href={api.learningAssetDownloadUrl(session.token, slug, r.asset.id)} target="_blank" rel="noreferrer"
-                 style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ink)", textDecoration: "none", minWidth: 0 }}>
-                <Paperclip size={14} style={{ flexShrink: 0 }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.asset.title}</span>
-                <span className="lw-tag lw-tag--source" style={{ flexShrink: 0 }}>{Math.round(r.asset.fileSizeBytes / 1024)} KB</span>
-              </a>
-              {editable ? (
-                <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => handleRemove(r.id)}>
-                  <Trash2 size={13} /> {t("studio.remove")}
-                </button>
-              ) : (
-                <Download size={14} className="muted" />
+            <Fragment key={r.id}>
+              <div className="lw-videosource"
+                   style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTop: i > 0 ? "1px solid var(--line)" : "none", flexWrap: "wrap", gap: 8 }}>
+                <a href={api.learningAssetDownloadUrl(session.token, slug, r.asset.id)} target="_blank" rel="noreferrer"
+                   style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ink)", textDecoration: "none", minWidth: 0 }}>
+                  <Paperclip size={14} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.asset.title}</span>
+                  <span className="lw-tag lw-tag--source" style={{ flexShrink: 0 }}>{Math.round(r.asset.fileSizeBytes / 1024)} KB</span>
+                  {!r.visibleToLearners && (
+                    <span className="lw-tag lw-tag--warn" style={{ flexShrink: 0 }}>{t("studio.resourceNotShared")}</span>
+                  )}
+                </a>
+                {editable ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    {isExtractable(r.asset) && (
+                      <>
+                        <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={extractBusyId === r.id}
+                                onClick={() => handleExtract(r.id)} title={t("studio.extractContentHint")}>
+                          {extractBusyId === r.id
+                            ? <LoaderCircle size={13} className="lw-studio__spin" />
+                            : <Sparkles size={13} />} {t("studio.extractContent")}
+                        </button>
+                        <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => togglePasteBox(r.id)} title={t("studio.pasteContentHint")}>
+                          <FileText size={13} /> {t("studio.pasteContent")}
+                        </button>
+                      </>
+                    )}
+                    <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => handleToggleVisibility(r.id, !r.visibleToLearners)}>
+                      {r.visibleToLearners ? t("studio.resourceHide") : t("studio.resourceShare")}
+                    </button>
+                    <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => handleRemove(r.id)}>
+                      <Trash2 size={13} /> {t("studio.remove")}
+                    </button>
+                  </div>
+                ) : (
+                  <Download size={14} className="muted" />
+                )}
+              </div>
+              {pasteOpenId === r.id && (
+                <div style={{ padding: "0 16px 12px", borderTop: "none" }}>
+                  <p className="muted" style={{ fontSize: 12, margin: "8px 0" }}>{t("studio.pasteContentHint")}</p>
+                  <textarea
+                    rows={8}
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    disabled={structuringPastedContent}
+                    placeholder={t("studio.pasteContentPlaceholder")}
+                    style={{ width: "100%", fontFamily: "monospace", fontSize: 13 }}
+                  />
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button className="lw-btn lw-btn--primary lw-btn--sm" disabled={structuringPastedContent || !pasteText.trim()}
+                            onClick={handleUsePastedText}>
+                      {structuringPastedContent
+                        ? <LoaderCircle size={13} className="lw-studio__spin" />
+                        : <Sparkles size={13} />} {t("studio.useThisText")}
+                    </button>
+                    <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={structuringPastedContent}
+                            onClick={() => togglePasteBox(r.id)}>
+                      {t("studio.cancel")}
+                    </button>
+                  </div>
+                </div>
               )}
-            </div>
+            </Fragment>
           ))}
         </div>
       )}

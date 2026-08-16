@@ -5,6 +5,7 @@ using Platform.Api;
 using Platform.Api.AI;
 using Platform.Api.AI.Skills;
 using Platform.Api.Authorization;
+using Platform.Api.Models;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Http.Resilience;
@@ -170,6 +171,7 @@ builder.Services.AddScoped<GenerateHomeworkSkill>();
 builder.Services.AddScoped<LessonAssistantSkill>();
 builder.Services.AddScoped<GenerateLessonQuizSkill>();
 builder.Services.AddScoped<GenerateStandaloneQuestionsSkill>();
+builder.Services.AddScoped<ExtractLessonContentFromResourceSkill>();
 
 // ── Video transcription (AI Video Transcript Implementation Plan) ──────────
 // A separate provider boundary from the text-completion one above: Claude
@@ -459,6 +461,30 @@ if (app.Environment.IsDevelopment())
 
         static CapabilityProfileLevel? GrantFor(CapabilityPackDefinition pack, CapabilityDomain domain) =>
             pack.DomainGrants.TryGetValue(domain, out var level) ? level : null;
+    }
+
+    // ── Demo subscription seed ──────────────────────────────────────────────
+    // Without this, demo-academy exists with no Subscription/WorkspaceLicense/
+    // Entitlement rows at all — CheckoutAsync is the only code path that ever
+    // creates one, and nothing above calls it. Every AI-gated feature (Extract,
+    // transcript generation, every ai-suggest-* button, the paste-content
+    // fallback) would fail Forbidden for every seeded account on a fresh
+    // environment. Goes through the real checkout flow rather than writing
+    // Entitlement rows directly, so a fresh dev database ends up in exactly
+    // the state a tutor reaches by checking out the Professional plan by hand.
+    if (!db.Subscriptions.Any())
+    {
+        var demoWorkspace = await db.Workspaces.FirstOrDefaultAsync(w => w.Slug == "demo-academy");
+        var demoTutor = await db.Identities.FirstOrDefaultAsync(i => i.Email == "tutor@platform.com");
+        if (demoWorkspace is not null && demoTutor is not null)
+        {
+            var subscriptions = scope.ServiceProvider.GetRequiredService<CommercialSubscriptionService>();
+            var checkout = await subscriptions.CheckoutAsync(
+                "demo-academy", demoTutor.Id,
+                new CheckoutRequest("solo-professional", PackCodes: [], BillingCycle: "Monthly"));
+            if (checkout.Error != ProvisioningError.None)
+                app.Logger.LogWarning("Demo subscription seed failed: {Message}", checkout.Message);
+        }
     }
 }
 

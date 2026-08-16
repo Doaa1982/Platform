@@ -129,6 +129,17 @@ public class LessonRevision
     /// </summary>
     public IReadOnlyCollection<LessonResource> Resources => _resources.AsReadOnly();
 
+    /// <summary>
+    /// When true, a Reading-mode (or any video-less) lesson only completes
+    /// once the learner passes its Standalone Quiz, instead of completing
+    /// the instant it's opened. Tutor-configurable per lesson, default
+    /// false — every existing lesson keeps today's auto-complete behavior
+    /// unless the tutor opts in. Not Draft-only: a completion policy isn't
+    /// "what is taught," so a tutor can flip it on an already-published
+    /// lesson without starting a new revision.
+    /// </summary>
+    public bool RequireQuizToComplete { get; private set; }
+
     private LessonRevision() { }
 
     internal static LessonRevision Draft(
@@ -206,13 +217,19 @@ public class LessonRevision
         UpdatedAt = DateTime.UtcNow;
     }
 
-    /// <summary>Attaches a supplementary file by reference (Learning Asset Aggregate Design INV-003). Not Draft-only — see <see cref="Resources"/>.</summary>
-    public LessonResource AddResource(Guid learningAssetId)
+    /// <summary>
+    /// Attaches a supplementary file by reference (Learning Asset Aggregate
+    /// Design INV-003). Not Draft-only — see <see cref="Resources"/>.
+    /// <paramref name="visibleToLearners"/> defaults to true so every
+    /// existing call site keeps today's behavior (attaching a file makes it
+    /// a student-facing download) without having to change its call shape.
+    /// </summary>
+    public LessonResource AddResource(Guid learningAssetId, bool visibleToLearners = true)
     {
         if (learningAssetId == Guid.Empty)
             throw new ArgumentException("A resource must reference a learning asset.", nameof(learningAssetId));
 
-        var resource = LessonResource.Create(Id, learningAssetId, _resources.Count);
+        var resource = LessonResource.Create(Id, learningAssetId, _resources.Count, visibleToLearners);
         _resources.Add(resource);
         UpdatedAt = DateTime.UtcNow;
         return resource;
@@ -221,6 +238,30 @@ public class LessonRevision
     public void RemoveResource(Guid resourceId)
     {
         _resources.RemoveAll(r => r.Id == resourceId);
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Flips whether an already-attached resource is shown to learners as a
+    /// download — e.g. hiding a file that was only ever meant as AI
+    /// extraction source material, or later deciding to share it. Unlike
+    /// <see cref="RemoveResource"/>'s idempotent no-op, an unknown
+    /// <paramref name="resourceId"/> here throws: the tutor asked to change
+    /// a specific resource, and silently doing nothing would hide a bug
+    /// rather than surface it.
+    /// </summary>
+    public void SetResourceVisibility(Guid resourceId, bool visibleToLearners)
+    {
+        var resource = _resources.FirstOrDefault(r => r.Id == resourceId)
+            ?? throw new InvalidOperationException("This lesson revision has no resource with that id.");
+        resource.SetVisibility(visibleToLearners);
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>See <see cref="RequireQuizToComplete"/>.</summary>
+    public void SetRequireQuizToComplete(bool requireQuizToComplete)
+    {
+        RequireQuizToComplete = requireQuizToComplete;
         UpdatedAt = DateTime.UtcNow;
     }
 

@@ -25,11 +25,31 @@ public class ContentStudioService(
     TranscriptionQueue transcriptionQueue, ILearningAssetStorage assetStorage,
     GenerateLessonBodySkill generateLessonBody, GenerateWhatYoullLearnSkill generateWhatYoullLearn,
     GenerateLessonTitleSkill generateLessonTitle, GenerateLearningObjectivesSkill generateLearningObjectives,
-    GenerateGlossarySkill generateGlossary, GenerateHomeworkSkill generateHomework)
+    GenerateGlossarySkill generateGlossary, GenerateHomeworkSkill generateHomework,
+    ExtractLessonContentFromResourceSkill extractLessonContent)
 {
     /// <summary>Speechmatics' supported input formats (AI Video Transcript Implementation Plan §4/§7) — checked against the uploaded file's extension before a job is ever submitted.</summary>
     private static readonly string[] SupportedTranscriptionExtensions =
         [".wav", ".mp3", ".aac", ".ogg", ".mpeg", ".amr", ".m4a", ".mp4", ".flac"];
+
+    /// <summary>
+    /// Claude Messages API's own limits for a document/image content block
+    /// (checked 2026-08-16) — this Platform's general upload cap (500MB) is
+    /// far looser, so extraction needs its own pre-flight check rather than
+    /// trusting the upload path already caught an oversized file.
+    /// </summary>
+    private const long MaxExtractionPdfBytes = 32 * 1024 * 1024;
+    private const long MaxExtractionImageBytes = 10 * 1024 * 1024;
+
+    private static readonly Dictionary<string, string> SupportedExtractionContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["application/pdf"] = "application/pdf",
+        ["image/png"] = "image/png",
+        ["image/jpeg"] = "image/jpeg",
+        ["image/jpg"] = "image/jpeg",
+        ["image/gif"] = "image/gif",
+        ["image/webp"] = "image/webp"
+    };
 
     /// <summary>
     /// Same pattern as the frontend's videoEmbed.js — a YouTube link has no
@@ -148,7 +168,8 @@ public class ContentStudioService(
                 r.VideoUrl, a?.Questions.Count ?? 0, submissionCount,
                 r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptSource.ToString(), r.TranscriptError, r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework,
                 r.Resources.OrderBy(res => res.Position).Where(res => assets.ContainsKey(res.LearningAssetId))
-                    .Select(res => new LessonResourceRow(res.Id, LearningAssetService.Describe(assets[res.LearningAssetId]))).ToList());
+                    .Select(res => new LessonResourceRow(res.Id, LearningAssetService.Describe(assets[res.LearningAssetId]), res.VisibleToLearners)).ToList(),
+                r.RequireQuizToComplete);
         }
 
         return ProvisioningResult<LessonDetailResponse>.Success(new LessonDetailResponse(
@@ -431,7 +452,7 @@ public class ContentStudioService(
     /// single-aggregate mutate delegate.
     /// </summary>
     public async Task<ProvisioningResult<LessonDetailResponse>> AddResourceAsync(
-        string slug, Guid caller, Guid lessonId, Guid learningAssetId, CancellationToken ct = default)
+        string slug, Guid caller, Guid lessonId, Guid learningAssetId, bool visibleToLearners, CancellationToken ct = default)
     {
         var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
@@ -449,7 +470,7 @@ public class ContentStudioService(
             asset.RequireAttachable();
             var revision = lesson.DraftRevision ?? lesson.CurrentRevision
                 ?? throw new InvalidOperationException("This lesson has no revision to attach a resource to yet.");
-            revision.AddResource(asset.Id);
+            revision.AddResource(asset.Id, visibleToLearners);
         }
         catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
 
@@ -472,6 +493,177 @@ public class ContentStudioService(
         if (revision is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such resource."));
 
         revision.RemoveResource(resourceId);
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    /// <summary>
+    /// Reads an uploaded PDF/image resource with a multimodal model call and
+    /// drafts the same five fields the ai-suggest-* endpoints draft
+    /// individually — see <see cref="ExtractLessonContentFromResourceSkill"/>.
+    /// Cross-aggregate for the same reason as <see cref="AddResourceAsync"/>
+    /// (needs the Learning Asset's stored file), so this cannot go through
+    /// MutateLessonAsync's single-aggregate delegate. Synchronous, not
+    /// queued (PDF &amp; Image Lesson Content Extraction design proposal
+    /// §4.5) — a single document is one model call, the same latency shape
+    /// as every other ai-suggest-* request. Nothing is persisted — same
+    /// contract as every ai-suggest-* endpoint; the tutor still hits Save
+    /// themselves. An all-null response is a valid result (the document had
+    /// nothing extractable), not an error.
+    /// </summary>
+    public async Task<ProvisioningResult<ExtractResourceContentResponse>> ExtractResourceContentAsync(
+        string slug, Guid caller, Guid lessonId, Guid resourceId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<ExtractResourceContentResponse>(ctx.Error.Value);
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Forbidden,
+                "AI content assistance needs the Professional plan or an AI-enabled Learning pack. Upgrade to use this."));
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.Resources)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<ExtractResourceContentResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var resource = lesson.Revisions.SelectMany(r => r.Resources).FirstOrDefault(res => res.Id == resourceId);
+        if (resource is null) return Fail<ExtractResourceContentResponse>((ProvisioningError.NotFound, "No such resource."));
+
+        var asset = await db.LearningAssets.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == resource.LearningAssetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (asset is null) return Fail<ExtractResourceContentResponse>((ProvisioningError.NotFound, "No such learning asset."));
+
+        if (!SupportedExtractionContentTypes.TryGetValue(asset.ContentType, out var mediaType))
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Invalid,
+                $"\"{asset.ContentType}\" can't be extracted — only PDF and image resources support this today. You can still attach it as a downloadable resource."));
+
+        // Claude's own request-payload limits (checked 2026-08-16) — this
+        // Platform's general upload cap (500MB) is far looser, so this needs
+        // its own pre-flight check rather than trusting the upload path
+        // already caught an oversized file. Failing here, before the model
+        // is ever called, avoids burning a slow request only to be rejected
+        // server-side by the provider.
+        var maxBytes = mediaType == "application/pdf" ? MaxExtractionPdfBytes : MaxExtractionImageBytes;
+        if (asset.FileSizeBytes > maxBytes)
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Invalid,
+                $"This file is larger than the {maxBytes / (1024 * 1024)} MB extraction can currently handle — you can still attach it as a downloadable resource."));
+
+        try
+        {
+            var fileBytes = await File.ReadAllBytesAsync(assetStorage.ResolvePath(asset.ObjectKey), ct);
+            var extracted = await extractLessonContent.ExtractAsync(fileBytes, mediaType, ct);
+            return ProvisioningResult<ExtractResourceContentResponse>.Success(extracted);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict, $"AI content extraction failed: {ex.Message}"));
+        }
+        catch (NotSupportedException)
+        {
+            // IAiModelProvider.CompleteAsync's attachment overload throws
+            // this by default (Provider Isolation) for any provider that
+            // hasn't opted into multimodal support — today, every provider
+            // except ClaudeModelProvider. Caught separately from
+            // InvalidOperationException above since NotSupportedException
+            // isn't one, and this is a configuration fact, not a per-request
+            // failure — worth its own clear message rather than the generic
+            // "AI content extraction failed" wording.
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict,
+                "AI content extraction isn't available with the current AI provider — this workspace needs a provider that supports reading documents/images."));
+        }
+        catch (IOException ex)
+        {
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict, $"Could not read the uploaded file: {ex.Message}"));
+        }
+    }
+
+    /// <summary>Same character budget a ~15-page pasted document would plausibly run to — generous for manual paste while still bounding one model call's input.</summary>
+    private const int MaxPastedContentChars = 50_000;
+
+    /// <summary>
+    /// The manual-entry fallback for <see cref="ExtractResourceContentAsync"/>:
+    /// the tutor pastes text themselves (e.g. copied out of a PDF reader, or
+    /// because the workspace's AI provider can't read files directly — see
+    /// the NotSupportedException catch above) instead of uploading a file for
+    /// AI to read. Text-only, so it goes through <see cref="IAiModelProvider"/>'s
+    /// base <c>CompleteAsync</c> rather than the attachment overload — works
+    /// with every provider, not just ones that opted into multimodal
+    /// support. No resource/asset lookup needed since nothing is read off
+    /// disk; still lesson-scoped so authorization and entitlement checks
+    /// match every other draft/ai-suggest-* endpoint. Nothing is persisted —
+    /// same contract as those endpoints, the tutor still hits Save.
+    /// </summary>
+    public async Task<ProvisioningResult<ExtractResourceContentResponse>> StructurePastedContentAsync(
+        string slug, Guid caller, Guid lessonId, string pastedText, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<ExtractResourceContentResponse>(ctx.Error.Value);
+
+        if (string.IsNullOrWhiteSpace(pastedText))
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Invalid, "Paste some text first."));
+
+        if (pastedText.Length > MaxPastedContentChars)
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Invalid,
+                $"That's more than {MaxPastedContentChars:N0} characters — trim it down and try again."));
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Forbidden,
+                "AI content assistance needs the Professional plan or an AI-enabled Learning pack. Upgrade to use this."));
+
+        var lesson = await db.Lessons.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<ExtractResourceContentResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        try
+        {
+            var structured = await extractLessonContent.StructureFromTextAsync(pastedText, ct);
+            return ProvisioningResult<ExtractResourceContentResponse>.Success(structured);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict, $"AI content extraction failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>Flips whether an already-attached resource is shown to learners as a download — see <see cref="LessonRevision.SetResourceVisibility"/>. Cross-aggregate for the same reason as <see cref="AddResourceAsync"/>.</summary>
+    public async Task<ProvisioningResult<LessonDetailResponse>> SetResourceVisibilityAsync(
+        string slug, Guid caller, Guid lessonId, Guid resourceId, bool visibleToLearners, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.Resources)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.Revisions.FirstOrDefault(r => r.Resources.Any(res => res.Id == resourceId));
+        if (revision is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such resource."));
+
+        revision.SetResourceVisibility(resourceId, visibleToLearners);
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    /// <summary>Sets whether a video-less lesson requires a passed Standalone Quiz to complete — see <see cref="LessonRevision.RequireQuizToComplete"/>. Applies to whichever revision is currently open for editing, same target-revision rule as <see cref="AddResourceAsync"/>.</summary>
+    public async Task<ProvisioningResult<LessonDetailResponse>> SetRequireQuizToCompleteAsync(
+        string slug, Guid caller, Guid lessonId, bool requireQuizToComplete, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
+        if (revision is null) return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This lesson has no revision to set a completion policy on yet."));
+
+        revision.SetRequireQuizToComplete(requireQuizToComplete);
 
         await db.SaveChangesAsync(ct);
         return await GetLessonAsync(slug, caller, lessonId, ct);

@@ -21,6 +21,11 @@ import MarkdownText from "../components/MarkdownText";
    tutor's preview; only the *reveal* is deferred here, not the collection.
    ========================================================================= */
 
+/** Same content types the Content Studio's Extract action and the extraction endpoint's pre-flight check accept. */
+const INLINE_RESOURCE_TYPES = new Set([
+  "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+]);
+
 export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOpenAssistant, onOpenQuiz, onOpenContent, onOpenHomework, onOpenResources }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
@@ -141,6 +146,16 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
 
   const done = result ? true : lesson?.progressStatus === "Completed";
   const isLive = lesson?.deliveryMode === "LiveSession";
+  const hasVideo = !!(lesson?.video || lesson?.videoUrl);
+  // PDF & Image Lesson Content Extraction §10.1 — a Reading-mode (or any
+  // video-less) lesson features its first visible PDF/image resource
+  // (already position-ordered, already learner-visibility-filtered
+  // server-side) in the same slot the video would occupy, instead of
+  // leaving it one click away behind the Resources button. Any further
+  // resources stay reachable there as before.
+  const inlineResource = !hasVideo
+    ? lesson?.resources?.find((r) => INLINE_RESOURCE_TYPES.has((r.contentType || "").toLowerCase()))
+    : null;
 
   return (
     <div className="lw-page">
@@ -200,7 +215,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
           </div>
         ) : lesson.body && <MarkdownText className="lw-learn__body" text={lesson.body} />}
 
-        {(lesson.video || lesson.videoUrl) && (
+        {hasVideo && (
           <div className="lw-learn__playerframe">
             <VideoPlayer
               ref={videoRef}
@@ -218,7 +233,25 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
           </div>
         )}
 
-        {!(lesson.video || lesson.videoUrl) && activeQuestion && (
+        {!hasVideo && inlineResource && (
+          <div className="lw-learn__playerframe">
+            {inlineResource.contentType.toLowerCase() === "application/pdf" ? (
+              <iframe
+                src={api.learningAssetDownloadUrl(session.token, slug, inlineResource.id)}
+                title={inlineResource.title}
+                style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
+              />
+            ) : (
+              <img
+                src={api.learningAssetDownloadUrl(session.token, slug, inlineResource.id)}
+                alt={inlineResource.title}
+                style={{ width: "100%", height: "100%", objectFit: "contain", background: "#fff" }}
+              />
+            )}
+          </div>
+        )}
+
+        {!hasVideo && activeQuestion && (
           <div className="lw-learn__standalone">
             <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
           </div>
@@ -255,7 +288,15 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
           </div>
         )}
 
-        {!(lesson.video || lesson.videoUrl) && lesson.questions.length === 0 && (
+        {/*
+          Gated on `done`, not just "no video and no interactive questions" —
+          a Reading lesson with RequireQuizToComplete on and no passing
+          Standalone submission yet is exactly "no video, no interactive
+          questions" but genuinely NOT complete (LearningDeliveryService
+          .GetLessonAsync's RequireQuizToComplete branch). Claiming "marked
+          complete" here would be flatly wrong for that case.
+        */}
+        {!hasVideo && lesson.questions.length === 0 && done && (
           <Message type="success">{t("learnerLesson.doneBanner")}</Message>
         )}
       </>}

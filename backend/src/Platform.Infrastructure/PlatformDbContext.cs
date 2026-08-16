@@ -398,6 +398,8 @@ public class PlatformDbContext : DbContext
 
             entity.Property(e => e.WhatYoullLearn).HasMaxLength(1000);
 
+            entity.Property(e => e.RequireQuizToComplete).IsRequired().HasDefaultValue(false);
+
             entity.HasMany(e => e.Resources).WithOne()
                   .HasForeignKey(r => r.LessonRevisionId).OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(e => e.Resources).UsePropertyAccessMode(PropertyAccessMode.Field);
@@ -414,6 +416,10 @@ public class PlatformDbContext : DbContext
             // INV-003), same reasoning as LessonRevision.VideoAssetId above —
             // deliberately not a foreign key.
             entity.Property(e => e.LearningAssetId).IsRequired();
+
+            // Every resource attached before this flag existed behaves as
+            // though it were true — the only behavior possible until now.
+            entity.Property(e => e.VisibleToLearners).IsRequired().HasDefaultValue(true);
 
             entity.HasIndex(e => e.LessonRevisionId);
         });

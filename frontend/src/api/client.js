@@ -444,10 +444,16 @@ export function setLessonVideoUrl(token, slug, lessonId, url) {
 
 /* ── Lesson resources (supplementary files: slides, worksheets, handouts) ── */
 
-/** POST .../lessons/{lessonId}/resources — attaches an uploaded Learning Asset to whichever revision is open for editing */
-export function addLessonResource(token, slug, lessonId, learningAssetId) {
+/**
+ * POST .../lessons/{lessonId}/resources — attaches an uploaded Learning
+ * Asset to whichever revision is open for editing. `visibleToLearners`
+ * defaults to true server-side if omitted — pass false for a file attached
+ * purely as AI-extraction source material that shouldn't become a
+ * student-facing download.
+ */
+export function addLessonResource(token, slug, lessonId, learningAssetId, visibleToLearners) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/resources`, {
-    method: "POST", body: { learningAssetId }, token,
+    method: "POST", body: { learningAssetId, visibleToLearners }, token,
   });
 }
 
@@ -455,6 +461,13 @@ export function addLessonResource(token, slug, lessonId, learningAssetId) {
 export function removeLessonResource(token, slug, lessonId, resourceId) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/resources/${resourceId}`, {
     method: "DELETE", token,
+  });
+}
+
+/** PUT .../lessons/{lessonId}/resources/{resourceId}/visibility — flips whether a resource is shown to learners as a download */
+export function setLessonResourceVisibility(token, slug, lessonId, resourceId, visibleToLearners) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/resources/${resourceId}/visibility`, {
+    method: "PUT", body: { visibleToLearners }, token,
   });
 }
 
@@ -536,6 +549,40 @@ export function suggestGlossary(token, slug, lessonId, body) {
 export function suggestHomework(token, slug, lessonId, body) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/ai-suggest-homework`, {
     method: "POST", body, token,
+  });
+}
+
+/**
+ * POST .../lessons/{lessonId}/resources/{resourceId}/extract — reads a
+ * PDF/image resource with AI and drafts title/body/whatYoullLearn/
+ * learningObjectives/glossary from its content. Nothing is saved — the
+ * caller still has to Save themselves, same as every ai-suggest-* call.
+ * A response with every field null means the model found nothing
+ * extractable in the file — not a request failure.
+ */
+export function extractResourceContent(token, slug, lessonId, resourceId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/resources/${resourceId}/extract`, {
+    method: "POST", token,
+  });
+}
+
+/**
+ * POST .../lessons/{lessonId}/draft/structure-pasted-content — the manual
+ * fallback for extractResourceContent: the tutor pastes text themselves
+ * (e.g. copied out of a PDF reader) instead of letting AI read the file.
+ * Same five-field response shape; a response with every field null means
+ * the model found nothing usable in the pasted text.
+ */
+export function structurePastedContent(token, slug, lessonId, text) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/structure-pasted-content`, {
+    method: "POST", body: { text }, token,
+  });
+}
+
+/** PUT .../lessons/{lessonId}/draft/require-quiz-to-complete — whether a video-less lesson only completes once the learner passes its Standalone Quiz */
+export function setLessonRequireQuizToComplete(token, slug, lessonId, requireQuizToComplete) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/draft/require-quiz-to-complete`, {
+    method: "PUT", body: { requireQuizToComplete }, token,
   });
 }
 
