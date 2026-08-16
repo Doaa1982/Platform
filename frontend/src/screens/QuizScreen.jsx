@@ -415,7 +415,17 @@ const CSS = `
   .lw-learn__standaloneqcard {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+    position: relative;
   }
+  /* Notebook theme: dog-eared page corner (2026-08-15). */
+  .lw-learn__standaloneqcard::after {
+    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 12px 12px 0;
+    border-color: transparent var(--surface-2) transparent transparent;
+    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
+    pointer-events: none;
+  }
+  [dir="rtl"] .lw-learn__standaloneqcard::after { transform: scaleX(-1); }
   .lw-learn__checkpointprompt { font-size: 0.98rem; font-weight: 600; margin: 0; line-height: 1.5; }
   .lw-learn__checkpointinput {
     width: 100%; font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
@@ -426,7 +436,17 @@ const CSS = `
   .lw-studio__configcard {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
     padding: 22px 24px; max-width: 60ch;
+    position: relative;
   }
+  /* Notebook theme: dog-eared page corner (2026-08-15). */
+  .lw-studio__configcard::after {
+    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 14px 14px 0;
+    border-color: transparent var(--surface-2) transparent transparent;
+    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
+    pointer-events: none;
+  }
+  [dir="rtl"] .lw-studio__configcard::after { transform: scaleX(-1); }
   .lw-studio__field { margin: 0 0 18px; }
   .lw-studio__field:last-of-type { margin-bottom: 20px; }
   .lw-studio__label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink); margin-bottom: 8px; }

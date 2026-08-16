@@ -170,20 +170,35 @@ function Shell({ children }) {
 }
 
 const CSS = `
+  /* Notebook theme (2026-08-15): Tutor "leather ledger" palette — this
+     screen continues straight from Landing's single Become-a-Tutor CTA, so
+     it carries the same warm dark cover tones as TUTOR_DARK in App.jsx
+     rather than the old generic SaaS navy/blue. */
   .pl-apply {
-    --ink: #F2F5FA; --ink-soft: #98A2B5; --accent: #5B8DEF;
-    font-family: 'Karla', system-ui, sans-serif; color: var(--ink);
-    background: #0B0F16; min-height: 100vh; position: relative;
+    --ink: #F1EAD9; --ink-soft: #B3A48A; --accent: #D4AF6A;
+    font-family: 'Lora', Georgia, serif; color: var(--ink);
+    background: #1C1712; min-height: 100vh; position: relative;
     display: flex; align-items: center; justify-content: center; padding: 40px 22px;
+    background-image: repeating-linear-gradient(to bottom, transparent 0 34px, rgba(212,175,106,0.05) 34px 35px);
   }
   .pl-apply *, .pl-apply *::before, .pl-apply *::after { box-sizing: border-box; }
   .pl-apply__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; }
 
   .pl-apply__card {
     width: 100%; max-width: 480px;
-    background: #12171F; border: 1px solid rgba(255,255,255,0.1);
+    background: #241D16; border: 1px solid rgba(241,234,217,0.14);
     border-radius: 16px; padding: 32px 30px;
+    position: relative;
   }
+  /* Leather-ledger dog-ear, same treatment as the in-app cards. */
+  .pl-apply__card::after {
+    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 14px 14px 0;
+    border-color: transparent #2C2419 transparent transparent;
+    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.35));
+    pointer-events: none;
+  }
+  [dir="rtl"] .pl-apply__card::after { transform: scaleX(-1); }
   .pl-apply__back {
     display: inline-flex; align-items: center; gap: 5px; background: transparent;
     border: none; padding: 0; margin-bottom: 20px; font-family: inherit;
@@ -194,9 +209,9 @@ const CSS = `
   .pl-apply__mark {
     width: 46px; height: 46px; border-radius: 12px; margin-bottom: 16px;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(91,141,239,0.16); color: var(--accent);
+    background: rgba(212,175,106,0.16); color: var(--accent);
   }
-  .pl-apply__mark.is-good { background: rgba(127,211,184,0.16); color: #7FD3B8; }
+  .pl-apply__mark.is-good { background: rgba(122,143,92,0.2); color: #9CB37A; }
 
   /* UIC-004: the page's own header (eyebrow + h1) is centered; the lead
      paragraph and everything below stays left-aligned, as body copy. */
@@ -205,7 +220,9 @@ const CSS = `
     letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
     text-align: center;
   }
-  .pl-apply h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.5rem; font-weight: 600; margin: 0 0 10px; text-align: center; }
+  /* Decorative heading only — a display label, not something being read
+     character-by-character, so the notebook script font is safe here. */
+  .pl-apply h1 { font-family: 'Caveat', cursive; font-size: 2.1rem; font-weight: 600; margin: 0 0 8px; text-align: center; }
   .pl-apply__lead { color: var(--ink-soft); font-size: 0.9rem; line-height: 1.65; margin: 0 0 24px; }
 
   /* UIC-003: one property per row — label left, value right. */
@@ -215,7 +232,7 @@ const CSS = `
   .pl-apply__field em { font-style: normal; font-weight: 400; color: var(--ink-soft); }
   .pl-apply__field input, .pl-apply__field textarea {
     width: 100%; font-family: inherit; font-size: 0.93rem; color: var(--ink);
-    background: #0F1319; border: 1px solid rgba(255,255,255,0.12);
+    background: #17130D; border: 1px solid rgba(241,234,217,0.14);
     border-radius: 10px; padding: 11px 13px; resize: vertical;
   }
   .pl-apply__form > .pl-apply__primary { grid-column: 1 / -1; }
@@ -225,13 +242,13 @@ const CSS = `
     .pl-apply__field > span:first-child { padding-top: 0; white-space: normal; }
   }
   .pl-apply__field input:focus-visible, .pl-apply__field textarea:focus-visible {
-    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,141,239,0.2);
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(212,175,106,0.22);
   }
 
   .pl-apply__primary {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    font-family: inherit; font-size: 0.93rem; font-weight: 600;
-    color: #08111F; background: linear-gradient(100deg, #7FB0FF, #5B8DEF);
+    font-family: 'Lora', Georgia, serif; font-size: 0.93rem; font-weight: 600;
+    color: #241A10; background: linear-gradient(100deg, #E8C787, #D4AF6A);
     border: none; border-radius: 10px; padding: 11px 18px; cursor: pointer;
   }
   .pl-apply__primary.is-full { width: 100%; margin-top: 4px; }
@@ -240,15 +257,15 @@ const CSS = `
   .pl-apply__ghost {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     font-family: inherit; font-size: 0.86rem; font-weight: 600;
-    color: var(--ink); background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.14); border-radius: 10px;
+    color: var(--ink); background: rgba(241,234,217,0.06);
+    border: 1px solid rgba(241,234,217,0.14); border-radius: 10px;
     padding: 10px 16px; cursor: pointer;
   }
   .pl-apply__ghost.is-full { width: 100%; margin-top: 18px; }
-  .pl-apply__ghost:hover { background: rgba(255,255,255,0.11); }
+  .pl-apply__ghost:hover { background: rgba(241,234,217,0.11); }
 
   .pl-apply__how {
-    background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(241,234,217,0.035); border: 1px solid rgba(241,234,217,0.08);
     border-radius: 11px; padding: 16px 20px; margin-top: 24px;
   }
   .pl-apply__how h2 {
@@ -260,13 +277,13 @@ const CSS = `
   .pl-apply__how li::marker { color: var(--accent); }
 
   .pl-apply__linkbox {
-    background: rgba(91,141,239,0.08); border: 1px solid rgba(91,141,239,0.3);
+    background: rgba(212,175,106,0.08); border: 1px solid rgba(212,175,106,0.3);
     border-radius: 11px; padding: 16px; margin-top: 4px;
   }
   .pl-apply__linklabel { display: block; font-size: 0.83rem; color: var(--ink-soft); margin-bottom: 10px; line-height: 1.55; }
   .pl-apply__linkbox code {
     display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.74rem;
-    background: #0F1319; border: 1px solid rgba(255,255,255,0.1);
+    background: #17130D; border: 1px solid rgba(241,234,217,0.1);
     border-radius: 7px; padding: 9px 11px; word-break: break-all; color: var(--accent);
   }
   .pl-apply__linkactions { display: flex; gap: 8px; margin-top: 12px; }

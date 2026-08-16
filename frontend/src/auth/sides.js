@@ -29,10 +29,16 @@ export const SIDES = {
       asideTitle: "Run your academy,\nnot your admin.",
       asideText:
         "Build courses, publish lessons, and see how your learners are actually doing — all in one workspace you control.",
-      accent: "#2D5BD1",
-      asideFrom: "#1B2430",
-      asideVia: "#24344B",
-      asideTo: "#2D5BD1",
+      // Leather-ledger warm palette (Notebook Theme, 2026-08-15). `accent`
+      // is TUTOR_LIGHT's primary --accent (deep maroon), not accent-2 gold:
+      // a WCAG pass (2026-08-15) found gold only cleared 3.59:1 as small
+      // text on this cream background (needs 4.5:1) — maroon clears 8.54:1
+      // and still visually matches the leather-ledger cover gradient below.
+      accent: "#7A2E2E",
+      asideFrom: "#15100B",
+      asideVia: "#2C2419",
+      asideTo: "#7A2E2E",
+      texture: "repeating-linear-gradient(to bottom, transparent 0 34px, rgba(122,46,46,0.09) 34px 35px)",
       devSeed: "tutor@platform.com",
     },
   },
@@ -53,10 +59,18 @@ export const SIDES = {
       asideTitle: "Every lesson,\nright where you left it.",
       asideText:
         "Your courses, your progress, and your tutor — together in one place, whichever academy you belong to.",
-      accent: "#1E7F63",
-      asideFrom: "#132520",
-      asideVia: "#1B3B31",
-      asideTo: "#1E7F63",
+      // Composition-notebook palette (Notebook Theme, 2026-08-15) — matches
+      // STUDENT_LIGHT's accent/accent-2 in App.jsx (post-WCAG-pass values,
+      // 2026-08-15: original #D93A3A/#3B6FD9 each cleared only ~4.2:1 as
+      // small text/aside text and are now #D52929/#2E66D7, both 4.5:1+).
+      // Cover fades from the dark green surface into the student's blue,
+      // a marbled-notebook feel, and the accent carries through to the
+      // dashboard the student lands on after signing in.
+      accent: "#D52929",
+      asideFrom: "#16241D",
+      asideVia: "#1C2C23",
+      asideTo: "#2E66D7",
+      texture: "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(59,111,217,0.16) 27px 28px)",
       devSeed: "learner@platform.com",
     },
   },

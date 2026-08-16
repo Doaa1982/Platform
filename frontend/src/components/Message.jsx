@@ -36,7 +36,9 @@ const VARIANTS = {
     background: "#FDF1EF", borderColor: "rgba(192, 57, 43, 0.35)",
   },
   success: {
-    Icon: CheckCircle2, color: "#1E7F63",
+    // color nudged 2026-08-15 (WCAG pass) — #1E7F63 cleared only 4.48:1
+    // against this background (needs 4.5:1); #1E7D61 clears 4.59:1.
+    Icon: CheckCircle2, color: "#1E7D61",
     background: "#EBF7F2", borderColor: "rgba(30, 127, 99, 0.35)",
   },
 };

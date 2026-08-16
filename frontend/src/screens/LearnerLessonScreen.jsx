@@ -357,7 +357,17 @@ const CSS = `
     background: var(--surface); color: var(--ink); border-radius: var(--radius);
     padding: 22px 24px; width: 100%; max-width: 460px;
     display: flex; flex-direction: column; gap: 12px;
+    position: relative;
   }
+  /* Notebook theme: dog-eared page corner (2026-08-15). */
+  .lw-learn__checkpointcard::after {
+    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 14px 14px 0;
+    border-color: transparent var(--surface-2) transparent transparent;
+    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
+    pointer-events: none;
+  }
+  [dir="rtl"] .lw-learn__checkpointcard::after { transform: scaleX(-1); }
   .lw-learn__checkpointkicker {
     display: inline-flex; align-items: center; gap: 6px; width: fit-content;
     font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;

@@ -632,7 +632,17 @@ const CSS = `
   .lw-bill__entcard {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px;
     margin-bottom: 16px;
+    position: relative;
   }
+  /* Notebook theme: dog-eared page corner (2026-08-15). */
+  .lw-bill__entcard::after {
+    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 14px 14px 0;
+    border-color: transparent var(--surface-2) transparent transparent;
+    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
+    pointer-events: none;
+  }
+  [dir="rtl"] .lw-bill__entcard::after { transform: scaleX(-1); }
   .lw-bill__entcard .lw-bill__sectiontitle { margin-top: 0; }
   .lw-bill__enttable { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-bottom: 0; }
   .lw-bill__enttable tr { border-top: 1px solid var(--line); }

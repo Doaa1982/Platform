@@ -241,7 +241,16 @@ const CSS = `
   .lw-assess__meta { color: var(--ink-soft); font-size: 0.85rem; margin: -6px 0 20px; }
   .lw-assess__sectiontitle { font-size: 1rem; margin: 26px 0 12px; }
 
-  .lw-assess__qcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 10px; }
+  .lw-assess__qcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 10px; position: relative; }
+  /* Notebook theme: dog-eared page corner (2026-08-15). */
+  .lw-assess__qcard::after {
+    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 12px 12px 0;
+    border-color: transparent var(--surface-2) transparent transparent;
+    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
+    pointer-events: none;
+  }
+  [dir="rtl"] .lw-assess__qcard::after { transform: scaleX(-1); }
   .lw-assess__qprompt { font-size: 0.9rem; font-weight: 600; margin: 0 0 6px; }
   .lw-assess__qmeta { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 10px; }
   .lw-assess__bars { display: grid; gap: 6px; }

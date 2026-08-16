@@ -173,8 +173,18 @@ const CSS = `
     background: var(--card-bg, var(--surface-2)); border: 1px solid transparent;
     border-radius: 16px; padding: 16px 18px; width: 160px;
     display: flex; flex-direction: column; align-items: flex-start;
+    position: relative;
   }
   .lw-lh__card.is-muted { background: var(--surface-2); border: 1px dashed var(--line); opacity: 0.75; }
+  /* Notebook theme: dog-eared page corner (2026-08-15). */
+  .lw-lh__card::after {
+    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 12px 12px 0;
+    border-color: transparent var(--line) transparent transparent;
+    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
+    pointer-events: none;
+  }
+  [dir="rtl"] .lw-lh__card::after { transform: scaleX(-1); }
   .lw-lh__cardicon {
     width: 34px; height: 34px; border-radius: 9px; margin-bottom: 10px;
     display: flex; align-items: center; justify-content: center;

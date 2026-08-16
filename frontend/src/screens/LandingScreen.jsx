@@ -82,13 +82,15 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
         <div className="pl-land__brand">
           <svg viewBox="0 0 40 40" width="30" height="30" aria-hidden="true">
             <rect width="40" height="40" rx="10" fill="url(#plg)" />
-            <path d="M11 26 L20 12 L29 26" fill="none" stroke="#fff" strokeWidth="2.6"
+            <path d="M11 26 L20 12 L29 26" fill="none" stroke="#F3ECD8" strokeWidth="2.6"
                   strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M15.5 22 L24.5 22" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+            <path d="M15.5 22 L24.5 22" stroke="#F3ECD8" strokeWidth="2.6" strokeLinecap="round" />
             <defs>
+              {/* Notebook theme (2026-08-15): leather-ledger gold-to-maroon,
+                  matching TUTOR_LIGHT's accent/accent-2 in App.jsx. */}
               <linearGradient id="plg" x1="0" y1="0" x2="40" y2="40">
-                <stop offset="0%" stopColor="#5B8DEF" />
-                <stop offset="100%" stopColor="#2D5BD1" />
+                <stop offset="0%" stopColor="#D4AF6A" />
+                <stop offset="100%" stopColor="#7A2E2E" />
               </linearGradient>
             </defs>
           </svg>
@@ -290,11 +292,18 @@ function PlansSection({ plans, packs, onBecomeTutor }) {
 }
 
 const CSS = `
+  /* Notebook theme (2026-08-15): Tutor "leather ledger" palette — this is
+     the only public page pitched at tutors (ADR-EA-002: one CTA, no learner
+     entry point here), so it gets the full script-font treatment. Recolored
+     from the old generic SaaS blue/teal/purple to the warm dark-leather
+     tones of TUTOR_DARK in App.jsx; the aurora blobs become a candlelit
+     glow instead of a tech-product gradient, and the grid becomes ruled
+     page lines. */
   .pl-land {
-    --ink: #F2F5FA; --ink-soft: #98A2B5; --accent: #5B8DEF; --deep: #0B0F16;
+    --ink: #F1EAD9; --ink-soft: #B3A48A; --accent: #D4AF6A; --deep: #1C1712;
     position: relative; min-height: 100vh; overflow: hidden;
     background: var(--deep); color: var(--ink);
-    font-family: 'Karla', system-ui, sans-serif;
+    font-family: 'Lora', Georgia, serif;
     display: flex; flex-direction: column;
   }
   .pl-land *, .pl-land *::before, .pl-land *::after { box-sizing: border-box; }
@@ -302,14 +311,12 @@ const CSS = `
   /* ── Background ─────────────────────────────────────────────────────── */
   .pl-land__aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
   .pl-land__blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.5; }
-  .pl-land__blob--a { width: 46vw; height: 46vw; background: #2D5BD1; top: -14vw; inset-inline-start: -8vw; animation: plDrift 26s ease-in-out infinite; }
-  .pl-land__blob--b { width: 38vw; height: 38vw; background: #1E7F63; bottom: -12vw; inset-inline-end: -6vw; animation: plDrift 32s ease-in-out infinite reverse; }
-  .pl-land__blob--c { width: 30vw; height: 30vw; background: #6D3FC4; top: 32%; inset-inline-end: 22%; opacity: 0.35; animation: plDrift 38s ease-in-out infinite; }
+  .pl-land__blob--a { width: 46vw; height: 46vw; background: #7A2E2E; top: -14vw; inset-inline-start: -8vw; animation: plDrift 26s ease-in-out infinite; }
+  .pl-land__blob--b { width: 38vw; height: 38vw; background: #A9772F; bottom: -12vw; inset-inline-end: -6vw; animation: plDrift 32s ease-in-out infinite reverse; }
+  .pl-land__blob--c { width: 30vw; height: 30vw; background: #4A3520; top: 32%; inset-inline-end: 22%; opacity: 0.35; animation: plDrift 38s ease-in-out infinite; }
   .pl-land__grid {
     position: absolute; inset: 0;
-    background-image: linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
-    background-size: 64px 64px;
+    background-image: repeating-linear-gradient(to bottom, transparent 0 44px, rgba(212,175,106,0.07) 44px 45px);
     mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 40%, transparent 100%);
   }
   @keyframes plDrift {
@@ -353,14 +360,21 @@ const CSS = `
        template default) otherwise wins over this element's inherited
        .pl-land color, since it sets the h1's color explicitly. */
     color: var(--ink);
-    font-family: 'Fraunces', Georgia, serif; font-weight: 600;
-    font-size: clamp(2.6rem, 8vw, 5.2rem); line-height: 1.02;
-    letter-spacing: -0.025em; margin: 0 0 20px;
+    /* Fixed marketing copy (not arbitrary Workspace/user content), so the
+       script font is safe here — the notebook theme's clearest signal. */
+    font-family: 'Caveat', cursive; font-weight: 600;
+    font-size: clamp(3.1rem, 9vw, 6rem); line-height: 1;
+    letter-spacing: -0.01em; margin: 0 0 20px;
     opacity: 0; transform: translateY(16px);
     transition: opacity .7s ease .12s, transform .7s ease .12s;
   }
   .pl-land__accent {
-    background: linear-gradient(100deg, #5B8DEF, #7FD3B8 60%, #E0A83E);
+    /* Third stop swapped 2026-08-15 (WCAG pass) — the original #7A2E2E
+       maroon end (tuned for light backgrounds) only cleared 1.91:1 against
+       this deep bg even at large-text size (needs 3:1). #C2655E (the
+       WCAG-corrected TUTOR_DARK accent-2, dark-mode-appropriate rust)
+       clears 4.50:1 and keeps the warm-to-rust gradient feel. */
+    background: linear-gradient(100deg, #D4AF6A, #C1615A 60%, #C2655E);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
 
@@ -375,15 +389,15 @@ const CSS = `
 
   .pl-land__cta {
     display: inline-flex; align-items: center; gap: 10px;
-    font-family: inherit; font-size: 1.02rem; font-weight: 700; color: #08111F;
-    background: linear-gradient(100deg, #7FB0FF, #5B8DEF);
+    font-family: 'Lora', Georgia, serif; font-size: 1.02rem; font-weight: 700; color: #241A10;
+    background: linear-gradient(100deg, #E8C787, #D4AF6A);
     border: none; border-radius: 12px; padding: 15px 30px; cursor: pointer;
-    box-shadow: 0 10px 34px rgba(91,141,239,0.36);
+    box-shadow: 0 10px 34px rgba(212,175,106,0.32);
     opacity: 0; transform: translateY(12px);
     transition: opacity .7s ease .28s, transform .22s, box-shadow .22s;
   }
-  .pl-land__cta:hover { transform: translateY(-2px); box-shadow: 0 16px 44px rgba(91,141,239,0.5); }
-  .pl-land__cta:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+  .pl-land__cta:hover { transform: translateY(-2px); box-shadow: 0 16px 44px rgba(212,175,106,0.46); }
+  .pl-land__cta:focus-visible { outline: 2px solid #F3ECD8; outline-offset: 3px; }
 
   .pl-land__points {
     list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 26px;
@@ -391,7 +405,7 @@ const CSS = `
     opacity: 0; transition: opacity .7s ease .36s;
   }
   .pl-land__points li { display: flex; align-items: center; gap: 7px; }
-  .pl-land__points svg { color: #7FD3B8; }
+  .pl-land__points svg { color: #D4AF6A; }
 
   .is-in .pl-land__eyebrow, .is-in .pl-land__title, .is-in .pl-land__cta { opacity: 1; transform: translateY(0); }
   .is-in .pl-land__claims, .is-in .pl-land__points { opacity: 1; }
@@ -405,35 +419,43 @@ const CSS = `
   }
   .pl-prev {
     border-radius: 14px 14px 0 0; overflow: hidden;
-    background: #12171F; border: 1px solid rgba(255,255,255,0.1); border-bottom: none;
+    background: #241D16; border: 1px solid rgba(241,234,217,0.12); border-bottom: none;
     box-shadow: 0 -10px 80px rgba(0,0,0,0.6);
     transform: rotateX(9deg) translateY(14px); transform-origin: top center;
     opacity: 0; transition: opacity .9s ease .42s, transform .9s ease .42s;
+    position: relative;
   }
   .is-in .pl-prev { opacity: 1; transform: rotateX(5deg) translateY(0); }
+  /* Leather-ledger stitched seam along the mockup's top edge, echoing the
+     same treatment used on the real in-app sidebar. */
+  .pl-prev::before {
+    content: ""; position: absolute; top: 0; left: 14px; right: 14px; height: 1px;
+    background-image: repeating-linear-gradient(to right, rgba(212,175,106,0.5) 0 5px, transparent 5px 10px);
+    z-index: 1;
+  }
 
-  .pl-prev__bar { display: flex; gap: 6px; padding: 11px 14px; background: #0E1218; border-bottom: 1px solid rgba(255,255,255,0.07); }
-  .pl-prev__bar span { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.16); }
+  .pl-prev__bar { display: flex; gap: 6px; padding: 11px 14px; background: #17130D; border-bottom: 1px solid rgba(241,234,217,0.08); }
+  .pl-prev__bar span { width: 9px; height: 9px; border-radius: 50%; background: rgba(241,234,217,0.18); }
   .pl-prev__body { display: flex; min-height: 260px; }
-  .pl-prev__side { width: 180px; flex-shrink: 0; padding: 18px 14px; background: #0E1218; border-inline-end: 1px solid rgba(255,255,255,0.07); }
-  .pl-prev__mark { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #5B8DEF, #2D5BD1); margin-bottom: 14px; }
-  .pl-prev__line { height: 7px; border-radius: 4px; background: rgba(255,255,255,0.1); margin-bottom: 8px; }
+  .pl-prev__side { width: 180px; flex-shrink: 0; padding: 18px 14px; background: #17130D; border-inline-end: 1px solid rgba(241,234,217,0.08); }
+  .pl-prev__mark { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #D4AF6A, #7A2E2E); margin-bottom: 14px; }
+  .pl-prev__line { height: 7px; border-radius: 4px; background: rgba(241,234,217,0.1); margin-bottom: 8px; }
   .pl-prev__line.is-tall { height: 13px; }
   .is-w40 { width: 40%; } .is-w50 { width: 50%; } .is-w60 { width: 60%; }
   .is-w70 { width: 70%; } .is-w80 { width: 80%; }
   .pl-prev__nav { margin-top: 20px; display: flex; flex-direction: column; gap: 7px; }
-  .pl-prev__nav span { height: 9px; border-radius: 4px; background: rgba(255,255,255,0.07); width: 86%; }
-  .pl-prev__nav span.is-active { background: rgba(91,141,239,0.55); width: 94%; }
+  .pl-prev__nav span { height: 9px; border-radius: 4px; background: rgba(241,234,217,0.07); width: 86%; }
+  .pl-prev__nav span.is-active { background: rgba(212,175,106,0.55); width: 94%; }
 
   .pl-prev__main { flex: 1; padding: 20px; }
   .pl-prev__head { margin-bottom: 18px; }
   .pl-prev__cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .pl-prev__card { background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.07); border-radius: 9px; padding: 10px; }
-  .pl-prev__cover { height: 52px; border-radius: 6px; margin-bottom: 9px; background: linear-gradient(120deg, #2D5BD1, #6D3FC4); opacity: 0.75; }
-  .pl-prev__cover.is-alt { background: linear-gradient(120deg, #1E7F63, #5B8DEF); }
-  .pl-prev__cover.is-alt2 { background: linear-gradient(120deg, #E0A83E, #C4533F); }
-  .pl-prev__bar-fill { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.09); margin-top: 9px; overflow: hidden; }
-  .pl-prev__bar-fill i { display: block; height: 100%; background: #7FD3B8; border-radius: 3px; }
+  .pl-prev__card { background: rgba(241,234,217,0.035); border: 1px solid rgba(241,234,217,0.08); border-radius: 9px; padding: 10px; }
+  .pl-prev__cover { height: 52px; border-radius: 6px; margin-bottom: 9px; background: linear-gradient(120deg, #7A2E2E, #A9772F); opacity: 0.8; }
+  .pl-prev__cover.is-alt { background: linear-gradient(120deg, #4A3520, #D4AF6A); }
+  .pl-prev__cover.is-alt2 { background: linear-gradient(120deg, #C1615A, #A9772F); }
+  .pl-prev__bar-fill { height: 5px; border-radius: 3px; background: rgba(241,234,217,0.09); margin-top: 9px; overflow: hidden; }
+  .pl-prev__bar-fill i { display: block; height: 100%; background: #D4AF6A; border-radius: 3px; }
 
   /* ── Plans ──────────────────────────────────────────────────────────── */
   .pl-plans {
@@ -446,20 +468,21 @@ const CSS = `
   }
   .pl-plans__title {
     color: var(--ink);
-    font-family: 'Fraunces', Georgia, serif; font-weight: 600;
-    font-size: clamp(1.7rem, 3.4vw, 2.3rem); margin: 0 0 10px;
+    /* Fixed section heading, not arbitrary content — safe for the script font. */
+    font-family: 'Caveat', cursive; font-weight: 600;
+    font-size: clamp(2.1rem, 4.2vw, 2.8rem); margin: 0 0 6px;
   }
   .pl-plans__lead { color: var(--ink-soft); font-size: 0.94rem; margin: 0 0 22px; }
 
   .pl-plans__cycle {
-    display: inline-flex; border: 1px solid rgba(255,255,255,0.14); border-radius: 999px;
+    display: inline-flex; border: 1px solid rgba(241,234,217,0.16); border-radius: 999px;
     padding: 3px; margin-bottom: 28px;
   }
   .pl-plans__cycle button {
     border: none; background: transparent; padding: 7px 18px; border-radius: 999px;
     font-family: inherit; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); cursor: pointer;
   }
-  .pl-plans__cycle button.is-active { background: var(--accent); color: #08111F; }
+  .pl-plans__cycle button.is-active { background: var(--accent); color: #241A10; }
 
   .pl-plans__grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px;
@@ -467,7 +490,7 @@ const CSS = `
   }
   .pl-plans__card {
     display: flex; flex-direction: column; gap: 14px;
-    background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(241,234,217,0.045); border: 1px solid rgba(241,234,217,0.1);
     border-radius: 16px; padding: 22px;
   }
   .pl-plans__name { font-weight: 700; font-size: 1.02rem; }
@@ -482,13 +505,13 @@ const CSS = `
 
   .pl-plans__cta {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    font-family: inherit; font-size: 0.88rem; font-weight: 700; color: #08111F;
-    background: linear-gradient(100deg, #7FB0FF, #5B8DEF);
+    font-family: 'Lora', Georgia, serif; font-size: 0.88rem; font-weight: 700; color: #241A10;
+    background: linear-gradient(100deg, #E8C787, #D4AF6A);
     border: none; border-radius: 10px; padding: 11px 18px; cursor: pointer;
     margin-top: auto; transition: transform .18s, box-shadow .18s;
   }
-  .pl-plans__cta:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(91,141,239,0.4); }
-  .pl-plans__cta:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .pl-plans__cta:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(212,175,106,0.36); }
+  .pl-plans__cta:focus-visible { outline: 2px solid #F3ECD8; outline-offset: 2px; }
 
   .pl-plans__addons { margin-top: 34px; text-align: start; }
   .pl-plans__addonstitle { color: var(--ink); font-size: 1rem; font-weight: 700; margin: 0 0 14px; }
@@ -497,7 +520,7 @@ const CSS = `
     display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
   }
   .pl-plans__addon {
-    background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(241,234,217,0.035); border: 1px solid rgba(241,234,217,0.09);
     border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
   }
   .pl-plans__addonhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -507,12 +530,12 @@ const CSS = `
   .pl-plans__addongrants li { display: flex; justify-content: space-between; gap: 10px; }
   .pl-plans__addongrants li span { color: var(--ink-soft); }
   .pl-plans__addongrants li strong { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
-  .pl-plans__addonnote { font-size: 0.72rem; color: #E0A83E; }
+  .pl-plans__addonnote { font-size: 0.72rem; color: #D4AF6A; }
 
   /* ── Foot ───────────────────────────────────────────────────────────── */
   .pl-land__foot {
     position: relative; z-index: 2; text-align: center;
-    padding: 26px 24px 22px; font-size: 0.8rem; color: rgba(152,162,181,0.75);
+    padding: 26px 24px 22px; font-size: 0.8rem; color: rgba(179,164,138,0.75);
   }
 
   @media (max-width: 720px) {

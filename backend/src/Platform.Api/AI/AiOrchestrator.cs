@@ -27,22 +27,35 @@ public class AiOrchestrator(IAiModelProvider provider)
     /// stricter reminder before giving up — a model call returning ordinary
     /// prose instead of the requested shape is common enough to be worth one
     /// retry rather than failing the whole request outright.
+    ///
+    /// <paramref name="isValid"/> covers the failure mode JSON parsing can't
+    /// catch: <c>System.Text.Json</c> deserializes a well-formed object even
+    /// when the model used the wrong property names for its content (e.g.
+    /// <c>"question"</c> instead of the requested <c>"prompt"</c>) — no
+    /// exception, just target properties left at their default (<c>""</c>,
+    /// <c>null</c>, <c>0</c>). Seen in practice against a local Ollama model
+    /// under "json" mode, which only guarantees syntactic JSON, not schema
+    /// conformance: the array parsed fine, every timestamp was real, every
+    /// question's text was empty. A skill that supplies <paramref
+    /// name="isValid"/> gets that case treated the same as malformed JSON —
+    /// one retry, then a clear failure — instead of silently returning
+    /// content-free results to the caller.
     /// </summary>
     public async Task<T> RunAsync<T>(
-        string systemPrompt, string userPrompt, CancellationToken ct = default)
+        string systemPrompt, string userPrompt, Func<T, bool>? isValid = null, CancellationToken ct = default)
     {
-        var raw = await provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: true, ct);
+        var raw = await provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: true, responseType: typeof(T), ct);
 
         var result = TryParse<T>(raw);
-        if (result is not null) return result;
+        if (result is not null && (isValid is null || isValid(result))) return result;
 
         var retryPrompt = userPrompt +
             "\n\nYour previous response could not be parsed as the requested JSON shape. " +
             "Respond with JSON only — no prose, no markdown code fences.";
-        var retryRaw = await provider.CompleteAsync(systemPrompt, retryPrompt, jsonMode: true, ct);
+        var retryRaw = await provider.CompleteAsync(systemPrompt, retryPrompt, jsonMode: true, responseType: typeof(T), ct);
 
         var retryResult = TryParse<T>(retryRaw);
-        if (retryResult is not null) return retryResult;
+        if (retryResult is not null && (isValid is null || isValid(retryResult))) return retryResult;
 
         throw new InvalidOperationException(
             "The AI model did not return a response in the expected shape, even after a retry.");
@@ -56,7 +69,7 @@ public class AiOrchestrator(IAiModelProvider provider)
     /// exceptions (unreachable model, bad key, etc.) the same way <see cref="RunAsync{T}"/> callers do.
     /// </summary>
     public Task<string> RunTextAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
-        => provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: false, ct);
+        => provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: false, ct: ct);
 
     private static T? TryParse<T>(string raw)
     {

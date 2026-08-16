@@ -2609,8 +2609,11 @@ const CSS = `
   .lw-studio__unitactions button:hover { color: var(--ink); }
   .lw-studio__unitactions button:disabled { opacity: 0.35; cursor: not-allowed; }
   .lw-studio__renameform { display: flex; gap: 6px; align-items: center; flex: 1; }
+  /* Kept off the notebook script font deliberately (2026-08-15) — this is an
+     active text-edit field, not a display label, and a cursive font makes it
+     harder to read what you're actually typing while renaming a unit. */
   .lw-studio__renameform input {
-    flex: 1; font-family: var(--font-display); font-weight: 600; font-size: 0.95rem;
+    flex: 1; font-family: var(--font-body); font-weight: 600; font-size: 0.95rem;
     border: 1px solid var(--accent); border-radius: 6px; padding: 5px 9px; background: var(--bg); color: var(--ink);
   }
   .lw-studio__renameform button { background: transparent; border: none; color: var(--accent); cursor: pointer; display: flex; }

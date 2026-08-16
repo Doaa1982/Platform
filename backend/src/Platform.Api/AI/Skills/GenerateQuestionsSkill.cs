@@ -283,7 +283,8 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
             videoTimestampSeconds between 0 and {videoDurationSeconds}.
             """;
 
-        var suggestions = await orchestrator.RunAsync<List<SuggestedQuestion>>(SystemPrompt, userPrompt, ct);
+        var suggestions = await orchestrator.RunAsync<List<SuggestedQuestion>>(
+            SystemPrompt, userPrompt, isValid: HasUsableContent, ct: ct);
 
         // Defensive clamp: a model-proposed timestamp outside the video's
         // actual duration would place a checkpoint nobody can reach. Options
@@ -390,7 +391,8 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
             Required question type: {questionType}
             """;
 
-        var suggestions = await orchestrator.RunAsync<List<SuggestedQuestion>>(ChapterSystemPrompt, userPrompt, ct);
+        var suggestions = await orchestrator.RunAsync<List<SuggestedQuestion>>(
+            ChapterSystemPrompt, userPrompt, isValid: HasUsableContent, ct: ct);
         var suggestion = suggestions.FirstOrDefault()
             ?? throw new InvalidOperationException("The model returned no question for this chapter.");
 
@@ -404,4 +406,13 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
             AcceptedAnswers = suggestion.AcceptedAnswers ?? []
         };
     }
+
+    /// <summary>
+    /// Guards against a model that returns syntactically valid JSON shaped
+    /// like the requested schema but with its actual content under the
+    /// wrong property names — every timestamp real, every Prompt empty. See
+    /// <see cref="AiOrchestrator.RunAsync{T}"/>'s isValid remarks.
+    /// </summary>
+    private static bool HasUsableContent(List<SuggestedQuestion> suggestions) =>
+        suggestions.Count > 0 && suggestions.All(s => !string.IsNullOrWhiteSpace(s.Prompt));
 }

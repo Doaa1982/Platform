@@ -165,7 +165,10 @@ public class GenerateLessonQuizSkill(AiOrchestrator orchestrator)
             Topic focus: {(string.IsNullOrWhiteSpace(topic) ? "(none — cover the lesson broadly)" : topic)}
             """;
 
-        var questions = await orchestrator.RunAsync<List<PracticeQuizQuestion>>(SystemPrompt, userPrompt, ct);
+        var questions = await orchestrator.RunAsync<List<PracticeQuizQuestion>>(
+            SystemPrompt, userPrompt,
+            isValid: qs => qs.Count > 0 && qs.All(q => !string.IsNullOrWhiteSpace(q.Prompt)),
+            ct: ct);
 
         // Defensive clamp: a model that ignores the requested count (common
         // enough not to trust blindly) shouldn't hand the learner a quiz

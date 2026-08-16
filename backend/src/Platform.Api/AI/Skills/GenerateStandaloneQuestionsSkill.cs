@@ -96,7 +96,10 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
             Propose exactly {questionCount} question(s).
             """;
 
-        var suggestions = await orchestrator.RunAsync<List<SuggestedStandaloneQuestion>>(SystemPrompt, userPrompt, ct);
+        var suggestions = await orchestrator.RunAsync<List<SuggestedStandaloneQuestion>>(
+            SystemPrompt, userPrompt,
+            isValid: qs => qs.Count > 0 && qs.All(q => !string.IsNullOrWhiteSpace(q.Prompt)),
+            ct: ct);
 
         // Defensive clamp: a model that ignores the requested count or omits
         // Points shouldn't hand the tutor a malformed or oversized draft set.

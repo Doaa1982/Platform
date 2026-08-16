@@ -182,28 +182,45 @@ function Shell({ children }) {
 }
 
 const CSS = `
+  /* Notebook theme (2026-08-15): Tutor "leather ledger" palette, light
+     variant — matches TUTOR_LIGHT in App.jsx / the same choice made on
+     JoinScreen (this is a workspace-membership process, not a Student
+     surface). h1 renders the Workspace's own name (see invite.joinTitle
+     below) so it stays in the legible serif rather than the script font.
+     --accent is TUTOR_LIGHT's primary --accent (maroon), not accent-2 gold:
+     a WCAG pass (2026-08-15) found gold only cleared 3.32:1 as text on this
+     cream bg (needs 4.5:1) — maroon clears 8.54:1. */
   .pl-invite {
-    --ink: #1B2430; --ink-soft: #6A7383; --line: #E1DED7; --accent: #2D5BD1;
-    font-family: 'Karla', system-ui, sans-serif; color: var(--ink);
-    background: #F7F5F1; min-height: 100vh; position: relative;
+    --ink: #241A10; --ink-soft: #6E5C43; --line: #D8C9A3; --accent: #7A2E2E;
+    font-family: 'Lora', Georgia, serif; color: var(--ink);
+    background: #F3ECD8; min-height: 100vh; position: relative;
     display: flex; align-items: center; justify-content: center; padding: 40px 22px;
+    background-image: repeating-linear-gradient(to bottom, transparent 0 34px, rgba(122,46,46,0.07) 34px 35px);
   }
   .pl-invite *, .pl-invite *::before, .pl-invite *::after { box-sizing: border-box; }
   .pl-invite__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; }
 
   .pl-invite__card {
-    width: 100%; max-width: 440px; background: #fff;
+    width: 100%; max-width: 440px; background: #FBF7EA;
     border: 1px solid var(--line); border-radius: 16px; padding: 34px 30px;
-    text-align: center;
+    text-align: center; position: relative;
   }
+  .pl-invite__card::after {
+    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 14px 14px 0;
+    border-color: transparent #EFE4C6 transparent transparent;
+    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
+    pointer-events: none;
+  }
+  [dir="rtl"] .pl-invite__card::after { transform: scaleX(-1); }
   .pl-invite__card--bad { border-color: rgba(179,56,43,0.3); color: #B3382B; }
-  .pl-invite__card--good { border-color: rgba(30,127,99,0.35); color: #1E7F63; }
+  .pl-invite__card--good { border-color: rgba(122,143,92,0.4); color: #5C7A3D; }
   .pl-invite__card--bad h1, .pl-invite__card--good h1 { color: inherit; }
 
   .pl-invite__mark {
     width: 48px; height: 48px; border-radius: 13px; margin: 0 auto 14px;
     display: flex; align-items: center; justify-content: center;
-    background: var(--accent); color: #fff;
+    background: var(--accent); color: #F3ECD8;
   }
   .pl-invite__eyebrow {
     font-family: 'IBM Plex Mono', monospace; font-size: 11px;
@@ -222,7 +239,7 @@ const CSS = `
   .pl-invite__field span:first-child { font-size: 0.82rem; font-weight: 600; padding-top: 11px; white-space: nowrap; }
   .pl-invite__field input {
     width: 100%; font-family: inherit; font-size: 0.95rem; color: var(--ink);
-    background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px;
+    background: #FBF7EA; border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px;
   }
   .pl-invite__form > .pl-invite__note,
   .pl-invite__form > .pl-invite__btn {
@@ -235,7 +252,7 @@ const CSS = `
   }
   .pl-invite__field input:focus-visible {
     outline: none; border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(45,91,209,0.16);
+    box-shadow: 0 0 0 3px rgba(169,119,47,0.18);
   }
 
   .pl-invite__note {
@@ -246,10 +263,10 @@ const CSS = `
   .pl-invite__btn {
     width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     font-family: inherit; font-size: 0.95rem; font-weight: 600;
-    color: #fff; background: var(--accent); border: none; border-radius: 10px;
+    color: #F3ECD8; background: var(--accent); border: none; border-radius: 10px;
     padding: 12px 16px; cursor: pointer;
   }
-  .pl-invite__btn:hover:not(:disabled) { background: #2449AC; }
+  .pl-invite__btn:hover:not(:disabled) { filter: brightness(0.92); }
   .pl-invite__btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 

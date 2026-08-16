@@ -63,10 +63,11 @@ export default function LoginScreen({ side, onBack, onForgotPassword }) {
     "--pl-aside-from": copy.asideFrom,
     "--pl-aside-via": copy.asideVia,
     "--pl-aside-to": copy.asideTo,
+    "--pl-texture": copy.texture,
   };
 
   return (
-    <div className="pl-login" style={themeVars}>
+    <div className={`pl-login pl-login--${side}`} style={themeVars}>
       <style>{CSS}</style>
 
       <div className="pl-login__langtoggle"><LanguageToggle /></div>
@@ -178,7 +179,9 @@ const CSS = `
     --pl-bg: #F7F5F1;
     --pl-surface: #FFFFFF;
     --pl-ink: #1B2430;
-    --pl-ink-soft: #6A7383;
+    /* Darkened 2026-08-15 (WCAG pass) — #6A7383 cleared only 4.39:1 as
+       secondary text against --pl-bg (needs 4.5:1). */
+    --pl-ink-soft: #687180;
     --pl-line: #E1DED7;
     --pl-danger: #B3382B;
     --pl-danger-bg: #FDF1EF;
@@ -203,8 +206,23 @@ const CSS = `
     flex-direction: column;
     justify-content: center;
     gap: 20px;
+    position: relative;
   }
   .pl-login__mark { line-height: 0; }
+
+  /* Notebook theme (2026-08-15): a bound-spine flourish where the cover
+     panel meets the form, mirroring the same treatment used in-app —
+     stitching for the tutor's leather ledger, perforation for the student's
+     composition notebook. Logical inset so it mirrors correctly under RTL. */
+  .pl-login--teach .pl-login__aside::after {
+    content: ""; position: absolute; top: 24px; bottom: 24px; inset-inline-end: 0; width: 1px;
+    background-image: repeating-linear-gradient(to bottom, rgba(247,245,241,0.55) 0 5px, transparent 5px 10px);
+  }
+  .pl-login--learn .pl-login__aside::after {
+    content: ""; position: absolute; top: 0; bottom: 0; inset-inline-end: -1px; width: 10px;
+    background-image: radial-gradient(circle at 0 10px, var(--pl-bg) 4px, transparent 4.2px);
+    background-size: 10px 20px; background-repeat: repeat-y;
+  }
   .pl-login__asidetitle {
     font-family: 'Fraunces', Georgia, serif;
     font-weight: 600;
@@ -222,7 +240,13 @@ const CSS = `
   }
 
   /* ── Right form panel ─────────────────────────────────────────────────── */
-  .pl-login__panel { display: flex; align-items: center; justify-content: center; padding: 48px 32px; }
+  /* Notebook theme (2026-08-15): faint ruled-page texture, tinted per side —
+     same idea as .lw-content's --page-texture in-app, just a static rule
+     here since there's no --page-texture token before Workspace Resolution. */
+  .pl-login__panel {
+    display: flex; align-items: center; justify-content: center; padding: 48px 32px;
+    background-image: var(--pl-texture, none);
+  }
   .pl-login__form-wrap { width: 100%; max-width: 380px; }
 
   .pl-login__back {

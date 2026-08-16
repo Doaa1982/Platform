@@ -25,7 +25,12 @@ public class GeminiModelProvider(HttpClient http, GeminiOptions options) : IAiMo
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, CancellationToken ct = default)
+    // responseType is unused here — Gemini's responseSchema config exists but
+    // wiring it up is left for if/when Gemini's local-dev-free-tier path
+    // shows the same wrong-field-name failures Ollama did; jsonMode's plain
+    // "application/json" mime type plus AiOrchestrator's prompt instructions
+    // + parse-retry are what keep Gemini's output in shape today.
+    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, Type? responseType = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(

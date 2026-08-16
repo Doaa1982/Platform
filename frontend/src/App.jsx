@@ -35,41 +35,146 @@ import * as api from "./api/client";
    proof of "Branded Experience" / "Workspace-Native AI" as architected.
    ========================================================================= */
 
-/* The platform default palette. Per-workspace branding is not implemented
-   (Technical Debt Backlog TD-006); this replaces the two fixture academy
-   themes, which dressed every workspace as somebody else's brand.
-   Fonts/radii/nav are mode-invariant — only color tokens differ below. */
-const SHARED_THEME = {
-  "--radius": "14px", "--radius-sm": "10px",
-  "--font-display": "'Fraunces', Georgia, serif",
-  "--font-body": "'Karla', system-ui, sans-serif",
+/* NOTEBOOK THEME (2026-08-15). Per-workspace branding is still not implemented
+   (Technical Debt Backlog TD-006), so every workspace still renders in one of
+   the platform's own defaults — there are just two of them now, chosen by
+   which side of the platform is rendering, not by Workspace:
+
+     Tutor  (side "teach", role "owner")   → "Leather Ledger": crisp/boxy
+       radii, burgundy + brass on parchment, Caveat display font, Lora serif
+       body — reads like a bound ledger, not a web app.
+     Student (side "learn", role "learner") → "Composition Notebook": soft
+       rounded radii, red-margin/blue-rule cream paper, Kalam display font,
+       plain sans body (a fully handwritten body font hurt legibility on
+       dense screens like tables and forms, so the handwriting stays on
+       headings/eyebrows only).
+
+   Both keep the same shape vocabulary (--radius/--radius-sm, --font-*,
+   --bar-*, --nav-*) so every existing .lw-* component reskins automatically
+   — nothing about the components themselves changed, only the tokens. See
+   App()'s `theme` selection below, which picks one of the four palettes from
+   `role` (owner/learner) × `mode` (light/dark). */
+
+const TUTOR_SHARED = {
+  "--radius": "6px", "--radius-sm": "4px",
+  "--font-display": "'Caveat', cursive",
+  "--font-body": "'Lora', Georgia, serif",
   "--font-mono": "'IBM Plex Mono', monospace",
 };
 
-const LIGHT_THEME = {
-  ...SHARED_THEME,
-  "--bg": "#F7F5F1", "--surface": "#FFFFFF", "--surface-2": "#EFEDE8",
-  "--ink": "#1B2430", "--ink-soft": "#6A7383", "--accent": "#2D5BD1",
-  "--accent-2": "#1E7F63", "--line": "#E1DED7", "--danger": "#B3382B",
-  "--nav-bg": "#1B2430", "--nav-text": "#F2F5FA",
-  "--bar-bg": "#FFFFFF", "--bar-ink": "#1B2430", "--bar-line": "#E1DED7",
-  "--bar-hover-line": "#C9C5BC", "--bar-panel-shadow": "rgba(10,12,15,0.14)",
-  "--bar-role-bg": "#EDF1FB", "--bar-role-ink": "#2449AC",
-  "--bar-active-bg": "#EDF1FB", "--bar-active-ink": "#2449AC", "--bar-active-line": "#DAE3FA",
-  "--bar-hover-bg": "#F7F5F1", "--bar-unread-bg": "#EDF1FB", "--bar-unread-hover-bg": "#E3EAFB",
+const STUDENT_SHARED = {
+  "--radius": "16px", "--radius-sm": "10px",
+  "--font-display": "'Kalam', cursive",
+  "--font-body": "'IBM Plex Sans', system-ui, sans-serif",
+  "--font-mono": "'IBM Plex Mono', monospace",
 };
 
-const DARK_THEME = {
-  ...SHARED_THEME,
-  "--bg": "#14161B", "--surface": "#1C1F26", "--surface-2": "#262A33",
-  "--ink": "#E8EAED", "--ink-soft": "#9199A6", "--accent": "#6C93FF",
-  "--accent-2": "#3FBF8B", "--line": "#333844", "--danger": "#E06152",
-  "--nav-bg": "#0F1115", "--nav-text": "#F2F5FA",
-  "--bar-bg": "#1C1F26", "--bar-ink": "#E8EAED", "--bar-line": "#333844",
-  "--bar-hover-line": "#454C5A", "--bar-panel-shadow": "rgba(0,0,0,0.45)",
-  "--bar-role-bg": "#232B45", "--bar-role-ink": "#9FB6FF",
-  "--bar-active-bg": "#232B45", "--bar-active-ink": "#9FB6FF", "--bar-active-line": "#37436B",
-  "--bar-hover-bg": "#262A33", "--bar-unread-bg": "#232B45", "--bar-unread-hover-bg": "#2C3550",
+const TUTOR_LIGHT = {
+  ...TUTOR_SHARED,
+  "--bg": "#F3ECD8", "--surface": "#FBF7EA", "--surface-2": "#EFE4C6",
+  "--ink": "#241A10", "--ink-soft": "#6E5C43", "--accent": "#7A2E2E",
+  // accent-2 darkened 2026-08-15 (WCAG pass) — #A9772F only cleared 3.3:1
+  // as text against --bg/--surface-2 (used directly as text/icon color in
+  // several places: .lw-rationale, .lw-scorepill, .lw-eventlog__item,
+  // .lw-badge.is-earned svg); #855E25 clears 4.5:1+ there and also improves
+  // (without breaking) the accent-2-as-fill-with-white-text spots.
+  "--accent-2": "#855E25", "--line": "#D8C9A3", "--danger": "#7A2E2E",
+  "--on-accent": "#F3ECD8",
+  // Added 2026-08-15 (WCAG pass): --accent-2 is also used as a solid FILL
+  // behind text/icons (chat avatars, stepper dots, active row buttons) —
+  // a separate role from --on-accent (which pairs with --accent). White
+  // clears 5.79:1 here.
+  "--on-accent-2": "#FFFFFF",
+  "--nav-bg": "#241A10", "--nav-text": "#F3ECD8",
+  "--bar-bg": "#FBF7EA", "--bar-ink": "#241A10", "--bar-line": "#D8C9A3",
+  "--bar-hover-line": "#C4B48A", "--bar-panel-shadow": "rgba(36,26,16,0.18)",
+  "--bar-role-bg": "#F2E1D9", "--bar-role-ink": "#7A2E2E",
+  "--bar-active-bg": "#F2E1D9", "--bar-active-ink": "#7A2E2E", "--bar-active-line": "#E3C9BC",
+  "--bar-hover-bg": "#F3ECD8", "--bar-unread-bg": "#F2E1D9", "--bar-unread-hover-bg": "#ECD3C4",
+  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 34px, rgba(122,46,46,0.09) 34px 35px)",
+  "--callout-bg": "#EFE4C6", "--callout-line": "#855E25",
+};
+
+const TUTOR_DARK = {
+  ...TUTOR_SHARED,
+  "--bg": "#1C1712", "--surface": "#241D16", "--surface-2": "#2C2419",
+  "--ink": "#F1EAD9", "--ink-soft": "#B3A48A", "--accent": "#D4AF6A",
+  // accent-2/danger lightened 2026-08-15 (WCAG pass) — #C1615A cleared only
+  // 4.34:1 as --danger text against --bg (needs 4.5:1); #C2655E clears it
+  // while keeping the same rust hue.
+  "--accent-2": "#C2655E", "--line": "rgba(241,234,217,0.16)", "--danger": "#C2655E",
+  "--on-accent": "#1C1712",
+  // Added 2026-08-15 (WCAG pass): unlike --on-accent, --accent-2's fill
+  // (chat avatars, stepper dots, active row buttons) needs a DARK label —
+  // this rust is mid-light, so white text on it only clears 3.95:1; the
+  // near-black --nav-bg value clears 4.86:1.
+  "--on-accent-2": "#120E0A",
+  "--nav-bg": "#120E0A", "--nav-text": "#F1EAD9",
+  "--bar-bg": "#241D16", "--bar-ink": "#F1EAD9", "--bar-line": "rgba(241,234,217,0.16)",
+  "--bar-hover-line": "rgba(241,234,217,0.28)", "--bar-panel-shadow": "rgba(0,0,0,0.5)",
+  "--bar-role-bg": "#3A2A22", "--bar-role-ink": "#D4AF6A",
+  "--bar-active-bg": "#3A2A22", "--bar-active-ink": "#D4AF6A", "--bar-active-line": "#4A362B",
+  "--bar-hover-bg": "#2C2419", "--bar-unread-bg": "#3A2A22", "--bar-unread-hover-bg": "#45301F",
+  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 34px, rgba(212,175,106,0.07) 34px 35px)",
+  "--callout-bg": "#2C2419", "--callout-line": "#D4AF6A",
+};
+
+const STUDENT_LIGHT = {
+  ...STUDENT_SHARED,
+  "--bg": "#FAF6EC", "--surface": "#FFFEFA", "--surface-2": "#EEF3FA",
+  "--ink": "#1F2E4D",
+  // ink-soft darkened 2026-08-15 (WCAG pass) — #767C89 cleared only
+  // 3.88:1/4.15:1 as secondary body text against --bg/--surface (needs 4.5:1).
+  "--ink-soft": "#6A707B",
+  // accent/danger darkened — #D93A3A cleared only 4.21:1 as danger/link
+  // text against --bg (needs 4.5:1); #D52929 clears it and keeps the
+  // white-on-accent button pairing comfortably above 3:1.
+  "--accent": "#D52929",
+  // accent-2 darkened — #3B6FD9 cleared only 4.14:1 as --bar-role-ink /
+  // --bar-active-ink text against --bar-role-bg (needs 4.5:1).
+  "--accent-2": "#2E66D7", "--line": "#B9D0EE", "--danger": "#D52929",
+  "--on-accent": "#FFFFFF",
+  // Added 2026-08-15 (WCAG pass): --accent-2 fill (chat avatars, stepper
+  // dots, active row buttons) — white clears 5.25:1 here, same as --on-accent.
+  "--on-accent-2": "#FFFFFF",
+  "--nav-bg": "#1B1B1D", "--nav-text": "#FAF6EC",
+  "--bar-bg": "#FFFEFA", "--bar-ink": "#1F2E4D", "--bar-line": "#B9D0EE",
+  "--bar-hover-line": "#9DBCE0", "--bar-panel-shadow": "rgba(31,46,77,0.16)",
+  "--bar-role-bg": "#EAF1FC", "--bar-role-ink": "#2E66D7",
+  "--bar-active-bg": "#EAF1FC", "--bar-active-ink": "#2E66D7", "--bar-active-line": "#D3E3FA",
+  "--bar-hover-bg": "#FAF6EC", "--bar-unread-bg": "#FDEBEB", "--bar-unread-hover-bg": "#FBDCDC",
+  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(59,111,217,0.16) 27px 28px)",
+  // callout-line darkened significantly — #E8D877 on #FFF3A3 was 1.28:1,
+  // an effectively invisible border (needs 3:1 as a UI/non-text element);
+  // #9C8A1A (a mustard olive) clears 3:1 while staying in the same warm-
+  // yellow family as the sticky-note callout background.
+  "--callout-bg": "#FFF3A3", "--callout-line": "#9C8A1A",
+};
+
+const STUDENT_DARK = {
+  ...STUDENT_SHARED,
+  "--bg": "#16241D", "--surface": "#1C2C23", "--surface-2": "#23362A",
+  "--ink": "#F5F3EC", "--ink-soft": "#9FB0A5",
+  // accent/danger lightened 2026-08-15 (WCAG pass) — #E06A5E cleared only
+  // 4.46:1 as accent/danger text against --surface (needs 4.5:1).
+  "--accent": "#E16E62",
+  "--accent-2": "#6FB3D9", "--line": "rgba(245,243,236,0.16)", "--danger": "#E16E62",
+  "--on-accent": "#16241D",
+  // Added 2026-08-15 (WCAG pass): the worst case found in the audit —
+  // --accent-2 here is a light sky-blue (correct as small text against the
+  // dark bg), but the same token filling chat avatars/stepper dots/active
+  // row buttons with hardcoded white text was only 2.30:1, effectively
+  // unreadable. No single color can serve both roles; --nav-bg clears
+  // 7.67:1 as a dark label on this light fill.
+  "--on-accent-2": "#101B15",
+  "--nav-bg": "#101B15", "--nav-text": "#F5F3EC",
+  "--bar-bg": "#1C2C23", "--bar-ink": "#F5F3EC", "--bar-line": "rgba(245,243,236,0.16)",
+  "--bar-hover-line": "rgba(245,243,236,0.28)", "--bar-panel-shadow": "rgba(0,0,0,0.5)",
+  "--bar-role-bg": "#23384A", "--bar-role-ink": "#6FB3D9",
+  "--bar-active-bg": "#23384A", "--bar-active-ink": "#6FB3D9", "--bar-active-line": "#2E4A61",
+  "--bar-hover-bg": "#23362A", "--bar-unread-bg": "#3A2426", "--bar-unread-hover-bg": "#472C2E",
+  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(245,243,236,0.06) 27px 28px)",
+  "--callout-bg": "#23362A", "--callout-line": "#6FB3D9",
 };
 
 /* =========================================================================
@@ -657,8 +762,11 @@ export default function App() {
   /* Branding is not implemented (Technical Debt Backlog TD-006), so every
      workspace renders in the platform default. Inventing a palette per
      workspace would be another fiction, just a prettier one. Which of the
-     two default palettes is Light/Dark mode, owned by ThemeContext. */
-  const theme = mode === "dark" ? DARK_THEME : LIGHT_THEME;
+     four default palettes is role (Tutor/Student) × Light/Dark mode, mode
+     owned by ThemeContext, role owned by which door (side) was entered. */
+  const theme = role === "owner"
+    ? (mode === "dark" ? TUTOR_DARK : TUTOR_LIGHT)
+    : (mode === "dark" ? STUDENT_DARK : STUDENT_LIGHT);
 
   /* The person is whoever is actually signed in, and their label is the roles
      they actually hold here — not a fixture "Mentor" or "Instructor". */
@@ -683,7 +791,7 @@ export default function App() {
   function goToLearnerScreen(id) { setLearnerProductId(null); setLearnerLessonId(null); setLearnerScreen(id); }
 
   return (
-    <div className="lw-root" style={theme}>
+    <div className={`lw-root lw-root--${role}`} style={theme}>
       <style>{CSS}</style>
       <AccountBar role={role} screen={learnerScreen} onNavigate={goToLearnerScreen} aiLabel={c.aiName || t("learnerNav.ai")}
         onOpenProfile={() => setProfileOpen(true)} />
@@ -924,14 +1032,29 @@ const CSS = `
   .lw-controlstrip__new { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px dashed #4A5058 !important; color: #8FE3EA !important; border-radius: 20px; padding: 3px 10px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; }
   .lw-controlstrip__reset { margin-inline-start: auto; display: flex; align-items: center; gap: 5px; background: transparent; border: none; color: #8A8F97; cursor: pointer; font-family: var(--font-mono); font-size: 11px; }
 
-  .lw-academyheader { display: flex; align-items: center; gap: 16px; padding: 20px 32px; width: 100%; background: linear-gradient(120deg, var(--accent), var(--accent-2)); box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08); }
+  .lw-academyheader { display: flex; align-items: center; gap: 16px; padding: 20px 32px; width: 100%; background: linear-gradient(120deg, var(--accent), var(--accent-2)); box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08); position: relative; }
   .lw-academyheader__mark { background: rgba(255,255,255,0.18); padding: 6px; border-radius: var(--radius-sm); display: flex; flex-shrink: 0; }
   .lw-academyheader__name { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.15; color: #fff; }
   .lw-academyheader__tagline { font-size: 0.85rem; color: rgba(255,255,255,0.88); margin-top: 2px; }
   @media (max-width: 640px) { .lw-academyheader { padding: 16px 20px; } .lw-academyheader__name { font-size: 1.2rem; } }
 
+  /* Composition-notebook touch: a perforated/torn edge where the coloured
+     cover band meets the page, standing in for a spiral binding since the
+     Student side has no persistent left sidebar to hang one off. */
+  .lw-root--learner .lw-academyheader::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 10px;
+    background-image: radial-gradient(circle at 10px 0, var(--bg) 4px, transparent 4.2px);
+    background-size: 20px 10px; background-repeat: repeat-x; pointer-events: none;
+  }
+
   .lw-shell { display: flex; flex: 1; min-height: 0; }
-  .lw-content { flex: 1; overflow-y: auto; padding: 40px 48px 64px; }
+  .lw-content { flex: 1; overflow-y: auto; padding: 40px 48px 64px; position: relative; background-image: var(--page-texture, none); }
+  /* Composition-notebook margin rule — a persistent line down the reading
+     column, same idea as the red vertical rule on real notebook paper. */
+  .lw-root--learner .lw-content::before {
+    content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 34px; width: 1.5px;
+    background: var(--danger); opacity: 0.45; pointer-events: none;
+  }
   .lw-page { max-width: 880px; margin: 0 auto; animation: lwFade .3s ease; }
   @keyframes lwFade { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
   @media (prefers-reduced-motion: reduce) { .lw-page { animation: none; } }
@@ -945,23 +1068,39 @@ const CSS = `
   .lw-eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; text-align: center; }
   .lw-sub { color: var(--ink-soft); font-size: 0.94rem; max-width: 62ch; margin-bottom: 22px; }
 
-  .lw-nav { width: 250px; flex-shrink: 0; background: var(--nav-bg); color: var(--nav-text); display: flex; flex-direction: column; padding: 22px 16px; }
+  .lw-nav { width: 250px; flex-shrink: 0; background: var(--nav-bg); color: var(--nav-text); display: flex; flex-direction: column; padding: 22px 16px; position: relative; }
+  /* Leather-ledger touch: a stitched edge along the sidebar's inner border,
+     standing in for a bound spine. Tutor side only — the Student side gets
+     the perforated-page treatment on .lw-academyheader instead. */
+  .lw-root--owner .lw-nav::after {
+    content: ""; position: absolute; top: 14px; bottom: 14px; inset-inline-end: 8px; width: 1px;
+    background-image: repeating-linear-gradient(to bottom, var(--accent-2) 0 5px, transparent 5px 10px);
+    opacity: 0.5; pointer-events: none;
+  }
   .lw-nav__brand { display: flex; gap: 10px; align-items: center; margin-bottom: 28px; }
   .lw-brandmark { flex-shrink: 0; border-radius: var(--radius-sm); overflow: hidden; display: flex; line-height: 0; }
   .lw-cover { width: 100%; border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0; }
   .lw-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .lw-cover svg { display: block; }
-  .lw-nav__name { font-family: var(--font-display); font-weight: 600; font-size: 0.92rem; line-height: 1.2; }
+  /* Bumped from 0.92rem and given a touch of letter-spacing (2026-08-15) —
+     the Tutor's Caveat script and the Student's Kalam both get cramped on a
+     workspace name at chrome-label size, and this label can't control how
+     long that name is. Kept at .lw-nav (sidebar) scale, not shrunk further
+     for any workspace with a long name. */
+  .lw-nav__name { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; line-height: 1.25; letter-spacing: 0.1px; }
   .lw-nav__tagline { font-size: 10.5px; opacity: 0.6; margin-top: 2px; }
   .lw-nav__items { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
   .lw-nav__divider { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.45; padding: 12px 12px 4px; }
   .lw-nav__item { display: flex; align-items: center; gap: 9px; background: transparent; border: none; color: var(--nav-text); opacity: 0.72; padding: 8px 12px; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 0.84rem; cursor: pointer; text-align: start; transition: all .15s; }
   .lw-nav__item:hover { opacity: 1; background: rgba(255,255,255,0.06); }
-  .lw-nav__item.is-active { opacity: 1; background: var(--accent); color: #fff; }
+  .lw-nav__item.is-active { opacity: 1; background: var(--accent); color: var(--on-accent, #fff); }
   .lw-nav__profile { display: flex; align-items: center; gap: 8px; background: transparent; border: 1px dashed rgba(255,255,255,0.25); color: var(--nav-text); opacity: 0.75; padding: 8px 10px; border-radius: var(--radius-sm); font-size: 0.75rem; cursor: pointer; margin: 6px 0; }
   .lw-nav__profile:hover { opacity: 1; }
   .lw-nav__person { display: flex; align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.14); }
-  .lw-nav__avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-2); display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 600; flex-shrink: 0; }
+  /* color explicit (2026-08-15, WCAG pass) — otherwise inherits --nav-text
+     from .lw-nav, which fails badly against --accent-2 in TUTOR_DARK/
+     STUDENT_DARK (3.29:1 / 2.07:1). */
+  .lw-nav__avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-2); color: var(--on-accent-2, #fff); display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 600; flex-shrink: 0; }
   .lw-nav__personname { font-size: 0.8rem; font-weight: 600; }
   .lw-nav__personrole { font-size: 0.7rem; opacity: 0.6; }
 
@@ -972,8 +1111,11 @@ const CSS = `
     width: 300px; flex-shrink: 0; overflow-y: auto;
     background: var(--surface); border-inline-end: 1px solid var(--line);
   }
+  /* Bumped from 0.95rem, same reasoning as .lw-nav__name — a lesson title is
+     also arbitrary-length user content, and the notebook script fonts need
+     more room than a sans label would at this size (2026-08-15). */
   .lw-lessonnav__head {
-    font-family: var(--font-display); font-weight: 600; font-size: 0.95rem;
+    font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; letter-spacing: 0.1px;
     padding: 18px 16px 14px; border-bottom: 1px solid var(--line);
   }
   .lw-lessonnav__seqhint {
@@ -1012,7 +1154,7 @@ const CSS = `
 
   .lw-btn { font-family: var(--font-body); font-weight: 600; font-size: 0.85rem; border-radius: var(--radius-sm); padding: 10px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: transform .12s, box-shadow .12s; }
   .lw-btn:hover { transform: translateY(-1px); }
-  .lw-btn--accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .lw-btn--accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
   .lw-btn--ghost { background: transparent; }
   .lw-btn--sm { padding: 6px 12px; font-size: 0.78rem; }
   .lw-btn--lg { padding: 14px 24px; font-size: 0.95rem; margin-top: 24px; }
@@ -1024,6 +1166,12 @@ const CSS = `
   .lw-grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
   @media (max-width: 900px) { .lw-grid3, .lw-grid2 { grid-template-columns: 1fr; } }
 
+  /* .lw-card itself is not currently rendered by any screen — every screen
+     defines its own scoped card class instead (.lw-learn__card,
+     .lw-studio__card, .lw-lh__card, .lw-bill__entcard, and others). The
+     notebook theme's dog-eared corner is added to those real classes
+     directly, per screen — see e.g. LearnerHomeScreen.jsx, SubscriptionScreen.jsx.
+     This base rule is left as found, in case something adopts it later. */
   .lw-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; position: relative; }
   .lw-card__eyebrow { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin-bottom: 10px; }
   .lw-card__title { font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; margin-bottom: 4px; }
@@ -1057,8 +1205,17 @@ const CSS = `
   .lw-table__row--click { cursor: pointer; transition: background .12s; }
   .lw-table__row--click:hover { background: var(--surface-2); }
 
-  .lw-aicard { display: flex; gap: 10px; align-items: flex-start; background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: var(--radius-sm); padding: 12px 14px; margin: 14px 0; font-size: 0.85rem; color: var(--ink-soft); }
+  .lw-aicard {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--callout-bg, color-mix(in srgb, var(--accent) 8%, var(--surface-2)));
+    border: 1px solid var(--callout-line, color-mix(in srgb, var(--accent) 30%, var(--line)));
+    border-radius: var(--radius-sm); padding: 12px 14px; margin: 14px 0; font-size: 0.85rem; color: var(--ink-soft);
+  }
   .lw-aicard svg { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+  /* Sticky-note tilt — Student side only. The Tutor's ledger notes stay flat
+     and formal; a tilted note reads as playful, which fits the composition
+     notebook and not the leather ledger. */
+  .lw-root--learner .lw-aicard { transform: rotate(-0.6deg); }
   .lw-aicard__body { flex: 1; }
   .lw-aicard__actions { display: flex; gap: 6px; flex-shrink: 0; }
 
@@ -1079,12 +1236,12 @@ const CSS = `
   .lw-listrow__title { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
   .lw-listrow__meta { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
   .lw-tag { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; background: var(--surface-2); padding: 2px 7px; border-radius: 20px; color: var(--ink-soft); }
-  .lw-tag--new { background: var(--accent); color: #fff; }
+  .lw-tag--new { background: var(--accent); color: var(--on-accent, #fff); }
   .lw-timestamp { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); background: var(--surface-2); }
   .lw-scorepill { font-family: var(--font-mono); font-weight: 600; font-size: 0.85rem; background: var(--surface-2); padding: 6px 12px; border-radius: var(--radius-sm); color: var(--accent-2); }
 
   .lw-player { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
-  .lw-player__frame { background: linear-gradient(135deg, var(--ink), var(--accent-2)); color: #fff; height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 0.85rem; opacity: 0.95; }
+  .lw-player__frame { background: linear-gradient(135deg, var(--ink), var(--accent-2)); color: var(--on-accent-2, #fff); height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 0.85rem; opacity: 0.95; }
   .lw-videoplayer__youtube iframe { position: absolute; inset: 0; width: 100% !important; height: 100% !important; border: 0; }
   .lw-timeline { display: flex; gap: 18px; padding: 14px 18px; flex-wrap: wrap; border-top: 1px solid var(--line); }
   .lw-timeline__event { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--ink-soft); }
@@ -1102,8 +1259,8 @@ const CSS = `
   .lw-chat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
   .lw-bubble { max-width: 70%; padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.88rem; display: flex; gap: 8px; align-items: flex-start; }
   .lw-bubble--ai { background: var(--surface-2); align-self: flex-start; }
-  .lw-bubble--user { background: var(--accent); color: #fff; align-self: flex-end; }
-  .lw-bubble__avatar { width: 20px; height: 20px; border-radius: 50%; background: var(--accent-2); color: #fff; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .lw-bubble--user { background: var(--accent); color: var(--on-accent, #fff); align-self: flex-end; }
+  .lw-bubble__avatar { width: 20px; height: 20px; border-radius: 50%; background: var(--accent-2); color: var(--on-accent-2, #fff); font-size: 0.7rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .lw-chatinput, .lw-composer { display: flex; gap: 8px; margin-top: 8px; }
   .lw-chatinput input, .lw-composer input { flex: 1; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line); font-family: var(--font-body); background: var(--bg); }
   .lw-composer { margin-bottom: 16px; }
@@ -1133,9 +1290,9 @@ const CSS = `
   .lw-stepper__item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--ink-soft); padding: 5px 10px; border-radius: 20px; background: var(--surface-2); }
   .lw-stepper__item span { width: 16px; height: 16px; border-radius: 50%; background: var(--line); color: var(--ink-soft); font-size: 10px; display: flex; align-items: center; justify-content: center; }
   .lw-stepper__item.done { color: var(--accent-2); }
-  .lw-stepper__item.done span { background: var(--accent-2); color: #fff; }
+  .lw-stepper__item.done span { background: var(--accent-2); color: var(--on-accent-2, #fff); }
   .lw-stepper__item.active { color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)); }
-  .lw-stepper__item.active span { background: var(--accent); color: #fff; }
+  .lw-stepper__item.active span { background: var(--accent); color: var(--on-accent, #fff); }
 
   .lw-titleinput { font-family: var(--font-display); font-weight: 600; font-size: 2rem; border: none; border-bottom: 2px dashed var(--line); background: transparent; width: 100%; padding: 4px 0; color: var(--ink); }
   .lw-titleinput:focus { outline: none; border-color: var(--accent); }
@@ -1145,7 +1302,7 @@ const CSS = `
   .lw-rowactions { display: flex; gap: 4px; }
   .lw-rowactions button { width: 30px; height: 30px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .12s; }
   .lw-rowactions button:hover { color: var(--ink); }
-  .lw-rowactions button.active { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .lw-rowactions button.active { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent-2, #fff); }
   .lw-rowactions button.active.danger { background: var(--danger); border-color: var(--danger); }
   .lw-empty { color: var(--ink-soft); font-size: 0.88rem; padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: var(--radius); }
 
@@ -1199,7 +1356,7 @@ const CSS = `
 
   .lw-segctrl { display: flex; gap: 6px; flex-wrap: wrap; }
   .lw-segctrl button { padding: 7px 14px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 0.82rem; cursor: pointer; }
-  .lw-segctrl button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .lw-segctrl button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
 
   .lw-presetgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
   .lw-presetcard { border: 2px solid #E3E3E3; border-radius: 12px; padding: 14px; cursor: pointer; background: #fff; transition: border-color .12s; }

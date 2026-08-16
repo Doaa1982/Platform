@@ -13,7 +13,12 @@ namespace Platform.Api.AI;
 /// </summary>
 public class OpenAiModelProvider(HttpClient http, AiOptions options) : IAiModelProvider
 {
-    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, CancellationToken ct = default)
+    // responseType is unused here — OpenAI supports a stricter
+    // response_format.json_schema mode, but this codebase only ever hit the
+    // wrong-field-name failure against the local Ollama model; jsonMode's
+    // plain json_object mode plus AiOrchestrator's prompt instructions +
+    // parse-retry are what keep OpenAI's output in shape today.
+    public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, bool jsonMode = false, Type? responseType = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(
