@@ -103,6 +103,7 @@ builder.Services.AddSingleton<ILearningAssetStorage, LocalLearningAssetStorage>(
 builder.Services.AddScoped<LearningAssetService>();
 builder.Services.AddScoped<AssessmentService>();
 builder.Services.AddScoped<LearningDeliveryService>();
+builder.Services.AddScoped<CourseJoinRequestService>();
 builder.Services.AddScoped<NotificationService>();
 
 // ── AI (AIModelProviderArchitecture / AIOrchestrationArchitecture / AISkillArchitecture) ──
@@ -162,6 +163,7 @@ builder.Services.AddScoped<AiOrchestrator>();
 builder.Services.AddScoped<GenerateQuestionsSkill>();
 builder.Services.AddScoped<GradeAssessmentSkill>();
 builder.Services.AddScoped<GenerateProductDescriptionSkill>();
+builder.Services.AddScoped<GenerateWorkspaceProfileSkill>();
 builder.Services.AddScoped<GenerateLessonBodySkill>();
 builder.Services.AddScoped<GenerateWhatYoullLearnSkill>();
 builder.Services.AddScoped<GenerateLessonTitleSkill>();

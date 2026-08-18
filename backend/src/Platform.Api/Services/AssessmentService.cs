@@ -263,15 +263,17 @@ public class AssessmentService(
 
         var revision = await LoadTargetRevisionAsync(ctx.Workspace!.Id, lessonId, ctx.TargetRevisionId, ct);
         var chapters = ParseChapters(revision);
+        var outputLanguage = await GetLessonLanguageAsync(ctx.LearningProductId, ct);
 
         IReadOnlyList<SuggestedQuestion> suggestions;
         try
         {
             suggestions = chapters is { Count: > 0 }
-                ? await SuggestFromChaptersAsync(ctx.LessonTitle ?? "Untitled lesson", chapters, request.VideoDurationSeconds, ct)
+                ? await SuggestFromChaptersAsync(ctx.LessonTitle ?? "Untitled lesson", chapters, request.VideoDurationSeconds, outputLanguage, ct)
                 : await generateQuestions.SuggestAsync(
                     ctx.LessonTitle ?? "Untitled lesson", revision?.Body, revision?.Transcript, ParseSegments(revision),
-                    request.VideoDurationSeconds, Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions), ct);
+                    request.VideoDurationSeconds, Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions),
+                    outputLanguage, ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -293,7 +295,8 @@ public class AssessmentService(
     /// Questions Implementation Plan §5).
     /// </summary>
     private async Task<IReadOnlyList<SuggestedQuestion>> SuggestFromChaptersAsync(
-        string lessonTitle, IReadOnlyList<TranscriptChapter> chapters, int videoDurationSeconds, CancellationToken ct)
+        string lessonTitle, IReadOnlyList<TranscriptChapter> chapters, int videoDurationSeconds,
+        string? outputLanguage, CancellationToken ct)
     {
         var results = new List<SuggestedQuestion>();
         var picked = chapters.Take(MaxSuggestedQuestions).ToList();
@@ -303,7 +306,7 @@ public class AssessmentService(
             var chapter = picked[i];
             var questionType = QuestionTypeRotation[i % QuestionTypeRotation.Length];
             var suggestion = await generateQuestions.SuggestForChapterAsync(
-                lessonTitle, chapter.Title, chapter.Summary, questionType, ct);
+                lessonTitle, chapter.Title, chapter.Summary, questionType, outputLanguage, ct);
 
             var timestamp = Math.Clamp((int)chapter.StartSeconds, 0, Math.Max(videoDurationSeconds - 1, 0));
             results.Add(suggestion with { VideoTimestampSeconds = timestamp });
@@ -328,6 +331,7 @@ public class AssessmentService(
         var count = Math.Clamp(request.QuestionCount <= 0 ? 5 : request.QuestionCount, 1, MaxSuggestedStandaloneQuestions);
 
         var revision = await LoadTargetRevisionAsync(ctx.Workspace!.Id, lessonId, ctx.TargetRevisionId, ct);
+        var outputLanguage = await GetLessonLanguageAsync(ctx.LearningProductId, ct);
 
         IReadOnlyList<SuggestedStandaloneQuestion> suggestions;
         try
@@ -335,7 +339,7 @@ public class AssessmentService(
             suggestions = await generateStandaloneQuestions.SuggestAsync(
                 ctx.LessonTitle ?? "Untitled lesson", revision?.Body, revision?.Transcript,
                 revision?.WhatYoullLearn, revision?.LearningObjectives, revision?.Glossary,
-                count, ct);
+                count, outputLanguage, ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -557,7 +561,7 @@ public class AssessmentService(
             db.Notifications.Add(Notification.Create(workspaceId, membershipId, NotificationKind.LessonQuestionsUpdated, lessonId, title, message));
     }
 
-    private record Context(Workspace? Workspace, Guid MembershipId, string? LessonTitle, Guid? TargetRevisionId, Guid? CurrentRevisionId, (ProvisioningError Error, string Message)? Error);
+    private record Context(Workspace? Workspace, Guid MembershipId, string? LessonTitle, Guid LearningProductId, Guid? TargetRevisionId, Guid? CurrentRevisionId, (ProvisioningError Error, string Message)? Error);
 
     /// <summary>
     /// Resolves which revision's Assessment a request is about: the lesson's
@@ -571,23 +575,34 @@ public class AssessmentService(
         var normalised = slug.ToLowerInvariant().Trim();
 
         var workspace = await db.Workspaces.AsNoTracking().FirstOrDefaultAsync(w => w.Slug == normalised, ct);
-        if (workspace is null) return new Context(null, Guid.Empty, null, null, null, (ProvisioningError.NotFound, "No such workspace."));
+        if (workspace is null) return new Context(null, Guid.Empty, null, Guid.Empty, null, null, (ProvisioningError.NotFound, "No such workspace."));
 
         var member = await db.Memberships.Include(m => m.Roles).AsNoTracking()
             .FirstOrDefaultAsync(m => m.WorkspaceId == workspace.Id && m.IdentityId == caller
                                    && m.Status == MembershipStatus.Active, ct);
-        if (member is null) return new Context(null, Guid.Empty, null, null, null, (ProvisioningError.NotFound, "No such workspace."));
+        if (member is null) return new Context(null, Guid.Empty, null, Guid.Empty, null, null, (ProvisioningError.NotFound, "No such workspace."));
 
         if (requireAuthor && !member.Roles.Any(r => AuthorRoles.Contains(r.Name)))
-            return new Context(null, member.Id, null, null, null, (ProvisioningError.Forbidden, "Only an owner, administrator or teacher can author content."));
+            return new Context(null, member.Id, null, Guid.Empty, null, null, (ProvisioningError.Forbidden, "Only an owner, administrator or teacher can author content."));
 
         var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == workspace.Id, ct);
-        if (lesson is null) return new Context(null, member.Id, null, null, null, (ProvisioningError.NotFound, "No such lesson."));
+        if (lesson is null) return new Context(null, member.Id, null, Guid.Empty, null, null, (ProvisioningError.NotFound, "No such lesson."));
 
         var targetRevisionId = lesson.DraftRevision?.Id ?? lesson.CurrentRevisionId;
-        return new Context(workspace, member.Id, lesson.Title, targetRevisionId, lesson.CurrentRevisionId, null);
+        return new Context(workspace, member.Id, lesson.Title, lesson.LearningProductId, targetRevisionId, lesson.CurrentRevisionId, null);
     }
+
+    /// <summary>
+    /// The Learning Product's own configured language, passed to AI skills as
+    /// an explicit output-language instruction — see ContentStudioService's
+    /// identical helper for the full rationale.
+    /// </summary>
+    private Task<string?> GetLessonLanguageAsync(Guid learningProductId, CancellationToken ct) =>
+        db.LearningProducts.AsNoTracking()
+            .Where(p => p.Id == learningProductId)
+            .Select(p => p.DefaultLanguage)
+            .FirstOrDefaultAsync(ct);
 
     private static ProvisioningResult<T> Fail<T>((ProvisioningError Error, string Message) e)
         => ProvisioningResult<T>.Fail(e.Error, e.Message);

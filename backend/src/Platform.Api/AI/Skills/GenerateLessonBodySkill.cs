@@ -5,14 +5,23 @@ namespace Platform.Api.AI.Skills;
 /// creation family, applied to LessonRevision.Body. One skill, two modes,
 /// chosen by whether the tutor has already written anything:
 ///
-///   Empty body   -&gt; draft a complete first pass from the title alone.
+///   Empty body   -&gt; draft a complete first pass from the transcript, when
+///                   one is ready, else the title alone.
 ///   Non-empty    -&gt; improve/expand what's there, preserving the tutor's
 ///                   own points and voice rather than replacing them.
 ///
-/// Takes title/body/estimated minutes straight from whatever the tutor has
-/// currently typed into the form (same choice as GenerateProductDescriptionSkill) —
-/// works before the draft is saved, and reflects unsaved edits rather than
-/// stale DB state.
+/// Title/body come straight from whatever the tutor has currently typed
+/// into the form (same choice as GenerateProductDescriptionSkill) — works
+/// before the draft is saved, and reflects unsaved edits rather than stale
+/// DB state. The transcript, when Ready, is read server-side instead (same
+/// pattern as GenerateLessonTitleSkill and friends) since it isn't a form
+/// field the tutor is mid-edit on.
+///
+/// outputLanguage carries the Learning Product's own configured language
+/// (Learning Product Aggregate Design §8's DefaultLanguage) as an explicit
+/// instruction rather than leaving the model to infer it purely from the
+/// source text — useful when a small local model's own language bias would
+/// otherwise win over an Arabic (or other non-English) transcript.
 /// </summary>
 public class GenerateLessonBodySkill(AiOrchestrator orchestrator)
 {
@@ -29,6 +38,8 @@ You are given:
 - The lesson's title.
 - The estimated lesson length in minutes, if known.
 - The lesson body already written by the tutor, which may be empty.
+- The lesson's video transcript, if one is available — the most direct
+  record of what was actually taught, when present.
 
 When body text is provided:
 
@@ -50,24 +61,31 @@ When body text is provided:
   provided.
 - Preserve the tutor's voice where practical rather than rewriting the
   lesson into an unrelated style.
+- When a transcript is also available, you may use it to verify
+  accuracy, fill genuine gaps, or ground an expansion — but the tutor's
+  written body remains the primary source of truth for structure,
+  phrasing, and emphasis.
 
 When no body text is provided:
 
-- Use the lesson title as the only source of information about the
-  lesson's subject.
+- If a video transcript is available, treat it as the primary source for
+  the lesson's content: draft the body from what was actually taught in
+  the video, using the title mainly for framing and scope.
+- If no transcript is available, use the lesson title as the only source
+  of information about the lesson's subject.
 - Create a useful first-draft structure that includes:
   1. A short opening that frames the topic and what the learner will
      encounter.
   2. A logically organized core explanation.
   3. A short wrap-up that reinforces the central topic.
 - Keep the draft appropriately scoped to what can reasonably be inferred
-  from the title.
+  from the available source (transcript, or title alone).
 - Do not invent specific factual claims, statistics, named examples,
   historical details, technical specifications, or other unsupported
   information merely to make the lesson appear more complete.
-- When the title is too broad or ambiguous to support detailed factual
-  teaching, keep the explanation general and structured rather than
-  fabricating details.
+- When neither a transcript nor enough title context is available to
+  support detailed factual teaching, keep the explanation general and
+  structured rather than fabricating details.
 - The resulting content is a first draft for tutor review, not an
   authoritative source of truth.
 
@@ -129,14 +147,22 @@ Return only the resulting learner-facing lesson body.
 """;
 
     public async Task<string> SuggestAsync(
-        string title, string? existingBody, int? estimatedMinutes, CancellationToken ct = default)
+        string title, string? existingBody, string? transcript, int? estimatedMinutes,
+        string? outputLanguage, CancellationToken ct = default)
     {
-        var userPrompt = $"""
+        var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
+            ? ""
+            : $"Output language: {outputLanguage}\n\n";
+
+        var userPrompt = languageDirective + $"""
             Lesson title: {title}
             Estimated length: {(estimatedMinutes is { } minutes ? $"{minutes} minutes" : "(not set)")}
 
             Existing body text:
             {(string.IsNullOrWhiteSpace(existingBody) ? "(none yet — write a first draft)" : existingBody)}
+
+            Video transcript:
+            {(string.IsNullOrWhiteSpace(transcript) ? "(none available)" : transcript)}
             """;
 
         var body = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, ct);

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
@@ -43,6 +43,15 @@ export default function ContentStudioScreen({ productId, onSelectProduct }) {
   // Keyed by productId so picking a different product (without leaving this
   // screen first) remounts the builder fresh, rather than needing an effect
   // to reset state for a prop that changed out from under it.
+  //
+  // Which product's curriculum to open is picked from the card grid first
+  // (ProductPicker) — that's also where structural curriculum work
+  // (adding/reordering units and lessons, publishing) lives, via the tree.
+  // A tutor who already knows exactly which lesson they want skips straight
+  // to the Course/Unit/Lesson dropdown editor instead, via its own
+  // "Edit lesson" entry in the sidebar nav (see LessonEditorScreen, exported
+  // below and rendered directly by App.jsx — not reached through this
+  // component at all).
   return productId
     ? <CurriculumBuilder key={productId} productId={productId} onBack={() => onSelectProduct(null)} />
     : <ProductPicker onSelect={onSelectProduct} />;
@@ -93,11 +102,15 @@ function ProductPicker({ onSelect }) {
         </div>
       )}
 
-      <div className="lw-studio__cardgrid">
+      <div className="lw-studio__productgrid">
         {data.products.map((p) => (
           <button className="lw-studio__card" key={p.id} onClick={() => onSelect(p.id)}>
-            <div className={`lw-studio__cardcover lw-cover--${coverVariant(p.id)}`}>
-              <span className="lw-studio__cardmonogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
+            <div className={`lw-studio__cardcover ${p.coverImageAssetId ? "" : `lw-cover--${coverVariant(p.id)}`}`}>
+              {p.coverImageAssetId ? (
+                <img className="lw-studio__cardcoverimg" alt="" src={api.learningAssetDownloadUrl(session.token, slug, p.coverImageAssetId)} />
+              ) : (
+                <span className="lw-studio__cardmonogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
+              )}
               <span className={`lw-studio__pill is-${p.status.toLowerCase()}`}>{human(t, p.status)}</span>
             </div>
             <div className="lw-studio__cardbody">
@@ -199,6 +212,21 @@ function CurriculumBuilder({ productId, onBack }) {
         <BackLink onBack={onBack} />
         <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> {t("studio.loading")}</div>
       </div>
+    );
+  }
+
+  // A lesson is being edited — that's now a full page of its own (with its
+  // own product/unit/lesson pickers for jumping straight to any other
+  // lesson) rather than an overlay stacked on top of this tree.
+  if (openLessonId) {
+    return (
+      <LessonEditorScreen
+        key={openLessonId}
+        initialProductId={productId}
+        initialLessonId={openLessonId}
+        onBack={() => setOpenLessonId(null)}
+        onChanged={load}
+      />
     );
   }
 
@@ -317,17 +345,6 @@ function CurriculumBuilder({ productId, onBack }) {
       {!data.canAuthor && (
         <p className="lw-studio__readonly">{t("studio.readonlyNote")}</p>
       )}
-
-      {openLessonId && (
-        <LessonEditor
-          key={openLessonId}
-          lessonId={openLessonId}
-          editable={editable}
-          onClose={() => setOpenLessonId(null)}
-          onChanged={load}
-          onDuplicated={setOpenLessonId}
-        />
-      )}
     </div>
   );
 }
@@ -339,6 +356,221 @@ function BackLink({ onBack }) {
       <ArrowLeft size={13} /> {t("studio.backAllProducts")}
     </button>
   );
+}
+
+/* ── Step 3: edit one lesson ──────────────────────────────────────────
+   A full page rather than an overlay on top of the curriculum tree, so
+   there's real room for the lesson's tabs. Three cascading dropdowns —
+   product, then unit, then lesson — let a tutor jump straight to any
+   lesson in the workspace without ever opening the tree. Reached either by
+   clicking a lesson in the tree (CurriculumBuilder passes in the
+   product/lesson it was opened from, plus onBack to return there) or,
+   standalone, as the sidebar's own "Edit lesson" nav item (App.jsx renders
+   this directly with no props at all — no onBack, since there's no picker
+   to return to; see backLabel for the tree-click case's wording).
+   ========================================================================= */
+
+const UNPLACED_UNIT = "__unplaced__";
+
+export function LessonEditorScreen({ initialProductId, initialLessonId, onBack, onChanged, backLabel = "studio.backToCurriculum" }) {
+  const { session, workspace } = useAuth();
+  const { t } = useLanguage();
+  const slug = workspace?.slug;
+
+  const [products, setProducts] = useState(null);
+  const [productsError, setProductsError] = useState(null);
+  const [productId, setProductId] = useState(initialProductId ?? null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getProducts(session.token, slug)
+      .then((d) => { if (!cancelled) { setProducts(d.products); setProductsError(null); } })
+      .catch((e) => { if (!cancelled) setProductsError(e.message); });
+    return () => { cancelled = true; };
+  }, [session.token, slug]);
+
+  return (
+    <div className="lw-page">
+      <style>{CSS}</style>
+      {onBack && (
+        <button className="lw-studio__back" onClick={onBack}>
+          <ArrowLeft size={13} /> {t(backLabel)}
+        </button>
+      )}
+
+      <div className="lw-eyebrow">{t("studio.lessonEyebrow")}</div>
+      <h1>{t("studio.pickLessonTitle")}</h1>
+      <p className="lw-sub">{t("studio.pickLessonLead")}</p>
+
+      {productsError && <Message type="error">{productsError}</Message>}
+
+      <div className="lw-studio__picker">
+        <label>
+          <span>{t("studio.pickProductLabel")}</span>
+          <select
+            value={productId ?? ""} disabled={!products}
+            onChange={(e) => setProductId(e.target.value || null)}
+          >
+            <option value="" disabled>{t("studio.pickProductPlaceholder")}</option>
+            {(products ?? []).map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+        </label>
+
+        {productId && (
+          <LessonPicker
+            key={productId}
+            productId={productId}
+            initialLessonId={productId === initialProductId ? initialLessonId : null}
+            onChanged={onChanged}
+          />
+        )}
+      </div>
+
+      {!productId && (
+        <div className="lw-studio__empty">{t("studio.pickProductFirst")}</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Owns the unit/lesson dropdowns and the lesson editor content for one
+ * product. Remounted (via the parent's key={productId}) whenever the
+ * product dropdown changes, so a stale unit/lesson selection from a
+ * different product can never linger — same remount-instead-of-reset-effect
+ * convention ContentStudioScreen already uses for productId itself.
+ */
+function LessonPicker({ productId, initialLessonId, onChanged }) {
+  const { session, workspace } = useAuth();
+  const { t } = useLanguage();
+  const slug = workspace?.slug;
+
+  const [curriculum, setCurriculum] = useState(null);
+  const [error, setError] = useState(null);
+  const [unitId, setUnitId] = useState(null);
+  const [lessonId, setLessonId] = useState(initialLessonId);
+  const [busy, setBusy] = useState(false);
+  // Kept separate from `error` (which, if set, blanks the whole picker below —
+  // appropriate for a failed initial load, not for a failed button click that
+  // should leave the dropdowns/lesson content right where they were).
+  const [actionError, setActionError] = useState(null);
+
+  const load = useCallback(
+    () => api.getCurriculum(session.token, slug, productId)
+      .then((d) => { setCurriculum(d); setError(null); return d; })
+      .catch((e) => { setError(e.message); return null; }),
+    [session.token, slug, productId]);
+
+  // Same action as the curriculum tree's own "Edit Mode" button (CurriculumBuilder,
+  // above) — surfaced here too, since a tutor who came straight from "Edit lesson"
+  // would otherwise have no way to leave view-only mode without navigating away
+  // to the tree first just to unpublish, then coming back.
+  async function handleEditMode() {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.curriculumTransition(session.token, slug, productId, "unpublish");
+      await load();
+    } catch (e) { setActionError(e.message); }
+    finally { setBusy(false); }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    load().then((d) => {
+      if (cancelled || !d) return;
+      setUnitId(unitContaining(d, initialLessonId));
+    });
+    return () => { cancelled = true; };
+    // Runs once per mount (i.e. once per productId, via the parent's key) —
+    // initialLessonId should only ever seed the very first resolution.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (error) return <Message type="error">{error}</Message>;
+
+  if (!curriculum) {
+    return (
+      <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> {t("studio.loading")}</div>
+    );
+  }
+
+  const unitOptions = [
+    ...curriculum.units.map((u) => ({ id: u.id, title: u.title, lessons: u.lessons })),
+    ...(curriculum.unplacedLessons.length > 0
+      ? [{ id: UNPLACED_UNIT, title: t("studio.notInUnit"), lessons: curriculum.unplacedLessons }]
+      : []),
+  ];
+  const lessons = unitOptions.find((u) => u.id === unitId)?.lessons ?? [];
+  const editable = curriculum.canAuthor && curriculum.status !== "Published" && curriculum.status !== "Archived";
+
+  return (
+    <>
+      <label>
+        <span>{t("studio.pickUnitLabel")}</span>
+        <select
+          value={unitId ?? ""} disabled={unitOptions.length === 0}
+          onChange={(e) => { setUnitId(e.target.value || null); setLessonId(null); }}
+        >
+          <option value="" disabled>{t("studio.pickUnitPlaceholder")}</option>
+          {unitOptions.map((u) => <option key={u.id} value={u.id}>{u.title}</option>)}
+        </select>
+      </label>
+
+      <label>
+        <span>{t("studio.pickLessonLabel")}</span>
+        <select
+          value={lessonId ?? ""} disabled={!unitId || lessons.length === 0}
+          onChange={(e) => setLessonId(e.target.value || null)}
+        >
+          <option value="" disabled>{t("studio.pickLessonPlaceholder")}</option>
+          {lessons.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
+        </select>
+      </label>
+
+      {curriculum.canAuthor && curriculum.status === "Published" && (
+        <div className="lw-studio__pickeredit" style={{ gridColumn: "1 / -1" }}>
+          {actionError && <Message type="error">{actionError}</Message>}
+          <div className="lw-studio__bar">
+            <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleEditMode}>
+              <Undo2 size={13} /> {t("studio.editMode")}
+            </button>
+          </div>
+          <p className="muted">
+            {t("studio.publishedNoticePrefix")} <strong>{t("studio.editMode")}</strong> {t("studio.publishedNoticeSuffix")}
+          </p>
+        </div>
+      )}
+
+      {unitOptions.length === 0 && (
+        <div className="lw-studio__empty" style={{ gridColumn: "1 / -1" }}>{t("studio.noLessonsInProduct")}</div>
+      )}
+
+      {lessonId ? (
+        <div style={{ gridColumn: "1 / -1" }}>
+          <LessonEditorContent
+            key={lessonId}
+            lessonId={lessonId}
+            editable={editable}
+            onChanged={() => { load(); onChanged?.(); }}
+            onDuplicated={(newId) => { setUnitId(UNPLACED_UNIT); setLessonId(newId); }}
+          />
+        </div>
+      ) : (
+        unitOptions.length > 0 && (
+          <div className="lw-studio__empty" style={{ gridColumn: "1 / -1" }}>{t("studio.pickLessonFirst")}</div>
+        )
+      )}
+    </>
+  );
+}
+
+function unitContaining(curriculum, lessonId) {
+  if (!lessonId) return null;
+  const unit = curriculum.units.find((u) => u.lessons.some((l) => l.id === lessonId));
+  if (unit) return unit.id;
+  if (curriculum.unplacedLessons.some((l) => l.id === lessonId)) return UNPLACED_UNIT;
+  return null;
 }
 
 function NewUnitForm({ busy, onAdd }) {
@@ -511,7 +743,7 @@ function LessonRowView({ lesson, onOpen, onRemove, editable, isFirst, isLast, on
 
 /* ── Lesson editor overlay ─────────────────────────────────────────────── */
 
-function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) {
+function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -883,15 +1115,12 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
   }
 
   return (
-    <div className="lw-studio__overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="lw-studio__panel" onClick={(e) => e.stopPropagation()}>
-        <button className="lw-studio__panelclose" onClick={onClose} aria-label={t("studio.close")}><X size={16} /></button>
-
-        {!lesson && !error && (
-          <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> {t("studio.loading")}</div>
-        )}
-        {error && <Message type="error">{error}</Message>}
-        {success && <Message type="success">{success}</Message>}
+    <>
+      {!lesson && !error && (
+        <div className="lw-studio__loading"><LoaderCircle size={18} className="lw-studio__spin" /> {t("studio.loading")}</div>
+      )}
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
         {lesson && (
           <>
@@ -1213,14 +1442,6 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                         <option value="Reading">{t("studio.readingLesson")}</option>
                       </select>
                     </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14 }}>
-                      <input
-                        type="checkbox" checked={requireQuizToComplete} disabled={busy || !editable}
-                        onChange={(e) => handleToggleRequireQuizToComplete(e.target.checked)}
-                      />
-                      <span style={{ fontSize: 13 }}>{t("studio.requireQuizToComplete")}</span>
-                    </label>
-                    <p className="muted" style={{ marginTop: 4 }}>{t("studio.requireQuizToCompleteHint")}</p>
                   </div>
                   <VideoSection
                     lesson={lesson}
@@ -1264,7 +1485,19 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
 
             {activeTab === "standaloneQuiz" && (
               (lesson.currentRevision || lesson.draftRevision) ? (
-                <StandaloneAssessmentSection lessonId={lesson.id} editable={editable} />
+                <>
+                  <label className="lw-studio__requirequiz">
+                    <input
+                      type="checkbox" checked={requireQuizToComplete} disabled={busy || !editable}
+                      onChange={(e) => handleToggleRequireQuizToComplete(e.target.checked)}
+                    />
+                    <span>
+                      {t("studio.requireQuizToComplete")}
+                      <em>{t("studio.requireQuizToCompleteHint")}</em>
+                    </span>
+                  </label>
+                  <StandaloneAssessmentSection lessonId={lesson.id} editable={editable} />
+                </>
               ) : (
                 <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForQuestions")}</p>
               )
@@ -1308,6 +1541,16 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
                     <Globe size={13} /> {t("studio.publish")}
                   </button>
                 )}
+                {/* Unpublished, no pending draft — the same revision that was
+                    live is still sitting on CurrentRevision (Unpublish never
+                    touches it), so bringing it back needs no new draft, just
+                    the status flipped back via Lesson.Republish. */}
+                {!lesson.draftRevision && lesson.status === "Draft" && lesson.currentRevision && (
+                  <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}
+                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "republish"), t("studio.toastLessonPublished")).then((l) => l && setLesson(l))}>
+                    <Globe size={13} /> {t("studio.publish")}
+                  </button>
+                )}
                 {lesson.status === "Published" && (
                   <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                           onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "unpublish"), t("studio.toastLessonUnpublished")).then((l) => l && setLesson(l))}>
@@ -1344,8 +1587,7 @@ function LessonEditor({ lessonId, editable, onClose, onChanged, onDuplicated }) 
             )}
           </>
         )}
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -1740,14 +1982,6 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
   const [pasteOpenId, setPasteOpenId] = useState(null);
   const [pasteText, setPasteText] = useState("");
 
-  // PDF & Image Lesson Content Extraction §5 — a PDF/image attached purely
-  // as AI source material (a tutor's own notes, a scan they don't have
-  // redistribution rights to hand out) shouldn't involuntarily become a
-  // student-facing download just because it was attached. Unchecked is the
-  // new default for those two file types; other file types (slide decks,
-  // worksheets) keep defaulting to shared, same as before this existed.
-  const [shareAsDownload, setShareAsDownload] = useState(false);
-
   const revision = lesson.draftRevision ?? lesson.currentRevision;
   const resources = revision?.resources ?? [];
 
@@ -1766,7 +2000,14 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
       for (const file of files) {
         setProgress(0);
         const asset = await api.uploadLearningAsset(session.token, slug, file, file.name, setProgress, "Resource");
-        const visibleToLearners = shareAsDownload || !isExtractableFile(file);
+        // PDF & Image Lesson Content Extraction §5 — a PDF/image attached
+        // purely as AI source material (a tutor's own notes, a scan they
+        // don't have redistribution rights to hand out) shouldn't
+        // involuntarily become a student-facing download just because it was
+        // attached. Other file types (slide decks, worksheets) default to
+        // shared. Either way, the per-resource checkbox below lets the tutor
+        // correct this immediately after upload.
+        const visibleToLearners = !isExtractableFile(file);
         await api.addLessonResource(session.token, slug, lesson.id, asset.id, visibleToLearners);
       }
       setSuccess(t("studio.toastResourceUploaded"));
@@ -1849,21 +2090,15 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
             <span className="lw-dropzone__title">{t("studio.uploadingPct", { pct: Math.round(progress * 100) })}</span>
           </div>
         ) : (
-          <>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }} title={t("studio.resourceShareAsDownloadHint")}>
-              <input type="checkbox" checked={shareAsDownload} onChange={(e) => setShareAsDownload(e.target.checked)} />
-              <span className="muted" style={{ fontSize: 13 }}>{t("studio.resourceShareAsDownload")}</span>
-            </label>
-            <div className="lw-dropzone" style={{ marginBottom: 14 }} onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
-              <UploadCloud size={26} />
-              <span className="lw-dropzone__title">{t("studio.uploadResource")}</span>
-              <span className="lw-dropzone__meta">{t("studio.resourceHint")}</span>
-              <input
-                ref={fileInputRef} type="file" multiple style={{ display: "none" }}
-                onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
-              />
-            </div>
-          </>
+          <div className="lw-dropzone" style={{ marginBottom: 14 }} onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0}>
+            <UploadCloud size={26} />
+            <span className="lw-dropzone__title">{t("studio.uploadResource")}</span>
+            <span className="lw-dropzone__meta">{t("studio.resourceHint")}</span>
+            <input
+              ref={fileInputRef} type="file" multiple style={{ display: "none" }}
+              onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+            />
+          </div>
         )
       )}
 
@@ -1872,49 +2107,47 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
       )}
 
       {resources.length > 0 && (
-        <div className="lw-player">
-          {resources.map((r, i) => (
-            <Fragment key={r.id}>
-              <div className="lw-videosource"
-                   style={{ padding: "12px 16px", flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTop: i > 0 ? "1px solid var(--line)" : "none", flexWrap: "wrap", gap: 8 }}>
-                <a href={api.learningAssetDownloadUrl(session.token, slug, r.asset.id)} target="_blank" rel="noreferrer"
-                   style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ink)", textDecoration: "none", minWidth: 0 }}>
-                  <Paperclip size={14} style={{ flexShrink: 0 }} />
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.asset.title}</span>
-                  <span className="lw-tag lw-tag--source" style={{ flexShrink: 0 }}>{Math.round(r.asset.fileSizeBytes / 1024)} KB</span>
-                  {!r.visibleToLearners && (
-                    <span className="lw-tag lw-tag--warn" style={{ flexShrink: 0 }}>{t("studio.resourceNotShared")}</span>
+        <div className="lw-studio__cardgrid">
+          {resources.map((r) => (
+            <div key={r.id} className={`lw-studio__resourcecard ${pasteOpenId === r.id ? "is-expanded" : ""}`}>
+              <a href={api.learningAssetDownloadUrl(session.token, slug, r.asset.id)} target="_blank" rel="noreferrer"
+                 style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ink)", textDecoration: "none", minWidth: 0 }}>
+                <Paperclip size={14} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.asset.title}</span>
+                <span className="lw-tag lw-tag--source" style={{ flexShrink: 0 }}>{Math.round(r.asset.fileSizeBytes / 1024)} KB</span>
+              </a>
+              {editable ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {isExtractable(r.asset) && (
+                    <>
+                      <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={extractBusyId === r.id}
+                              onClick={() => handleExtract(r.id)} title={t("studio.extractContentHint")}>
+                        {extractBusyId === r.id
+                          ? <LoaderCircle size={13} className="lw-studio__spin" />
+                          : <Sparkles size={13} />} {t("studio.extractContent")}
+                      </button>
+                      <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => togglePasteBox(r.id)} title={t("studio.pasteContentHint")}>
+                        <FileText size={13} /> {t("studio.pasteContent")}
+                      </button>
+                    </>
                   )}
-                </a>
-                {editable ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                    {isExtractable(r.asset) && (
-                      <>
-                        <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={extractBusyId === r.id}
-                                onClick={() => handleExtract(r.id)} title={t("studio.extractContentHint")}>
-                          {extractBusyId === r.id
-                            ? <LoaderCircle size={13} className="lw-studio__spin" />
-                            : <Sparkles size={13} />} {t("studio.extractContent")}
-                        </button>
-                        <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => togglePasteBox(r.id)} title={t("studio.pasteContentHint")}>
-                          <FileText size={13} /> {t("studio.pasteContent")}
-                        </button>
-                      </>
-                    )}
-                    <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => handleToggleVisibility(r.id, !r.visibleToLearners)}>
-                      {r.visibleToLearners ? t("studio.resourceHide") : t("studio.resourceShare")}
-                    </button>
-                    <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => handleRemove(r.id)}>
-                      <Trash2 size={13} /> {t("studio.remove")}
-                    </button>
-                  </div>
-                ) : (
-                  <Download size={14} className="muted" />
-                )}
-              </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }} title={t("studio.resourceShareHint")}>
+                    <input
+                      type="checkbox" checked={r.visibleToLearners}
+                      onChange={() => handleToggleVisibility(r.id, !r.visibleToLearners)}
+                    />
+                    {t("studio.resourceShare")}
+                  </label>
+                  <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => handleRemove(r.id)}>
+                    <Trash2 size={13} /> {t("studio.remove")}
+                  </button>
+                </div>
+              ) : (
+                <Download size={14} className="muted" />
+              )}
               {pasteOpenId === r.id && (
-                <div style={{ padding: "0 16px 12px", borderTop: "none" }}>
-                  <p className="muted" style={{ fontSize: 12, margin: "8px 0" }}>{t("studio.pasteContentHint")}</p>
+                <div>
+                  <p className="muted" style={{ fontSize: 12, margin: "0 0 8px" }}>{t("studio.pasteContentHint")}</p>
                   <textarea
                     rows={8}
                     value={pasteText}
@@ -1937,7 +2170,7 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
                   </div>
                 </div>
               )}
-            </Fragment>
+            </div>
           ))}
         </div>
       )}
@@ -2118,9 +2351,9 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
         </div>
       )}
 
-      {formMode && (
+      {formMode === "new" && (
         <QuestionForm
-          initial={formMode === "new" ? null : formMode}
+          initial={null}
           busy={busy}
           onSave={saveQuestion}
           onCancel={() => setFormMode(null)}
@@ -2136,9 +2369,21 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
       )}
 
       {data.questions.length > 0 && (
-        <div className="lw-studio__units" style={{ marginTop: 14 }}>
+        <div className="lw-studio__cardgrid" style={{ marginTop: 14 }}>
           {data.questions.map((q) => (
-            <QuestionRow key={q.id} q={q} editable={editable} onEdit={setFormMode} onRemove={removeQuestion} />
+            formMode && formMode !== "new" && formMode.id === q.id ? (
+              <QuestionForm
+                key={q.id}
+                initial={formMode}
+                busy={busy}
+                onSave={saveQuestion}
+                onCancel={() => setFormMode(null)}
+                existingQuestions={data.questions}
+                videoDurationSeconds={videoDurationSeconds}
+              />
+            ) : (
+              <QuestionRow key={q.id} q={q} editable={editable} onEdit={setFormMode} onRemove={removeQuestion} />
+            )
           ))}
         </div>
       )}
@@ -2323,9 +2568,9 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
         </div>
       )}
 
-      {formMode && (
+      {formMode === "new" && (
         <QuestionForm
-          initial={formMode === "new" ? null : formMode}
+          initial={null}
           busy={busy}
           onSave={saveQuestion}
           onCancel={() => setFormMode(null)}
@@ -2341,9 +2586,21 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
       )}
 
       {data.questions.length > 0 && (
-        <div className="lw-studio__units" style={{ marginTop: 14 }}>
+        <div className="lw-studio__cardgrid" style={{ marginTop: 14 }}>
           {data.questions.map((q) => (
-            <QuestionRow key={q.id} q={q} editable={editable} onEdit={setFormMode} onRemove={removeQuestion} />
+            formMode && formMode !== "new" && formMode.id === q.id ? (
+              <QuestionForm
+                key={q.id}
+                initial={formMode}
+                busy={busy}
+                onSave={saveQuestion}
+                onCancel={() => setFormMode(null)}
+                existingQuestions={data.questions}
+                requireTimestamp={false}
+              />
+            ) : (
+              <QuestionRow key={q.id} q={q} editable={editable} onEdit={setFormMode} onRemove={removeQuestion} />
+            )
           ))}
         </div>
       )}
@@ -2769,6 +3026,27 @@ const CSS = `
   }
   .lw-studio__back:hover { color: var(--ink); }
 
+  /* Product / Unit / Lesson cascading pickers on the full-page lesson
+     editor — three columns side by side where there's room, with the
+     lesson content (or an empty-state message) spanning the full row
+     beneath via grid-column: 1 / -1 (set inline per-element, same
+     convention as .lw-studio__draftform's full-span children). */
+  .lw-studio__picker {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px; align-items: end;
+    margin: 18px 0 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line);
+  }
+  .lw-studio__picker label { display: flex; flex-direction: column; gap: 5px; }
+  .lw-studio__picker label > span { font-size: 0.78rem; font-weight: 600; color: var(--ink-soft); }
+  .lw-studio__picker select {
+    font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 9px 11px;
+  }
+  .lw-studio__picker select:disabled { opacity: 0.55; cursor: not-allowed; }
+  .lw-studio__pickeredit { margin-bottom: 4px; }
+  .lw-studio__pickeredit .muted { margin: -4px 0 0; }
+
   /* UIC-004: the title (h1/h2) and its status pill center as one row. */
   .lw-studio__heading { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
   .lw-studio__heading h1, .lw-studio__panelh2 { margin: 2px 0 6px; text-align: center; }
@@ -2819,6 +3097,24 @@ const CSS = `
   }
 
   .lw-studio__units { display: flex; flex-direction: column; gap: 14px; }
+
+  /* Resources / Interactive Questions / Lesson Quiz — each item is a card in
+     a grid rather than a stacked list. A card being edited in place (a
+     <form>, or a resource card with its paste-box open) spans every column
+     so the tutor gets room to work instead of a cramped single cell. */
+  .lw-studio__cardgrid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px; align-items: start;
+  }
+  .lw-studio__cardgrid > form,
+  .lw-studio__cardgrid > .lw-studio__resourcecard.is-expanded {
+    grid-column: 1 / -1;
+  }
+  .lw-studio__resourcecard {
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 12px 14px;
+  }
   .lw-studio__unit {
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius); padding: 16px 18px;
@@ -2883,7 +3179,7 @@ const CSS = `
 
   .lw-studio__readonly { font-size: 0.83rem; color: var(--ink-soft); margin-top: 18px; font-style: italic; }
 
-  .lw-studio__cardgrid {
+  .lw-studio__productgrid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px;
   }
   .lw-studio__card {
@@ -2898,6 +3194,7 @@ const CSS = `
   .lw-studio__cardmonogram {
     font-family: var(--font-display); font-size: 2rem; font-weight: 600; color: rgba(255,255,255,0.92);
   }
+  .lw-studio__cardcoverimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .lw-studio__cardcover .lw-studio__pill {
     position: absolute; top: 9px; inset-inline-end: 9px; background: rgba(10,12,15,0.4); color: #fff;
   }
@@ -2991,6 +3288,17 @@ const CSS = `
   @media (max-width: 640px) { .lw-studio__addlesson form { min-width: 0; } }
 
   .lw-studio__section { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
+
+  .lw-studio__requirequiz {
+    display: flex; align-items: flex-start; gap: 9px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 18px;
+  }
+  .lw-studio__requirequiz input { margin-top: 2px; flex-shrink: 0; }
+  .lw-studio__requirequiz span { display: flex; flex-direction: column; gap: 3px; font-size: 0.85rem; }
+  .lw-studio__requirequiz em {
+    font-style: normal; font-size: 0.78rem; color: var(--ink-soft); line-height: 1.5;
+  }
   .lw-option.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
 
   /* A darker track behind the pills is what makes this read as tabs to switch

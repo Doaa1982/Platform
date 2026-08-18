@@ -324,6 +324,13 @@ public class ProvisioningService(
         membership.Activate();
         db.Memberships.Add(membership);
 
+        // §12.3 "Invite + Enroll": accepting only ever creates the Workspace
+        // Membership. IntendedLearningProductId is a request to enrol, not an
+        // Enrollment — the course stays paywalled until a tutor confirms
+        // payment and enrols the member explicitly (WorkspaceMemberService.
+        // EnrollMemberAsync). The Invitation keeps the field so the Members
+        // screen can still show "invited for <course>, awaiting enrollment."
+
         // Ownership is held via a Membership, and only an Active one
         // (Workspace Aggregate Design, INV-003)
         if (invitation.IntendedRole == WorkspaceRoleName.Owner)

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle, AlertCircle, AlertTriangle, Check, Circle, Minus, ArrowRight, Globe, Lock, Rocket } from "lucide-react";
-import QRCode from "qrcode";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  LoaderCircle, AlertCircle, AlertTriangle, Check, Circle, Minus, ArrowRight, Globe, Lock,
+  Sparkles, Image as ImageIcon, X,
+} from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
@@ -67,19 +69,7 @@ export default function WorkspaceSetupScreen() {
   const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState(null);
-
-  // The QR just re-encodes the same /join/{slug} link the card already
-  // shows — only worth generating while that link is actually reachable.
-  useEffect(() => {
-    if (!setup?.acceptsJoinRequests || !setup?.slug) { setQrDataUrl(null); return; }
-    let cancelled = false;
-    const joinUrl = `${window.location.origin}/join/${setup.slug}`;
-    QRCode.toDataURL(joinUrl, { width: 176, margin: 1 })
-      .then((url) => { if (!cancelled) setQrDataUrl(url); })
-      .catch(() => { if (!cancelled) setQrDataUrl(null); });
-    return () => { cancelled = true; };
-  }, [setup?.acceptsJoinRequests, setup?.slug]);
+  const [editingBranding, setEditingBranding] = useState(false);
 
   const load = useCallback(
     () => api.getSetup(session.token, slug)
@@ -142,27 +132,11 @@ export default function WorkspaceSetupScreen() {
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
 
-      {/* ── Journey ─────────────────────────────────────────────────────── */}
-      <ol className="lw-setup__journey">
-        {JOURNEY.map((step, i) => {
-          const state = i < currentIndex ? "done" : i === currentIndex ? "current" : "todo";
-          return (
-            <li key={step.status} className={`lw-setup__step is-${state}`}>
-              <span className="lw-setup__dot">
-                {state === "done" ? <Check size={12} /> : <Circle size={8} />}
-              </span>
-              <span className="lw-setup__steptext">
-                <span className="lw-setup__steplabel">{t(step.labelKey)}</span>
-                <span className="lw-setup__stepblurb">{t(step.blurbKey)}</span>
-              </span>
-            </li>
-          );
-        })}
-      </ol>
+      {/* ── Journey — hidden for now ────────────────────────────────────── */}
 
       {/* ── Readiness — INV-007, before Publish becomes available ────────── */}
       {currentIndex >= 0 && currentIndex < 3 && (
-        <Readiness completeness={setup.completeness} t={t} />
+        <Readiness completeness={setup.completeness} hasBranding={!!(setup.logoAssetId || setup.welcomeMessage || setup.courseCategories.length > 0)} t={t} />
       )}
 
       {/* Suspended and Archived are platform-driven and sit outside the journey */}
@@ -191,11 +165,7 @@ export default function WorkspaceSetupScreen() {
         <div className="lw-setup__blocked"><AlertCircle size={15} /> {setup.blocker}</div>
       )}
 
-      {setup.canManage && !next && !setup.blocker && setup.status === "Active" && (
-        <div className="lw-setup__done">
-          <Rocket size={16} /> {t("setup.doneAlert", { name: setup.name })}
-        </div>
-      )}
+      {/* "{name} is open. Learners can enrol." banner hidden for now. */}
 
       {/* ── Identity ────────────────────────────────────────────────────── */}
       <h2 className="lw-sectiontitle">{t("setup.identityTitle")}</h2>
@@ -203,6 +173,8 @@ export default function WorkspaceSetupScreen() {
         <IdentityForm
           setup={setup}
           busy={busy}
+          session={session}
+          slug={slug}
           onCancel={() => setEditing(false)}
           onSubmit={async (body) => {
             const saved = await act(() => api.updateWorkspaceIdentity(session.token, slug, body), t("setup.toastIdentitySaved"));
@@ -231,55 +203,49 @@ export default function WorkspaceSetupScreen() {
         </p>
       )}
 
-      {/* ── Join requests ───────────────────────────────────────────────── */}
-      <h2 className="lw-sectiontitle">{t("setup.joinReqTitle")}</h2>
-      <div className={`lw-setup__joinreq ${setup.acceptsJoinRequests ? "is-on" : ""}`}>
-        <div>
-          <div className="lw-setup__joinreqtitle">
-            {setup.acceptsJoinRequests ? t("setup.joinOpenTitle") : t("setup.joinClosedTitle")}
-          </div>
-          <p>{setup.acceptsJoinRequests ? t("setup.joinOpenBody") : t("setup.joinClosedBody")}</p>
-        </div>
-        {setup.canManage && (
-          <button
-            className={`lw-btn ${setup.acceptsJoinRequests ? "lw-btn--ghost" : "lw-btn--accent"} lw-btn--sm`}
-            disabled={busy}
-            onClick={() => act(
-              () => api.setAcceptsJoinRequests(session.token, slug, !setup.acceptsJoinRequests),
-              setup.acceptsJoinRequests ? t("setup.toastJoinRequestsOff") : t("setup.toastJoinRequestsOn"),
-            )}
-          >
-            {busy
-              ? <LoaderCircle size={14} className="lw-setup__spin" />
-              : setup.acceptsJoinRequests ? t("setup.turnOff") : t("setup.turnOn")}
-          </button>
-        )}
+      {/* Open to Join Requests moved to the Members screen's "Join Link" tab —
+          it belongs to Student Access (Architecture doc §13), not identity/setup. */}
 
-        {qrDataUrl && (
-          <div className="lw-setup__joinqr">
-            <img src={qrDataUrl} width={88} height={88} alt={`QR code linking to /join/${setup.slug}`} />
-            <div>
-              <div className="lw-setup__joinqrlabel">{t("setup.scanToJoin")}</div>
-              <code>{`${window.location.origin}/join/${setup.slug}`}</code>
+      {/* ── Branding — the public profile a Learner meets first ──────────── */}
+      <h2 className="lw-sectiontitle">{t("setup.brandingTitle")}</h2>
+      {editingBranding ? (
+        <BrandingForm
+          setup={setup}
+          busy={busy}
+          session={session}
+          slug={slug}
+          onCancel={() => setEditingBranding(false)}
+          onSubmit={async (body) => {
+            const saved = await act(() => api.updateWorkspaceBranding(session.token, slug, body), t("setup.toastBrandingSaved"));
+            if (saved) setEditingBranding(false);
+          }}
+        />
+      ) : (
+        <div className="lw-setup__identity">
+          <div className="lw-setup__brandingview">
+            <div className={`lw-setup__logo ${setup.logoAssetId ? "" : "is-empty"}`}>
+              {setup.logoAssetId
+                ? <img src={api.learningAssetDownloadUrl(session.token, slug, setup.logoAssetId)} alt="" />
+                : <ImageIcon size={20} />}
+            </div>
+            <div className="lw-setup__brandingfields">
+              <Field label={t("setup.welcomeMessageLabel")} value={setup.welcomeMessage || t("setup.notSet")} muted={!setup.welcomeMessage} />
+              <Field label={t("setup.courseCategoriesLabel")}
+                     value={setup.courseCategories.length > 0 ? setup.courseCategories.join(", ") : t("setup.notSet")}
+                     muted={setup.courseCategories.length === 0} />
             </div>
           </div>
-        )}
-      </div>
+          {setup.canManage && (
+            <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setEditingBranding(true)}>{t("setup.edit")}</button>
+          )}
+        </div>
+      )}
 
       {!setup.canManage && (
         <p className="lw-setup__readonly">{t("setup.readonlyNote")}</p>
       )}
 
-      {/* ── Honest about what this screen doesn't do yet ─────────────────
-          Workspace Setup Business Analysis §3 scopes this screen to also
-          cover Configuration, Branding and Capabilities — none of which
-          exist yet, on either side of the API. Silently omitting them would
-          look like the screen just doesn't have more to offer, rather than
-          the truth: those are unbuilt, not decided against. */}
-      <div className="lw-setup__notyet">
-        <strong>{t("setup.notYetTitle")}</strong>
-        <p>{t("setup.notYetBody")}</p>
-      </div>
+      {/* "Not part of setup yet" notice hidden for now. */}
     </div>
   );
 }
@@ -293,7 +259,7 @@ export default function WorkspaceSetupScreen() {
  * get a muted dash and a "not built yet" badge rather than an empty circle
  * that would imply the Owner is failing to finish something they could.
  */
-function Readiness({ completeness, t }) {
+function Readiness({ completeness, hasBranding, t }) {
   if (!completeness) return null;
 
   const blocking = [
@@ -302,8 +268,8 @@ function Readiness({ completeness, t }) {
   ];
   const suggested = [
     { key: "description", status: completeness.hasDescription ? "done" : "pending", label: t("setup.readinessDescription"), badge: completeness.hasDescription ? null : t("setup.readinessOptional") },
+    { key: "branding", status: hasBranding ? "done" : "pending", label: t("setup.readinessBranding"), badge: hasBranding ? null : t("setup.readinessOptional") },
     { key: "config", status: "unavailable", label: t("setup.readinessConfig"), badge: t("setup.readinessNotAvailable") },
-    { key: "branding", status: "unavailable", label: t("setup.readinessBranding"), badge: t("setup.readinessNotAvailable") },
     { key: "capabilities", status: "unavailable", label: t("setup.readinessCapabilities"), badge: t("setup.readinessNotAvailable") },
   ];
   const remaining = blocking.filter((it) => !it.done).length;
@@ -369,11 +335,30 @@ function Field({ label, value, mono, muted }) {
   );
 }
 
-function IdentityForm({ setup, onSubmit, onCancel, busy }) {
+function IdentityForm({ setup, onSubmit, onCancel, busy, session, slug: workspaceSlug }) {
   const { t } = useLanguage();
   const [name, setName] = useState(setup.name);
   const [slug, setSlug] = useState(setup.slug);
   const [description, setDescription] = useState(setup.description ?? "");
+
+  // AI Capability Architecture §8 "Generate Description", scoped to the
+  // Workspace's own profile (CapabilityDomain.Branding) — drafts from
+  // whatever's typed so far.
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState(null);
+
+  async function suggestDescription() {
+    if (!name.trim()) return;
+    setAiBusy(true);
+    setAiError(null);
+    try {
+      const r = await api.suggestWorkspaceDescription(session.token, workspaceSlug, {
+        name: name.trim(), courseCategories: setup.courseCategories,
+      });
+      setDescription(r.text);
+    } catch (e) { setAiError(e.message); }
+    finally { setAiBusy(false); }
+  }
 
   // Changing the address after publication breaks any link people already
   // have to it (Workspace Setup Business Analysis §16, open question) — the
@@ -407,13 +392,137 @@ function IdentityForm({ setup, onSubmit, onCancel, busy }) {
         </div>
       )}
       <label className="lw-setup__wide">
-        <span>{t("setup.descriptionLabel")}</span>
+        <span className="lw-setup__desclabel">
+          {t("setup.descriptionLabel")}
+          <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={suggestDescription}
+                  disabled={busy || aiBusy || !name.trim()} title={t("setup.aiSuggestDescription")}>
+            {aiBusy
+              ? <LoaderCircle size={12} className="lw-setup__spin" />
+              : <Sparkles size={12} />} {t("setup.aiSuggestDescription")}
+          </button>
+        </span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} disabled={busy} />
+        {aiError && <Message type="error">{aiError}</Message>}
       </label>
       <div className="lw-setup__formactions">
         <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>{t("setup.cancel")}</button>
         <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !name.trim() || !slug.trim()}>
           {busy ? <LoaderCircle size={14} className="lw-setup__spin" /> : t("setup.save")}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function BrandingForm({ setup, onSubmit, onCancel, busy, session, slug }) {
+  const { t } = useLanguage();
+  const [welcomeMessage, setWelcomeMessage] = useState(setup.welcomeMessage ?? "");
+  const [categories, setCategories] = useState(setup.courseCategories.join(", "));
+  const [logoAssetId, setLogoAssetId] = useState(setup.logoAssetId ?? null);
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
+  const logoInputRef = useRef(null);
+
+  const logoPreviewSrc = logoPreviewUrl
+    || (logoAssetId && !logoFile ? api.learningAssetDownloadUrl(session.token, slug, logoAssetId) : null);
+
+  function handleLogoChange(file) {
+    if (!file) return;
+    setLogoFile(file);
+    setLogoPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function handleClearLogo() {
+    setLogoFile(null);
+    setLogoPreviewUrl(null);
+    setLogoAssetId(null);
+  }
+
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+
+  // AI Capability Architecture §8 "Generate Description", applied to the
+  // welcome message this time — drafts from name, description and categories
+  // already typed elsewhere on this screen.
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState(null);
+
+  async function suggestWelcome() {
+    setAiBusy(true);
+    setAiError(null);
+    try {
+      const r = await api.suggestWorkspaceWelcome(session.token, slug, {
+        name: setup.name, description: setup.description,
+        courseCategories: categories.split(",").map((c) => c.trim()).filter(Boolean),
+      });
+      setWelcomeMessage(r.text);
+    } catch (e) { setAiError(e.message); }
+    finally { setAiBusy(false); }
+  }
+
+  return (
+    <form
+      className="lw-setup__form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setUploadError(null);
+        let assetId = logoAssetId;
+        if (logoFile) {
+          setUploading(true);
+          try {
+            const asset = await api.uploadLearningAsset(session.token, slug, logoFile, setup.name, undefined, "Image");
+            assetId = asset.id;
+          } catch (err) { setUploadError(err.message); setUploading(false); return; }
+          setUploading(false);
+        }
+        onSubmit({
+          logoAssetId: assetId,
+          welcomeMessage: welcomeMessage.trim() || null,
+          courseCategories: categories.split(",").map((c) => c.trim()).filter(Boolean),
+        });
+      }}
+    >
+      <label>
+        <span>{t("setup.photoLabel")}</span>
+        <div className="lw-setup__logoupload">
+          {logoPreviewSrc && <img className="lw-setup__logopreview" src={logoPreviewSrc} alt="" />}
+          <input ref={logoInputRef} type="file" accept="image/*" style={{ display: "none" }}
+                 onChange={(e) => handleLogoChange(e.target.files?.[0])} />
+          <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy || uploading}
+                  onClick={() => logoInputRef.current?.click()}>
+            <ImageIcon size={12} /> {logoPreviewSrc ? t("setup.changePhoto") : t("setup.choosePhoto")}
+          </button>
+          {logoPreviewSrc && (
+            <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy || uploading} onClick={handleClearLogo}>
+              <X size={12} /> {t("setup.removePhoto")}
+            </button>
+          )}
+        </div>
+        {uploadError && <Message type="error">{uploadError}</Message>}
+      </label>
+      <label className="lw-setup__wide">
+        <span className="lw-setup__desclabel">
+          {t("setup.welcomeMessageLabel")}
+          <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={suggestWelcome}
+                  disabled={busy || aiBusy || !setup.name.trim()} title={t("setup.aiSuggestWelcome")}>
+            {aiBusy
+              ? <LoaderCircle size={12} className="lw-setup__spin" />
+              : <Sparkles size={12} />} {t("setup.aiSuggestWelcome")}
+          </button>
+        </span>
+        <textarea rows={2} value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)}
+                  placeholder={t("setup.welcomeMessagePlaceholder")} disabled={busy} />
+        {aiError && <Message type="error">{aiError}</Message>}
+      </label>
+      <label>
+        <span>{t("setup.courseCategoriesLabel")} <em>{t("setup.courseCategoriesHint")}</em></span>
+        <input value={categories} onChange={(e) => setCategories(e.target.value)}
+               placeholder={t("setup.courseCategoriesPlaceholder")} disabled={busy} />
+      </label>
+      <div className="lw-setup__formactions">
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy || uploading}>{t("setup.cancel")}</button>
+        <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || uploading}>
+          {busy || uploading ? <LoaderCircle size={14} className="lw-setup__spin" /> : t("setup.save")}
         </button>
       </div>
     </form>
@@ -499,6 +608,19 @@ const CSS = `
   .lw-setup__fieldvalue.is-mono { font-family: var(--font-mono); font-size: 0.85rem; }
   .lw-setup__fieldvalue.is-muted { color: var(--ink-soft); font-style: italic; }
 
+  .lw-setup__brandingview { display: flex; gap: 16px; align-items: flex-start; width: 100%; }
+  .lw-setup__brandingfields { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+  .lw-setup__logo {
+    width: 56px; height: 56px; border-radius: 10px; flex-shrink: 0; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-soft);
+  }
+  .lw-setup__logo img { width: 100%; height: 100%; object-fit: cover; }
+  .lw-setup__logoupload { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .lw-setup__logopreview { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); flex-shrink: 0; }
+  .lw-setup__desclabel { display: flex !important; align-items: center; gap: 8px; white-space: normal !important; }
+  .lw-btn--xs { font-size: 0.72rem; padding: 3px 8px; gap: 4px; }
+
   /* UIC-003: one property per row — label left, value right — matching
      .lw-setup__field's own read-only row layout above. */
   .lw-setup__form {
@@ -526,26 +648,6 @@ const CSS = `
     .lw-setup__form > label { display: flex; flex-direction: column; gap: 5px; }
     .lw-setup__form label > span:first-child { padding-top: 0; white-space: normal; }
   }
-
-  .lw-setup__joinreq {
-    display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 16px 18px; margin-bottom: 8px;
-  }
-  .lw-setup__joinreq.is-on {
-    background: color-mix(in srgb, var(--accent-2) 8%, transparent);
-    border-color: color-mix(in srgb, var(--accent-2) 35%, transparent);
-  }
-  .lw-setup__joinreqtitle { font-weight: 600; font-size: 0.95rem; }
-  .lw-setup__joinreq p { font-size: 0.83rem; color: var(--ink-soft); margin: 4px 0 0; max-width: 58ch; line-height: 1.55; }
-  .lw-setup__joinqr {
-    display: flex; align-items: center; gap: 14px;
-    width: 100%; padding-top: 14px; margin-top: 4px;
-    border-top: 1px solid color-mix(in srgb, var(--accent-2) 25%, transparent);
-  }
-  .lw-setup__joinqr img { border-radius: 8px; background: #fff; padding: 6px; border: 1px solid var(--line); flex-shrink: 0; }
-  .lw-setup__joinqrlabel { font-size: 0.78rem; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
-  .lw-setup__joinqr code { font-family: var(--font-mono); font-size: 0.82rem; word-break: break-all; }
 
   .lw-setup__note {
     display: flex; align-items: center; gap: 7px;

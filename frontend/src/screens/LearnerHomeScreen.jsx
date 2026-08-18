@@ -1,11 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, BookOpen, CheckCircle2, ClipboardCheck, Award, Trophy, Clock, ArrowRight,
+  LoaderCircle, BookOpen, CheckCircle2, ClipboardCheck, Award, Trophy, Clock, PlayCircle, ChevronRight,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+
+/** A small, fixed palette so a course with no cover photo still gets a stable color — matches ProductsScreen/LearnerCoursesScreen. */
+const COVER_VARIANTS = 5;
+function coverVariant(id) {
+  let hash = 0;
+  for (const ch of String(id)) hash = (hash * 31 + ch.charCodeAt(0)) % 9973;
+  return hash % COVER_VARIANTS;
+}
 
 /* =========================================================================
    LEARNER HOME — what a learner sees in a workspace they belong to.
@@ -66,6 +74,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
   const [setup, setSetup] = useState(null);
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
+  const continueRowRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,16 +110,38 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
       <div className="lw-eyebrow">{setup.name}</div>
       <h1>{firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")}</h1>
 
-
-      {stats.continueLearning && (
-        <button className="lw-lh__continue" onClick={() => onContinueLesson?.(stats.continueLearning.productId, stats.continueLearning.lessonId)}>
-          <div className="lw-lh__continuetext">
-            <div className="lw-lh__continuelabel">{t("learnerHome.continueLearning")}</div>
-            <div className="lw-lh__continuetitle">{stats.continueLearning.lessonTitle}</div>
-            <div className="lw-lh__continuesub">{stats.continueLearning.productTitle}</div>
+      {stats.continueLearning.length > 0 && (
+        <div className="lw-lh__continuewrap">
+          <div className="lw-lh__continuelabel">{t("learnerHome.continueLearning")}</div>
+          <div className="lw-lh__continuerow" ref={continueRowRef}>
+            {stats.continueLearning.map((c) => (
+              <button key={c.lessonId} className="lw-lh__continuecard"
+                      onClick={() => onContinueLesson?.(c.productId, c.lessonId)}>
+                <div className={`lw-lh__continuethumb ${c.productCoverImageAssetId ? "" : `lw-cover--${coverVariant(c.productId)}`}`}>
+                  {c.productCoverImageAssetId && (
+                    <img className="lw-lh__continueimg" alt=""
+                         src={api.learningAssetDownloadUrl(session.token, slug, c.productCoverImageAssetId)} />
+                  )}
+                  <span className="lw-lh__continueplay"><PlayCircle size={30} /></span>
+                </div>
+                <div className="lw-lh__continuebody">
+                  <div className="lw-lh__continuecourse">{c.productTitle}</div>
+                  <div className="lw-lh__continuetitle">{c.lessonTitle}</div>
+                  <div className="lw-lh__continuemeta">
+                    {t("learnerHome.lesson")}
+                    {c.estimatedMinutes != null && <> · {c.estimatedMinutes}{t("learnerHome.minShort")}</>}
+                  </div>
+                </div>
+              </button>
+            ))}
           </div>
-          <ArrowRight size={18} />
-        </button>
+          {stats.continueLearning.length > 3 && (
+            <button className="lw-lh__continuescroll" aria-label={t("learnerHome.scrollMore")}
+                    onClick={() => continueRowRef.current?.scrollBy({ left: 320, behavior: "smooth" })}>
+              <ChevronRight size={18} />
+            </button>
+          )}
+        </div>
       )}
 
       <div className="lw-lh__cards">
@@ -151,20 +182,37 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
 
 const CSS = `
   .lw-lh__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-lh__continue {
-    display: flex; align-items: center; justify-content: space-between; gap: 14px;
-    width: 100%; max-width: 800px; text-align: start; cursor: pointer;
-    background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
-    padding: 16px 20px; margin-bottom: 18px; font-family: var(--font-body);
-  }
-  .lw-lh__continue:hover { transform: translateY(-1px); }
-  .lw-lh__continue svg { flex-shrink: 0; opacity: 0.85; }
+  .lw-lh__continuewrap { position: relative; max-width: 900px; margin: 0 auto 22px; }
   .lw-lh__continuelabel {
     font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em;
-    text-transform: uppercase; opacity: 0.8; margin-bottom: 4px;
+    text-transform: uppercase; color: var(--ink-soft); margin-bottom: 9px;
   }
-  .lw-lh__continuetitle { font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; }
-  .lw-lh__continuesub { font-size: 0.82rem; opacity: 0.85; margin-top: 2px; }
+  .lw-lh__continuerow {
+    display: flex; gap: 14px; overflow-x: auto; padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+  .lw-lh__continuecard {
+    display: flex; flex-direction: column; text-align: start; cursor: pointer; padding: 0;
+    flex: 0 0 240px; scroll-snap-align: start;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; font-family: var(--font-body);
+  }
+  .lw-lh__continuecard:hover { border-color: var(--accent); }
+  .lw-lh__continuethumb { height: 110px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .lw-lh__continueimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .lw-lh__continueplay { position: relative; color: rgba(255,255,255,0.92); display: flex; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35)); }
+  .lw-lh__continuebody { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 3px; }
+  .lw-lh__continuecourse { font-size: 0.72rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lw-lh__continuetitle { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600; color: var(--ink); line-height: 1.3; }
+  .lw-lh__continuemeta { font-size: 0.76rem; color: var(--ink-soft); margin-top: 2px; }
+  .lw-lh__continuescroll {
+    position: absolute; top: 50%; inset-inline-end: -6px; transform: translateY(-6px);
+    width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--line); color: var(--ink-soft); cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  }
+  .lw-lh__continuescroll:hover { color: var(--ink); }
+  [dir="rtl"] .lw-lh__continuescroll { transform: translateY(-6px) scaleX(-1); }
   .lw-lh__cards {
     display: flex; flex-wrap: wrap; justify-content: center; gap: 14px;
     max-width: 900px; margin: 0 auto;

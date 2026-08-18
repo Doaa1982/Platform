@@ -51,6 +51,15 @@ public class Invitation
     /// </summary>
     public Guid? BatchId { get; private set; }
 
+    /// <summary>
+    /// The Learning Product to enrol the invitee into once they accept, if
+    /// this Invitation was issued via "Invite + Enroll" (Student Workspace
+    /// Access &amp; Admission Architecture §12.3). Reference by identifier
+    /// only — set at issue time, acted on only once the resulting Membership
+    /// is Active (Enrollment_Aggregate_Design INV-002).
+    /// </summary>
+    public Guid? IntendedLearningProductId { get; private set; }
+
     // Required by EF Core — not for application use
     private Invitation() { }
 
@@ -64,7 +73,8 @@ public class Invitation
         WorkspaceRoleName intendedRole,
         Guid issuedBy,
         TimeSpan validFor,
-        Guid? batchId = null)
+        Guid? batchId = null,
+        Guid? intendedLearningProductId = null)
     {
         if (workspaceId == Guid.Empty)
             throw new ArgumentException("An Invitation must name exactly one Workspace.", nameof(workspaceId));
@@ -88,7 +98,8 @@ public class Invitation
             IssuedAt = now,
             ExpiresAt = now.Add(validFor),
             IssuedBy = issuedBy,
-            BatchId = batchId
+            BatchId = batchId,
+            IntendedLearningProductId = intendedLearningProductId
         };
 
         return (invitation, raw);

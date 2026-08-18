@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Platform.Api.AI;
 using Platform.Api.AI.Skills;
 using Platform.Api.Models;
@@ -388,6 +389,10 @@ public class ContentStudioService(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
         => MutateLessonAsync(slug, caller, lessonId, l => l.Unpublish(), ct);
 
+    public Task<ProvisioningResult<LessonDetailResponse>> RepublishLessonAsync(
+        string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
+        => MutateLessonAsync(slug, caller, lessonId, l => l.Republish(), ct);
+
     public Task<ProvisioningResult<LessonDetailResponse>> ArchiveLessonAsync(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
         => MutateLessonAsync(slug, caller, lessonId, l => l.Archive(), ct);
@@ -649,7 +654,7 @@ public class ContentStudioService(
         return await GetLessonAsync(slug, caller, lessonId, ct);
     }
 
-    /// <summary>Sets whether a video-less lesson requires a passed Standalone Quiz to complete — see <see cref="LessonRevision.RequireQuizToComplete"/>. Applies to whichever revision is currently open for editing, same target-revision rule as <see cref="AddResourceAsync"/>.</summary>
+    /// <summary>Sets whether the lesson also requires a passed Standalone Quiz to complete — see <see cref="LessonRevision.RequireQuizToComplete"/>. Applies to whichever revision is currently open for editing, same target-revision rule as <see cref="AddResourceAsync"/>.</summary>
     public async Task<ProvisioningResult<LessonDetailResponse>> SetRequireQuizToCompleteAsync(
         string slug, Guid caller, Guid lessonId, bool requireQuizToComplete, CancellationToken ct = default)
     {
@@ -768,9 +773,18 @@ public class ContentStudioService(
         if (string.IsNullOrWhiteSpace(request.Title))
             return Fail<AiSuggestBodyResponse>((ProvisioningError.Invalid, "A title is needed before content can be drafted."));
 
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<AiSuggestBodyResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
+        var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+        var outputLanguage = await GetLessonLanguageAsync(lesson.LearningProductId, ct);
+
         try
         {
-            var body = await generateLessonBody.SuggestAsync(request.Title, request.Body, request.EstimatedMinutes, ct);
+            var body = await generateLessonBody.SuggestAsync(
+                request.Title, request.Body, transcript, request.EstimatedMinutes, outputLanguage, ct);
             return ProvisioningResult<AiSuggestBodyResponse>.Success(new AiSuggestBodyResponse(body));
         }
         catch (InvalidOperationException ex)
@@ -808,10 +822,11 @@ public class ContentStudioService(
 
         var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
         var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+        var outputLanguage = await GetLessonLanguageAsync(lesson.LearningProductId, ct);
 
         try
         {
-            var result = await generateWhatYoullLearn.SuggestAsync(request.Title, request.Body, transcript, ct);
+            var result = await generateWhatYoullLearn.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
             return ProvisioningResult<AiSuggestWhatYoullLearnResponse>.Success(new AiSuggestWhatYoullLearnResponse(result));
         }
         catch (InvalidOperationException ex)
@@ -850,9 +865,11 @@ public class ContentStudioService(
             return Fail<AiSuggestTitleResponse>((ProvisioningError.Invalid,
                 "Write some lesson content (or wait for the transcript to finish) before asking AI to suggest a title."));
 
+        var outputLanguage = await GetLessonLanguageAsync(lesson.LearningProductId, ct);
+
         try
         {
-            var result = await generateLessonTitle.SuggestAsync(request.Title, request.Body, transcript, ct);
+            var result = await generateLessonTitle.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
             return ProvisioningResult<AiSuggestTitleResponse>.Success(new AiSuggestTitleResponse(result));
         }
         catch (InvalidOperationException ex)
@@ -889,10 +906,11 @@ public class ContentStudioService(
 
         var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
         var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+        var outputLanguage = await GetLessonLanguageAsync(lesson.LearningProductId, ct);
 
         try
         {
-            var result = await generateLearningObjectives.SuggestAsync(request.Title, request.Body, transcript, ct);
+            var result = await generateLearningObjectives.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
             return ProvisioningResult<AiSuggestLearningObjectivesResponse>.Success(new AiSuggestLearningObjectivesResponse(result));
         }
         catch (InvalidOperationException ex)
@@ -929,10 +947,11 @@ public class ContentStudioService(
 
         var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
         var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+        var outputLanguage = await GetLessonLanguageAsync(lesson.LearningProductId, ct);
 
         try
         {
-            var result = await generateGlossary.SuggestAsync(request.Title, request.Body, transcript, ct);
+            var result = await generateGlossary.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
             return ProvisioningResult<AiSuggestGlossaryResponse>.Success(new AiSuggestGlossaryResponse(result));
         }
         catch (InvalidOperationException ex)
@@ -969,10 +988,11 @@ public class ContentStudioService(
 
         var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
         var transcript = revision?.TranscriptStatus == TranscriptStatus.Ready ? revision.Transcript : null;
+        var outputLanguage = await GetLessonLanguageAsync(lesson.LearningProductId, ct);
 
         try
         {
-            var result = await generateHomework.SuggestAsync(request.Title, request.Body, transcript, ct);
+            var result = await generateHomework.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
             return ProvisioningResult<AiSuggestHomeworkResponse>.Success(new AiSuggestHomeworkResponse(result));
         }
         catch (InvalidOperationException ex)
@@ -982,6 +1002,21 @@ public class ContentStudioService(
     }
 
     // ── Plumbing ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The Learning Product's own configured language (Learning Product
+    /// Aggregate Design §8's DefaultLanguage), passed to AI skills as an
+    /// explicit output-language instruction instead of leaving the model to
+    /// infer it purely from the source content — a small local model's own
+    /// English bias otherwise tends to win even when a transcript is
+    /// correctly grounded in, say, Arabic. Null when the tutor hasn't set
+    /// one, in which case every skill falls back to matching the source.
+    /// </summary>
+    private Task<string?> GetLessonLanguageAsync(Guid learningProductId, CancellationToken ct) =>
+        db.LearningProducts.AsNoTracking()
+            .Where(p => p.Id == learningProductId)
+            .Select(p => p.DefaultLanguage)
+            .FirstOrDefaultAsync(ct);
 
     private async Task<Curriculum?> LoadCurriculumAsync(Guid productId, CancellationToken ct, bool tracked = false)
     {
@@ -1007,6 +1042,7 @@ public class ContentStudioService(
         if (product is null) return Fail<CurriculumResponse>((ProvisioningError.NotFound, "No such learning product."));
 
         var curriculum = await LoadCurriculumAsync(productId, ct, tracked: true);
+        var created = false;
 
         if (curriculum is null)
         {
@@ -1015,15 +1051,41 @@ public class ContentStudioService(
 
             curriculum = Curriculum.Create(ctx.Workspace!.Id, productId, product.Title);
             db.Curricula.Add(curriculum);
+            created = true;
         }
 
         try { mutate(curriculum, ctx); }
         catch (InvalidOperationException ex) { return Fail<CurriculumResponse>((ProvisioningError.Conflict, ex.Message)); }
         catch (ArgumentException ex) { return Fail<CurriculumResponse>((ProvisioningError.Invalid, ex.Message)); }
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (created && IsUniqueViolation(ex))
+        {
+            // Lost the race to create this product's curriculum (INV-003,
+            // enforced by curricula's unique-per-active-product index) —
+            // another request created it a moment earlier. Same fix as
+            // LearningDeliveryService's EnsureEnrolledAsync/EnsureProgressAsync:
+            // drop this attempt and re-apply the same mutation onto the
+            // winner's row, rather than failing the tutor's click outright.
+            db.Entry(curriculum).State = EntityState.Detached;
+            curriculum = await LoadCurriculumAsync(productId, ct, tracked: true)
+                ?? throw new InvalidOperationException("Lost a curriculum-creation race but no curriculum exists to adopt.");
+
+            try { mutate(curriculum, ctx); }
+            catch (InvalidOperationException ex2) { return Fail<CurriculumResponse>((ProvisioningError.Conflict, ex2.Message)); }
+            catch (ArgumentException ex2) { return Fail<CurriculumResponse>((ProvisioningError.Invalid, ex2.Message)); }
+
+            await db.SaveChangesAsync(ct);
+        }
+
         return await GetAsync(slug, caller, productId, ct);
     }
+
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     private async Task<ProvisioningResult<LessonDetailResponse>> MutateLessonAsync(
         string slug, Guid caller, Guid lessonId, Action<Lesson> mutate, CancellationToken ct)

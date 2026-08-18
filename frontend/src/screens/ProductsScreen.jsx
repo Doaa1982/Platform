@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LoaderCircle, Plus, RefreshCw, Send, Undo2,
-  Globe, Archive, Pencil, BookOpen, Layers, X, Sparkles,
+  Globe, Archive, Pencil, BookOpen, Layers, X, Sparkles, Image as ImageIcon,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -166,23 +166,33 @@ export default function ProductsScreen({ onOpenStudio }) {
               session={session}
               slug={slug}
               onCancel={() => setEditing(null)}
-              onSubmit={async (body, newSequential) => {
+              onSubmit={async (body, newSequential, newCoverFile) => {
                 const saved = await run(() => editing === "new"
                   ? api.createProduct(session.token, slug, body)
                   : api.updateProduct(session.token, slug, editing.id, body),
                   t(editing === "new" ? "products.toastCreated" : "products.toastSaved", { title: body.title }));
                 if (saved) {
-                  // No curriculum exists yet to toggle live against until the
-                  // product itself exists — apply the intended starting value
-                  // as a follow-up now that it does.
+                  // No curriculum/asset exists yet to attach to until the
+                  // product itself does — apply both as follow-ups now that it does.
                   if (editing === "new" && newSequential) {
                     await run(() => api.setSequentialUnlock(session.token, slug, saved.id, true));
+                  }
+                  if (editing === "new" && newCoverFile) {
+                    await run(async () => {
+                      const asset = await api.uploadLearningAsset(session.token, slug, newCoverFile, saved.title, undefined, "Image");
+                      return api.attachProductCoverImage(session.token, slug, saved.id, asset.id);
+                    });
                   }
                   setEditing(null);
                 }
               }}
               onToggleSequential={() => run(() => api.setSequentialUnlock(
                 session.token, slug, editing.id, !liveEditing.requiresSequentialCompletion))}
+              onSetCoverImage={(file) => run(async () => {
+                if (!file) return api.attachProductCoverImage(session.token, slug, editing.id, null);
+                const asset = await api.uploadLearningAsset(session.token, slug, file, liveEditing.title, undefined, "Image");
+                return api.attachProductCoverImage(session.token, slug, editing.id, asset.id);
+              })}
             />
           </div>
         </div>
@@ -200,8 +210,12 @@ export default function ProductsScreen({ onOpenStudio }) {
         {data.products.map((p) => {
           return (
             <div className={`lw-prod__card is-${p.status.toLowerCase()}`} key={p.id}>
-              <div className={`lw-prod__cover lw-cover--${coverVariant(p.id)}`}>
-                <span className="lw-prod__monogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
+              <div className={`lw-prod__cover ${p.coverImageAssetId ? "" : `lw-cover--${coverVariant(p.id)}`}`}>
+                {p.coverImageAssetId ? (
+                  <img className="lw-prod__coverimg" alt="" src={api.learningAssetDownloadUrl(session.token, slug, p.coverImageAssetId)} />
+                ) : (
+                  <span className="lw-prod__monogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
+                )}
                 <span className={`lw-prod__pill is-${p.status.toLowerCase()}`}>{human(t, p.status)}</span>
               </div>
 
@@ -280,9 +294,39 @@ export default function ProductsScreen({ onOpenStudio }) {
   );
 }
 
-function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, session, slug }) {
+function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, onSetCoverImage, session, slug }) {
   const { t } = useLanguage();
   const [title, setTitle] = useState(product?.title ?? "");
+  const coverInputRef = useRef(null);
+  // While creating: staged locally and applied as a follow-up once the
+  // product exists (mirrors newSequential below). While editing: applied
+  // immediately via onSetCoverImage, same as the sequential-unlock toggle.
+  const [newCoverFile, setNewCoverFile] = useState(null);
+  const [newCoverPreviewUrl, setNewCoverPreviewUrl] = useState(null);
+  const [coverCleared, setCoverCleared] = useState(false);
+
+  function handleCoverChange(file) {
+    if (!file) return;
+    if (product) {
+      onSetCoverImage(file);
+    } else {
+      setNewCoverFile(file);
+      setNewCoverPreviewUrl(URL.createObjectURL(file));
+    }
+  }
+
+  function handleClearCover() {
+    if (product) {
+      onSetCoverImage(null);
+      setCoverCleared(true);
+    } else {
+      setNewCoverFile(null);
+      setNewCoverPreviewUrl(null);
+    }
+  }
+
+  const coverPreviewSrc = newCoverPreviewUrl
+    || (product?.coverImageAssetId && !coverCleared ? api.learningAssetDownloadUrl(session.token, slug, product.coverImageAssetId) : null);
   const [description, setDescription] = useState(product?.description ?? "");
   const [category, setCategory] = useState(product?.category ?? "");
   const [tags, setTags] = useState((product?.tags ?? []).join(", "));
@@ -330,7 +374,7 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, se
           tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
           pacing: DEFAULT_PACING, enrollmentMode,
           defaultLanguage: defaultLanguage.trim() || null,
-        }, newSequential);
+        }, newSequential, newCoverFile);
       }}
     >
       {attempted && !title.trim() && (
@@ -341,6 +385,23 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, se
         <input value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus
                placeholder={t("products.titlePlaceholder")} disabled={busy}
                style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
+      </label>
+      <label>
+        <span>{t("products.coverPhoto")}</span>
+        <div className="lw-prod__coverupload">
+          {coverPreviewSrc && <img className="lw-prod__coverpreview" src={coverPreviewSrc} alt="" />}
+          <input ref={coverInputRef} type="file" accept="image/*" style={{ display: "none" }}
+                 onChange={(e) => handleCoverChange(e.target.files?.[0])} />
+          <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy}
+                  onClick={() => coverInputRef.current?.click()}>
+            <ImageIcon size={12} /> {coverPreviewSrc ? t("products.changePhoto") : t("products.choosePhoto")}
+          </button>
+          {coverPreviewSrc && (
+            <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy} onClick={handleClearCover}>
+              <X size={12} /> {t("products.removePhoto")}
+            </button>
+          )}
+        </div>
       </label>
       <label>
         <span className="lw-prod__desclabel">
@@ -437,6 +498,9 @@ const CSS = `
     display: flex; align-items: center; justify-content: center;
   }
   .lw-prod__monogram { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: rgba(255,255,255,0.92); }
+  .lw-prod__coverimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .lw-prod__coverupload { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .lw-prod__coverpreview { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); flex-shrink: 0; }
   .lw-prod__cover .lw-prod__pill { position: absolute; top: 9px; inset-inline-end: 9px; background: rgba(10,12,15,0.4); color: #fff; }
   .lw-cover--0 { background: linear-gradient(135deg, #2D5BD1, #6D3FC4); }
   .lw-cover--1 { background: linear-gradient(135deg, #1E7F63, #5B8DEF); }

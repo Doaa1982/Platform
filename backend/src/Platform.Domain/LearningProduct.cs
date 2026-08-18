@@ -37,6 +37,15 @@ public class LearningProduct
     public string? Category { get; private set; }
     public IReadOnlyCollection<string> Tags => _tags.AsReadOnly();
 
+    /// <summary>
+    /// The Learning Asset (LearningAssetCategory.Image) shown on this
+    /// product's card, both tutor- and learner-side. Reference by identifier
+    /// only, same convention as Lesson Revision's VideoAssetId — a Learning
+    /// Asset never belongs to what references it (Learning Asset Aggregate
+    /// Design §11).
+    /// </summary>
+    public Guid? CoverImageAssetId { get; private set; }
+
     public LearningProductStatus Status { get; private set; }
 
     // ── Product Settings (§8) ────────────────────────────────────────────────
@@ -119,6 +128,14 @@ public class LearningProduct
         Pacing = pacing;
         EnrollmentMode = enrollmentMode;
         DefaultLanguage = Clean(defaultLanguage);
+        Touch();
+    }
+
+    /// <summary>Sets or clears (null) the cover photo. Display metadata, not a state-machine concern — legal in any non-Archived state.</summary>
+    public void SetCoverImage(Guid? assetId)
+    {
+        RequireNotArchived();
+        CoverImageAssetId = assetId;
         Touch();
     }
 

@@ -139,6 +139,11 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     public async Task<ActionResult<LessonDetailResponse>> Unpublish(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.UnpublishLessonAsync(slug, Caller(), lessonId, ct));
 
+    /// <summary>Brings an unpublished lesson back live without a new revision — see Lesson.Republish.</summary>
+    [HttpPost("republish")]
+    public async Task<ActionResult<LessonDetailResponse>> Republish(string slug, Guid lessonId, CancellationToken ct)
+        => Run(await studio.RepublishLessonAsync(slug, Caller(), lessonId, ct));
+
     [HttpPost("archive")]
     public async Task<ActionResult<LessonDetailResponse>> Archive(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.ArchiveLessonAsync(slug, Caller(), lessonId, ct));

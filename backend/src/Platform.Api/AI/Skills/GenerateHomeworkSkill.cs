@@ -173,7 +173,7 @@ tutor's homework-generation interface.
 """;
 
     public async Task<string> SuggestAsync(
-        string title, string? body, string? transcript, CancellationToken ct = default)
+        string title, string? body, string? transcript, string? outputLanguage, CancellationToken ct = default)
     {
         var (sourceLabel, source) = !string.IsNullOrWhiteSpace(transcript)
             ? ("Video transcript", transcript)
@@ -181,7 +181,11 @@ tutor's homework-generation interface.
                 ? ("Lesson body", body)
                 : ("(none available — base this on the title alone)", null);
 
-        var userPrompt = $"""
+        var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
+            ? ""
+            : $"Output language: {outputLanguage}\n\n";
+
+        var userPrompt = languageDirective + $"""
             Lesson title: {title}
 
             {sourceLabel}:

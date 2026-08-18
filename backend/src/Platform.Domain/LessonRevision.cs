@@ -130,13 +130,17 @@ public class LessonRevision
     public IReadOnlyCollection<LessonResource> Resources => _resources.AsReadOnly();
 
     /// <summary>
-    /// When true, a Reading-mode (or any video-less) lesson only completes
-    /// once the learner passes its Standalone Quiz, instead of completing
-    /// the instant it's opened. Tutor-configurable per lesson, default
-    /// false — every existing lesson keeps today's auto-complete behavior
-    /// unless the tutor opts in. Not Draft-only: a completion policy isn't
-    /// "what is taught," so a tutor can flip it on an already-published
-    /// lesson without starting a new revision.
+    /// When true, the lesson only completes once the learner also passes its
+    /// Standalone Quiz — independently of, and in addition to, whatever else
+    /// already gates completion (its video watched, its Interactive
+    /// assessment passed). Applies to every lesson, not just Reading/video-less
+    /// ones: LessonProgress.RecomputeCompletion treats this as a separate
+    /// required condition, not a substitute assessment for the video-less
+    /// case alone. Tutor-configurable per lesson, default false — every
+    /// existing lesson keeps today's auto-complete behavior unless the tutor
+    /// opts in. Not Draft-only: a completion policy isn't "what is taught,"
+    /// so a tutor can flip it on an already-published lesson without
+    /// starting a new revision.
     /// </summary>
     public bool RequireQuizToComplete { get; private set; }
 

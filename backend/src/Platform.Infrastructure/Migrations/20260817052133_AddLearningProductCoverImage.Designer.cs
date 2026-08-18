@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Platform.Infrastructure;
@@ -11,9 +12,11 @@ using Platform.Infrastructure;
 namespace Platform.Infrastructure.Migrations
 {
     [DbContext(typeof(PlatformDbContext))]
-    partial class PlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260817052133_AddLearningProductCoverImage")]
+    partial class AddLearningProductCoverImage
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -371,45 +374,6 @@ namespace Platform.Infrastructure.Migrations
                     b.HasIndex("WorkspaceId");
 
                     b.ToTable("configuration_snapshots", (string)null);
-                });
-
-            modelBuilder.Entity("Platform.Domain.CourseJoinRequest", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("DecidedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DecidedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("LearningProductId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("MembershipId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Message")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<DateTime>("SubmittedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LearningProductId", "MembershipId");
-
-                    b.ToTable("course_join_requests", (string)null);
                 });
 
             modelBuilder.Entity("Platform.Domain.Curriculum", b =>
@@ -1680,19 +1644,12 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<bool>("AcceptsJoinRequests")
                         .HasColumnType("boolean");
 
-                    b.PrimitiveCollection<string[]>("CourseCategories")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
-
-                    b.Property<Guid?>("LogoAssetId")
-                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1714,10 +1671,6 @@ namespace Platform.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
-
-                    b.Property<string>("WelcomeMessage")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
 
                     b.HasKey("Id");
 

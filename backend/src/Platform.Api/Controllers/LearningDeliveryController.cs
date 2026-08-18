@@ -11,11 +11,17 @@ namespace Platform.Api.Controllers;
 [ApiController]
 [Route("api/workspaces/{slug}/learn")]
 [Authorize]
-public class LearningDeliveryController(LearningDeliveryService delivery) : ControllerBase
+public class LearningDeliveryController(LearningDeliveryService delivery, CourseJoinRequestService courseJoinRequests) : ControllerBase
 {
     [HttpGet("products")]
     public async Task<ActionResult<LearnerProductListResponse>> GetProducts(string slug, CancellationToken ct)
         => Run(await delivery.GetMyProductsAsync(slug, Caller(), ct));
+
+    /// <summary>Asks for access to one ApprovalRequired course. See CourseJoinRequestService.SubmitAsync.</summary>
+    [HttpPost("products/{productId:guid}/join-request")]
+    public async Task<IActionResult> RequestToJoin(
+        string slug, Guid productId, [FromBody] SubmitCourseJoinRequest request, CancellationToken ct)
+        => RunStatus(await courseJoinRequests.SubmitAsync(slug, Caller(), productId, request, ct));
 
     [HttpGet("products/{productId:guid}/curriculum")]
     public async Task<ActionResult<LearnerCurriculumResponse>> GetCurriculum(string slug, Guid productId, CancellationToken ct)
@@ -32,6 +38,15 @@ public class LearningDeliveryController(LearningDeliveryService delivery) : Cont
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {
         ProvisioningError.None      => Ok(r.Value),
+        ProvisioningError.NotFound  => NotFound(new { message = r.Message }),
+        ProvisioningError.Conflict  => Conflict(new { message = r.Message }),
+        ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = r.Message }),
+        _                           => BadRequest(new { message = r.Message }),
+    };
+
+    private IActionResult RunStatus(ProvisioningResult<string> r) => r.Error switch
+    {
+        ProvisioningError.None      => Ok(new { status = r.Value }),
         ProvisioningError.NotFound  => NotFound(new { message = r.Message }),
         ProvisioningError.Conflict  => Conflict(new { message = r.Message }),
         ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = r.Message }),

@@ -42,6 +42,23 @@ public class WorkspaceMembersController(WorkspaceMemberService members) : Contro
         => Run(await members.InviteBulkAsync(slug, Caller(), request, ct));
 
     /// <summary>
+    /// POST /api/workspaces/{slug}/invitations/{invitationId}/resend — fresh
+    /// token, reset expiry, same Invitation. Legal from Sent or Expired only (§9).
+    /// </summary>
+    [HttpPost("invitations/{invitationId:guid}/resend")]
+    public async Task<ActionResult<InvitationIssuedResponse>> ResendInvitation(
+        string slug, Guid invitationId, CancellationToken ct)
+        => Run(await members.ResendInvitationAsync(slug, Caller(), invitationId, ct));
+
+    /// <summary>
+    /// POST /api/workspaces/{slug}/invitations/{invitationId}/cancel — legal
+    /// before acceptance only (§9); once Accepted, use Membership Remove instead.
+    /// </summary>
+    [HttpPost("invitations/{invitationId:guid}/cancel")]
+    public async Task<IActionResult> CancelInvitation(string slug, Guid invitationId, CancellationToken ct)
+        => Run(await members.CancelInvitationAsync(slug, Caller(), invitationId, ct));
+
+    /// <summary>
     /// Pending → Active. Acceptance already activates a Membership, so this is
     /// for the ones created another way, and for reversing an archive decision
     /// before it takes hold.
@@ -76,6 +93,16 @@ public class WorkspaceMembersController(WorkspaceMemberService members) : Contro
     public async Task<IActionResult> RemoveRole(
         string slug, Guid membershipId, string role, CancellationToken ct)
         => Run(await members.RemoveRoleAsync(slug, Caller(), membershipId, role, ct));
+
+    /// <summary>
+    /// POST /api/workspaces/{slug}/members/{membershipId}/enroll — enrol an
+    /// already-Active member into a Published course (§12.3). The "payment
+    /// confirmed" action; never implicit.
+    /// </summary>
+    [HttpPost("members/{membershipId:guid}/enroll")]
+    public async Task<ActionResult<WorkspaceMemberRow>> Enroll(
+        string slug, Guid membershipId, [FromBody] EnrollMemberRequest request, CancellationToken ct)
+        => Run(await members.EnrollMemberAsync(slug, Caller(), membershipId, request.LearningProductId, ct));
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

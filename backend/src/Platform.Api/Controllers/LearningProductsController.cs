@@ -17,7 +17,7 @@ namespace Platform.Api.Controllers;
 [ApiController]
 [Route("api/workspaces/{slug}/products")]
 [Authorize]
-public class LearningProductsController(LearningProductService products) : ControllerBase
+public class LearningProductsController(LearningProductService products, WorkspaceMemberService members) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<LearningProductListResponse>> List(string slug, CancellationToken ct)
@@ -39,15 +39,46 @@ public class LearningProductsController(LearningProductService products) : Contr
         string slug, Guid id, [FromBody] SaveLearningProductRequest request, CancellationToken ct)
         => Run(await products.UpdateAsync(slug, Caller(), id, request, ct));
 
+    /// <summary>POST .../products/{id}/cover-image — attach (or, with a null id, clear) an uploaded cover photo.</summary>
+    [HttpPost("{id:guid}/cover-image")]
+    public async Task<ActionResult<LearningProductRow>> AttachCoverImage(
+        string slug, Guid id, [FromBody] AttachCoverImageRequest request, CancellationToken ct)
+        => Run(await products.AttachCoverImageAsync(slug, Caller(), id, request.LearningAssetId, ct));
+
     /// <summary>submit | return | publish | unpublish | archive (Section 16).</summary>
     [HttpPost("{id:guid}/{transition}")]
     public async Task<ActionResult<LearningProductRow>> Transition(
         string slug, Guid id, string transition, CancellationToken ct)
         => Run(await products.TransitionAsync(slug, Caller(), id, transition, ct));
 
+    /// <summary>
+    /// GET .../products/{id}/roster — who is enrolled in this course, and who
+    /// has an outstanding invitation naming it (§12.3 course-management view).
+    /// </summary>
+    [HttpGet("{id:guid}/roster")]
+    public async Task<ActionResult<ProductRosterResponse>> Roster(string slug, Guid id, CancellationToken ct)
+        => Run(await members.GetProductRosterAsync(slug, Caller(), id, ct));
+
+    /// <summary>
+    /// POST .../products/{id}/enrollments/{membershipId}/unenroll — removes
+    /// the Enrollment only; the member's Workspace Membership is untouched.
+    /// </summary>
+    [HttpPost("{id:guid}/enrollments/{membershipId:guid}/unenroll")]
+    public async Task<IActionResult> Unenroll(string slug, Guid id, Guid membershipId, CancellationToken ct)
+        => Run(await members.UnenrollMemberAsync(slug, Caller(), id, membershipId, ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> result) => result.Error switch
     {
         ProvisioningError.None      => Ok(result.Value),
+        ProvisioningError.NotFound  => NotFound(new { message = result.Message }),
+        ProvisioningError.Conflict  => Conflict(new { message = result.Message }),
+        ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = result.Message }),
+        _                           => BadRequest(new { message = result.Message }),
+    };
+
+    private IActionResult Run(ProvisioningResult<string> result) => result.Error switch
+    {
+        ProvisioningError.None      => Ok(new { status = result.Value }),
         ProvisioningError.NotFound  => NotFound(new { message = result.Message }),
         ProvisioningError.Conflict  => Conflict(new { message = result.Message }),
         ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = result.Message }),

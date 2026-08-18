@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Platform.Api.AI.Skills;
 using Platform.Api.Models;
 using Platform.Domain;
 using Platform.Infrastructure;
@@ -16,7 +17,8 @@ namespace Platform.Api.Services;
 /// existed on the Workspace aggregate and already enforces its own invariants —
 /// what was missing was an authorized caller (TD-009).
 /// </summary>
-public class WorkspaceSetupService(PlatformDbContext db)
+public class WorkspaceSetupService(
+    PlatformDbContext db, EntitlementResolutionService entitlements, GenerateWorkspaceProfileSkill generateProfile)
 {
     /// <summary>
     /// Owner and Administrator may both configure (BA-001). Ownership transfer
@@ -53,7 +55,10 @@ public class WorkspaceSetupService(PlatformDbContext db)
             AcceptsJoinRequests: w.AcceptsJoinRequests,
             Completeness:        completeness,
             NextTransition:      next,
-            Blocker:             blocker);
+            Blocker:             blocker,
+            LogoAssetId:         w.LogoAssetId,
+            WelcomeMessage:      w.WelcomeMessage,
+            CourseCategories:    w.CourseCategories.ToList());
     }
 
     /// <summary>
@@ -149,6 +154,96 @@ public class WorkspaceSetupService(PlatformDbContext db)
         await db.SaveChangesAsync(ct);
 
         return ProvisioningResult<WorkspaceSetupResponse>.Success(Describe(workspace, canManage));
+    }
+
+    // ── Branding ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// UpdateWorkspaceBranding. Independent of the lifecycle, same reasoning
+    /// as SetAcceptsJoinRequestsAsync above.
+    /// </summary>
+    public async Task<ProvisioningResult<WorkspaceSetupResponse>> UpdateBrandingAsync(
+        string slug, Guid callerIdentityId, UpdateWorkspaceBrandingRequest request, CancellationToken ct = default)
+    {
+        var (workspace, canManage, error) = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (error is not null)
+            return ProvisioningResult<WorkspaceSetupResponse>.Fail(error.Value.Error, error.Value.Message);
+
+        if (request.LogoAssetId is Guid assetId)
+        {
+            var asset = await db.LearningAssets
+                .FirstOrDefaultAsync(a => a.Id == assetId && a.WorkspaceId == workspace!.Id, ct);
+            if (asset is null) return Fail("No such learning asset.", ProvisioningError.NotFound);
+
+            try { asset.RequireAttachable(); }
+            catch (InvalidOperationException ex) { return Fail(ex.Message, ProvisioningError.Conflict); }
+        }
+
+        workspace!.UpdateBranding(request.LogoAssetId, request.WelcomeMessage, request.CourseCategories);
+        await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<WorkspaceSetupResponse>.Success(Describe(workspace, canManage));
+    }
+
+    // ── AI ────────────────────────────────────────────────────────────────────
+
+    public async Task<ProvisioningResult<AiSuggestTextResponse>> SuggestDescriptionAsync(
+        string slug, Guid callerIdentityId, AiSuggestWorkspaceDescriptionRequest request, CancellationToken ct = default)
+    {
+        var (workspace, _, error) = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (error is not null)
+            return ProvisioningResult<AiSuggestTextResponse>.Fail(error.Value.Error, error.Value.Message);
+
+        if (!await entitlements.HasEntitlementAsync(
+                workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Branding),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return ProvisioningResult<AiSuggestTextResponse>.Fail(ProvisioningError.Forbidden,
+                "AI-suggested branding text needs the Professional plan or an AI-enabled Branding pack. Upgrade to use this.");
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return ProvisioningResult<AiSuggestTextResponse>.Fail(ProvisioningError.Invalid,
+                "A name is needed before a description can be suggested.");
+
+        try
+        {
+            var description = await generateProfile.SuggestDescriptionAsync(request.Name, request.CourseCategories, ct);
+            return ProvisioningResult<AiSuggestTextResponse>.Success(new AiSuggestTextResponse(description));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ProvisioningResult<AiSuggestTextResponse>.Fail(
+                ProvisioningError.Conflict, $"AI description generation failed: {ex.Message}");
+        }
+    }
+
+    public async Task<ProvisioningResult<AiSuggestTextResponse>> SuggestWelcomeMessageAsync(
+        string slug, Guid callerIdentityId, AiSuggestWorkspaceWelcomeRequest request, CancellationToken ct = default)
+    {
+        var (workspace, _, error) = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (error is not null)
+            return ProvisioningResult<AiSuggestTextResponse>.Fail(error.Value.Error, error.Value.Message);
+
+        if (!await entitlements.HasEntitlementAsync(
+                workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Branding),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return ProvisioningResult<AiSuggestTextResponse>.Fail(ProvisioningError.Forbidden,
+                "AI-suggested branding text needs the Professional plan or an AI-enabled Branding pack. Upgrade to use this.");
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return ProvisioningResult<AiSuggestTextResponse>.Fail(ProvisioningError.Invalid,
+                "A name is needed before a welcome message can be suggested.");
+
+        try
+        {
+            var welcome = await generateProfile.SuggestWelcomeMessageAsync(
+                request.Name, request.Description, request.CourseCategories, ct);
+            return ProvisioningResult<AiSuggestTextResponse>.Success(new AiSuggestTextResponse(welcome));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ProvisioningResult<AiSuggestTextResponse>.Fail(
+                ProvisioningError.Conflict, $"AI welcome message generation failed: {ex.Message}");
+        }
     }
 
     // ── Lifecycle (§7) ───────────────────────────────────────────────────────

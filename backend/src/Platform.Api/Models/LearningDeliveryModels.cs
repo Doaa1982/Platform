@@ -1,17 +1,28 @@
 namespace Platform.Api.Models;
 
-/// <summary>A Published product a Learner can open. Reported honestly: HasContent is false for a Published product with no published curriculum content yet.</summary>
-public record LearnerProductRow(Guid Id, string Title, string? Description, string? Category, bool HasContent);
+/// <summary>
+/// A Published product a Learner can see. Reported honestly: HasContent is
+/// false for a Published product with no published curriculum content yet.
+/// EnrollmentMode/IsEnrolled/HasPendingRequest let the frontend show the
+/// right state for an ApprovalRequired course that isn't open yet — Open
+/// products are always IsEnrolled=true in practice (auto-enrolled on first
+/// open), and InvitationOnly ones never appear here unless already enrolled.
+/// </summary>
+public record LearnerProductRow(
+    Guid Id, string Title, string? Description, string? Category, bool HasContent, Guid? CoverImageAssetId,
+    string EnrollmentMode, bool IsEnrolled, bool HasPendingRequest);
 
 public record LearnerProductListResponse(IReadOnlyList<LearnerProductRow> Products);
 
 /// <summary>Aggregate counts across all of this Learner's enrollments — Certificates has no backing data yet, so it isn't included here; the frontend renders that card as a static "not built" placeholder.</summary>
 public record LearnerStatsResponse(
     int EnrolledProductsCount, int CompletedLessonsCount, int TotalLessonsCount, int PassedAssessmentsCount,
-    int CompletedProductsCount, int TimeInvestedMinutes, LearnerContinueLearningRow? ContinueLearning);
+    int CompletedProductsCount, int TimeInvestedMinutes, IReadOnlyList<LearnerContinueLearningRow> ContinueLearning);
 
-/// <summary>The lesson most recently begun and not yet finished — null if there is none (every enrolled lesson is either untouched or already Completed).</summary>
-public record LearnerContinueLearningRow(Guid ProductId, string ProductTitle, Guid LessonId, string LessonTitle);
+/// <summary>The most recently begun, not-yet-finished lesson in one Enrollment — one entry per course with something in progress, empty if there is none.</summary>
+public record LearnerContinueLearningRow(
+    Guid ProductId, string ProductTitle, Guid? ProductCoverImageAssetId,
+    Guid LessonId, string LessonTitle, int? EstimatedMinutes);
 
 /// <summary>The published curriculum of one product, as a Learner sees it — never a draft, never an unpublished unit or lesson.</summary>
 public record LearnerCurriculumResponse(

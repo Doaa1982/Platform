@@ -20,6 +20,7 @@ public class PlatformDbContext : DbContext
     public DbSet<PasswordReset> PasswordResets => Set<PasswordReset>();
     public DbSet<PlatformOperator> PlatformOperators => Set<PlatformOperator>();
     public DbSet<JoinRequest> JoinRequests => Set<JoinRequest>();
+    public DbSet<CourseJoinRequest> CourseJoinRequests => Set<CourseJoinRequest>();
     public DbSet<SignupRequest> SignupRequests => Set<SignupRequest>();
     public DbSet<LearningProduct> LearningProducts => Set<LearningProduct>();
     public DbSet<Curriculum> Curricula => Set<Curriculum>();
@@ -117,6 +118,11 @@ public class PlatformDbContext : DbContext
             // Workspace and Membership reference each other, and Workspace Aggregate
             // Design Section 17 requires reference-by-identifier only.
             entity.Property(e => e.OwnerMembershipId);
+
+            // Branding — reference-by-identifier, same convention as OwnerMembershipId above.
+            entity.Property(e => e.LogoAssetId);
+            entity.Property(e => e.WelcomeMessage).HasMaxLength(2048);
+            entity.PrimitiveCollection(e => e.CourseCategories);
         });
 
         modelBuilder.Entity<Membership>(entity =>
@@ -197,6 +203,11 @@ public class PlatformDbContext : DbContext
             // reference convention. Indexed for the read-time rollup query.
             entity.Property(e => e.BatchId);
             entity.HasIndex(e => e.BatchId);
+
+            // §12.3: reference by identifier only, same convention — read
+            // back at acceptance time to decide whether to create an
+            // Enrollment alongside the new Membership.
+            entity.Property(e => e.IntendedLearningProductId);
         });
 
         modelBuilder.Entity<InvitationBatch>(entity =>
@@ -342,6 +353,7 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.Pacing).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.EnrollmentMode).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.CoverImageAssetId);
 
             // Every listing is scoped to one workspace (INV-001)
             entity.HasIndex(e => e.WorkspaceId);
@@ -359,8 +371,15 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.RequiresSequentialCompletion).IsRequired().HasDefaultValue(false);
 
             // INV-003 (Learning Product): at most one active Curriculum per product,
-            // so every read is by product
-            entity.HasIndex(e => e.LearningProductId);
+            // so every read is by product. Enforced here, not just assumed —
+            // MutateAsync's lazy-create (load-if-missing-then-add) is a
+            // check-then-act race under concurrent requests for the same
+            // product; this constraint is what actually stops a second row,
+            // turning the loser of that race into a Conflict instead of
+            // silent duplicate data.
+            entity.HasIndex(e => e.LearningProductId)
+                  .IsUnique()
+                  .HasFilter("\"Status\" != 'Archived'");
 
             entity.HasMany(e => e.Units).WithOne()
                   .HasForeignKey(u => u.CurriculumId).OnDelete(DeleteBehavior.Cascade);
@@ -531,6 +550,24 @@ public class PlatformDbContext : DbContext
 
             // Auto-created on first open (Enrollment.cs remarks) — at most one per (product, membership)
             entity.HasIndex(e => new { e.LearningProductId, e.MembershipId }).IsUnique();
+        });
+
+        modelBuilder.Entity<CourseJoinRequest>(entity =>
+        {
+            entity.ToTable("course_join_requests");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.LearningProductId).IsRequired();
+            entity.Property(e => e.MembershipId).IsRequired();
+
+            entity.Property(e => e.Message).HasMaxLength(2000);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+
+            // Not unique: a prior Declined request must not block a fresh one —
+            // "at most one open request" is enforced at the service layer.
+            entity.HasIndex(e => new { e.LearningProductId, e.MembershipId });
         });
 
         modelBuilder.Entity<Submission>(entity =>

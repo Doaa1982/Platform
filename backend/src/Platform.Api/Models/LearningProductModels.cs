@@ -21,7 +21,9 @@ public record LearningProductRow(
     /// Aggregate Design §18) — surfaced here so a tutor can set it from the same
     /// place they edit the product, rather than needing to open Content Studio.
     /// </summary>
-    bool RequiresSequentialCompletion);
+    bool RequiresSequentialCompletion,
+    /// <summary>The cover photo shown on this product's card, if one was uploaded.</summary>
+    Guid? CoverImageAssetId);
 
 public record LearningProductListResponse(
     string WorkspaceName,
@@ -52,3 +54,6 @@ public record SaveLearningProductRequest(
 public record AiSuggestDescriptionRequest(string Title, string? Category, IReadOnlyList<string>? Tags);
 
 public record AiSuggestDescriptionResponse(string Description);
+
+/// <summary>Sets (or, with null, clears) a product's cover photo — a previously uploaded Learning Asset, by identifier.</summary>
+public record AttachCoverImageRequest(Guid? LearningAssetId);

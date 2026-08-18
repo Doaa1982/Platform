@@ -82,7 +82,8 @@ public class LearningProductService(
         UpdatedAt:       p.UpdatedAt,
         PublishedAt:     p.PublishedAt,
         HasCurriculum:   hasCurriculum,
-        RequiresSequentialCompletion: requiresSequentialCompletion);
+        RequiresSequentialCompletion: requiresSequentialCompletion,
+        CoverImageAssetId: p.CoverImageAssetId);
 
     // ── Writing ──────────────────────────────────────────────────────────────
 
@@ -125,6 +126,40 @@ public class LearningProductService(
             p.UpdateMetadata(request.Title, request.Description, request.Category, request.Tags);
             p.UpdateSettings(pacing, mode, request.DefaultLanguage);
         }, ct);
+
+    /// <summary>
+    /// Sets or clears (LearningAssetId: null) this product's cover photo
+    /// (Learning Asset Aggregate Design INV-003: by identifier only). A
+    /// dedicated call rather than folded into UpdateAsync's Save request,
+    /// since it's a cross-aggregate reference resolved from an upload that
+    /// already happened — same reasoning as ContentStudioService.AttachVideoAsync.
+    /// </summary>
+    public async Task<ProvisioningResult<LearningProductRow>> AttachCoverImageAsync(
+        string slug, Guid callerIdentityId, Guid productId, Guid? learningAssetId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, callerIdentityId, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail(ctx.Error.Value);
+
+        var product = await db.LearningProducts
+            .FirstOrDefaultAsync(p => p.Id == productId && p.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (product is null) return Fail((ProvisioningError.NotFound, "No such learning product."));
+
+        if (learningAssetId is Guid assetId)
+        {
+            var asset = await db.LearningAssets
+                .FirstOrDefaultAsync(a => a.Id == assetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
+            if (asset is null) return Fail((ProvisioningError.NotFound, "No such learning asset."));
+
+            try { asset.RequireAttachable(); }
+            catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
+        }
+
+        try { product.SetCoverImage(learningAssetId); }
+        catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+        return ProvisioningResult<LearningProductRow>.Success(Describe(product));
+    }
 
     /// <summary>
     /// Applies a state transition by name, so the client does not need one

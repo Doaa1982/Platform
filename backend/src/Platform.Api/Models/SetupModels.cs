@@ -25,7 +25,21 @@ public record WorkspaceSetupResponse(
     /// <summary>The single transition available now, or null when there is none.</summary>
     string? NextTransition,
     /// <summary>Why NextTransition is unavailable, when something blocks it.</summary>
-    string? Blocker);
+    string? Blocker,
+    Guid? LogoAssetId,
+    string? WelcomeMessage,
+    IReadOnlyList<string> CourseCategories);
+
+/// <summary>Amend the Workspace's public-facing profile — logo, welcome message and taught subject areas.</summary>
+public record UpdateWorkspaceBrandingRequest(Guid? LogoAssetId, string? WelcomeMessage, IReadOnlyList<string>? CourseCategories);
+
+/// <summary>What a tutor has already typed into the branding form, for the AI to draft a listing description from.</summary>
+public record AiSuggestWorkspaceDescriptionRequest(string Name, IReadOnlyList<string>? CourseCategories);
+
+/// <summary>What a tutor has already typed into the branding form, for the AI to draft a welcome message from.</summary>
+public record AiSuggestWorkspaceWelcomeRequest(string Name, string? Description, IReadOnlyList<string>? CourseCategories);
+
+public record AiSuggestTextResponse(string Text);
 
 /// <summary>
 /// What INV-007 asks of a Workspace before it may be published.

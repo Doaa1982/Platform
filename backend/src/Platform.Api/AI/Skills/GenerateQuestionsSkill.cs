@@ -250,9 +250,12 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
 
     public async Task<IReadOnlyList<SuggestedQuestion>> SuggestAsync(
         string lessonTitle, string? lessonBody, string? transcript, IReadOnlyList<TranscriptSegment>? segments,
-        int videoDurationSeconds, int count, CancellationToken ct = default)
+        int videoDurationSeconds, int count, string? outputLanguage, CancellationToken ct = default)
     {
         var hasSegments = segments is { Count: > 0 };
+        var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
+            ? ""
+            : $"Output language: {outputLanguage}\n\n";
 
         var transcriptBlock = hasSegments
             ? $"""
@@ -269,7 +272,7 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
                    """
                 : "Video transcript: (none available — base questions on the lesson content/title alone)";
 
-        var userPrompt = $"""
+        var userPrompt = languageDirective + $"""
             Lesson title: {lessonTitle}
 
             Lesson content:
@@ -380,9 +383,14 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
         """;
 
     public async Task<SuggestedQuestion> SuggestForChapterAsync(
-        string lessonTitle, string chapterTitle, string? chapterSummary, string questionType, CancellationToken ct = default)
+        string lessonTitle, string chapterTitle, string? chapterSummary, string questionType,
+        string? outputLanguage, CancellationToken ct = default)
     {
-        var userPrompt = $"""
+        var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
+            ? ""
+            : $"Output language: {outputLanguage}\n\n";
+
+        var userPrompt = languageDirective + $"""
             Lesson title: {lessonTitle}
 
             Chapter title: {chapterTitle}

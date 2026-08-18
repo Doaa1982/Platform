@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Platform.Api.Models;
 using Platform.Domain;
 using Platform.Infrastructure;
@@ -83,12 +84,47 @@ public class WorkspaceMemberService(
             .OrderByDescending(i => i.IssuedAt)
             .ToListAsync(ct);
 
+        var enrollments = await db.Enrollments.AsNoTracking()
+            .Where(e => e.WorkspaceId == workspace.Id)
+            .ToListAsync(ct);
+        var enrollmentsByMembership = enrollments
+            .GroupBy(e => e.MembershipId)
+            .ToDictionary(g => g.Key, g => g.Select(e => e.LearningProductId).ToHashSet());
+
+        // Denormalised for display only — one query for the whole list
+        // rather than N+1 per invitation/enrollment.
+        var productIds = invitations
+            .Where(i => i.IntendedLearningProductId is not null)
+            .Select(i => i.IntendedLearningProductId!.Value)
+            .Concat(enrollments.Select(e => e.LearningProductId))
+            .Distinct()
+            .ToList();
+        var productTitles = await db.LearningProducts.AsNoTracking()
+            .Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Title, ct);
+
         var now = DateTime.UtcNow;
 
         var members = memberships
             .Select(m =>
             {
                 identities.TryGetValue(m.IdentityId, out var identity);
+                var enrolledIds = enrollmentsByMembership.GetValueOrDefault(m.Id) ?? [];
+                var enrolledCourses = enrolledIds
+                    .Select(pid => new EnrolledCourseInfo(pid, productTitles.GetValueOrDefault(pid) ?? "(deleted course)"))
+                    .ToList();
+
+                // §12.3: the most recent accepted Invitation that named a
+                // course this member isn't enrolled in yet — "awaiting
+                // enrollment" from the tutor's side, i.e. awaiting payment.
+                var pendingInvite = identity is null
+                    ? null
+                    : invitations.FirstOrDefault(i =>
+                        i.Email == identity.Email
+                        && i.Status == InvitationStatus.Accepted
+                        && i.IntendedLearningProductId is not null
+                        && !enrolledIds.Contains(i.IntendedLearningProductId!.Value));
+
                 return new WorkspaceMemberRow(
                     MembershipId: m.Id,
                     IdentityId:   m.IdentityId,
@@ -98,7 +134,12 @@ public class WorkspaceMemberService(
                     Roles:        m.Roles.Select(r => r.Name.ToString()).OrderBy(r => r).ToList(),
                     IsOwner:      workspace.OwnerMembershipId == m.Id,
                     CreatedAt:    m.CreatedAt,
-                    LastActiveAt: m.LastActiveAt);
+                    LastActiveAt: m.LastActiveAt,
+                    EnrolledCourses: enrolledCourses,
+                    PendingInvitedProductId:    pendingInvite?.IntendedLearningProductId,
+                    PendingInvitedProductTitle: pendingInvite?.IntendedLearningProductId is Guid pendingId
+                                                     ? productTitles.GetValueOrDefault(pendingId)
+                                                     : null);
             })
             // Owner first, then everyone else alphabetically — the owner is the
             // one row whose available actions differ, so it should not be hunted for
@@ -121,7 +162,11 @@ public class WorkspaceMemberService(
                                IssuedAt:     i.IssuedAt,
                                ExpiresAt:    i.ExpiresAt,
                                IsOpen:       i.IsOpen(now),
-                               BatchId:      i.BatchId)).ToList()));
+                               BatchId:      i.BatchId,
+                               IntendedLearningProductId:    i.IntendedLearningProductId,
+                               IntendedLearningProductTitle: i.IntendedLearningProductId is Guid pid
+                                                                  ? productTitles.GetValueOrDefault(pid)
+                                                                  : null)).ToList()));
     }
 
     // ── Inviting ─────────────────────────────────────────────────────────────
@@ -227,6 +272,19 @@ public class WorkspaceMemberService(
         if (!Enum.TryParse<InvitationBatchSource>(request.Source, out var source))
             return FailBulk($"\"{request.Source}\" is not a recognised invitation source.", ProvisioningError.Invalid);
 
+        // §12.3 "Invite + Enroll": one course applies to the whole batch. Only
+        // a Published product is enrollable anywhere else in the platform
+        // (Learning Delivery gates curriculum access the same way), so the
+        // same rule applies here rather than letting an invite promise access
+        // to a Draft nobody can actually open yet.
+        if (request.IntendedLearningProductId is Guid productId)
+        {
+            var productIsPublished = await db.LearningProducts.AnyAsync(
+                p => p.Id == productId && p.WorkspaceId == workspace.Id && p.Status == LearningProductStatus.Published, ct);
+            if (!productIsPublished)
+                return FailBulk("The selected course isn't a published learning product in this workspace.", ProvisioningError.Invalid);
+        }
+
         var emails = (request.Recipients ?? [])
             .Select(r => r.Email?.ToLowerInvariant().Trim() ?? string.Empty)
             .Where(e => !string.IsNullOrWhiteSpace(e))
@@ -306,7 +364,8 @@ public class WorkspaceMemberService(
                 intendedRole: role,
                 issuedBy:     callerIdentityId,
                 validFor:     ValidFor,
-                batchId:      batch.Id);
+                batchId:      batch.Id,
+                intendedLearningProductId: request.IntendedLearningProductId);
 
             invitation.MarkSent();
             db.Invitations.Add(invitation);
@@ -349,6 +408,92 @@ public class WorkspaceMemberService(
             IssuedCount:     results.Count(r => r.Outcome == "issued"),
             SkippedCount:    results.Count(r => r.Outcome == "skipped"),
             Results:         results));
+    }
+
+    // ── Resend / cancel ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resends an outstanding invitation: fresh token, reset expiry, same
+    /// Invitation row (§9, §10 "Resend Rules") — never a second parallel one.
+    /// Legal from Sent or Expired only.
+    /// </summary>
+    public async Task<ProvisioningResult<InvitationIssuedResponse>> ResendInvitationAsync(
+        string slug, Guid callerIdentityId, Guid invitationId, CancellationToken ct = default)
+    {
+        var context = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (context.Error is not null)
+            return ProvisioningResult<InvitationIssuedResponse>.Fail(context.Error.Value.Error, context.Error.Value.Message);
+
+        var workspace = context.Workspace!;
+
+        var invitation = await db.Invitations
+            .FirstOrDefaultAsync(i => i.Id == invitationId && i.WorkspaceId == workspace.Id, ct);
+        if (invitation is null)
+            return Fail("No such invitation.", ProvisioningError.NotFound);
+
+        // Lazy expiry: fold the clock in before checking what transitions are legal
+        ExpireIfLapsed(invitation);
+
+        if (invitation.Status is not (InvitationStatus.Sent or InvitationStatus.Expired))
+            return Fail(
+                invitation.Status == InvitationStatus.Accepted
+                    ? "This invitation has already been accepted."
+                    : "A cancelled invitation cannot be resent — send a new one instead.",
+                ProvisioningError.Conflict);
+
+        var rawToken = invitation.Resend(ValidFor);
+        await db.SaveChangesAsync(ct);
+
+        var outcome = await SendInvitationEmailAsync(invitation, rawToken, workspace.Name, ct);
+
+        return ProvisioningResult<InvitationIssuedResponse>.Success(new InvitationIssuedResponse(
+            InvitationId:    invitation.Id,
+            Email:           invitation.Email,
+            IntendedRole:    invitation.IntendedRole.ToString(),
+            ExpiresAt:       invitation.ExpiresAt,
+            InvitationLink:  $"/invite/{rawToken}",
+            Delivered:       outcome.Delivered,
+            DeliveryChannel: outcome.Channel,
+            DeliveryDetail:  outcome.Detail));
+    }
+
+    /// <summary>
+    /// Cancels an invitation before it's been accepted (§9). Legal from
+    /// Created or Sent only — an accepted Invitation is a Membership concern
+    /// now (§10.1), not an Invitation one.
+    /// </summary>
+    public async Task<ProvisioningResult<string>> CancelInvitationAsync(
+        string slug, Guid callerIdentityId, Guid invitationId, CancellationToken ct = default)
+    {
+        var context = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (context.Error is not null)
+            return ProvisioningResult<string>.Fail(context.Error.Value.Error, context.Error.Value.Message);
+
+        var workspace = context.Workspace!;
+
+        var invitation = await db.Invitations
+            .FirstOrDefaultAsync(i => i.Id == invitationId && i.WorkspaceId == workspace.Id, ct);
+        if (invitation is null)
+            return Fail<string>("No such invitation.", ProvisioningError.NotFound);
+
+        ExpireIfLapsed(invitation);
+
+        if (invitation.Status is not (InvitationStatus.Created or InvitationStatus.Sent))
+            return Fail<string>(
+                invitation.Status == InvitationStatus.Accepted
+                    ? "This invitation was already accepted — remove the membership instead."
+                    : $"An invitation that is {invitation.Status} cannot be cancelled.",
+                ProvisioningError.Conflict);
+
+        invitation.Cancel();
+        await db.SaveChangesAsync(ct);
+        return ProvisioningResult<string>.Success(invitation.Status.ToString());
+    }
+
+    private static void ExpireIfLapsed(Invitation invitation)
+    {
+        if (invitation.Status == InvitationStatus.Sent && invitation.ExpiresAt <= DateTime.UtcNow)
+            invitation.Expire();
     }
 
     /// <summary>
@@ -449,6 +594,195 @@ public class WorkspaceMemberService(
 
         return MutateAsync(slug, caller, membershipId, m => m.RemoveRole(parsed), protectOwner: false, ct);
     }
+
+    /// <summary>
+    /// Enrols an already-Active member into a Published Learning Product
+    /// (§12.3) — the tutor's "payment confirmed" action, whether this member
+    /// was invited with that course attached or is simply already in the
+    /// workspace and being added to a course directly. Never implicit: this
+    /// is the only place (besides a Learner opening a Published product
+    /// themselves) that creates an Enrollment.
+    /// </summary>
+    public async Task<ProvisioningResult<WorkspaceMemberRow>> EnrollMemberAsync(
+        string slug, Guid callerIdentityId, Guid membershipId, Guid learningProductId, CancellationToken ct = default)
+    {
+        var context = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (context.Error is not null)
+            return ProvisioningResult<WorkspaceMemberRow>.Fail(context.Error.Value.Error, context.Error.Value.Message);
+
+        var workspace = context.Workspace!;
+
+        var membership = await db.Memberships
+            .Include(m => m.Roles)
+            .FirstOrDefaultAsync(m => m.Id == membershipId && m.WorkspaceId == workspace.Id, ct);
+        if (membership is null)
+            return FailMember("No such member in this workspace.", ProvisioningError.NotFound);
+        if (membership.Status != MembershipStatus.Active)
+            return FailMember("Only an active member can be enrolled in a course.", ProvisioningError.Conflict);
+
+        var product = await db.LearningProducts
+            .FirstOrDefaultAsync(p => p.Id == learningProductId && p.WorkspaceId == workspace.Id, ct);
+        if (product is null)
+            return FailMember("No such learning product in this workspace.", ProvisioningError.NotFound);
+        // Same rule as the invite-time check (§12.3): nothing enrolls into a
+        // Draft nobody could actually open yet.
+        if (product.Status != LearningProductStatus.Published)
+            return FailMember("Only a published learning product can be enrolled into.", ProvisioningError.Invalid);
+
+        var alreadyEnrolled = await db.Enrollments.AnyAsync(
+            e => e.MembershipId == membership.Id && e.LearningProductId == learningProductId, ct);
+        if (alreadyEnrolled)
+            return FailMember("This member is already enrolled in that course.", ProvisioningError.Conflict);
+
+        db.Enrollments.Add(Enrollment.Create(workspace.Id, learningProductId, membership.Id));
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // Lost a concurrent enroll of the same (membership, product) — the
+            // post-condition (enrolled) holds either way, just not via us.
+            return FailMember("This member is already enrolled in that course.", ProvisioningError.Conflict);
+        }
+
+        var identity = await db.Identities.AsNoTracking().FirstOrDefaultAsync(i => i.Id == membership.IdentityId, ct);
+        var enrolledCourses = await db.Enrollments.AsNoTracking()
+            .Where(e => e.MembershipId == membership.Id)
+            .Join(db.LearningProducts.AsNoTracking(), e => e.LearningProductId, p => p.Id,
+                  (e, p) => new EnrolledCourseInfo(p.Id, p.Title))
+            .ToListAsync(ct);
+
+        return ProvisioningResult<WorkspaceMemberRow>.Success(new WorkspaceMemberRow(
+            MembershipId: membership.Id,
+            IdentityId:   membership.IdentityId,
+            Email:        identity?.Email ?? "(unknown)",
+            FullName:     identity?.FullName ?? "(unknown)",
+            Status:       membership.Status.ToString(),
+            Roles:        membership.Roles.Select(r => r.Name.ToString()).OrderBy(r => r).ToList(),
+            IsOwner:      workspace.OwnerMembershipId == membership.Id,
+            CreatedAt:    membership.CreatedAt,
+            LastActiveAt: membership.LastActiveAt,
+            EnrolledCourses: enrolledCourses,
+            PendingInvitedProductId:    null,
+            PendingInvitedProductTitle: null));
+    }
+
+    private static ProvisioningResult<WorkspaceMemberRow> FailMember(string message, ProvisioningError error) =>
+        ProvisioningResult<WorkspaceMemberRow>.Fail(error, message);
+
+    /// <summary>
+    /// One Learning Product's roster (§12.3 course-management view): who is
+    /// enrolled, and who has an outstanding Invitation naming this course —
+    /// the two lists a tutor needs to manage a single course's admissions
+    /// without hunting through the whole-workspace Members screen.
+    /// </summary>
+    public async Task<ProvisioningResult<ProductRosterResponse>> GetProductRosterAsync(
+        string slug, Guid callerIdentityId, Guid productId, CancellationToken ct = default)
+    {
+        var context = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (context.Error is not null)
+            return ProvisioningResult<ProductRosterResponse>.Fail(context.Error.Value.Error, context.Error.Value.Message);
+
+        var workspace = context.Workspace!;
+
+        var product = await db.LearningProducts.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == productId && p.WorkspaceId == workspace.Id, ct);
+        if (product is null)
+            return ProvisioningResult<ProductRosterResponse>.Fail(ProvisioningError.NotFound, "No such learning product in this workspace.");
+
+        var enrollments = await db.Enrollments.AsNoTracking()
+            .Where(e => e.LearningProductId == productId && e.WorkspaceId == workspace.Id)
+            .OrderByDescending(e => e.CreatedAt)
+            .ToListAsync(ct);
+
+        var membershipIds = enrollments.Select(e => e.MembershipId).ToList();
+        var memberships = await db.Memberships.AsNoTracking()
+            .Where(m => membershipIds.Contains(m.Id))
+            .ToDictionaryAsync(m => m.Id, ct);
+        var identityIds = memberships.Values.Select(m => m.IdentityId).Distinct().ToList();
+        var identities = await db.Identities.AsNoTracking()
+            .Where(i => identityIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, ct);
+
+        var enrolled = enrollments.Select(e =>
+        {
+            memberships.TryGetValue(e.MembershipId, out var membership);
+            identities.TryGetValue(membership?.IdentityId ?? Guid.Empty, out var identity);
+            return new EnrolledMemberRow(
+                MembershipId: e.MembershipId,
+                Email:        identity?.Email ?? "(unknown)",
+                FullName:     identity?.FullName ?? "(unknown)",
+                EnrolledAt:   e.CreatedAt);
+        }).ToList();
+
+        var now = DateTime.UtcNow;
+        // Only outstanding invitations — Resend/Cancel are legal from Sent or
+        // Expired only (§9), same scope as the Pending Invitations tab.
+        var invited = await db.Invitations.AsNoTracking()
+            .Where(i => i.WorkspaceId == workspace.Id && i.IntendedLearningProductId == productId)
+            .OrderByDescending(i => i.IssuedAt)
+            .ToListAsync(ct);
+
+        var invitedRows = invited
+            .Select(i => new WorkspaceInvitationRow(
+                Id:           i.Id,
+                Email:        i.Email,
+                IntendedRole: i.IntendedRole.ToString(),
+                Status:       i.Status == InvitationStatus.Sent && i.ExpiresAt <= now
+                                  ? nameof(InvitationStatus.Expired)
+                                  : i.Status.ToString(),
+                IssuedAt:     i.IssuedAt,
+                ExpiresAt:    i.ExpiresAt,
+                IsOpen:       i.IsOpen(now),
+                BatchId:      i.BatchId,
+                IntendedLearningProductId:    i.IntendedLearningProductId,
+                IntendedLearningProductTitle: product.Title))
+            .Where(r => r.Status is nameof(InvitationStatus.Sent) or nameof(InvitationStatus.Expired))
+            .ToList();
+
+        return ProvisioningResult<ProductRosterResponse>.Success(new ProductRosterResponse(
+            ProductId:    product.Id,
+            ProductTitle: product.Title,
+            CanManage:    context.CanManage,
+            Enrolled:     enrolled,
+            Invited:      invitedRows));
+    }
+
+    /// <summary>
+    /// Un-enrols a member from one course (§12.3) — removes only the
+    /// Enrollment (and any progress recorded against it); the Membership,
+    /// and every other course they're enrolled in, are untouched. Reopening
+    /// the course later starts a fresh Enrollment from scratch (Enrollment.cs
+    /// remarks — this simplified aggregate has no "was previously enrolled"
+    /// state to restore).
+    /// </summary>
+    public async Task<ProvisioningResult<string>> UnenrollMemberAsync(
+        string slug, Guid callerIdentityId, Guid productId, Guid membershipId, CancellationToken ct = default)
+    {
+        var context = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (context.Error is not null)
+            return ProvisioningResult<string>.Fail(context.Error.Value.Error, context.Error.Value.Message);
+
+        var workspace = context.Workspace!;
+
+        var enrollment = await db.Enrollments.FirstOrDefaultAsync(
+            e => e.WorkspaceId == workspace.Id && e.LearningProductId == productId && e.MembershipId == membershipId, ct);
+        if (enrollment is null)
+            return Fail<string>("This member isn't enrolled in that course.", ProvisioningError.NotFound);
+
+        var progress = await db.LessonProgresses
+            .Where(p => p.EnrollmentId == enrollment.Id)
+            .ToListAsync(ct);
+        db.LessonProgresses.RemoveRange(progress);
+        db.Enrollments.Remove(enrollment);
+
+        await db.SaveChangesAsync(ct);
+        return ProvisioningResult<string>.Success("Unenrolled");
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     /// <summary>
     /// Applies a change to one Membership after checking the caller may manage

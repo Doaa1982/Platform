@@ -138,11 +138,15 @@ public class GenerateLessonQuizSkill(AiOrchestrator orchestrator)
     public async Task<IReadOnlyList<PracticeQuizQuestion>> GenerateAsync(
         string lessonTitle, string? body, string? transcript,
         string? whatYoullLearn, string? learningObjectives, string? glossary,
-        int questionCount, string difficulty, string? topic, CancellationToken ct = default)
+        int questionCount, string difficulty, string? topic, string? outputLanguage, CancellationToken ct = default)
     {
         var truncatedTranscript = Truncate(transcript, MaxTranscriptChars);
 
-        var userPrompt = $"""
+        var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
+            ? ""
+            : $"Output language: {outputLanguage}\n\n";
+
+        var userPrompt = languageDirective + $"""
             Lesson: {lessonTitle}
 
             Lesson body:

@@ -37,14 +37,22 @@ function ProductPicker({ onSelect }) {
 
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [requestingId, setRequestingId] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    api.getLearnerProducts(session.token, slug)
-      .then((d) => { if (!cancelled) { setData(d); setError(null); } })
-      .catch((e) => { if (!cancelled) setError(e.message); });
-    return () => { cancelled = true; };
-  }, [session.token, slug]);
+  const load = useCallback(() => api.getLearnerProducts(session.token, slug)
+    .then((d) => { setData(d); setError(null); })
+    .catch((e) => setError(e.message)),
+    [session.token, slug]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const requestToJoin = (productId) => {
+    setRequestingId(productId);
+    api.submitCourseJoinRequest(session.token, slug, productId)
+      .then(load)
+      .catch((e) => setError(e.message))
+      .finally(() => setRequestingId(null));
+  };
 
   if (error) {
     return <div className="lw-page"><style>{CSS}</style><Message type="error">{error}</Message></div>;
@@ -74,22 +82,56 @@ function ProductPicker({ onSelect }) {
       )}
 
       <div className="lw-learn__grid">
-        {data.products.map((p) => (
-          <button
-            className="lw-learn__card" key={p.id}
-            onClick={() => p.hasContent && onSelect(p.id)}
-            disabled={!p.hasContent}
-          >
-            <div className={`lw-learn__cover lw-cover--${coverVariant(p.id)}`}>
-              <span className="lw-learn__monogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
+        {data.products.map((p) => {
+          const needsRequest = p.enrollmentMode === "ApprovalRequired" && !p.isEnrolled;
+          const cover = (
+            <div className={`lw-learn__cover ${p.coverImageAssetId ? "" : `lw-cover--${coverVariant(p.id)}`}`}>
+              {p.coverImageAssetId ? (
+                <img className="lw-learn__coverimg" alt="" src={api.learningAssetDownloadUrl(session.token, slug, p.coverImageAssetId)} />
+              ) : (
+                <span className="lw-learn__monogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
+              )}
             </div>
-            <div className="lw-learn__cardbody">
-              <div className="lw-learn__cardtitle">{p.title}</div>
-              {p.description && <p className="lw-learn__carddesc">{p.description}</p>}
-              {!p.hasContent && <span className="lw-learn__cardnote">{t("learnerCourses.nothingInsideYet")}</span>}
-            </div>
-          </button>
-        ))}
+          );
+
+          if (needsRequest) {
+            return (
+              <div className="lw-learn__card is-locked" key={p.id}>
+                {cover}
+                <div className="lw-learn__cardbody">
+                  <div className="lw-learn__cardtitle">{p.title}</div>
+                  {p.description && <p className="lw-learn__carddesc">{p.description}</p>}
+                  {p.hasPendingRequest ? (
+                    <span className="lw-learn__cardnote">{t("learnerCourses.pendingApproval")}</span>
+                  ) : (
+                    <button
+                      type="button" className="lw-learn__requestbtn"
+                      disabled={requestingId === p.id}
+                      onClick={() => requestToJoin(p.id)}
+                    >
+                      {t("learnerCourses.requestToJoin")}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <button
+              className="lw-learn__card" key={p.id}
+              onClick={() => p.hasContent && onSelect(p.id)}
+              disabled={!p.hasContent}
+            >
+              {cover}
+              <div className="lw-learn__cardbody">
+                <div className="lw-learn__cardtitle">{p.title}</div>
+                {p.description && <p className="lw-learn__carddesc">{p.description}</p>}
+                {!p.hasContent && <span className="lw-learn__cardnote">{t("learnerCourses.nothingInsideYet")}</span>}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -215,8 +257,18 @@ const CSS = `
   }
   .lw-learn__card:hover:not(:disabled) { border-color: var(--accent); }
   .lw-learn__card:disabled { opacity: 0.55; cursor: not-allowed; }
+  .lw-learn__card.is-locked { cursor: default; }
+  .lw-learn__requestbtn {
+    align-self: flex-start; margin-top: 2px;
+    background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
+    font-family: var(--font-body); font-size: 0.78rem; font-weight: 600; cursor: pointer;
+    padding: 6px 12px;
+  }
+  .lw-learn__requestbtn:hover:not(:disabled) { filter: brightness(1.08); }
+  .lw-learn__requestbtn:disabled { opacity: 0.6; cursor: not-allowed; }
   .lw-learn__cover { height: 84px; position: relative; display: flex; align-items: center; justify-content: center; }
   .lw-learn__monogram { font-family: var(--font-display); font-size: 1.8rem; font-weight: 600; color: rgba(255,255,255,0.92); }
+  .lw-learn__coverimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .lw-cover--0 { background: linear-gradient(135deg, #2D5BD1, #6D3FC4); }
   .lw-cover--1 { background: linear-gradient(135deg, #1E7F63, #5B8DEF); }
   .lw-cover--2 { background: linear-gradient(135deg, #E0A83E, #C4533F); }

@@ -205,10 +205,31 @@ export function inviteMembersBulk(token, slug, body) {
   return request(`/workspaces/${encodeURIComponent(slug)}/invitations/bulk`, { method: "POST", body, token });
 }
 
+/** POST /api/workspaces/{slug}/invitations/{id}/resend → fresh token, same invitation */
+export function resendMemberInvitation(token, slug, invitationId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/invitations/${invitationId}/resend`, {
+    method: "POST", token,
+  });
+}
+
+/** POST /api/workspaces/{slug}/invitations/{id}/cancel — legal before acceptance only */
+export function cancelMemberInvitation(token, slug, invitationId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/invitations/${invitationId}/cancel`, {
+    method: "POST", token,
+  });
+}
+
 /** POST /api/workspaces/{slug}/members/{id}/{action} — activate | suspend | reinstate | archive | remove */
 export function memberAction(token, slug, membershipId, action) {
   return request(`/workspaces/${encodeURIComponent(slug)}/members/${membershipId}/${action}`, {
     method: "POST", token,
+  });
+}
+
+/** POST .../members/{id}/enroll → enrol an already-active member into a published course */
+export function enrollMember(token, slug, membershipId, learningProductId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/members/${membershipId}/enroll`, {
+    method: "POST", body: { learningProductId }, token,
   });
 }
 
@@ -251,6 +272,25 @@ export function productTransition(token, slug, id, transition) {
 /** POST /api/workspaces/{slug}/products/ai-suggest-description — drafts a listing description; no product needs to exist yet. */
 export function suggestProductDescription(token, slug, body) {
   return request(`/workspaces/${encodeURIComponent(slug)}/products/ai-suggest-description`, { method: "POST", body, token });
+}
+
+/** POST .../products/{id}/cover-image — attach (or, with learningAssetId: null, clear) a cover photo already uploaded via uploadLearningAsset(..., "Image") */
+export function attachProductCoverImage(token, slug, productId, learningAssetId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/cover-image`, {
+    method: "POST", body: { learningAssetId }, token,
+  });
+}
+
+/** GET .../products/{id}/roster → who's enrolled in this course, and who's still invited */
+export function getProductRoster(token, slug, productId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/roster`, { token });
+}
+
+/** POST .../products/{id}/enrollments/{membershipId}/unenroll — removes the Enrollment only; Membership is untouched */
+export function unenrollMember(token, slug, productId, membershipId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/products/${productId}/enrollments/${membershipId}/unenroll`, {
+    method: "POST", token,
+  });
 }
 
 /* ── Content Studio (curriculum, units, lessons) ───────────────────────────
@@ -745,6 +785,13 @@ export function getLearnerCurriculum(token, slug, productId) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/products/${productId}/curriculum`, { token });
 }
 
+/** POST .../learn/products/{productId}/join-request — asks for access to an ApprovalRequired course */
+export function submitCourseJoinRequest(token, slug, productId, message) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/products/${productId}/join-request`, {
+    method: "POST", body: { message: message || null }, token,
+  });
+}
+
 /** GET .../learn/assessments — every Published assessment across this learner's enrolled products, with their own attempt if any */
 export function getMyAssessments(token, slug) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/assessments`, { token });
@@ -835,6 +882,21 @@ export function workspaceTransition(token, slug, transition) {
   return request(`/workspaces/${encodeURIComponent(slug)}/setup/${transition}`, { method: "POST", token });
 }
 
+/** PUT /api/workspaces/{slug}/setup/branding — logo, welcome message, course categories */
+export function updateWorkspaceBranding(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/setup/branding`, { method: "PUT", body, token });
+}
+
+/** POST /api/workspaces/{slug}/setup/ai-suggest-description */
+export function suggestWorkspaceDescription(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/setup/ai-suggest-description`, { method: "POST", body, token });
+}
+
+/** POST /api/workspaces/{slug}/setup/ai-suggest-welcome */
+export function suggestWorkspaceWelcome(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/setup/ai-suggest-welcome`, { method: "POST", body, token });
+}
+
 /* ── Tutor signup ──────────────────────────────────────────────────────────
    Entirely anonymous: an applicant has no Identity at this stage and gets one
    only later, when they accept the invitation to their provisioned workspace.
@@ -903,6 +965,18 @@ export function getJoinRequests(token, slug) {
 /** POST .../join-requests/{id}/{decision} — approve | decline. Approve issues an Invitation. */
 export function decideJoinRequest(token, slug, id, decision) {
   return request(`/workspaces/${encodeURIComponent(slug)}/join-requests/${id}/${decision}`, {
+    method: "POST", token,
+  });
+}
+
+/** GET .../course-join-requests — the reviewer's queue for course-level ("Ask to join first") requests */
+export function getCourseJoinRequests(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/course-join-requests`, { token });
+}
+
+/** POST .../course-join-requests/{id}/{decision} — approve | decline. Approve creates an Enrollment directly (requester is already a Member). */
+export function decideCourseJoinRequest(token, slug, id, decision) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/course-join-requests/${id}/${decision}`, {
     method: "POST", token,
   });
 }

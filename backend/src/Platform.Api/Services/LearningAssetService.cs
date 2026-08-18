@@ -18,6 +18,9 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
     /// <summary>500MB cap on any single resource file — comfortably above a slide deck, far below "someone's whole hard drive".</summary>
     private const long MaxResourceBytes = 500_000_000;
 
+    /// <summary>10MB cap on a cover photo — generous for a JPEG/PNG, far below a video or slide deck.</summary>
+    private const long MaxImageBytes = 10_000_000;
+
     public async Task<ProvisioningResult<LearningAssetResponse>> UploadAsync(
         string slug, Guid caller, string fileName, string contentType, long length, Stream content,
         string? title, LearningAssetCategory category = LearningAssetCategory.Video, CancellationToken ct = default)
@@ -32,6 +35,13 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
         {
             if (!contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
                 return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "Only video files can be uploaded as a lesson's video today."));
+        }
+        else if (category == LearningAssetCategory.Image)
+        {
+            if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "Only image files can be uploaded as a cover photo."));
+            if (length > MaxImageBytes)
+                return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "A cover photo cannot be larger than 10MB."));
         }
         else if (length > MaxResourceBytes)
         {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, CreditCard, LayoutDashboard, Lock, Megaphone, MessageCircle, MessageSquare, PlayCircle, Receipt, Rocket, Settings, UserCircle, Users, Wand2, X
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, Lock, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Users, Wand2, X
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -10,12 +10,13 @@ import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "./i18n/LanguageToggle";
 import { useTheme } from "./theme/useTheme";
 import ThemeToggle, { THEME_TOGGLE_CSS } from "./theme/ThemeToggle";
 import MembersScreen from "./screens/MembersScreen";
+import CourseEnrollmentScreen from "./screens/CourseEnrollmentScreen";
 import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
 import NotBuiltYet from "./screens/NotBuiltYet";
 import ProductsScreen from "./screens/ProductsScreen";
 import SubscriptionScreen from "./screens/SubscriptionScreen";
-import ContentStudioScreen from "./screens/ContentStudioScreen";
+import ContentStudioScreen, { LessonEditorScreen } from "./screens/ContentStudioScreen";
 import LearnerHomeScreen from "./screens/LearnerHomeScreen";
 import LearnerCoursesScreen from "./screens/LearnerCoursesScreen";
 import LearnerLessonScreen from "./screens/LearnerLessonScreen";
@@ -357,7 +358,7 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
 
   return (
     <div className="lw-accountbar" style={{ "--side-accent": config.login.accent }}>
-      <span className="lw-accountbar__side">{t(`sides.${side}.label`)}</span>
+      {/* TEACHING/LEARNING side pill hidden for now. */}
       {role === "owner" && (
         <>
           <span className="lw-accountbar__ws">
@@ -501,11 +502,14 @@ const OWNER_NAV = [
   { id: "overview", labelKey: "nav.overview", icon: BarChart3 },
   { id: "products", labelKey: "nav.learningProducts", icon: BookOpen },
   { id: "studio", labelKey: "nav.contentStudio", icon: Wand2 },
+  { id: "editLesson", labelKey: "nav.editLesson", icon: Pencil },
   { dividerKey: "nav.operate" },
   { id: "members", labelKey: "nav.members", icon: Users },
-  { id: "scheduling", labelKey: "nav.scheduling", icon: Calendar },
-  { id: "commerce", labelKey: "nav.commerce", icon: CreditCard },
-  { id: "communication", labelKey: "nav.communication", icon: Megaphone },
+  { id: "enrollment", labelKey: "nav.enrollment", icon: GraduationCap },
+  // Scheduling / Commerce / Communication hidden for now.
+  // { id: "scheduling", labelKey: "nav.scheduling", icon: Calendar },
+  // { id: "commerce", labelKey: "nav.commerce", icon: CreditCard },
+  // { id: "communication", labelKey: "nav.communication", icon: Megaphone },
   { dividerKey: "nav.prove" },
   { id: "assessment", labelKey: "nav.assessmentCertificates", icon: Award },
   { dividerKey: "nav.configure" },
@@ -522,7 +526,7 @@ const OWNER_NAV = [
    top bar (LearnerTopNav) and its left-sidebar slot is reserved for the
    in-lesson Course content menu (LessonSidebar) while viewing a lesson,
    and empty everywhere else. */
-function Nav({ c, screen, setScreen, onOpenProfile, personName, personRole }) {
+function Nav({ c, screen, setScreen, personName, personRole }) {
   const { t } = useLanguage();
   return (
     <div className="lw-nav">
@@ -549,9 +553,7 @@ function Nav({ c, screen, setScreen, onOpenProfile, personName, personRole }) {
           )
         )}
       </div>
-      <button className="lw-nav__profile" onClick={onOpenProfile}>
-        <UserCircle size={16} /> {t("nav.myProfile")}
-      </button>
+      {/* Hidden for now — not ready to surface yet. onOpenProfile/ProfessionalProfile stay wired up for when it comes back. */}
       <div className="lw-nav__person">
         <div className="lw-nav__avatar">{(personName || "?").trim()[0]}</div>
         <div>
@@ -719,6 +721,15 @@ export default function App() {
 
   const [learnerScreen, setLearnerScreen] = useState("dashboard");
   const [ownerScreen, setOwnerScreen] = useState("overview");
+  // Which tab Members should land on next time it mounts — set by
+  // navigation actions elsewhere (e.g. the dashboard's "Invite" quick
+  // action) that mean "go straight to Create Invitation", not just "Members".
+  const [membersInitialTab, setMembersInitialTab] = useState(null);
+  // Bumped on every navigation to Members so it remounts fresh even when
+  // already on that screen (e.g. Invite -> Members again) — setOwnerScreen
+  // to the same value doesn't remount on its own, and initialTab is only
+  // honored on mount.
+  const [membersKey, setMembersKey] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   // Which product Content Studio has open. Lives here, not inside the
   // screen, so a tutor can jump straight to a product's curriculum from its
@@ -733,17 +744,23 @@ export default function App() {
   // re-fetch and reflect it — see LearnerLessonScreen's onProgress prop.
   const [lessonProgressTick, setLessonProgressTick] = useState(0);
 
-  /* The workspace description lives on the setup endpoint rather than in
-     /api/me, so the shell fetches it once for the tagline. Absent is a normal
-     state — a workspace need not describe itself — and the chrome simply
-     omits the line rather than substituting anything. */
+  /* The workspace description and branding live on the setup endpoint rather
+     than in /api/me, so the shell fetches it once for the tagline/logo. Absent
+     is a normal state — a workspace need not describe or brand itself — and
+     the chrome simply omits the line/falls back to the monogram rather than
+     substituting anything. */
   const [description, setDescription] = useState(null);
+  const [logoAssetId, setLogoAssetId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     api.getSetup(session.token, workspace.slug)
-      .then((s) => { if (!cancelled) setDescription(s.description ?? ""); })
-      .catch(() => { if (!cancelled) setDescription(""); });
+      .then((s) => {
+        if (cancelled) return;
+        setDescription(s.description ?? "");
+        setLogoAssetId(s.logoAssetId ?? null);
+      })
+      .catch(() => { if (!cancelled) { setDescription(""); setLogoAssetId(null); } });
     return () => { cancelled = true; };
   }, [session.token, workspace.slug]);
 
@@ -756,7 +773,7 @@ export default function App() {
     tagline: description || "",
     mark: (workspace.name.trim()[0] || "W").toUpperCase(),
     logoStyle: "geometric",
-    logoUrl: null,
+    logoUrl: logoAssetId ? api.learningAssetDownloadUrl(session.token, workspace.slug, logoAssetId) : null,
   };
 
   /* Branding is not implemented (Technical Debt Backlog TD-006), so every
@@ -787,7 +804,15 @@ export default function App() {
      learnerLessonId live here (not inside the screens) so a one-off "jump
      straight to X" action from elsewhere (e.g. Products' "Build curriculum"
      button) can preset them, but the nav itself must not inherit that. */
-  function goToOwnerScreen(id) { setStudioProductId(null); setOwnerScreen(id); }
+  function goToOwnerScreen(id, opts) {
+    setStudioProductId(null);
+    setOwnerScreen(id);
+    // Reset whenever navigating without an explicit tab too, so a plain
+    // sidebar click to Members doesn't inherit a stale "go to Create" from
+    // an earlier Invite action.
+    setMembersInitialTab(opts?.membersTab ?? null);
+    if (id === "members") setMembersKey((k) => k + 1);
+  }
   function goToLearnerScreen(id) { setLearnerProductId(null); setLearnerLessonId(null); setLearnerScreen(id); }
 
   return (
@@ -803,8 +828,7 @@ export default function App() {
         {role === "owner" && (
           <Nav c={c} screen={activeNavScreen}
             personName={personName} personRole={personRole}
-            setScreen={goToOwnerScreen}
-            onOpenProfile={() => setProfileOpen(true)} />
+            setScreen={goToOwnerScreen} />
         )}
         {/* Nothing occupies this slot for a Learner outside a lesson — primary
             navigation lives in the top bar (AccountBar/LearnerTopNav) now. */}
@@ -910,8 +934,9 @@ export default function App() {
           {/* Owner screens. Only overview, members and setup are real; the rest
               have no domain behind them yet and say so, rather than rendering
               fixture data as though it were this tutor's own academy. */}
-          {role === "owner" && ownerScreen === "overview" && <WorkspaceHomeScreen onNavigate={setOwnerScreen} />}
-          {role === "owner" && ownerScreen === "members" && <MembersScreen />}
+          {role === "owner" && ownerScreen === "overview" && <WorkspaceHomeScreen onNavigate={goToOwnerScreen} />}
+          {role === "owner" && ownerScreen === "members" && <MembersScreen key={membersKey} initialTab={membersInitialTab} />}
+          {role === "owner" && ownerScreen === "enrollment" && <CourseEnrollmentScreen />}
           {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
           {role === "owner" && ownerScreen === "billing" && <SubscriptionScreen />}
 
@@ -921,6 +946,7 @@ export default function App() {
           {role === "owner" && ownerScreen === "studio" && (
             <ContentStudioScreen productId={studioProductId} onSelectProduct={setStudioProductId} />
           )}
+          {role === "owner" && ownerScreen === "editLesson" && <LessonEditorScreen />}
           {role === "owner" && ownerScreen === "scheduling" && (
             <NotBuiltYet area={t("notBuilt.scheduleArea")} onNavigate={setOwnerScreen}
               blurb={t("notBuilt.schedulingBlurbOwner")} />

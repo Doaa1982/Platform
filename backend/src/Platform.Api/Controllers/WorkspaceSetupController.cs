@@ -41,6 +41,24 @@ public class WorkspaceSetupController(WorkspaceSetupService setup) : ControllerB
         string slug, [FromBody] SetJoinRequestsRequest request, CancellationToken ct)
         => Run(await setup.SetAcceptsJoinRequestsAsync(slug, Caller(), request.Accepts, ct));
 
+    /// <summary>PUT /branding — logo, welcome message and course categories.</summary>
+    [HttpPut("branding")]
+    public async Task<ActionResult<WorkspaceSetupResponse>> UpdateBranding(
+        string slug, [FromBody] UpdateWorkspaceBrandingRequest request, CancellationToken ct)
+        => Run(await setup.UpdateBrandingAsync(slug, Caller(), request, ct));
+
+    /// <summary>POST /ai-suggest-description — drafts a listing description from the name and course categories typed so far.</summary>
+    [HttpPost("ai-suggest-description")]
+    public async Task<ActionResult<AiSuggestTextResponse>> SuggestDescription(
+        string slug, [FromBody] AiSuggestWorkspaceDescriptionRequest request, CancellationToken ct)
+        => RunAi(await setup.SuggestDescriptionAsync(slug, Caller(), request, ct));
+
+    /// <summary>POST /ai-suggest-welcome — drafts a welcome message from the name, description and course categories typed so far.</summary>
+    [HttpPost("ai-suggest-welcome")]
+    public async Task<ActionResult<AiSuggestTextResponse>> SuggestWelcome(
+        string slug, [FromBody] AiSuggestWorkspaceWelcomeRequest request, CancellationToken ct)
+        => RunAi(await setup.SuggestWelcomeMessageAsync(slug, Caller(), request, ct));
+
     /// <summary>Created → Configuring.</summary>
     [HttpPost("begin-configuration")]
     public async Task<ActionResult<WorkspaceSetupResponse>> BeginConfiguration(string slug, CancellationToken ct)
@@ -65,6 +83,16 @@ public class WorkspaceSetupController(WorkspaceSetupService setup) : ControllerB
         => Run(await setup.ActivateAsync(slug, Caller(), ct));
 
     private ActionResult<WorkspaceSetupResponse> Run(ProvisioningResult<WorkspaceSetupResponse> result)
+        => result.Error switch
+        {
+            ProvisioningError.None      => Ok(result.Value),
+            ProvisioningError.NotFound  => NotFound(new { message = result.Message }),
+            ProvisioningError.Conflict  => Conflict(new { message = result.Message }),
+            ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = result.Message }),
+            _                           => BadRequest(new { message = result.Message }),
+        };
+
+    private ActionResult<AiSuggestTextResponse> RunAi(ProvisioningResult<AiSuggestTextResponse> result)
         => result.Error switch
         {
             ProvisioningError.None      => Ok(result.Value),

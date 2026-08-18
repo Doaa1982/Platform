@@ -27,6 +27,8 @@ namespace Platform.Domain;
 /// </summary>
 public class Workspace
 {
+    private readonly List<string> _courseCategories = [];
+
     public Guid Id { get; private set; }
     public string Name { get; private set; } = string.Empty;
 
@@ -58,6 +60,22 @@ public class Workspace
     /// implemented (TD-006); until then it is a plain configuration flag.
     /// </summary>
     public bool AcceptsJoinRequests { get; private set; }
+
+    // ── Branding (Workspace Setup Business Analysis §3) ─────────────────────
+    // The public-facing profile a Learner meets before ever opening a course —
+    // the academy's own identity, not any one product's. Kept separate from
+    // the Learning Product's own CoverImageAssetId (LearningProduct.cs):
+    // a Learner sees the Workspace's logo and welcome message once, on first
+    // encounter, and each course's own cover photo per course after that.
+
+    /// <summary>The Learning Asset (LearningAssetCategory.Image) shown as this Workspace's logo/photo, if any.</summary>
+    public Guid? LogoAssetId { get; private set; }
+
+    /// <summary>Shown to a Learner meeting this Workspace for the first time (e.g. the Join Request page) — distinct from Description, which is a listing blurb, not a greeting.</summary>
+    public string? WelcomeMessage { get; private set; }
+
+    /// <summary>A curated set of subject areas this academy teaches — display/marketing metadata, independent of any one Learning Product's own Category.</summary>
+    public IReadOnlyCollection<string> CourseCategories => _courseCategories.AsReadOnly();
 
     // Required by EF Core — not for application use
     private Workspace() { }
@@ -122,6 +140,22 @@ public class Workspace
     /// Private, it simply cannot be found yet.
     /// </summary>
     public void SetAcceptsJoinRequests(bool accepts) => AcceptsJoinRequests = accepts;
+
+    /// <summary>
+    /// UpdateWorkspaceBranding. Independent of the lifecycle, same reasoning
+    /// as SetAcceptsJoinRequests — an Owner may set their logo, welcome
+    /// message and course categories at any point, including before the
+    /// Workspace is even discoverable.
+    /// </summary>
+    public void UpdateBranding(Guid? logoAssetId, string? welcomeMessage, IEnumerable<string>? courseCategories)
+    {
+        LogoAssetId = logoAssetId;
+        WelcomeMessage = string.IsNullOrWhiteSpace(welcomeMessage) ? null : welcomeMessage.Trim();
+
+        _courseCategories.Clear();
+        if (courseCategories is not null)
+            _courseCategories.AddRange(courseCategories.Select(c => c.Trim()).Where(c => c.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase));
+    }
 
     // ── Lifecycle (Section 15) ───────────────────────────────────────────────────
 

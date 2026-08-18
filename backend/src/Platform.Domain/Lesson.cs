@@ -151,6 +151,24 @@ public class Lesson
         Touch();
     }
 
+    /// <summary>
+    /// Brings an unpublished lesson back live on its existing CurrentRevision
+    /// — Unpublish (see its own remarks) never touched that revision, so
+    /// there is nothing to rewrite, just the visibility flag to flip back.
+    /// Distinct from PublishDraft, which needs an open DraftRevision: a
+    /// lesson that was simply unpublished (no edits since) has none.
+    /// </summary>
+    public void Republish()
+    {
+        if (Status != LessonStatus.Draft)
+            throw new InvalidOperationException("Only an unpublished lesson can be republished.");
+        if (CurrentRevision is null)
+            throw new InvalidOperationException("This lesson has never been published — publish a draft first.");
+
+        Status = LessonStatus.Published;
+        Touch();
+    }
+
     public void Archive()
     {
         if (Status == LessonStatus.Archived)

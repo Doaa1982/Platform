@@ -158,7 +158,7 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
                   onNavigate={onNavigate} />
             <Step done={activeMembers.length > 1 || pendingInvites.length > 0}
                   label={t("home.stepInvite")}
-                  action={{ text: t("home.invite"), to: "members" }}
+                  action={{ text: t("home.invite"), to: "members", opts: { membersTab: "create" } }}
                   onNavigate={onNavigate} />
           </ol>
         </>
@@ -253,7 +253,7 @@ function LiveBanner({ setup, t }) {
 
 function QuickActions({ isLive, onNavigate, t }) {
   const actions = [
-    { icon: UserPlus, label: t("home.invite"), color: CARD_COLORS.invites.icon, to: "members" },
+    { icon: UserPlus, label: t("home.invite"), color: CARD_COLORS.invites.icon, to: "members", opts: { membersTab: "create" } },
     { icon: BookOpen, label: t("home.quickAddProduct"), color: CARD_COLORS.teaching.icon, to: "products" },
     isLive
       ? { icon: Receipt, label: t("home.managePlan"), color: CARD_COLORS.learners.icon, to: "billing" }
@@ -262,7 +262,7 @@ function QuickActions({ isLive, onNavigate, t }) {
   return (
     <div className="lw-home__quickactions">
       {actions.map((a) => (
-        <button key={a.label} type="button" className="lw-home__quickaction" style={{ "--qa-color": a.color }} onClick={() => onNavigate(a.to)}>
+        <button key={a.label} type="button" className="lw-home__quickaction" style={{ "--qa-color": a.color }} onClick={() => onNavigate(a.to, a.opts)}>
           <span className="lw-home__quickactionicon"><a.icon size={20} /></span>
           {a.label}
         </button>
@@ -333,7 +333,7 @@ function Step({ done, label, action, onNavigate }) {
       <span className="lw-home__tick">{done ? <Check size={11} /> : <Circle size={7} />}</span>
       <span className="lw-home__steplabel">{label}</span>
       {!done && action && (
-        <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => onNavigate(action.to)}>
+        <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => onNavigate(action.to, action.opts)}>
           {action.text}
         </button>
       )}

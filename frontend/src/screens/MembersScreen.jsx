@@ -4,6 +4,7 @@ import {
   PauseCircle, PlayCircle, UserX, UserCheck, Plus, X, RefreshCw,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
+import QRCode from "qrcode";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
@@ -31,34 +32,47 @@ const GRANTABLE = ["Administrator", "Teacher", "AssistantTeacher", "Learner", "P
 const MEMBERS_PAGE_SIZE = 8;
 const INVITES_PAGE_SIZE = 8;
 
-export default function MembersScreen() {
+export default function MembersScreen({ initialTab }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
   const [requests, setRequests] = useState([]);
+  const [courseRequests, setCourseRequests] = useState([]);
+  const [setup, setSetup] = useState(null);
+  const [products, setProducts] = useState([]);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
-  const [memberSort, setMemberSort] = useState("name");
+  const [memberSort, setMemberSort] = useState("date");
   const [memberPage, setMemberPage] = useState(0);
   const [inviteSearch, setInviteSearch] = useState("");
-  const [inviteSort, setInviteSort] = useState("expiration");
+  const [inviteSort, setInviteSort] = useState("issued");
   const [invitePage, setInvitePage] = useState(0);
-  const [tab, setTab] = useState("current");
+  const [tab, setTab] = useState(initialTab || "current");
   // Bumped after a successful send to remount BulkInviteForm with fresh
   // state — the simplest way to make the tab look "just entered" again.
   const [createFormKey, setCreateFormKey] = useState(0);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+  // Which member row (if any) has its inline "enrol in a course" picker open.
+  const [enrollingId, setEnrollingId] = useState(null);
+  const [enrollProductId, setEnrollProductId] = useState("");
 
   const load = useCallback(
     () => Promise.all([
       api.getMembers(session.token, slug),
       // A member who cannot review simply has no queue — not an error
       api.getJoinRequests(session.token, slug).catch(() => []),
-    ]).then(([members, joins]) => { setData(members); setRequests(joins); setError(null); })
-      .catch((e) => setError(e.message)),
+      api.getCourseJoinRequests(session.token, slug).catch(() => []),
+      api.getSetup(session.token, slug).catch(() => null),
+      api.getProducts(session.token, slug).catch(() => null),
+    ]).then(([members, joins, courseJoins, setupResp, productsResp]) => {
+      setData(members); setRequests(joins); setCourseRequests(courseJoins); setSetup(setupResp);
+      setProducts(productsResp?.products ?? []);
+      setError(null);
+    }).catch((e) => setError(e.message)),
     [session.token, slug]);
 
   useEffect(() => {
@@ -66,12 +80,29 @@ export default function MembersScreen() {
     Promise.all([
       api.getMembers(session.token, slug),
       api.getJoinRequests(session.token, slug).catch(() => []),
-    ]).then(([members, joins]) => {
+      api.getCourseJoinRequests(session.token, slug).catch(() => []),
+      api.getSetup(session.token, slug).catch(() => null),
+      api.getProducts(session.token, slug).catch(() => null),
+    ]).then(([members, joins, courseJoins, setupResp, productsResp]) => {
       if (cancelled) return;
-      setData(members); setRequests(joins); setError(null);
+      setData(members); setRequests(joins); setCourseRequests(courseJoins); setSetup(setupResp);
+      setProducts(productsResp?.products ?? []);
+      setError(null);
     }).catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [session.token, slug]);
+
+  // The QR just re-encodes the same /join/{slug} link the card already
+  // shows — only worth generating while that link is actually reachable.
+  useEffect(() => {
+    if (!setup?.acceptsJoinRequests || !setup?.slug) return;
+    let cancelled = false;
+    const joinUrl = `${window.location.origin}/join/${setup.slug}`;
+    QRCode.toDataURL(joinUrl, { width: 176, margin: 1 })
+      .then((url) => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(null); });
+    return () => { cancelled = true; setQrDataUrl(null); };
+  }, [setup?.acceptsJoinRequests, setup?.slug]);
 
   /** `successMessage` may be a plain string, or a function of the resolved result
       for callers whose toast text depends on what the call returned (e.g. counts). */
@@ -109,8 +140,32 @@ export default function MembersScreen() {
     );
   }
 
-  const openInvites = data.invitations.filter((i) => i.isOpen);
+  // Sent or Expired only — an Accepted invitation is a Membership now (§10.1)
+  // and a Cancelled one is finished; neither belongs in this queue (§9).
+  const pendingInvites = data.invitations.filter((i) => i.status === "Sent" || i.status === "Expired");
   const pendingRequests = requests.filter((r) => r.status === "Submitted");
+  const pendingCourseRequests = courseRequests.filter((r) => r.status === "Submitted");
+  // Only a Published product is enrollable (§12.3) — same rule the enroll-time
+  // check enforces server-side. Open ones are excluded too: anyone can already
+  // get in there themselves the moment they open it (Enrollment auto-creates
+  // on first visit), so a manual Enroll action has nothing to do for those —
+  // only Invite-only and Approval-required courses need a tutor's hand. Kept
+  // together here since a tutor enrolling an existing member is a direct
+  // override either way (same underlying action as approving a course join
+  // request, just skipping the request).
+  const publishedProducts = products.filter((p) => p.status === "Published" && p.enrollmentMode !== "Open");
+  // Per-member: only courses this member still needs enrolling into — the
+  // picker has nothing to offer for one they're already enrolled in.
+  const enrollableProducts = (m) =>
+    publishedProducts.filter((p) => !m.enrolledCourses.some((c) => c.learningProductId === p.id));
+  // "Invite for a course" only pre-tags an intended course on the Invitation
+  // (ProvisioningService §12.3 — accepting never auto-enrolls, a tutor still
+  // enrols manually afterward). Approval-required is excluded here on purpose:
+  // a brand-new invitee isn't a Member yet and can't submit a course join
+  // request themselves, so pre-tagging one at invite time would let a tutor
+  // route around the "ask first" flow entirely — they can still enrol the
+  // member into it manually once they've joined, same as any other member.
+  const inviteCourseOptions = publishedProducts.filter((p) => p.enrollmentMode === "InvitationOnly");
 
   const memberQuery = memberSearch.trim().toLowerCase();
   const filteredMembers = data.members.filter((m) =>
@@ -119,7 +174,10 @@ export default function MembersScreen() {
     // The owner's row stays pinned first regardless of sort — it's the one
     // row whose available actions differ, so it should never be hunted for.
     if (a.isOwner !== b.isOwner) return a.isOwner ? -1 : 1;
-    return memberSort === "email" ? a.email.localeCompare(b.email) : a.fullName.localeCompare(b.fullName);
+    if (memberSort === "email") return a.email.localeCompare(b.email);
+    if (memberSort === "name") return a.fullName.localeCompare(b.fullName);
+    // "date" — the most recently created/updated member first
+    return new Date(b.createdAt) - new Date(a.createdAt);
   });
   const memberTotalPages = Math.max(1, Math.ceil(sortedMembers.length / MEMBERS_PAGE_SIZE));
   const currentMemberPage = Math.min(memberPage, memberTotalPages - 1);
@@ -127,10 +185,13 @@ export default function MembersScreen() {
     currentMemberPage * MEMBERS_PAGE_SIZE, (currentMemberPage + 1) * MEMBERS_PAGE_SIZE);
 
   const inviteQuery = inviteSearch.trim().toLowerCase();
-  const filteredInvites = openInvites.filter((i) => !inviteQuery || i.email.toLowerCase().includes(inviteQuery));
-  const sortedInvites = [...filteredInvites].sort((a, b) => inviteSort === "email"
-    ? a.email.localeCompare(b.email)
-    : new Date(a.expiresAt) - new Date(b.expiresAt));
+  const filteredInvites = pendingInvites.filter((i) => !inviteQuery || i.email.toLowerCase().includes(inviteQuery));
+  const sortedInvites = [...filteredInvites].sort((a, b) => {
+    if (inviteSort === "email") return a.email.localeCompare(b.email);
+    if (inviteSort === "expiration") return new Date(a.expiresAt) - new Date(b.expiresAt);
+    // "issued" — the most recently sent/resent invitation first
+    return new Date(b.issuedAt) - new Date(a.issuedAt);
+  });
   const inviteTotalPages = Math.max(1, Math.ceil(sortedInvites.length / INVITES_PAGE_SIZE));
   // Clamped rather than stored: if a reload/search/sort shrinks the list, the
   // page the user was on could otherwise point past the end.
@@ -164,6 +225,10 @@ export default function MembersScreen() {
             {t("members.tabCreate")}
           </button>
         )}
+        <button type="button" role="tab" aria-selected={tab === "join"}
+                className={tab === "join" ? "is-active" : ""} onClick={() => setTab("join")}>
+          {t("members.tabJoinLink")}
+        </button>
         <button type="button" className="lw-members__tabsrefresh" onClick={load} disabled={busy} aria-label={t("members.refresh")}>
           <RefreshCw size={13} />
         </button>
@@ -178,6 +243,7 @@ export default function MembersScreen() {
             sortValue={memberSort}
             onSortChange={(v) => { setMemberSort(v); setMemberPage(0); }}
             sortOptions={[
+              { value: "date", label: t("members.sortByDate") },
               { value: "name", label: t("members.sortByName") },
               { value: "email", label: t("members.sortByEmail") },
             ]}
@@ -219,6 +285,25 @@ export default function MembersScreen() {
                       />
                     )}
                   </div>
+
+                  {(m.enrolledCourses.length > 0 || (m.roles.includes("Learner") && m.pendingInvitedProductTitle)) && (
+                    <div className="lw-members__courses">
+                      {m.enrolledCourses.map((c) => (
+                        <span className="lw-members__course lw-members__course--enrolled" key={c.learningProductId}>
+                          {c.title}
+                        </span>
+                      ))}
+                      {/* Only a Learner can be enrolled, so this is only ever
+                          actionable (via the Enroll button below) for one —
+                          a non-Learner with a stray intended course from
+                          before a role change has nothing to act on. */}
+                      {m.roles.includes("Learner") && m.pendingInvitedProductTitle && (
+                        <span className="lw-members__course lw-members__course--pending">
+                          {t("members.awaitingEnrollment", { course: m.pendingInvitedProductTitle })}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <span className={`lw-members__status is-${m.status.toLowerCase()}`}>{statusLabel(t, m.status)}</span>
@@ -241,8 +326,37 @@ export default function MembersScreen() {
                         <PlayCircle size={12} /> {t("members.reinstate")}
                       </button>
                     )}
+                    {m.status === "Active" && m.roles.includes("Learner") && enrollableProducts(m).length > 0 && (
+                      enrollingId === m.membershipId ? (
+                        <span className="lw-members__enrollinline">
+                          <select value={enrollProductId} disabled={busy} autoFocus
+                                  onChange={(e) => setEnrollProductId(e.target.value)}>
+                            <option value="" disabled>{t("members.bulkCoursePlaceholder")}</option>
+                            {enrollableProducts(m).map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                          </select>
+                          <button disabled={busy || !enrollProductId}
+                                  onClick={() => run(
+                                    () => api.enrollMember(session.token, slug, m.membershipId, enrollProductId),
+                                    t("members.toastEnrolled", { name: m.fullName }))
+                                    .then(() => { setEnrollingId(null); setEnrollProductId(""); })}>
+                            <UserCheck size={12} /> {t("members.confirm")}
+                          </button>
+                          <button disabled={busy} onClick={() => { setEnrollingId(null); setEnrollProductId(""); }}>
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ) : (
+                        <button disabled={busy}
+                                onClick={() => { setEnrollingId(m.membershipId); setEnrollProductId(m.pendingInvitedProductId ?? ""); }}>
+                          <UserCheck size={12} /> {t("members.enroll")}
+                        </button>
+                      )
+                    )}
                     {!m.isOwner && m.status === "Active" && (
-                      <button disabled={busy} onClick={() => run(() => api.memberAction(session.token, slug, m.membershipId, "remove"), t("members.toastRemoved", { name: m.fullName }))}>
+                      <button disabled={busy} onClick={() => {
+                        if (!window.confirm(t("members.confirmRemove", { name: m.fullName }))) return;
+                        run(() => api.memberAction(session.token, slug, m.membershipId, "remove"), t("members.toastRemoved", { name: m.fullName }));
+                      }}>
                         <UserX size={12} /> {t("members.remove")}
                       </button>
                     )}
@@ -261,7 +375,7 @@ export default function MembersScreen() {
 
       {tab === "pending" && (
         <>
-          {pendingRequests.length === 0 && openInvites.length === 0 && (
+          {pendingRequests.length === 0 && pendingCourseRequests.length === 0 && pendingInvites.length === 0 && (
             <p className="lw-members__readonly">{t("members.pendingEmpty")}</p>
           )}
 
@@ -300,7 +414,41 @@ export default function MembersScreen() {
             </>
           )}
 
-          {openInvites.length > 0 && (
+          {/* Existing Members asking for one specific course, not the Workspace itself. */}
+          {pendingCourseRequests.length > 0 && (
+            <>
+              <h2 className="lw-sectiontitle">{t("members.courseRequestsToJoin")}</h2>
+              <div className="lw-members__list">
+                {pendingCourseRequests.map((r) => (
+                  <div className="lw-members__row" key={r.id}>
+                    <div className="lw-members__avatar is-request">{r.memberFullName.trim()[0]}</div>
+                    <div className="lw-members__who">
+                      <div className="lw-members__name">{r.memberFullName}</div>
+                      <div className="lw-members__email">
+                        {t("members.requestedAccessTo", { email: r.memberEmail, course: r.productTitle })}
+                      </div>
+                      {r.message && <div className="lw-members__msg">“{r.message}”</div>}
+                    </div>
+                    <span className="lw-members__status is-pending">{statusLabel(t, r.status)}</span>
+                    {data.canManage && (
+                      <div className="lw-members__actions">
+                        <button disabled={busy}
+                                onClick={() => run(() => api.decideCourseJoinRequest(session.token, slug, r.id, "approve"), t("members.toastCourseRequestApproved", { name: r.memberFullName }))}>
+                          <UserCheck size={12} /> {t("members.approve")}
+                        </button>
+                        <button disabled={busy}
+                                onClick={() => run(() => api.decideCourseJoinRequest(session.token, slug, r.id, "decline"), t("members.toastCourseRequestDeclined", { name: r.memberFullName }))}>
+                          <X size={12} /> {t("members.decline")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {pendingInvites.length > 0 && (
             <>
               <h2 className="lw-sectiontitle">{t("members.pendingInvitations")}</h2>
               <GridToolbar
@@ -310,6 +458,7 @@ export default function MembersScreen() {
                 sortValue={inviteSort}
                 onSortChange={(v) => { setInviteSort(v); setInvitePage(0); }}
                 sortOptions={[
+                  { value: "issued", label: t("members.sortByDate") },
                   { value: "expiration", label: t("members.sortByExpiration") },
                   { value: "email", label: t("members.sortByEmail") },
                 ]}
@@ -328,8 +477,28 @@ export default function MembersScreen() {
                       <div className="lw-members__email">
                         {t("members.invitedAs", { role: humanise(t, i.intendedRole), date: new Date(i.expiresAt).toLocaleDateString() })}
                       </div>
+                      {i.intendedLearningProductTitle && (
+                        <div className="lw-members__course">{t("members.invitedCourse", { course: i.intendedLearningProductTitle })}</div>
+                      )}
                     </div>
-                    <span className="lw-members__status is-pending">{statusLabel(t, i.status)}</span>
+                    <span className={`lw-members__status is-${i.status.toLowerCase()}`}>{statusLabel(t, i.status)}</span>
+
+                    {data.canManage && (
+                      <div className="lw-members__actions">
+                        {/* Resend is legal from Sent or Expired (§9) — both are exactly what's in this queue */}
+                        <button disabled={busy}
+                                onClick={() => run(() => api.resendMemberInvitation(session.token, slug, i.id), t("members.toastInvitationResent", { email: i.email }))}>
+                          <RefreshCw size={12} /> {t("members.resend")}
+                        </button>
+                        {/* Cancel is only legal before the invitation has ever lapsed (§9) */}
+                        {i.status === "Sent" && (
+                          <button disabled={busy}
+                                  onClick={() => run(() => api.cancelMemberInvitation(session.token, slug, i.id), t("members.toastInvitationCancelled", { email: i.email }))}>
+                            <X size={12} /> {t("members.cancel")}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -343,6 +512,7 @@ export default function MembersScreen() {
         <BulkInviteForm
           key={createFormKey}
           busy={busy}
+          publishedProducts={inviteCourseOptions}
           onSubmit={async (body) => {
             const res = await run(
               () => api.inviteMembersBulk(session.token, slug, body),
@@ -352,6 +522,41 @@ export default function MembersScreen() {
             if (res) setCreateFormKey((k) => k + 1);
           }}
         />
+      )}
+
+      {tab === "join" && setup && (
+        <div className={`lw-members__joinreq ${setup.acceptsJoinRequests ? "is-on" : ""}`}>
+          <div>
+            <div className="lw-members__joinreqtitle">
+              {setup.acceptsJoinRequests ? t("members.joinOpenTitle") : t("members.joinClosedTitle")}
+            </div>
+            <p>{setup.acceptsJoinRequests ? t("members.joinOpenBody") : t("members.joinClosedBody")}</p>
+          </div>
+          {setup.canManage && (
+            <button
+              className={`lw-btn ${setup.acceptsJoinRequests ? "lw-btn--ghost" : "lw-btn--accent"} lw-btn--sm`}
+              disabled={busy}
+              onClick={() => run(
+                () => api.setAcceptsJoinRequests(session.token, slug, !setup.acceptsJoinRequests),
+                setup.acceptsJoinRequests ? t("members.toastJoinRequestsOff") : t("members.toastJoinRequestsOn"),
+              )}
+            >
+              {busy
+                ? <LoaderCircle size={14} className="lw-members__spin" />
+                : setup.acceptsJoinRequests ? t("members.turnOff") : t("members.turnOn")}
+            </button>
+          )}
+
+          {qrDataUrl && (
+            <div className="lw-members__joinqr">
+              <img src={qrDataUrl} width={88} height={88} alt={`QR code linking to /join/${setup.slug}`} />
+              <div>
+                <div className="lw-members__joinqrlabel">{t("members.scanToJoin")}</div>
+                <code>{`${window.location.origin}/join/${setup.slug}`}</code>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -475,7 +680,7 @@ function normaliseRecipients(entries) {
   return { valid, invalidCount };
 }
 
-function BulkInviteForm({ onSubmit, busy }) {
+function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
   const { t } = useLanguage();
   const [mode, setMode] = useState("emails");
   const [role, setRole] = useState("Learner");
@@ -484,6 +689,10 @@ function BulkInviteForm({ onSubmit, busy }) {
   const [csvEntries, setCsvEntries] = useState([]);
   const [csvError, setCsvError] = useState(null);
   const fileInputRef = useRef(null);
+  // §12.3 "Invite + Enroll": one course applies to the whole batch, not per
+  // recipient. Nothing to offer if the workspace has no Published product yet.
+  const [enrollMode, setEnrollMode] = useState("workspace");
+  const [courseId, setCourseId] = useState("");
 
   const rawEntries = mode === "emails" ? splitEmailList(text) : csvEntries;
   const { valid, invalidCount } = normaliseRecipients(rawEntries);
@@ -512,12 +721,19 @@ function BulkInviteForm({ onSubmit, busy }) {
           role,
           source: mode === "emails" ? "EmailList" : "CsvImport",
           recipients: valid.map((v) => ({ email: v.email })),
+          intendedLearningProductId: enrollMode === "course" && courseId ? courseId : null,
         });
       }}
     >
       <label>
         <span>{t("members.role")}</span>
-        <select value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
+        <select value={role} onChange={(e) => {
+          const next = e.target.value;
+          setRole(next);
+          // Course intent only makes sense for a Learner — switching away
+          // clears it rather than silently carrying a course nobody will act on.
+          if (next !== "Learner") { setEnrollMode("workspace"); setCourseId(""); }
+        }} disabled={busy}>
           {GRANTABLE.map((r) => <option key={r} value={r}>{humanise(t, r)}</option>)}
         </select>
       </label>
@@ -535,6 +751,30 @@ function BulkInviteForm({ onSubmit, busy }) {
           </button>
         </div>
       </label>
+
+      {role === "Learner" && publishedProducts.length > 0 && (
+        <div className="lw-members__formrow">
+          <span>{t("members.bulkEnrollLabel")}</span>
+          <div className="lw-members__enroll">
+            <label className="lw-members__radio">
+              <input type="radio" name="enrollMode" checked={enrollMode === "workspace"} disabled={busy}
+                     onChange={() => setEnrollMode("workspace")} />
+              {t("members.bulkEnrollWorkspaceOnly")}
+            </label>
+            <label className="lw-members__radio">
+              <input type="radio" name="enrollMode" checked={enrollMode === "course"} disabled={busy}
+                     onChange={() => setEnrollMode("course")} />
+              {t("members.bulkEnrollInCourse")}
+            </label>
+            {enrollMode === "course" && (
+              <select value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={busy} autoFocus>
+                <option value="" disabled>{t("members.bulkCoursePlaceholder")}</option>
+                {publishedProducts.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+      )}
 
       {mode === "emails" ? (
         <label>
@@ -596,7 +836,8 @@ function BulkInviteForm({ onSubmit, busy }) {
       </div>
 
       <div className="lw-members__formactions">
-        <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || valid.length === 0}>
+        <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm"
+                disabled={busy || valid.length === 0 || (enrollMode === "course" && !courseId)}>
           {busy ? <LoaderCircle size={14} className="lw-members__spin" /> : t("members.bulkSend")}
         </button>
       </div>
@@ -728,6 +969,20 @@ const CSS = `
   .lw-members__modetoggle button + button { border-inline-start: 1px solid var(--line); }
   .lw-members__modetoggle button.is-active { background: var(--accent); color: #fff; }
 
+  .lw-members__enroll { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .lw-members__radio {
+    display: flex; align-items: center; gap: 7px; font-size: 0.85rem; color: var(--ink);
+    cursor: pointer;
+  }
+  .lw-members__radio input[type="radio"] {
+    width: auto; padding: 0; border: none; background: transparent; border-radius: 0;
+  }
+  .lw-members__enroll select {
+    font-family: var(--font-body); font-size: 0.85rem; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 7px 9px; margin-inline-start: 21px;
+  }
+
   .lw-members__templatelink {
     display: inline-flex; align-items: center; gap: 5px; margin-top: 8px;
     font-family: var(--font-body); font-size: 0.78rem; color: var(--ink-soft);
@@ -816,6 +1071,15 @@ const CSS = `
      break it — otherwise it overflows into the status pill/actions
      next to it instead of wrapping onto a second line. */
   .lw-members__email { font-size: 0.79rem; color: var(--ink-soft); margin-top: 2px; overflow-wrap: anywhere; }
+  .lw-members__course {
+    display: inline-flex; align-items: center; margin-top: 5px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--accent-2);
+    background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+    border-radius: 20px; padding: 2px 8px;
+  }
+  .lw-members__courses { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+  .lw-members__courses .lw-members__course { margin-top: 0; }
+  .lw-members__course--pending { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
   .lw-members__roles { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
   .lw-members__role {
     display: inline-flex; align-items: center; gap: 4px;
@@ -845,7 +1109,7 @@ const CSS = `
     background: var(--surface-2); color: var(--ink-soft);
   }
   .lw-members__status.is-active { background: color-mix(in srgb, var(--accent-2) 18%, transparent); color: var(--accent-2); }
-  .lw-members__status.is-suspended, .lw-members__status.is-pending { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+  .lw-members__status.is-suspended, .lw-members__status.is-pending, .lw-members__status.is-expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
 
   .lw-members__actions { display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; }
   .lw-members__actions button {
@@ -857,7 +1121,42 @@ const CSS = `
   .lw-members__actions button:hover:not(:disabled) { color: var(--ink); }
   .lw-members__actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+  .lw-members__enrollinline { display: inline-flex; align-items: center; gap: 5px; }
+  .lw-members__enrollinline select {
+    font-family: var(--font-body); font-size: 11px; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px;
+    max-width: 150px;
+  }
+  .lw-members__enrollinline button {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--font-body); font-size: 11px;
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer;
+  }
+  .lw-members__enrollinline button:hover:not(:disabled) { color: var(--ink); }
+  .lw-members__enrollinline button:disabled { opacity: 0.45; cursor: not-allowed; }
+
   .lw-members__readonly { font-size: 0.83rem; color: var(--ink-soft); margin-top: 18px; font-style: italic; }
+
+  .lw-members__joinreq {
+    display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 16px 18px;
+  }
+  .lw-members__joinreq.is-on {
+    background: color-mix(in srgb, var(--accent-2) 8%, transparent);
+    border-color: color-mix(in srgb, var(--accent-2) 35%, transparent);
+  }
+  .lw-members__joinreqtitle { font-weight: 600; font-size: 0.95rem; }
+  .lw-members__joinreq p { font-size: 0.83rem; color: var(--ink-soft); margin: 4px 0 0; max-width: 58ch; line-height: 1.55; }
+  .lw-members__joinqr {
+    display: flex; align-items: center; gap: 14px;
+    width: 100%; padding-top: 14px; margin-top: 4px;
+    border-top: 1px solid color-mix(in srgb, var(--accent-2) 25%, transparent);
+  }
+  .lw-members__joinqr img { border-radius: 8px; background: #fff; padding: 6px; border: 1px solid var(--line); flex-shrink: 0; }
+  .lw-members__joinqrlabel { font-size: 0.78rem; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
+  .lw-members__joinqr code { font-family: var(--font-mono); font-size: 0.82rem; word-break: break-all; }
 
   .lw-members__spin { animation: lwMemSpin 0.9s linear infinite; }
   @keyframes lwMemSpin { to { transform: rotate(360deg); } }

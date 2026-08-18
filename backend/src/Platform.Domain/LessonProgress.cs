@@ -7,9 +7,11 @@ namespace Platform.Domain;
 /// Identity). The full model leaves completion rules Curriculum-defined and
 /// explicitly open (§9, §16) — this implements one concrete rule rather than
 /// a general engine: a lesson completes once its video (if it has one) has
-/// been watched to the end and its Published assessment (if it has one, with
-/// questions) has a passing Submission. A lesson with neither completes as
-/// soon as it is opened.
+/// been watched to the end, its Published Interactive assessment (if it has
+/// one, with questions) has a passing Submission, and — independently,
+/// opt-in per lesson via RequireQuizToComplete — its Standalone quiz (if
+/// that flag is on and a quiz exists) also has a passing Submission. A
+/// lesson with none of those completes as soon as it is opened.
 /// </summary>
 public class LessonProgress
 {
@@ -61,18 +63,27 @@ public class LessonProgress
     public void MarkVideoWatched() => VideoWatched = true;
 
     /// <summary>
-    /// Re-evaluates completion against the one rule this app enforces. Safe
-    /// to call any time something could have satisfied it (video watched, a
-    /// Submission graded) — idempotent, and never un-completes a lesson.
+    /// Re-evaluates completion against the rules this app enforces. Safe to
+    /// call any time something could have satisfied one of them (video
+    /// watched, a Submission graded) — idempotent, and never un-completes a
+    /// lesson. The Interactive assessment (hasGradableAssessment /
+    /// hasPassingSubmission) and the Standalone quiz's RequireQuizToComplete
+    /// gate (requiresQuiz / quizPassed) are independent conditions — a tutor
+    /// may turn either on regardless of whether the lesson also has a video,
+    /// so both must hold, not just whichever one a given caller happened to
+    /// already have on hand.
     /// </summary>
-    public void RecomputeCompletion(bool hasVideo, bool hasGradableAssessment, bool hasPassingSubmission)
+    public void RecomputeCompletion(
+        bool hasVideo, bool hasGradableAssessment, bool hasPassingSubmission,
+        bool requiresQuiz = false, bool quizPassed = false)
     {
         if (Status == LessonProgressStatus.Completed) return;
 
         var videoSatisfied = !hasVideo || VideoWatched;
         var assessmentSatisfied = !hasGradableAssessment || hasPassingSubmission;
+        var quizSatisfied = !requiresQuiz || quizPassed;
 
-        if (videoSatisfied && assessmentSatisfied)
+        if (videoSatisfied && assessmentSatisfied && quizSatisfied)
         {
             Status = LessonProgressStatus.Completed;
             CompletedAt = DateTime.UtcNow;

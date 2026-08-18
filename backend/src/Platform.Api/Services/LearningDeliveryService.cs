@@ -34,12 +34,35 @@ public class LearningDeliveryService(
             .Where(p => p.WorkspaceId == ctx.Workspace!.Id && p.Status == LearningProductStatus.Published)
             .ToListAsync(ct);
 
+        // A plain Workspace Membership (e.g. from a join request) is not a
+        // ticket into every course — only Open ones are visible to browse on
+        // spec; an Invite-only one only shows once there is already an
+        // Enrollment, the same gate EnsureEnrolledAsync enforces when actually
+        // opening one. Approval-required is the one exception: it shows even
+        // unenrolled, so a Learner has something to request access to.
+        var enrolledProductIds = (await db.Enrollments.AsNoTracking()
+            .Where(e => e.WorkspaceId == ctx.Workspace!.Id && e.MembershipId == ctx.MembershipId)
+            .Select(e => e.LearningProductId)
+            .ToListAsync(ct)).ToHashSet();
+
+        var pendingRequestProductIds = (await db.CourseJoinRequests.AsNoTracking()
+            .Where(r => r.WorkspaceId == ctx.Workspace!.Id && r.MembershipId == ctx.MembershipId
+                     && r.Status == CourseJoinRequestStatus.Submitted)
+            .Select(r => r.LearningProductId)
+            .ToListAsync(ct)).ToHashSet();
+
         var rows = new List<LearnerProductRow>();
         foreach (var p in products)
         {
+            var isEnrolled = enrolledProductIds.Contains(p.Id);
+            if (p.EnrollmentMode == EnrollmentMode.InvitationOnly && !isEnrolled)
+                continue;
+
             var hasContent = await db.Curricula.AsNoTracking()
                 .AnyAsync(c => c.LearningProductId == p.Id && c.Status == CurriculumStatus.Published, ct);
-            rows.Add(new LearnerProductRow(p.Id, p.Title, p.Description, p.Category, hasContent));
+            rows.Add(new LearnerProductRow(
+                p.Id, p.Title, p.Description, p.Category, hasContent, p.CoverImageAssetId,
+                p.EnrollmentMode.ToString(), isEnrolled, pendingRequestProductIds.Contains(p.Id)));
         }
 
         return ProvisioningResult<LearnerProductListResponse>.Success(new LearnerProductListResponse(rows));
@@ -120,27 +143,41 @@ public class LearningDeliveryService(
             .Select(s => s.AssessmentId).Distinct()
             .CountAsync(ct);
 
-        // The lesson most recently begun that isn't finished yet — StartedAt
-        // is set once, the first time a lesson is opened, so this points at
-        // the newest thing the Learner started, not necessarily the last one
-        // they viewed (LessonProgress carries no "last viewed" timestamp).
-        var openProgress = await db.LessonProgresses.AsNoTracking()
+        // One "continue" entry per Enrollment, not just one overall — a
+        // Learner taking three courses at once should see all three, not
+        // just whichever they most recently touched. StartedAt is set once,
+        // the first time a lesson is opened, so within an Enrollment this
+        // still points at the newest thing begun there (LessonProgress
+        // carries no "last viewed" timestamp).
+        var openProgressRows = await db.LessonProgresses.AsNoTracking()
             .Where(p => enrollmentIds.Contains(p.EnrollmentId) && p.Status != LessonProgressStatus.Completed)
-            .OrderByDescending(p => p.StartedAt)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct);
 
-        LearnerContinueLearningRow? continueLearning = null;
-        if (openProgress is not null)
+        var latestOpenPerEnrollment = openProgressRows
+            .GroupBy(p => p.EnrollmentId)
+            .Select(g => g.OrderByDescending(p => p.StartedAt).First())
+            .OrderByDescending(p => p.StartedAt)
+            .ToList();
+
+        var continueLearning = new List<LearnerContinueLearningRow>();
+        foreach (var progress in latestOpenPerEnrollment)
         {
             var lesson = await db.Lessons.AsNoTracking()
-                .FirstOrDefaultAsync(l => l.Id == openProgress.LessonId && l.Status == LessonStatus.Published, ct);
-            if (lesson is not null)
-            {
-                var product = await db.LearningProducts.AsNoTracking()
-                    .FirstOrDefaultAsync(p => p.Id == lesson.LearningProductId, ct);
-                if (product is not null)
-                    continueLearning = new LearnerContinueLearningRow(product.Id, product.Title, lesson.Id, lesson.Title);
-            }
+                .FirstOrDefaultAsync(l => l.Id == progress.LessonId && l.Status == LessonStatus.Published, ct);
+            if (lesson is null) continue;
+
+            var product = await db.LearningProducts.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == lesson.LearningProductId, ct);
+            if (product is null) continue;
+
+            // Pinned to the revision this progress was started against (§20),
+            // same reasoning as the Time Invested figure above.
+            var revision = await db.Set<LessonRevision>().AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Id == progress.LessonRevisionId, ct);
+
+            continueLearning.Add(new LearnerContinueLearningRow(
+                product.Id, product.Title, product.CoverImageAssetId,
+                lesson.Id, lesson.Title, revision?.EstimatedMinutes));
         }
 
         return ProvisioningResult<LearnerStatsResponse>.Success(new LearnerStatsResponse(
@@ -161,8 +198,11 @@ public class LearningDeliveryService(
                                     && p.Status == LearningProductStatus.Published, ct);
         if (product is null) return Fail<LearnerCurriculumResponse>((ProvisioningError.NotFound, "No such product."));
 
-        // Opening a product's curriculum is the enrolment moment (Enrollment.cs remarks).
+        // Opening a product's curriculum is the enrolment moment (Enrollment.cs remarks) —
+        // but only for an Open product; Invite-only/Approval-required ones need a tutor's hand.
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, productId, ctx.MembershipId, ct);
+        if (enrollment is null)
+            return Fail<LearnerCurriculumResponse>((ProvisioningError.Forbidden, NotEnrolledMessage));
 
         var curriculum = await db.Curricula.Include(c => c.Units).ThenInclude(u => u.Lessons).AsNoTracking()
             .FirstOrDefaultAsync(c => c.LearningProductId == productId && c.Status == CurriculumStatus.Published, ct);
@@ -339,6 +379,8 @@ public class LearningDeliveryService(
         if (lesson is null) return Fail<LearnerLessonResponse>((ProvisioningError.NotFound, "No such lesson."));
 
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
+        if (enrollment is null)
+            return Fail<LearnerLessonResponse>((ProvisioningError.Forbidden, NotEnrolledMessage));
 
         if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
             return Fail<LearnerLessonResponse>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
@@ -449,6 +491,21 @@ public class LearningDeliveryService(
     }
 
     /// <summary>
+    /// Whether RequireQuizToComplete gates this revision's completion, and
+    /// whether that gate is currently satisfied — independent of the
+    /// video/Interactive-assessment condition, since a tutor may turn this on
+    /// regardless of whether the lesson also has a video (LessonProgress.
+    /// RecomputeCompletion treats them as separate requirements).
+    /// </summary>
+    private async Task<(bool requiresQuiz, bool quizPassed)> GetQuizGateAsync(
+        LessonRevision revision, Guid membershipId, CancellationToken ct)
+    {
+        if (!revision.RequireQuizToComplete) return (false, false);
+        var standalone = await LoadStandaloneSummaryAsync(revision.Id, membershipId, ct);
+        return (standalone is not null, standalone?.Passed == true);
+    }
+
+    /// <summary>
     /// The in-lesson AI Assistant (<see cref="LessonAssistantSkill"/>) — a
     /// learner's question, answered from this one lesson's own material
     /// only. Same resolve/enroll/lock/pin-to-progress-revision path as
@@ -471,6 +528,8 @@ public class LearningDeliveryService(
         if (lesson is null) return Fail<AskLessonAssistantResponse>((ProvisioningError.NotFound, "No such lesson."));
 
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
+        if (enrollment is null)
+            return Fail<AskLessonAssistantResponse>((ProvisioningError.Forbidden, NotEnrolledMessage));
 
         if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
             return Fail<AskLessonAssistantResponse>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
@@ -487,6 +546,10 @@ public class LearningDeliveryService(
     }
 
     private static readonly string[] ValidDifficulties = ["Easy", "Medium", "Hard"];
+
+    /// <summary>Shown wherever EnsureEnrolledAsync declines to auto-enrol — a plain Workspace Membership is not, by itself, a ticket into an Invite-only or Approval-required course.</summary>
+    private const string NotEnrolledMessage =
+        "This course is by invitation or approval, not open enrollment — ask your tutor to enrol you first.";
 
     /// <summary>
     /// The Studio "Quiz" output (<see cref="GenerateLessonQuizSkill"/>) — an
@@ -511,17 +574,20 @@ public class LearningDeliveryService(
         if (lesson is null) return Fail<GenerateLessonQuizResponse>((ProvisioningError.NotFound, "No such lesson."));
 
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
+        if (enrollment is null)
+            return Fail<GenerateLessonQuizResponse>((ProvisioningError.Forbidden, NotEnrolledMessage));
 
         if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
             return Fail<GenerateLessonQuizResponse>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
 
         var progress = await EnsureProgressAsync(enrollment.Id, lessonId, lesson.CurrentRevisionId!.Value, ct);
         var revision = lesson.Revisions.First(r => r.Id == progress.LessonRevisionId);
+        var outputLanguage = await GetLessonLanguageAsync(lesson.LearningProductId, ct);
 
         var questions = await generateLessonQuiz.GenerateAsync(
             revision.Title, revision.Body, revision.Transcript,
             revision.WhatYoullLearn, revision.LearningObjectives, revision.Glossary,
-            count, difficulty, request.Topic, ct);
+            count, difficulty, request.Topic, outputLanguage, ct);
 
         return ProvisioningResult<GenerateLessonQuizResponse>.Success(new GenerateLessonQuizResponse(questions));
     }
@@ -534,17 +600,20 @@ public class LearningDeliveryService(
         var ctx = await ResolveAsync(slug, caller, ct);
         if (ctx.Error is not null) return Fail<LearnerLessonResponse>(ctx.Error.Value);
 
-        var lesson = await db.Lessons.AsNoTracking()
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id
                                     && l.Status == LessonStatus.Published, ct);
         if (lesson is null) return Fail<LearnerLessonResponse>((ProvisioningError.NotFound, "No such lesson."));
 
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
+        if (enrollment is null)
+            return Fail<LearnerLessonResponse>((ProvisioningError.Forbidden, NotEnrolledMessage));
 
         if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
             return Fail<LearnerLessonResponse>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
 
         var progress = await EnsureProgressAsync(enrollment.Id, lessonId, lesson.CurrentRevisionId!.Value, ct);
+        var pinnedRevision = lesson.Revisions.First(r => r.Id == progress.LessonRevisionId);
 
         // Kind-scoped to Interactive — see GetLessonAsync's identical note.
         var assessment = await db.Assessments.Include(a => a.Questions).AsNoTracking()
@@ -553,8 +622,14 @@ public class LearningDeliveryService(
         var hasGradableAssessment = assessment is not null && assessment.Questions.Count > 0;
         var hasPassing = hasGradableAssessment && await HasPassingSubmissionAsync(assessment!.Id, ctx.MembershipId, ct);
 
+        // Independent of the video/Interactive check above — a video lesson
+        // with RequireQuizToComplete on must still wait on the Standalone
+        // quiz, not just the video (LearningDeliveryService's earlier bug:
+        // this gate used to only ever apply to video-less lessons).
+        var (requiresQuiz, quizPassed) = await GetQuizGateAsync(pinnedRevision, ctx.MembershipId, ct);
+
         progress.MarkVideoWatched();
-        progress.RecomputeCompletion(hasVideo: true, hasGradableAssessment, hasPassing);
+        progress.RecomputeCompletion(hasVideo: true, hasGradableAssessment, hasPassing, requiresQuiz, quizPassed);
         await db.SaveChangesAsync(ct);
 
         return await GetLessonAsync(slug, caller, lessonId, ct);
@@ -578,6 +653,8 @@ public class LearningDeliveryService(
         if (lesson is null) return Fail<PreviewResult>((ProvisioningError.NotFound, "No such lesson."));
 
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
+        if (enrollment is null)
+            return Fail<PreviewResult>((ProvisioningError.Forbidden, NotEnrolledMessage));
 
         if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
             return Fail<PreviewResult>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
@@ -605,7 +682,8 @@ public class LearningDeliveryService(
 
         var pinnedRevision = lesson.Revisions.First(r => r.Id == progress.LessonRevisionId);
         var hasVideo = pinnedRevision.VideoAssetId is not null || pinnedRevision.VideoUrl is not null;
-        progress.RecomputeCompletion(hasVideo, hasGradableAssessment: true, hasPassingSubmission: submission.Passed);
+        var (requiresQuiz, quizPassed) = await GetQuizGateAsync(pinnedRevision, ctx.MembershipId, ct);
+        progress.RecomputeCompletion(hasVideo, hasGradableAssessment: true, hasPassingSubmission: submission.Passed, requiresQuiz, quizPassed);
 
         await db.SaveChangesAsync(ct);
 
@@ -629,11 +707,13 @@ public class LearningDeliveryService(
     /// <summary>
     /// Grades and persists a real Submission against the lesson's Standalone
     /// quiz (see AssessmentKind) — same grading mechanics as
-    /// SubmitAssessmentAsync, but deliberately does not touch LessonProgress
-    /// at all: the Standalone quiz is a separate, optional graded activity,
-    /// not part of the lesson-completion rule (video watched + Interactive
-    /// assessment passed). A learner can pass or fail it any number of times
-    /// without affecting whether the lesson itself shows as Completed.
+    /// SubmitAssessmentAsync. By default the Standalone quiz is a separate,
+    /// optional graded activity that leaves LessonProgress untouched — a
+    /// learner can pass or fail it any number of times without affecting
+    /// whether the lesson itself shows as Completed. RequireQuizToComplete
+    /// (opt-in per lesson) changes that: passing it here becomes one of the
+    /// lesson's completion conditions, alongside (not instead of) its video
+    /// and Interactive assessment, if it has either.
     /// </summary>
     public async Task<ProvisioningResult<PreviewResult>> SubmitStandaloneAssessmentAsync(
         string slug, Guid caller, Guid lessonId, SubmitAnswersRequest request, CancellationToken ct = default)
@@ -647,6 +727,8 @@ public class LearningDeliveryService(
         if (lesson is null) return Fail<PreviewResult>((ProvisioningError.NotFound, "No such lesson."));
 
         var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
+        if (enrollment is null)
+            return Fail<PreviewResult>((ProvisioningError.Forbidden, NotEnrolledMessage));
 
         if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
             return Fail<PreviewResult>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
@@ -668,6 +750,21 @@ public class LearningDeliveryService(
 
         var byQuestion = request.Answers.ToDictionary(a => a.QuestionId, a => new SubmittedAnswer(a.SelectedOptionIndex, a.TextAnswer));
         var perQuestion = submission.Grade(assessment, byQuestion);
+
+        var pinnedRevision = lesson.Revisions.First(r => r.Id == progress.LessonRevisionId);
+        if (pinnedRevision.RequireQuizToComplete)
+        {
+            var hasVideo = pinnedRevision.VideoAssetId is not null || pinnedRevision.VideoUrl is not null;
+
+            // Kind-scoped to Interactive — see GetLessonAsync's identical note.
+            var interactive = await db.Assessments.Include(a => a.Questions).AsNoTracking()
+                .FirstOrDefaultAsync(a => a.LessonRevisionId == progress.LessonRevisionId
+                                        && a.Kind == AssessmentKind.Interactive && a.Status == AssessmentStatus.Published, ct);
+            var hasGradableAssessment = interactive is not null && interactive.Questions.Count > 0;
+            var hasPassingInteractive = hasGradableAssessment && await HasPassingSubmissionAsync(interactive!.Id, ctx.MembershipId, ct);
+
+            progress.RecomputeCompletion(hasVideo, hasGradableAssessment, hasPassingInteractive, requiresQuiz: true, quizPassed: submission.Passed);
+        }
 
         await db.SaveChangesAsync(ct);
 
@@ -701,6 +798,17 @@ public class LearningDeliveryService(
     /// to have finished. This is the actual enforcement; GetCurriculumAsync's
     /// per-lesson Locked flag is only a preview of it for the UI.
     /// </summary>
+    /// <summary>
+    /// The Learning Product's own configured language, passed to AI skills as
+    /// an explicit output-language instruction — see ContentStudioService's
+    /// identical helper for the full rationale.
+    /// </summary>
+    private Task<string?> GetLessonLanguageAsync(Guid learningProductId, CancellationToken ct) =>
+        db.LearningProducts.AsNoTracking()
+            .Where(p => p.Id == learningProductId)
+            .Select(p => p.DefaultLanguage)
+            .FirstOrDefaultAsync(ct);
+
     private async Task<bool> IsLessonLockedAsync(Guid learningProductId, Guid lessonId, Guid enrollmentId, CancellationToken ct)
     {
         var curriculum = await db.Curricula.Include(c => c.Units).ThenInclude(u => u.Lessons).AsNoTracking()
@@ -731,12 +839,25 @@ public class LearningDeliveryService(
     /// MembershipId) is what actually prevents the duplicate; this just
     /// means the loser of that race reads back the winner's row instead of
     /// surfacing a 500.
+    ///
+    /// Only auto-creates for an Open product (Learning Product Aggregate
+    /// Design §8's Enrollment Mode Hint) — a plain Workspace member with no
+    /// prior relationship to an Invite-only or Approval-required course must
+    /// not be able to grant themselves access just by opening its URL. Returns
+    /// null in that case; every caller must treat that as "no access" rather
+    /// than proceeding with a null Enrollment.
     /// </summary>
-    private async Task<Enrollment> EnsureEnrolledAsync(Guid workspaceId, Guid learningProductId, Guid membershipId, CancellationToken ct)
+    private async Task<Enrollment?> EnsureEnrolledAsync(Guid workspaceId, Guid learningProductId, Guid membershipId, CancellationToken ct)
     {
         var enrollment = await db.Enrollments
             .FirstOrDefaultAsync(e => e.LearningProductId == learningProductId && e.MembershipId == membershipId, ct);
         if (enrollment is not null) return enrollment;
+
+        var mode = await db.LearningProducts.AsNoTracking()
+            .Where(p => p.Id == learningProductId)
+            .Select(p => p.EnrollmentMode)
+            .FirstOrDefaultAsync(ct);
+        if (mode != EnrollmentMode.Open) return null;
 
         enrollment = Enrollment.Create(workspaceId, learningProductId, membershipId);
         db.Enrollments.Add(enrollment);

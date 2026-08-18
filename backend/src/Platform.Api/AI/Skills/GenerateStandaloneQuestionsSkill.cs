@@ -71,11 +71,15 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
     public async Task<IReadOnlyList<SuggestedStandaloneQuestion>> SuggestAsync(
         string lessonTitle, string? body, string? transcript,
         string? whatYoullLearn, string? learningObjectives, string? glossary,
-        int questionCount, CancellationToken ct = default)
+        int questionCount, string? outputLanguage, CancellationToken ct = default)
     {
         var truncatedTranscript = Truncate(transcript, MaxTranscriptChars);
 
-        var userPrompt = $"""
+        var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
+            ? ""
+            : $"Output language: {outputLanguage}\n\n";
+
+        var userPrompt = languageDirective + $"""
             Lesson: {lessonTitle}
 
             Lesson body:
