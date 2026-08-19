@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { useMediaQuery } from "usehooks-ts";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, Lock, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Users, Wand2, X
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, Lock, LogOut, Menu, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Users, Wand2, X
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -28,6 +29,21 @@ import ResourcesScreen from "./screens/ResourcesScreen";
 import AssessmentsOverviewScreen from "./screens/AssessmentsOverviewScreen";
 import LearnerAssessmentsScreen from "./screens/LearnerAssessmentsScreen";
 import * as api from "./api/client";
+
+/* Single breakpoint the app shell collapses at — shared between the JS
+   media-query check (drawer open/close logic) and the CSS block below, so
+   the two can never drift apart. Below this width the owner sidebar becomes
+   an off-canvas drawer instead of a static column. */
+const NAV_BREAKPOINT_PX = 1024;
+const NAV_BREAKPOINT_QUERY = `(max-width: ${NAV_BREAKPOINT_PX}px)`;
+
+/* AccountBar packs a lot in one row (nav links or workspace name, language
+   toggle, theme toggle, bell, account name, sign out) — plain CSS wrapping
+   left it splitting into two visually disjointed rows well before a phone's
+   actual width runs out. This is the point it switches to compact labels
+   (icons/initials instead of full text) to stay one row instead. */
+const ACCOUNTBAR_COMPACT_PX = 640;
+const ACCOUNTBAR_COMPACT_QUERY = `(max-width: ${ACCOUNTBAR_COMPACT_PX}px)`;
 
 /* =========================================================================
    TOKEN SYSTEMS — one per Academy (Learning Workspace).
@@ -340,9 +356,13 @@ function NotificationBell() {
   );
 }
 
-function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
+function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile, onToggleNav }) {
   const { me, side, workspace, workspaces, eligibleWorkspaces, leaveWorkspace, signOut } = useAuth();
   const { t } = useLanguage();
+  // Below this, full labels (workspace roles, account name, "Sign out" text)
+  // give way to icons/initials so the bar stays one row instead of visibly
+  // splitting into two — see ACCOUNTBAR_COMPACT_PX's own comment.
+  const compact = useMediaQuery(ACCOUNTBAR_COMPACT_QUERY);
   if (!workspace) return null;
 
   const otherKey = side === "teach" ? "learn" : "teach";
@@ -358,37 +378,53 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
 
   return (
     <div className="lw-accountbar" style={{ "--side-accent": config.login.accent }}>
+      {/* Opens the off-canvas sidebar drawer — CSS hides this above
+          NAV_BREAKPOINT_PX, where the sidebar is a static column instead. */}
+      {onToggleNav && (
+        <button className="lw-accountbar__hamburger" onClick={onToggleNav} aria-label={t("nav.toggleMenu")}>
+          <Menu size={18} />
+        </button>
+      )}
       {/* TEACHING/LEARNING side pill hidden for now. */}
       {role === "owner" && (
         <>
           <span className="lw-accountbar__ws">
             <Building2 size={13} /> {workspace.name}
           </span>
-          <span className="lw-accountbar__roles">
-            {workspace.roles.map((r) => (
-              <span className="lw-accountbar__role" key={r}>{r.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>
-            ))}
-          </span>
+          {/* Repeated on the person's own row in the sidebar (now behind the
+              hamburger at this width) — secondary enough to drop first. */}
+          {!compact && (
+            <span className="lw-accountbar__roles">
+              {workspace.roles.map((r) => (
+                <span className="lw-accountbar__role" key={r}>{r.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>
+              ))}
+            </span>
+          )}
         </>
       )}
       {/* The workspace's own name/branding already reads immediately below,
           in AcademyHeader's banner — repeating it here would just be the
           same claim twice. Primary navigation lives here instead. */}
-      {role === "learner" && <LearnerTopNav screen={screen} onNavigate={onNavigate} aiLabel={aiLabel} />}
+      {role === "learner" && <LearnerTopNav screen={screen} onNavigate={onNavigate} aiLabel={aiLabel} compact={compact} />}
       <span className="lw-accountbar__spacer" />
-      <LanguageToggle />
+      <LanguageToggle compact={compact} />
       <ThemeToggle />
       <NotificationBell />
-      <button className="lw-accountbar__who" onClick={onOpenProfile}>{me?.fullName}</button>
+      <button className="lw-accountbar__who" onClick={onOpenProfile} aria-label={me?.fullName}>
+        {compact ? <span className="lw-accountbar__avatar">{(me?.fullName || "?").trim()[0]}</span> : me?.fullName}
+      </button>
       {canSwitchSide && (
-        <button onClick={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}>
-          <ArrowLeftRight size={12} /> {t(`sides.${otherKey}.label`)}
+        <button onClick={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}
+                aria-label={t(`sides.${otherKey}.label`)}>
+          <ArrowLeftRight size={12} /> {!compact && t(`sides.${otherKey}.label`)}
         </button>
       )}
       {eligibleWorkspaces.length > 1 && (
         <button onClick={leaveWorkspace}>{t("accountbar.switchWorkspace")}</button>
       )}
-      <button onClick={signOut}>{t("accountbar.signOut")}</button>
+      <button onClick={signOut} aria-label={t("accountbar.signOut")}>
+        <LogOut size={12} /> {!compact && t("accountbar.signOut")}
+      </button>
     </div>
   );
 }
@@ -397,7 +433,7 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile }) {
    Certificates, Schedule, Messages, Community, AI) behind "More" — keeps the
    top bar uncluttered while still giving every section a reachable home,
    now that the left sidebar is reserved for in-lesson Course content. */
-function LearnerTopNav({ screen, onNavigate, aiLabel }) {
+function LearnerTopNav({ screen, onNavigate, aiLabel, compact }) {
   const { t } = useLanguage();
   const [moreOpen, setMoreOpen] = useState(false);
   const primary = LEARNER_NAV.filter((it) => PRIMARY_LEARNER_NAV.includes(it.id));
@@ -406,21 +442,25 @@ function LearnerTopNav({ screen, onNavigate, aiLabel }) {
 
   return (
     <span className="lw-accountbar__navlinks">
-      {primary.map((it) => (
-        <button
-          key={it.id}
-          className={`lw-accountbar__navlink ${screen === it.id ? "is-active" : ""}`}
-          onClick={() => onNavigate(it.id)}
-        >
-          {it.id === "courses" ? t("learnerNav.myLearnings") : t(it.labelKey)}
-        </button>
-      ))}
+      {primary.map((it) => {
+        const label = it.id === "courses" ? t("learnerNav.myLearnings") : t(it.labelKey);
+        return (
+          <button
+            key={it.id}
+            className={`lw-accountbar__navlink ${screen === it.id ? "is-active" : ""}`}
+            onClick={() => onNavigate(it.id)}
+            aria-label={label}
+          >
+            {compact ? <it.icon size={16} /> : label}
+          </button>
+        );
+      })}
       <span className="lw-accountbar__more">
         <button
           className={`lw-accountbar__navlink ${moreActive ? "is-active" : ""}`}
           onClick={() => setMoreOpen((v) => !v)}
         >
-          {t("learnerNav.more")} <ChevronDown size={12} />
+          {compact ? <ChevronDown size={14} /> : <>{t("learnerNav.more")} <ChevronDown size={12} /></>}
         </button>
         {moreOpen && (
           <>
@@ -526,10 +566,10 @@ const OWNER_NAV = [
    top bar (LearnerTopNav) and its left-sidebar slot is reserved for the
    in-lesson Course content menu (LessonSidebar) while viewing a lesson,
    and empty everywhere else. */
-function Nav({ c, screen, setScreen, personName, personRole }) {
+function Nav({ c, screen, setScreen, personName, personRole, open }) {
   const { t } = useLanguage();
   return (
-    <div className="lw-nav">
+    <div className={`lw-nav ${open ? "is-open" : ""}`}>
       <div className="lw-nav__brand">
         <BrandMark c={c} size={34} />
         <div>
@@ -721,6 +761,17 @@ export default function App() {
 
   const [learnerScreen, setLearnerScreen] = useState("dashboard");
   const [ownerScreen, setOwnerScreen] = useState("overview");
+  // The owner sidebar as an off-canvas drawer below NAV_BREAKPOINT_PX.
+  // navOpen alone doesn't decide anything visible — it's always gated by
+  // isNarrow at the point of use, so a stale `true` left over from a resize
+  // can never make the drawer (or its backdrop) appear at desktop width.
+  const isNarrow = useMediaQuery(NAV_BREAKPOINT_QUERY);
+  const [navOpen, setNavOpen] = useState(false);
+  const navDrawerOpen = navOpen && isNarrow;
+  useEffect(() => {
+    document.body.style.overflow = navDrawerOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [navDrawerOpen]);
   // Which tab Members should land on next time it mounts — set by
   // navigation actions elsewhere (e.g. the dashboard's "Invite" quick
   // action) that mean "go straight to Create Invitation", not just "Members".
@@ -812,6 +863,7 @@ export default function App() {
     // an earlier Invite action.
     setMembersInitialTab(opts?.membersTab ?? null);
     if (id === "members") setMembersKey((k) => k + 1);
+    setNavOpen(false);
   }
   function goToLearnerScreen(id) { setLearnerProductId(null); setLearnerLessonId(null); setLearnerScreen(id); }
 
@@ -819,16 +871,21 @@ export default function App() {
     <div className={`lw-root lw-root--${role}`} style={theme}>
       <style>{CSS}</style>
       <AccountBar role={role} screen={learnerScreen} onNavigate={goToLearnerScreen} aiLabel={c.aiName || t("learnerNav.ai")}
-        onOpenProfile={() => setProfileOpen(true)} />
+        onOpenProfile={() => setProfileOpen(true)}
+        onToggleNav={role === "owner" ? () => setNavOpen((v) => !v) : null} />
       {/* The academy switcher and workspace wizard are gone: they moved between
           two fictional academies, which cannot coexist with a real signed-in
           workspace. */}
       {role === "learner" && <AcademyHeader c={c} />}
       <div className="lw-shell">
+        {role === "owner" && navDrawerOpen && (
+          <div className="lw-navbackdrop" onClick={() => setNavOpen(false)} />
+        )}
         {role === "owner" && (
           <Nav c={c} screen={activeNavScreen}
             personName={personName} personRole={personRole}
-            setScreen={goToOwnerScreen} />
+            setScreen={goToOwnerScreen}
+            open={navDrawerOpen} />
         )}
         {/* Nothing occupies this slot for a Learner outside a lesson — primary
             navigation lives in the top bar (AccountBar/LearnerTopNav) now. */}
@@ -995,6 +1052,12 @@ const CSS = `
     background: transparent; border: 1px solid transparent; color: var(--ink-soft); padding: 4px 6px;
   }
   .lw-accountbar .lw-accountbar__who:hover { color: var(--bar-ink); border-color: var(--bar-line); }
+  .lw-accountbar__avatar {
+    display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-family: var(--font-display); font-weight: 600; font-size: 0.75rem;
+  }
 
   .lw-accountbar__navlinks { display: inline-flex; align-items: center; gap: 4px; }
   .lw-accountbar .lw-accountbar__navlink { border-color: transparent; }
@@ -1015,6 +1078,17 @@ const CSS = `
   .lw-accountbar__moreitem svg { color: var(--ink-soft); flex-shrink: 0; }
   .lw-accountbar .lw-accountbar__moreitem:hover { background: var(--bar-hover-bg); border-color: transparent; }
   .lw-accountbar .lw-accountbar__moreitem.is-active { background: var(--bar-active-bg); color: var(--bar-active-ink); border-color: transparent; }
+
+  /* The icon-only swaps above (compact prop) get everything down to one row
+     at ordinary phone widths, but a long workspace name or the container's
+     own desktop-sized gaps/padding can still be the last straw at the
+     narrowest ones — this trims exactly those, on the same breakpoint. */
+  @media (max-width: ${ACCOUNTBAR_COMPACT_PX}px) {
+    .lw-accountbar { gap: 5px; padding: 6px 10px; }
+    .lw-accountbar button { gap: 3px; padding: 4px 7px; }
+    .lw-accountbar__ws { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lw-accountbar__ws svg { flex-shrink: 0; }
+  }
 
   .lw-notifbell { position: relative; }
   .lw-accountbar .lw-notifbell__trigger {
@@ -1129,6 +1203,33 @@ const CSS = `
   .lw-nav__avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-2); color: var(--on-accent-2, #fff); display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 600; flex-shrink: 0; }
   .lw-nav__personname { font-size: 0.8rem; font-weight: 600; }
   .lw-nav__personrole { font-size: 0.7rem; opacity: 0.6; }
+
+  /* Opens the sidebar drawer below NAV_BREAKPOINT_PX — CSS-hidden above it,
+     where .lw-nav is back to a static column and there's nothing to toggle. */
+  .lw-accountbar button.lw-accountbar__hamburger { display: none; }
+  .lw-navbackdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 45; }
+
+  @media (max-width: ${NAV_BREAKPOINT_PX}px) {
+    .lw-accountbar button.lw-accountbar__hamburger { display: inline-flex; }
+    .lw-nav {
+      position: fixed; top: 0; bottom: 0; inset-inline-start: 0; z-index: 50;
+      transform: translateX(-100%); transition: transform .25s ease;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.28);
+    }
+    [dir="rtl"] .lw-nav { transform: translateX(100%); }
+    .lw-nav.is-open { transform: translateX(0); }
+    .lw-content { padding: 20px 18px 40px; }
+    /* The margin rule (.lw-content::before, desktop default 34px) sits inside
+       this narrower padding otherwise, putting it mid-content instead of in
+       the gutter — pull it in to match. */
+    .lw-root--learner .lw-content::before { inset-inline-start: 10px; }
+    /* The in-lesson Learner sidebar has the same fixed-width problem as
+       .lw-nav, but it's a content menu, not primary chrome — stacking it
+       above the lesson instead of a second off-canvas drawer keeps this
+       simple. */
+    .lw-shell:has(.lw-lessonnav) { flex-direction: column; }
+    .lw-lessonnav { width: 100%; max-height: 220px; border-inline-end: none; border-bottom: 1px solid var(--line); }
+  }
 
   /* The Learner side's left-sidebar slot, in-lesson only — fills the same
      .lw-shell column Nav does for the owner side, but light (a distinct

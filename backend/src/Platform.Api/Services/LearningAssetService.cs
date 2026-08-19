@@ -35,6 +35,12 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
         {
             if (!contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
                 return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "Only video files can be uploaded as a lesson's video today."));
+            // Image/Resource both had this friendly check already — Video was
+            // relying solely on the controller's [RequestSizeLimit] to reject
+            // an oversized file, which returns a bare 413 instead of this
+            // same on-brand message.
+            if (length > MaxResourceBytes)
+                return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "A video file cannot be larger than 500MB."));
         }
         else if (category == LearningAssetCategory.Image)
         {

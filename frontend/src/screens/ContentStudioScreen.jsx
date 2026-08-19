@@ -1650,6 +1650,9 @@ function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onC
    checkpoints against this video's own timeline.
    ========================================================================= */
 
+/** Matches LearningAssetService.MaxResourceBytes on the backend. */
+const MAX_VIDEO_BYTES = 500_000_000;
+
 function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempted, onChanged, onDurationKnown, onRequestNewVersion, transcript, setTranscript }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
@@ -1699,6 +1702,12 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
 
   async function handleFile(file) {
     if (!file) return;
+    // Matches LearningAssetService.MaxResourceBytes — fails fast instead of
+    // spending minutes uploading a file the server was always going to reject.
+    if (file.size > MAX_VIDEO_BYTES) {
+      setError(t("studio.videoTooLarge"));
+      return;
+    }
     setUploading(true);
     setProgress(0);
     setError(null);

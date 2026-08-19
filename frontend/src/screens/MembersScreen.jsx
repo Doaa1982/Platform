@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Toaster, toast } from "sonner";
 import {
   LoaderCircle, Crown, UploadCloud, Download, Search,
   PauseCircle, PlayCircle, UserX, UserCheck, Plus, X, RefreshCw,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Mail, Inbox, GraduationCap, Users,
 } from "lucide-react";
 import QRCode from "qrcode";
 import * as api from "../api/client";
@@ -42,9 +43,15 @@ export default function MembersScreen({ initialTab }) {
   const [courseRequests, setCourseRequests] = useState([]);
   const [setup, setSetup] = useState(null);
   const [products, setProducts] = useState([]);
+  // Only ever set by the initial load — a page that never had anything to
+  // show still needs a blocking message. Once `data` exists, run()/load()
+  // failures go to a toast instead (see run() below): stale-but-valid
+  // content stays on screen rather than being replaced by an error.
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
+  // The last bulk-invite submission's per-recipient breakdown, shown above
+  // the form until dismissed or the next submission replaces it.
+  const [bulkResult, setBulkResult] = useState(null);
   const [memberSearch, setMemberSearch] = useState("");
   const [memberSort, setMemberSort] = useState("date");
   const [memberPage, setMemberPage] = useState(0);
@@ -71,8 +78,7 @@ export default function MembersScreen({ initialTab }) {
     ]).then(([members, joins, courseJoins, setupResp, productsResp]) => {
       setData(members); setRequests(joins); setCourseRequests(courseJoins); setSetup(setupResp);
       setProducts(productsResp?.products ?? []);
-      setError(null);
-    }).catch((e) => setError(e.message)),
+    }).catch((e) => toast.error(e.message)),
     [session.token, slug]);
 
   useEffect(() => {
@@ -108,16 +114,14 @@ export default function MembersScreen({ initialTab }) {
       for callers whose toast text depends on what the call returned (e.g. counts). */
   async function run(fn, successMessage) {
     setBusy(true);
-    setError(null);
-    setSuccess(null);
     try {
       const result = await fn();
       const message = typeof successMessage === "function" ? successMessage(result) : successMessage;
-      if (message) setSuccess(message);
+      if (message) toast.success(message);
       await load();
       return result;
     } catch (e) {
-      setError(e.message);
+      toast.error(e.message);
       return null;
     } finally {
       setBusy(false);
@@ -202,13 +206,16 @@ export default function MembersScreen({ initialTab }) {
   return (
     <div className="lw-page">
       <style>{CSS}</style>
+      {/* Sonner portals to document.body, outside .lw-root where this
+          workspace's theme tokens live as inline custom properties — richColors
+          uses its own built-in palette instead of var(--accent) etc. for the
+          same reason Message.jsx hardcodes its own colors (it must render
+          correctly regardless of what's around it). */}
+      <Toaster position="top-right" richColors closeButton />
 
       <div className="lw-eyebrow">{t("members.eyebrow")}</div>
       <h1>{t("members.title")}</h1>
       <p className="lw-sub">{t("members.lead", { workspace: data.workspaceName })}</p>
-
-      {error && <Message type="error">{error}</Message>}
-      {success && <Message type="success">{success}</Message>}
 
       <div className="lw-members__tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "current"}
@@ -376,7 +383,11 @@ export default function MembersScreen({ initialTab }) {
       {tab === "pending" && (
         <>
           {pendingRequests.length === 0 && pendingCourseRequests.length === 0 && pendingInvites.length === 0 && (
-            <p className="lw-members__readonly">{t("members.pendingEmpty")}</p>
+            <div className="lw-members__empty">
+              <Inbox size={26} />
+              <h2>{t("members.pendingEmpty")}</h2>
+              <p>{t("members.pendingEmptyBody")}</p>
+            </div>
           )}
 
           {/* People who asked to get in, rather than being asked. Placed above
@@ -471,7 +482,7 @@ export default function MembersScreen({ initialTab }) {
               <div className="lw-members__grid">
                 {pagedInvites.map((i) => (
                   <div className="lw-members__row" key={i.id}>
-                    <div className="lw-members__avatar is-pending">?</div>
+                    <div className="lw-members__avatar is-pending"><Mail size={16} /></div>
                     <div className="lw-members__who">
                       <div className="lw-members__name">{i.email}</div>
                       <div className="lw-members__email">
@@ -509,19 +520,23 @@ export default function MembersScreen({ initialTab }) {
       )}
 
       {tab === "create" && data.canManage && (
-        <BulkInviteForm
-          key={createFormKey}
-          busy={busy}
-          publishedProducts={inviteCourseOptions}
-          onSubmit={async (body) => {
-            const res = await run(
-              () => api.inviteMembersBulk(session.token, slug, body),
-              (result) => t("members.bulkResultSummary", { issued: result.issuedCount, skipped: result.skippedCount }));
-            // Success or failure both land in the toast (Message component
-            // above); on success the form resets to a blank slate via remount.
-            if (res) setCreateFormKey((k) => k + 1);
-          }}
-        />
+        <>
+          <BulkInviteResult result={bulkResult} onDismiss={() => setBulkResult(null)} />
+          <BulkInviteForm
+            key={createFormKey}
+            busy={busy}
+            publishedProducts={inviteCourseOptions}
+            onSubmit={async (body) => {
+              const res = await run(
+                () => api.inviteMembersBulk(session.token, slug, body),
+                (result) => t("members.bulkResultSummary", { issued: result.issuedCount, skipped: result.skippedCount }));
+              // Toast covers the summary; the per-recipient breakdown (who was
+              // actually issued vs skipped, and why) is the thing a toast is
+              // too small to show, so it goes into its own panel instead.
+              if (res) { setCreateFormKey((k) => k + 1); setBulkResult(res); }
+            }}
+          />
+        </>
       )}
 
       {tab === "join" && setup && (
@@ -725,6 +740,7 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
         });
       }}
     >
+      <div className="lw-members__formsection"><UserCheck size={13} /> {t("members.bulkSectionWho")}</div>
       <label>
         <span>{t("members.role")}</span>
         <select value={role} onChange={(e) => {
@@ -738,6 +754,7 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
         </select>
       </label>
 
+      <div className="lw-members__formsection"><Mail size={13} /> {t("members.bulkSectionHow")}</div>
       <label>
         <span />
         <div className="lw-members__modetoggle">
@@ -753,29 +770,33 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
       </label>
 
       {role === "Learner" && publishedProducts.length > 0 && (
-        <div className="lw-members__formrow">
-          <span>{t("members.bulkEnrollLabel")}</span>
-          <div className="lw-members__enroll">
-            <label className="lw-members__radio">
-              <input type="radio" name="enrollMode" checked={enrollMode === "workspace"} disabled={busy}
-                     onChange={() => setEnrollMode("workspace")} />
-              {t("members.bulkEnrollWorkspaceOnly")}
-            </label>
-            <label className="lw-members__radio">
-              <input type="radio" name="enrollMode" checked={enrollMode === "course"} disabled={busy}
-                     onChange={() => setEnrollMode("course")} />
-              {t("members.bulkEnrollInCourse")}
-            </label>
-            {enrollMode === "course" && (
-              <select value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={busy} autoFocus>
-                <option value="" disabled>{t("members.bulkCoursePlaceholder")}</option>
-                {publishedProducts.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-              </select>
-            )}
+        <>
+          <div className="lw-members__formsection"><GraduationCap size={13} /> {t("members.bulkSectionEnrollment")}</div>
+          <div className="lw-members__formrow">
+            <span>{t("members.bulkEnrollLabel")}</span>
+            <div className="lw-members__enroll">
+              <label className="lw-members__radio">
+                <input type="radio" name="enrollMode" checked={enrollMode === "workspace"} disabled={busy}
+                       onChange={() => setEnrollMode("workspace")} />
+                {t("members.bulkEnrollWorkspaceOnly")}
+              </label>
+              <label className="lw-members__radio">
+                <input type="radio" name="enrollMode" checked={enrollMode === "course"} disabled={busy}
+                       onChange={() => setEnrollMode("course")} />
+                {t("members.bulkEnrollInCourse")}
+              </label>
+              {enrollMode === "course" && (
+                <select value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={busy} autoFocus>
+                  <option value="" disabled>{t("members.bulkCoursePlaceholder")}</option>
+                  {publishedProducts.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
+      <div className="lw-members__formsection"><Users size={13} /> {t("members.bulkSectionRecipients")}</div>
       {mode === "emails" ? (
         <label>
           <span>{t("members.bulkEmailsLabel")}</span>
@@ -842,6 +863,42 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Per-recipient breakdown of the last bulk-invite submission — who was
+ * actually issued an invitation vs skipped, and why. The success toast
+ * covers "18 issued · 2 skipped"; this is the answer to the follow-up
+ * question a tutor would then have, "okay, but which two?"
+ */
+function BulkInviteResult({ result, onDismiss }) {
+  const { t } = useLanguage();
+  if (!result) return null;
+
+  return (
+    <div className="lw-members__bulkresult">
+      <div className="lw-members__bulkresulthead">
+        <span>{t("members.bulkResultSummary", { issued: result.issuedCount, skipped: result.skippedCount })}</span>
+        <button type="button" onClick={onDismiss} aria-label={t("members.bulkResultDismiss")}><X size={13} /></button>
+      </div>
+      <div className="lw-members__list">
+        {result.results.map((r) => (
+          <div className="lw-members__row lw-members__row--compact" key={r.email}>
+            <div className={`lw-members__avatar ${r.outcome === "issued" ? "" : "is-pending"}`}>
+              {r.outcome === "issued" ? <Mail size={14} /> : <X size={14} />}
+            </div>
+            <div className="lw-members__who">
+              <div className="lw-members__name">{r.email}</div>
+              {r.reason && <div className="lw-members__email">{r.reason}</div>}
+            </div>
+            <span className={`lw-members__status ${r.outcome === "issued" ? "is-active" : "is-suspended"}`}>
+              {r.outcome === "issued" ? t("members.bulkOutcomeIssued") : t("members.bulkOutcomeSkipped")}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1137,6 +1194,44 @@ const CSS = `
   .lw-members__enrollinline button:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .lw-members__readonly { font-size: 0.83rem; color: var(--ink-soft); margin-top: 18px; font-style: italic; }
+
+  /* Same dashed-card empty-state pattern as ProductsScreen's .lw-prod__empty
+     — reused rather than reinvented, so "nothing here yet" reads the same
+     across screens. */
+  .lw-members__empty {
+    text-align: center; color: var(--ink-soft);
+    background: var(--surface); border: 1px dashed var(--line);
+    border-radius: var(--radius-sm); padding: 40px 26px;
+  }
+  .lw-members__empty h2 { font-family: var(--font-display); font-size: 1.1rem; color: var(--ink); margin: 12px 0 8px; }
+  .lw-members__empty p { font-size: 0.88rem; max-width: 46ch; margin: 0 auto; line-height: 1.6; }
+
+  /* Groups the Create Invitation form's fields (Who / How / Enrollment /
+     Recipients) without breaking the label-left/value-right grid the fields
+     themselves rely on — this spans both grid columns instead of nesting. */
+  .lw-members__formsection {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--ink-soft); margin-top: 6px;
+  }
+  .lw-members__formsection:first-child { margin-top: 0; }
+  .lw-members__formsection svg { color: var(--accent-2); flex-shrink: 0; }
+
+  .lw-members__bulkresult {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 14px; margin-bottom: 16px;
+  }
+  .lw-members__bulkresulthead {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-size: 0.85rem; font-weight: 600; margin-bottom: 10px;
+  }
+  .lw-members__bulkresulthead button {
+    display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
+  }
+  .lw-members__bulkresulthead button:hover { color: var(--ink); }
+  .lw-members__row--compact { padding: 8px 12px; }
 
   .lw-members__joinreq {
     display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;

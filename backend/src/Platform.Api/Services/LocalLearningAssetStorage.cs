@@ -7,6 +7,17 @@ namespace Platform.Api.Services;
 /// restarts without taking on a cloud storage dependency the project hasn't
 /// adopted. ObjectKey is workspace-scoped so a listing or bulk-delete by
 /// Workspace stays a directory operation.
+///
+/// Durability today is real but scoped to this machine: RootPath sits beside
+/// the project's own source (App_Data/, gitignored), which survives a
+/// `dotnet build`/restart same as Postgres's own bind-mounted-by-default data
+/// does. It stops being durable the moment the API is containerized rather
+/// than run as a plain Aspire project — App_Data would then live inside the
+/// container's own ephemeral filesystem and vanish on recreation. Whenever
+/// that happens, this needs a mounted volume at RootPath, the same pattern
+/// Platform.AppHost/Program.cs already uses for Postgres
+/// (`.WithDataVolume("PlatformData")`) and speaches (`.WithVolume(...)`) —
+/// not a code change here, an AppHost one.
 /// </summary>
 public class LocalLearningAssetStorage(IHostEnvironment env, IConfiguration config) : ILearningAssetStorage
 {

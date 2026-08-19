@@ -13,7 +13,9 @@
     "lucide-react": "^1.28.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "sonner": "^2.0.8",
+    "usehooks-ts": "^3.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
