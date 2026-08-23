@@ -149,10 +149,11 @@ export const PLAN_PICKER_CARDS_CSS = `
     flex-shrink: 0; margin-inline-start: auto;
   }
   .lw-plancards__cycle button {
-    border: none; background: transparent; padding: 6px 16px; border-radius: 999px;
+    border: 1px solid var(--line); background: transparent; padding: 6px 16px; border-radius: 999px;
     font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; color: var(--ink-soft); cursor: pointer;
   }
   .lw-plancards__cycle button.is-active { background: var(--accent); color: #fff; }
+  .lw-plancards__cycle button:hover:not(.is-active), .lw-plancards__cycle button:focus-visible:not(.is-active) { background: var(--surface-2, rgba(0,0,0,0.05)); }
 
   .lw-plancards__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
   .lw-plancards__card {

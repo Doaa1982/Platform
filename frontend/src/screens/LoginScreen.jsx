@@ -251,10 +251,10 @@ const CSS = `
 
   .pl-login__back {
     display: inline-flex; align-items: center; gap: 5px;
-    background: transparent; border: none; padding: 0; margin-bottom: 22px;
+    background: transparent; border: 1px solid var(--pl-line); border-radius: 6px; padding: 3px 6px; margin-bottom: 22px; margin-inline-start: -6px;
     font-family: inherit; font-size: 0.82rem; color: var(--pl-ink-soft); cursor: pointer;
   }
-  .pl-login__back:hover { color: var(--pl-ink); }
+  .pl-login__back:hover { color: var(--pl-ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
   .pl-login__back:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; border-radius: 4px; }
 
   .pl-login__eyebrow {
@@ -278,11 +278,11 @@ const CSS = `
   }
   .pl-field__labelrow label { margin-bottom: 6px; }
   .pl-field__forgot {
-    background: transparent; border: none; padding: 0; margin-bottom: 6px;
+    background: transparent; border: 1px solid var(--pl-line); border-radius: 6px; padding: 3px 6px; margin-bottom: 6px;
     font-family: inherit; font-size: 0.8rem; font-weight: 600;
     color: var(--pl-accent); cursor: pointer; white-space: nowrap;
   }
-  .pl-field__forgot:hover:not(:disabled) { text-decoration: underline; }
+  .pl-field__forgot:hover:not(:disabled) { text-decoration: underline; background: var(--surface-2, rgba(0,0,0,0.05)); }
   .pl-field__forgot:disabled { opacity: 0.55; cursor: not-allowed; }
   .pl-field__forgot:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; border-radius: 4px; }
   .pl-field__control { position: relative; display: flex; }
@@ -309,7 +309,7 @@ const CSS = `
     position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
     display: flex; align-items: center; justify-content: center;
     width: 34px; height: 34px;
-    background: transparent; border: none; border-radius: 8px;
+    background: transparent; border: 1px solid var(--pl-line); border-radius: 8px;
     color: var(--pl-ink-soft); cursor: pointer;
   }
   .pl-field__toggle:hover:not(:disabled) { color: var(--pl-ink); background: #F0EEEA; }

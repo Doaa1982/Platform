@@ -216,7 +216,7 @@ const CSS = `
     position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
     display: flex; align-items: center; justify-content: center;
     width: 34px; height: 34px;
-    background: transparent; border: none; border-radius: 8px;
+    background: transparent; border: 1px solid var(--line); border-radius: 8px;
     color: var(--ink-soft); cursor: pointer;
   }
   .pl-rpw__toggle:hover:not(:disabled) { color: var(--ink); background: #F0EEEA; }

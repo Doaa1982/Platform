@@ -443,9 +443,10 @@ const CSS = `
   .lw-home__livelink code { font-family: var(--font-mono); }
   .lw-home__livecopy {
     display: flex; align-items: center; gap: 6px;
-    background: transparent; border: none; color: var(--accent-2);
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--accent-2);
     font-size: 0.8rem; font-weight: 600; cursor: pointer; padding: 5px 4px;
   }
+  .lw-home__livecopy:hover, .lw-home__livecopy:focus-visible { background: var(--surface-2, rgba(0,0,0,0.05)); }
 
   .lw-home__stats {
     display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px;

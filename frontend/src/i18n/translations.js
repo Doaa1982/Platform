@@ -717,8 +717,10 @@ const en = {
     interactiveQuestions: "Interactive questions",
     assessmentLead: "Multiple choice, true/false, complete-the-sentence or open questions, placed on the video's timeline. AI grades every attempt instantly — open questions are reviewed, not scored.",
     standaloneQuiz: "Lesson quiz",
-    standaloneQuizHint: "A separate quiz for this lesson, not tied to the video's timeline — its own title, passing threshold and Submission trail. Save the lesson first — questions are generated from your saved content, not what's still unsaved on this page.",
+    standaloneQuizHint: "A separate quiz for this lesson, not tied to the video's timeline — its own title, passing threshold and Submission trail.",
+    standaloneQuizSaveWarning: "Save the lesson first — questions are generated from your saved content, not what's still unsaved on this page.",
     askAiSuggestQuestions: "Ask AI to suggest questions",
+    quizGenTip: "AI-suggested questions are drafts — nothing is added until you accept each one.",
     standaloneAnalyzeStep0: "Reading the lesson material…",
     standaloneAnalyzeStep1: "Drafting questions…",
     standaloneAnalyzeStep2: "Checking answer keys…",
@@ -772,6 +774,8 @@ const en = {
     removeSuggestion: "Remove suggestion",
     editQuestion: "Edit question",
     removeQuestion: "Remove question",
+    viewQuestion: "View question",
+    questionDetails: "Question details",
     toastCurriculumPublished: "Curriculum published.",
     toastCurriculumUnpublished: "Curriculum unpublished.",
     toastUnitAdded: "\"{title}\" added.",
@@ -811,8 +815,9 @@ const en = {
     hour: "h",
     minShort: "m",
     continueLearning: "Continue learning",
+    continueSubtitle: "Pick up right where you left off.",
+    continueButton: "Continue lesson",
     lesson: "Lesson",
-    scrollMore: "See more",
     enrolledCourses: "Enrolled courses",
     coursesCompleted: "Courses completed",
     of: "of",
@@ -864,7 +869,7 @@ const en = {
 
   notBuiltYet: {
     heading: "Not built yet",
-    note: "Nothing here is measured yet, so rather than show you zeros — or worse, numbers belonging to nobody — this page says what's actually true.",
+    note: "Nothing here is measured yet — no numbers, real or fake.",
   },
 
   admin: {
@@ -1230,6 +1235,7 @@ const en = {
   assessOverview: {
     eyebrow: "Assessment & Certificates",
     title: "Gradebook",
+    lead: "How every graded quiz and assessment is performing, across every course.",
     loading: "Loading…",
     emptyLead: "No assessments yet — add interactive questions to a lesson in Content Studio and they'll show up here once learners start submitting.",
     colProduct: "Product", colLesson: "Lesson", colKind: "Kind", colStatus: "Status", colQuestions: "Questions",
@@ -1974,8 +1980,10 @@ const ar = {
     interactiveQuestions: "الأسئلة التفاعلية",
     assessmentLead: "أسئلة اختيار من متعدد، صح/خطأ، إكمال الجملة، أو أسئلة مفتوحة، تُوضع على الجدول الزمني للفيديو. الذكاء الاصطناعي يُقيّم كل محاولة فورًا — الأسئلة المفتوحة تُراجَع، لا تُقيَّم آليًا.",
     standaloneQuiz: "اختبار الدرس",
-    standaloneQuizHint: "اختبار منفصل لهذا الدرس، غير مرتبط بالجدول الزمني للفيديو — له عنوانه الخاص، ونسبة نجاحه، وسجل إجاباته الخاص. احفظ الدرس أولاً — تُولَّد الأسئلة من المحتوى المحفوظ، وليس مما لم يُحفظ بعد في هذه الصفحة.",
+    standaloneQuizHint: "اختبار منفصل لهذا الدرس، غير مرتبط بالجدول الزمني للفيديو — له عنوانه الخاص، ونسبة نجاحه، وسجل إجاباته الخاص.",
+    standaloneQuizSaveWarning: "احفظ الدرس أولاً — تُولَّد الأسئلة من المحتوى المحفوظ، وليس مما لم يُحفظ بعد في هذه الصفحة.",
     askAiSuggestQuestions: "اطلب من الذكاء الاصطناعي اقتراح أسئلة",
+    quizGenTip: "أسئلة الذكاء الاصطناعي مقترحة فقط — لن تُضاف أي منها حتى تقبلها بنفسك.",
     standaloneAnalyzeStep0: "جارٍ قراءة محتوى الدرس…",
     standaloneAnalyzeStep1: "جارٍ صياغة الأسئلة…",
     standaloneAnalyzeStep2: "جارٍ التحقق من مفاتيح الإجابة…",
@@ -2029,6 +2037,8 @@ const ar = {
     removeSuggestion: "إزالة الاقتراح",
     editQuestion: "تعديل السؤال",
     removeQuestion: "إزالة السؤال",
+    viewQuestion: "عرض السؤال",
+    questionDetails: "تفاصيل السؤال",
     toastCurriculumPublished: "تم نشر المنهج.",
     toastCurriculumUnpublished: "تم إلغاء نشر المنهج.",
     toastUnitAdded: "تمت إضافة \"{title}\".",
@@ -2068,8 +2078,9 @@ const ar = {
     hour: "س",
     minShort: "د",
     continueLearning: "متابعة التعلّم",
+    continueSubtitle: "أكمل من حيث توقفت تمامًا.",
+    continueButton: "متابعة الدرس",
     lesson: "درس",
-    scrollMore: "عرض المزيد",
     enrolledCourses: "الدورات المسجّل بها",
     coursesCompleted: "الدورات المكتملة",
     of: "من",
@@ -2121,7 +2132,7 @@ const ar = {
 
   notBuiltYet: {
     heading: "لم يُبنَ بعد",
-    note: "لا شيء هنا مُقاس بعد، لذا بدلاً من عرض أصفار — أو ما هو أسوأ، أرقام لا تخص أحدًا — تعرض هذه الصفحة ما هو صحيح فعليًا.",
+    note: "لا شيء هنا مُقاس بعد — لا أرقام حقيقية ولا وهمية.",
   },
 
   admin: {
@@ -2487,6 +2498,7 @@ const ar = {
   assessOverview: {
     eyebrow: "التقييم والشهادات",
     title: "سجل الدرجات",
+    lead: "أداء كل اختبار وتقييم عبر جميع الدورات.",
     loading: "جارٍ التحميل…",
     emptyLead: "لا توجد اختبارات بعد — أضف أسئلة تفاعلية إلى درس في استوديو المحتوى وستظهر هنا بمجرد أن يبدأ المتعلمون بالإجابة.",
     colProduct: "المنتج", colLesson: "الدرس", colKind: "النوع", colStatus: "الحالة", colQuestions: "الأسئلة",

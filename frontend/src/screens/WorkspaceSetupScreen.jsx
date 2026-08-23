@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, AlertTriangle, Check, Circle, Minus, ArrowRight, Globe, Lock,
+  LoaderCircle, AlertCircle, Check, Circle, Minus, ArrowRight, Globe, Lock,
   Sparkles, Image as ImageIcon, X,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+import Notice from "../components/Notice";
 
 /* =========================================================================
    WORKSPACE SETUP — the owner's own journey.
@@ -241,9 +242,7 @@ export default function WorkspaceSetupScreen() {
         </div>
       )}
 
-      {!setup.canManage && (
-        <p className="lw-setup__readonly">{t("setup.readonlyNote")}</p>
-      )}
+      {!setup.canManage && <Notice tone="readonly">{t("setup.readonlyNote")}</Notice>}
 
       {/* "Not part of setup yet" notice hidden for now. */}
     </div>
@@ -387,9 +386,7 @@ function IdentityForm({ setup, onSubmit, onCancel, busy, session, slug: workspac
         />
       </label>
       {isPublished && slugChanged && (
-        <div className="lw-setup__slugwarning">
-          <AlertTriangle size={13} /> {t("setup.slugChangeWarning", { old: setup.slug })}
-        </div>
+        <Notice tone="warning" style={{ gridColumn: "1 / -1" }}>{t("setup.slugChangeWarning", { old: setup.slug })}</Notice>
       )}
       <label className="lw-setup__wide">
         <span className="lw-setup__desclabel">
@@ -635,13 +632,6 @@ const CSS = `
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
   }
-  .lw-setup__slugwarning {
-    grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px;
-    background: color-mix(in srgb, #E0912E 12%, transparent);
-    border: 1px solid color-mix(in srgb, #E0912E 35%, transparent);
-    color: #E0912E; border-radius: var(--radius-sm); padding: 9px 12px;
-    font-size: 0.8rem; line-height: 1.5;
-  }
   .lw-setup__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
   @media (max-width: 560px) {
     .lw-setup__form { grid-template-columns: 1fr; }
@@ -654,7 +644,6 @@ const CSS = `
     font-size: 0.8rem; color: var(--ink-soft); margin-top: 12px;
   }
   .lw-setup__note code { font-family: var(--font-mono); }
-  .lw-setup__readonly { font-size: 0.83rem; color: var(--ink-soft); margin-top: 16px; font-style: italic; }
 
   .lw-setup__notyet {
     background: var(--surface-2); border-radius: var(--radius-sm);

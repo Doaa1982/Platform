@@ -109,10 +109,10 @@ const CSS = `
   }
   .pl-alogin__back {
     display: inline-flex; align-items: center; gap: 5px; background: transparent;
-    border: none; padding: 0; margin-bottom: 20px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; margin-bottom: 20px; margin-inline-start: -6px; font-family: inherit;
     font-size: 0.82rem; color: var(--ink-soft); cursor: pointer;
   }
-  .pl-alogin__back:hover { color: var(--ink); }
+  .pl-alogin__back:hover { color: var(--ink); background: var(--surface-2, rgba(255,255,255,0.06)); }
 
   /* UIC-004: the page's own header (mark + eyebrow + h1) is centered. */
   .pl-alogin__mark {

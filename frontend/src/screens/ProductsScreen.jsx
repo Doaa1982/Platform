@@ -6,6 +6,7 @@ import {
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import InfoTip from "../components/InfoTip";
+import Notice from "../components/Notice";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 import Message from "../components/Message";
 import { useLanguage } from "../i18n/useLanguage";
@@ -199,11 +200,9 @@ export default function ProductsScreen({ onOpenStudio }) {
       )}
 
       {data.products.length === 0 && (
-        <div className="lw-prod__empty">
-          <BookOpen size={26} />
-          <h2>{t("products.emptyTitle")}</h2>
+        <Notice tone="empty" icon={BookOpen} title={t("products.emptyTitle")}>
           <p>{data.canAuthor ? t("products.emptyCanAuthor") : t("products.emptyReadonly")}</p>
-        </div>
+        </Notice>
       )}
 
       <div className="lw-prod__grid">
@@ -288,7 +287,7 @@ export default function ProductsScreen({ onOpenStudio }) {
       </div>
 
       {!data.canAuthor && data.products.length > 0 && (
-        <p className="lw-prod__readonly">{t("products.readonlyNote")}</p>
+        <Notice tone="readonly">{t("products.readonlyNote")}</Notice>
       )}
     </div>
   );
@@ -563,15 +562,6 @@ const CSS = `
   }
   .lw-prod__actions button:hover:not(:disabled) { color: var(--ink); }
   .lw-prod__actions button:disabled { opacity: 0.45; cursor: not-allowed; }
-
-  .lw-prod__empty {
-    text-align: center; color: var(--ink-soft);
-    background: var(--surface); border: 1px dashed var(--line);
-    border-radius: var(--radius-sm); padding: 40px 26px;
-  }
-  .lw-prod__empty h2 { font-family: var(--font-display); font-size: 1.1rem; color: var(--ink); margin: 12px 0 8px; }
-  .lw-prod__empty p { font-size: 0.88rem; max-width: 46ch; margin: 0 auto; line-height: 1.6; }
-  .lw-prod__readonly { font-size: 0.83rem; color: var(--ink-soft); margin-top: 16px; font-style: italic; }
 
   .lw-prod__spin { animation: lwProdSpin 0.9s linear infinite; }
   @keyframes lwProdSpin { to { transform: rotate(360deg); } }

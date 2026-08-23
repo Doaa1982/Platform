@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2,
+  LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2, Eye,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
   UploadCloud, Sparkles, Bot, PlayCircle, Link as LinkIcon, ChevronUp, ChevronDown,
   ClipboardCheck, Paperclip, Download, ClipboardList,
@@ -9,6 +9,10 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 import Message from "../components/Message";
+import Notice from "../components/Notice";
+import InfoTip from "../components/InfoTip";
+import TutorTip from "../components/TutorTip";
+import Modal, { MODAL_CSS } from "../components/Modal";
 import VideoPlayer from "../components/VideoPlayer";
 import { useLanguage } from "../i18n/useLanguage";
 
@@ -95,11 +99,9 @@ function ProductPicker({ onSelect }) {
       <p className="lw-sub">{t("studio.pickLead")}</p>
 
       {data.products.length === 0 && (
-        <div className="lw-studio__empty">
-          <BookOpen size={26} />
-          <h2>{t("studio.noProductsTitle")}</h2>
+        <Notice tone="empty" icon={BookOpen} title={t("studio.noProductsTitle")}>
           <p>{t("studio.noProductsBody")}</p>
-        </div>
+        </Notice>
       )}
 
       <div className="lw-studio__productgrid">
@@ -284,24 +286,17 @@ function CurriculumBuilder({ productId, onBack }) {
       )}
 
       {data.units.length === 0 && (
-        <div className="lw-studio__empty">
-          <Layers size={26} />
+        <Notice tone="empty" icon={Layers} title={editable ? t("studio.buildTitle") : t("studio.noUnitsTitle")}>
           {editable ? (
-            <>
-              <h2>{t("studio.buildTitle")}</h2>
-              <ol className="lw-studio__steps">
-                <li><strong>{t("studio.stepAddUnit")}</strong> {t("studio.stepAddUnitRest")}</li>
-                <li><strong>{t("studio.stepAddLessons")}</strong> {t("studio.stepAddLessonsRest")}</li>
-                <li><strong>{t("studio.stepOpenLesson")}</strong> {t("studio.stepOpenLessonRest")}</li>
-              </ol>
-            </>
+            <ol className="lw-studio__steps">
+              <li><strong>{t("studio.stepAddUnit")}</strong> {t("studio.stepAddUnitRest")}</li>
+              <li><strong>{t("studio.stepAddLessons")}</strong> {t("studio.stepAddLessonsRest")}</li>
+              <li><strong>{t("studio.stepOpenLesson")}</strong> {t("studio.stepOpenLessonRest")}</li>
+            </ol>
           ) : (
-            <>
-              <h2>{t("studio.noUnitsTitle")}</h2>
-              <p>{t("studio.noUnitsBody")}</p>
-            </>
+            <p>{t("studio.noUnitsBody")}</p>
           )}
-        </div>
+        </Notice>
       )}
 
       <div className="lw-studio__units">
@@ -342,9 +337,7 @@ function CurriculumBuilder({ productId, onBack }) {
         </>
       )}
 
-      {!data.canAuthor && (
-        <p className="lw-studio__readonly">{t("studio.readonlyNote")}</p>
-      )}
+      {!data.canAuthor && <Notice tone="readonly">{t("studio.readonlyNote")}</Notice>}
     </div>
   );
 }
@@ -427,7 +420,7 @@ export function LessonEditorScreen({ initialProductId, initialLessonId, onBack, 
       </div>
 
       {!productId && (
-        <div className="lw-studio__empty">{t("studio.pickProductFirst")}</div>
+        <Notice tone="empty">{t("studio.pickProductFirst")}</Notice>
       )}
     </div>
   );
@@ -543,7 +536,7 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
       )}
 
       {unitOptions.length === 0 && (
-        <div className="lw-studio__empty" style={{ gridColumn: "1 / -1" }}>{t("studio.noLessonsInProduct")}</div>
+        <Notice tone="empty" style={{ gridColumn: "1 / -1" }}>{t("studio.noLessonsInProduct")}</Notice>
       )}
 
       {lessonId ? (
@@ -558,7 +551,7 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
         </div>
       ) : (
         unitOptions.length > 0 && (
-          <div className="lw-studio__empty" style={{ gridColumn: "1 / -1" }}>{t("studio.pickLessonFirst")}</div>
+          <Notice tone="empty" style={{ gridColumn: "1 / -1" }}>{t("studio.pickLessonFirst")}</Notice>
         )
       )}
     </>
@@ -1493,7 +1486,7 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
                     />
                     <span>
                       {t("studio.requireQuizToComplete")}
-                      <em>{t("studio.requireQuizToCompleteHint")}</em>
+                      <InfoTip text={t("studio.requireQuizToCompleteHint")} />
                     </span>
                   </label>
                   <StandaloneAssessmentSection lessonId={lesson.id} editable={editable} />
@@ -1608,9 +1601,9 @@ function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onC
         <h2 className="lw-studio__panelh2">
           {trigger === "video" ? t("studio.replacingVideoTitle") : t("studio.changingDeliveryTitle")}
         </h2>
-        <p className="lw-studio__panelnote">
+        <Notice tone="warning" style={{ marginBottom: 16 }}>
           {trigger === "video" ? t("studio.replacingVideoNote") : t("studio.changingDeliveryNote")}
-        </p>
+        </Notice>
 
         <div className="lw-studio__versionoptions">
           <div className="lw-studio__versionoption">
@@ -2135,7 +2128,7 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
                           ? <LoaderCircle size={13} className="lw-studio__spin" />
                           : <Sparkles size={13} />} {t("studio.extractContent")}
                       </button>
-                      <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => togglePasteBox(r.id)} title={t("studio.pasteContentHint")}>
+                      <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => togglePasteBox(r.id)}>
                         <FileText size={13} /> {t("studio.pasteContent")}
                       </button>
                     </>
@@ -2212,6 +2205,7 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
   const [suggestions, setSuggestions] = useState([]);
 
   const [formMode, setFormMode] = useState(null); // null | "new" | Question being edited
+  const [viewingQuestion, setViewingQuestion] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const load = useCallback(
@@ -2360,41 +2354,40 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
         </div>
       )}
 
-      {formMode === "new" && (
-        <QuestionForm
-          initial={null}
-          busy={busy}
-          onSave={saveQuestion}
-          onCancel={() => setFormMode(null)}
-          existingQuestions={data.questions}
-          videoDurationSeconds={videoDurationSeconds}
-        />
+      {formMode && (
+        <Modal onClose={() => setFormMode(null)} closeLabel={t("studio.close")}>
+          <h2 className="lw-modal__title">{formMode === "new" ? t("studio.addQuestion") : t("studio.editQuestion")}</h2>
+          <QuestionForm
+            initial={formMode === "new" ? null : formMode}
+            busy={busy}
+            onSave={saveQuestion}
+            onCancel={() => setFormMode(null)}
+            existingQuestions={data.questions}
+            videoDurationSeconds={videoDurationSeconds}
+          />
+        </Modal>
       )}
 
-      {data.questions.length === 0 && suggestions.length === 0 && !formMode && (
+      {data.questions.length === 0 && suggestions.length === 0 && (
         <div className="lw-empty">
           {editable ? t("studio.noQuestionsEditable") : t("studio.noQuestionsReadonly")}
         </div>
       )}
 
       {data.questions.length > 0 && (
-        <div className="lw-studio__cardgrid" style={{ marginTop: 14 }}>
-          {data.questions.map((q) => (
-            formMode && formMode !== "new" && formMode.id === q.id ? (
-              <QuestionForm
-                key={q.id}
-                initial={formMode}
-                busy={busy}
-                onSave={saveQuestion}
-                onCancel={() => setFormMode(null)}
-                existingQuestions={data.questions}
-                videoDurationSeconds={videoDurationSeconds}
-              />
-            ) : (
-              <QuestionRow key={q.id} q={q} editable={editable} onEdit={setFormMode} onRemove={removeQuestion} />
-            )
-          ))}
-        </div>
+        <QuestionsTable
+          questions={data.questions} editable={editable} showTimestamp
+          onEdit={setFormMode} onView={setViewingQuestion}
+        />
+      )}
+
+      {viewingQuestion && (
+        <QuestionInfoModal
+          question={viewingQuestion} editable={editable}
+          onEdit={(q) => { setViewingQuestion(null); setFormMode(q); }}
+          onRemove={(id) => { setViewingQuestion(null); removeQuestion(id); }}
+          onClose={() => setViewingQuestion(null)}
+        />
       )}
 
       {previewOpen && (
@@ -2436,6 +2429,7 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
   const [suggestions, setSuggestions] = useState([]);
 
   const [formMode, setFormMode] = useState(null); // null | "new" | Question being edited
+  const [viewingQuestion, setViewingQuestion] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const load = useCallback(
@@ -2519,10 +2513,13 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
         <h2 className="lw-sectiontitle" style={{ margin: 0 }}>{t("studio.standaloneQuiz")}</h2>
         <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(t, data.status)}</span>
       </div>
-      <p className="muted" style={{ margin: "-6px 0 14px" }}>{t("studio.standaloneQuizHint")}</p>
+      <p className="muted" style={{ margin: "-6px 0 10px" }}>{t("studio.standaloneQuizHint")}</p>
+      <Notice tone="warning" style={{ marginBottom: 14 }}>{t("studio.standaloneQuizSaveWarning")}</Notice>
 
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
+
+      {editable && <TutorTip id="studio.quizGenTip">{t("studio.quizGenTip")}</TutorTip>}
 
       {editable && (
         <div className="lw-studio__bar">
@@ -2577,41 +2574,40 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
         </div>
       )}
 
-      {formMode === "new" && (
-        <QuestionForm
-          initial={null}
-          busy={busy}
-          onSave={saveQuestion}
-          onCancel={() => setFormMode(null)}
-          existingQuestions={data.questions}
-          requireTimestamp={false}
-        />
+      {formMode && (
+        <Modal onClose={() => setFormMode(null)} closeLabel={t("studio.close")}>
+          <h2 className="lw-modal__title">{formMode === "new" ? t("studio.addQuestion") : t("studio.editQuestion")}</h2>
+          <QuestionForm
+            initial={formMode === "new" ? null : formMode}
+            busy={busy}
+            onSave={saveQuestion}
+            onCancel={() => setFormMode(null)}
+            existingQuestions={data.questions}
+            requireTimestamp={false}
+          />
+        </Modal>
       )}
 
-      {data.questions.length === 0 && suggestions.length === 0 && !formMode && (
+      {data.questions.length === 0 && suggestions.length === 0 && (
         <div className="lw-empty">
           {editable ? t("studio.noQuestionsEditable") : t("studio.noQuestionsReadonly")}
         </div>
       )}
 
       {data.questions.length > 0 && (
-        <div className="lw-studio__cardgrid" style={{ marginTop: 14 }}>
-          {data.questions.map((q) => (
-            formMode && formMode !== "new" && formMode.id === q.id ? (
-              <QuestionForm
-                key={q.id}
-                initial={formMode}
-                busy={busy}
-                onSave={saveQuestion}
-                onCancel={() => setFormMode(null)}
-                existingQuestions={data.questions}
-                requireTimestamp={false}
-              />
-            ) : (
-              <QuestionRow key={q.id} q={q} editable={editable} onEdit={setFormMode} onRemove={removeQuestion} />
-            )
-          ))}
-        </div>
+        <QuestionsTable
+          questions={data.questions} editable={editable} showTimestamp={false}
+          onEdit={setFormMode} onView={setViewingQuestion}
+        />
+      )}
+
+      {viewingQuestion && (
+        <QuestionInfoModal
+          question={viewingQuestion} editable={editable}
+          onEdit={(q) => { setViewingQuestion(null); setFormMode(q); }}
+          onRemove={(id) => { setViewingQuestion(null); removeQuestion(id); }}
+          onClose={() => setViewingQuestion(null)}
+        />
       )}
 
       {previewOpen && (
@@ -2692,25 +2688,70 @@ function SuggestionRow({ s, onAccept, onReject, busy }) {
   );
 }
 
-function QuestionRow({ q, editable, onEdit, onRemove }) {
+/** One row per question: timestamp (when this list is video-timed), type,
+    a truncated prompt, points, and exactly two actions — view full detail,
+    or edit. Removing a question lives inside the view-detail modal instead
+    of a third icon here, so this row stays scannable at a glance. */
+function QuestionsTable({ questions, editable, showTimestamp, onEdit, onView }) {
+  const types = useQuestionTypes();
+  const { t } = useLanguage();
+  const rowClass = `lw-qtable__row${showTimestamp ? "" : " lw-qtable__row--notime"}`;
+  return (
+    <div className="lw-qtable">
+      <div className={`${rowClass} lw-qtable__row--head`}>
+        {showTimestamp && <span>{t("studio.questionTime")}</span>}
+        <span>{t("studio.type")}</span>
+        <span>{t("studio.questionLabel")}</span>
+        <span>{t("studio.points")}</span>
+        <span />
+      </div>
+      {questions.map((q) => (
+        <div className={rowClass} key={q.id}>
+          {showTimestamp && (
+            <span className="lw-qtable__time">{q.videoTimestampSeconds != null ? formatTime(q.videoTimestampSeconds) : "—"}</span>
+          )}
+          <span><span className="lw-tag">{typeLabel(types, q.type)}</span></span>
+          <span className="lw-qtable__prompt">{q.prompt}</span>
+          <span className="lw-qtable__points">{q.points}</span>
+          <span className="lw-qtable__actions">
+            <button aria-label={t("studio.viewQuestion")} onClick={() => onView(q)}><Eye size={13} /></button>
+            {editable && <button aria-label={t("studio.editQuestion")} onClick={() => onEdit(q)}><Pencil size={13} /></button>}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The full-detail view a compact table row can't show — type, timestamp,
+    complete prompt, answer key and explanation — plus, for an editable
+    list, the Edit and Remove actions that used to live directly on the
+    (now removed) full-size question card. */
+function QuestionInfoModal({ question, editable, onEdit, onRemove, onClose }) {
   const types = useQuestionTypes();
   const { t } = useLanguage();
   return (
-    <div className="lw-studio__unit">
+    <Modal onClose={onClose} closeLabel={t("studio.close")}>
+      <h2 className="lw-modal__title">{t("studio.questionDetails")}</h2>
       <div style={{ marginBottom: 8 }}>
-        <span className="lw-tag" style={{ marginRight: 8 }}>{typeLabel(types, q.type)}</span>
-        {q.videoTimestampSeconds != null && <span className="lw-timestamp lw-tag">{formatTime(q.videoTimestampSeconds)}</span>}
+        <span className="lw-tag" style={{ marginRight: 8 }}>{typeLabel(types, question.type)}</span>
+        {question.videoTimestampSeconds != null && <span className="lw-timestamp lw-tag">{formatTime(question.videoTimestampSeconds)}</span>}
       </div>
-      <p className="lw-questioncard__prompt" style={{ fontSize: "0.92rem", margin: "0 0 10px" }}>{q.prompt}</p>
-      <AnswerKeyDisplay type={q.type} options={q.options} correctOptionIndex={q.correctOptionIndex} acceptedAnswers={q.acceptedAnswers} />
-      {q.explanation && <p className="lw-rationale"><Sparkles size={12} /> {q.explanation}</p>}
+      <p className="lw-questioncard__prompt" style={{ fontSize: "0.95rem", margin: "0 0 10px" }}>{question.prompt}</p>
+      <AnswerKeyDisplay type={question.type} options={question.options} correctOptionIndex={question.correctOptionIndex} acceptedAnswers={question.acceptedAnswers} />
+      {question.explanation && <p className="lw-rationale"><Sparkles size={12} /> {question.explanation}</p>}
+      <p className="muted" style={{ margin: "12px 0 0" }}>{t("studio.points")}: {question.points}</p>
       {editable && (
-        <div className="lw-rowactions" style={{ marginTop: 12 }}>
-          <button aria-label={t("studio.editQuestion")} onClick={() => onEdit(q)}><Pencil size={13} /></button>
-          <button aria-label={t("studio.removeQuestion")} onClick={() => onRemove(q.id)}><Trash2 size={13} /></button>
+        <div className="lw-modal__actions" style={{ marginTop: 22 }}>
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => onRemove(question.id)}>
+            <Trash2 size={13} /> {t("studio.removeQuestion")}
+          </button>
+          <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={() => onEdit(question)}>
+            <Pencil size={13} /> {t("studio.editQuestion")}
+          </button>
         </div>
       )}
-    </div>
+    </Modal>
   );
 }
 
@@ -2771,7 +2812,7 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
 
   return (
     <form
-      className="lw-studio__draftform" style={{ marginTop: 14 }} noValidate
+      className="lw-studio__draftform" noValidate
       onSubmit={(e) => {
         e.preventDefault();
         if (!valid) { setAttempted(true); return; }
@@ -3030,10 +3071,10 @@ const CSS = `
   .lw-studio__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
   .lw-studio__back {
     display: inline-flex; align-items: center; gap: 6px;
-    background: transparent; border: none; color: var(--ink-soft);
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft);
     font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 0; margin-bottom: 14px;
   }
-  .lw-studio__back:hover { color: var(--ink); }
+  .lw-studio__back:hover { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
 
   /* Product / Unit / Lesson cascading pickers on the full-page lesson
      editor — three columns side by side where there's room, with the
@@ -3075,13 +3116,6 @@ const CSS = `
   }
   .lw-studio__blocker svg { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
 
-  .lw-studio__empty {
-    text-align: center; color: var(--ink-soft);
-    background: var(--surface); border: 1px dashed var(--line);
-    border-radius: var(--radius-sm); padding: 34px 26px; margin-bottom: 18px;
-  }
-  .lw-studio__empty h2 { font-family: var(--font-display); font-size: 1.05rem; color: var(--ink); margin: 10px 0 6px; }
-  .lw-studio__empty p { font-size: 0.86rem; max-width: 46ch; margin: 0 auto; line-height: 1.6; }
   .lw-studio__steps {
     list-style: none; counter-reset: lw-step; text-align: start;
     max-width: 44ch; margin: 4px auto 0; padding: 0; display: flex; flex-direction: column; gap: 10px;
@@ -3150,7 +3184,8 @@ const CSS = `
     flex: 1; font-family: var(--font-body); font-weight: 600; font-size: 0.95rem;
     border: 1px solid var(--accent); border-radius: 6px; padding: 5px 9px; background: var(--bg); color: var(--ink);
   }
-  .lw-studio__renameform button { background: transparent; border: none; color: var(--accent); cursor: pointer; display: flex; }
+  .lw-studio__renameform button { background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); cursor: pointer; display: flex; }
+  .lw-studio__renameform button:hover, .lw-studio__renameform button:focus-visible { background: var(--surface-2, rgba(0,0,0,0.05)); }
 
   .lw-studio__unitempty { font-size: 0.82rem; color: var(--ink-soft); font-style: italic; padding: 6px 0 10px; }
 
@@ -3185,8 +3220,6 @@ const CSS = `
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 7px 10px;
   }
   .lw-studio__addlesson input { flex: 1; }
-
-  .lw-studio__readonly { font-size: 0.83rem; color: var(--ink-soft); margin-top: 18px; font-style: italic; }
 
   .lw-studio__productgrid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px;
@@ -3299,34 +3332,66 @@ const CSS = `
   .lw-studio__section { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
 
   .lw-studio__requirequiz {
-    display: flex; align-items: flex-start; gap: 9px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px; cursor: pointer;
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 18px;
   }
-  .lw-studio__requirequiz input { margin-top: 2px; flex-shrink: 0; }
-  .lw-studio__requirequiz span { display: flex; flex-direction: column; gap: 3px; font-size: 0.85rem; }
-  .lw-studio__requirequiz em {
-    font-style: normal; font-size: 0.78rem; color: var(--ink-soft); line-height: 1.5;
-  }
+  .lw-studio__requirequiz input { flex-shrink: 0; }
+  .lw-studio__requirequiz span { font-size: 0.85rem; }
   .lw-option.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
 
-  /* A darker track behind the pills is what makes this read as tabs to switch
-     between, rather than a row of independent buttons like .lw-segctrl's
-     other uses (a value picker sitting under a single label). */
+  /* Same underline-tab convention as .lw-members__tabs (MembersScreen) — a
+     bottom border line the tabs sit on, each tab its own bordered box, the
+     active one picking up an accent-colored underline. Kept identical on
+     purpose so tab bars read the same wherever they appear in the app. */
   .lw-studio__tabs {
-    display: flex; gap: 4px; flex-wrap: nowrap; overflow-x: auto;
-    background: var(--surface-2); padding: 4px; border-radius: 10px;
-    width: fit-content; max-width: 100%; margin: 14px 0 20px;
+    display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; overflow-x: auto;
+    border-bottom: 1px solid var(--line); width: fit-content; max-width: 100%; margin: 14px 0 20px;
   }
   .lw-studio__tabs button {
     display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap;
-    padding: 7px 14px; border-radius: 7px; border: none; background: transparent;
-    color: var(--ink-soft); font-family: var(--font-body); font-size: 0.85rem; cursor: pointer;
-    transition: background .12s, color .12s;
+    font-family: var(--font-body); font-size: 0.85rem; font-weight: 600; color: var(--ink-soft);
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; border-bottom: 2px solid transparent;
+    padding: 9px 14px; cursor: pointer; margin-bottom: -1px; transition: background .12s, color .12s;
   }
-  .lw-studio__tabs button:hover:not(.active) { color: var(--ink); }
-  .lw-studio__tabs button.active {
-    background: var(--surface); color: var(--ink); font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  .lw-studio__tabs button:hover:not(.active) { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
+  .lw-studio__tabs button.active { color: var(--ink); border-bottom-color: var(--accent); }
+
+  /* Questions table (see QuestionsTable) — timestamp/type/question/points
+     columns plus a compact pair of icon actions, replacing what used to be
+     a full-detail card per question. Full detail now lives one click away
+     in QuestionInfoModal instead of always being on screen. */
+  .lw-qtable { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; margin-top: 14px; }
+  .lw-qtable__row {
+    display: grid; grid-template-columns: 70px 150px 1fr 60px 68px; gap: 10px; align-items: center;
+    padding: 10px 14px; font-size: 0.85rem; background: var(--surface); border-bottom: 1px solid var(--line);
   }
+  .lw-qtable__row--notime { grid-template-columns: 150px 1fr 60px 68px; }
+  .lw-qtable__row:last-child { border-bottom: none; }
+  .lw-qtable__row--head {
+    background: var(--surface-2); font-family: var(--font-mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); padding: 9px 14px;
+  }
+  .lw-qtable__time { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); }
+  .lw-qtable__prompt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lw-qtable__points { font-family: var(--font-mono); color: var(--ink-soft); }
+  .lw-qtable__actions { display: flex; gap: 4px; justify-self: end; }
+  .lw-qtable__actions button {
+    width: 26px; height: 26px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink-soft); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all .12s;
+  }
+  .lw-qtable__actions button:hover { color: var(--ink); border-color: var(--accent); }
+  /* Below this width a grid row can't fit five columns legibly — each
+     question becomes a small stacked card instead, same info, no table. */
+  @media (max-width: 700px) {
+    .lw-qtable__row, .lw-qtable__row--notime {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    }
+    .lw-qtable__row--head { display: none; }
+    .lw-qtable__prompt { flex: 1 1 100%; white-space: normal; order: -1; font-size: 0.88rem; }
+    .lw-qtable__actions { margin-inline-start: auto; }
+  }
+
+  ${MODAL_CSS}
 `;

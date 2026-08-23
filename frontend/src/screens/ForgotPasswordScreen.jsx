@@ -167,10 +167,10 @@ const CSS = `
 
   .pl-fpw__link {
     display: inline-flex; align-items: center; gap: 5px;
-    background: transparent; border: none; padding: 0; margin-top: 20px;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 0; margin-top: 20px;
     font-family: inherit; font-size: 0.85rem; color: var(--ink-soft); cursor: pointer;
   }
-  .pl-fpw__link:hover { color: var(--ink); }
+  .pl-fpw__link:hover { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
   .pl-fpw__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
   .pl-fpw__link--back { margin-top: 22px; }
 

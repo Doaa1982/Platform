@@ -115,10 +115,10 @@ const CSS = `
 
   .lw-learn__back {
     display: inline-flex; align-items: center; gap: 6px;
-    background: transparent; border: none; color: var(--ink-soft);
-    font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 0; margin-bottom: 14px;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft);
+    font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 3px 6px; margin-bottom: 14px; margin-inline-start: -6px;
   }
-  .lw-learn__back:hover { color: var(--ink); }
+  .lw-learn__back:hover { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
   .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
   .lw-learn__spin { animation: lwLearnSpin 0.9s linear infinite; }
   @keyframes lwLearnSpin { to { transform: rotate(360deg); } }

@@ -730,11 +730,11 @@ const CSS = `
   .pl-admin__tabs { display: flex; justify-content: center; gap: 4px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
   .pl-admin__tabs button {
     font-family: inherit; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft);
-    background: transparent; border: none; border-bottom: 2px solid transparent;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; border-bottom: 2px solid transparent;
     padding: 9px 14px; cursor: pointer; margin-bottom: -1px;
   }
   .pl-admin__tabs button.is-active { color: var(--ink); border-bottom-color: var(--accent); }
-  .pl-admin__tabs button:hover:not(.is-active) { color: var(--ink); }
+  .pl-admin__tabs button:hover:not(.is-active) { color: var(--ink); background: var(--surface-2, rgba(255,255,255,0.06)); }
 
   /* ── Catalog ──────────────────────────────────────────────────────────── */
   .pl-admin__cataloggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }

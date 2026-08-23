@@ -9,7 +9,9 @@ import QRCode from "qrcode";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
+import { useTheme } from "../theme/useTheme";
 import Message from "../components/Message";
+import Notice from "../components/Notice";
 
 /* =========================================================================
    MEMBERS SCREEN — the tutor's own member management.
@@ -36,6 +38,7 @@ const INVITES_PAGE_SIZE = 8;
 export default function MembersScreen({ initialTab }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
+  const { mode } = useTheme();
   const slug = workspace?.slug;
 
   const [data, setData] = useState(null);
@@ -207,11 +210,13 @@ export default function MembersScreen({ initialTab }) {
     <div className="lw-page">
       <style>{CSS}</style>
       {/* Sonner portals to document.body, outside .lw-root where this
-          workspace's theme tokens live as inline custom properties — richColors
-          uses its own built-in palette instead of var(--accent) etc. for the
-          same reason Message.jsx hardcodes its own colors (it must render
-          correctly regardless of what's around it). */}
-      <Toaster position="top-right" richColors closeButton />
+          workspace's theme tokens live as inline custom properties, so it
+          can't pick up var(--accent) etc. via CSS inheritance the way
+          Message.jsx does — richColors gives it its own built-in palette
+          instead. `theme` is Sonner's own light/dark switch, wired to this
+          app's ThemeContext (2026-08-21 fix) so that palette still follows
+          the owner's actual mode instead of defaulting to light always. */}
+      <Toaster position="top-right" richColors closeButton theme={mode} />
 
       <div className="lw-eyebrow">{t("members.eyebrow")}</div>
       <h1>{t("members.title")}</h1>
@@ -257,7 +262,7 @@ export default function MembersScreen({ initialTab }) {
           />
 
           {sortedMembers.length === 0 && (
-            <p className="lw-members__readonly">{t("members.noMembersFound")}</p>
+            <Notice tone="readonly">{t("members.noMembersFound")}</Notice>
           )}
 
           <div className="lw-members__grid lw-members__grid--members">
@@ -374,20 +379,16 @@ export default function MembersScreen({ initialTab }) {
           </div>
           <Pager page={currentMemberPage} totalPages={memberTotalPages} onChange={setMemberPage} />
 
-          {!data.canManage && (
-            <p className="lw-members__readonly">{t("members.readonlyNote")}</p>
-          )}
+          {!data.canManage && <Notice tone="readonly">{t("members.readonlyNote")}</Notice>}
         </>
       )}
 
       {tab === "pending" && (
         <>
           {pendingRequests.length === 0 && pendingCourseRequests.length === 0 && pendingInvites.length === 0 && (
-            <div className="lw-members__empty">
-              <Inbox size={26} />
-              <h2>{t("members.pendingEmpty")}</h2>
+            <Notice tone="empty" icon={Inbox} title={t("members.pendingEmpty")}>
               <p>{t("members.pendingEmptyBody")}</p>
-            </div>
+            </Notice>
           )}
 
           {/* People who asked to get in, rather than being asked. Placed above
@@ -476,7 +477,7 @@ export default function MembersScreen({ initialTab }) {
               />
 
               {sortedInvites.length === 0 && (
-                <p className="lw-members__readonly">{t("members.noInvitationsFound")}</p>
+                <Notice tone="readonly">{t("members.noInvitationsFound")}</Notice>
               )}
 
               <div className="lw-members__grid">
@@ -982,11 +983,11 @@ const CSS = `
   .lw-members__tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
   .lw-members__tabs button {
     font-family: inherit; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft);
-    background: transparent; border: none; border-bottom: 2px solid transparent;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; border-bottom: 2px solid transparent;
     padding: 9px 14px; cursor: pointer; margin-bottom: -1px;
   }
   .lw-members__tabs button.is-active { color: var(--ink); border-bottom-color: var(--accent); }
-  .lw-members__tabs button:hover:not(.is-active) { color: var(--ink); }
+  .lw-members__tabs button:hover:not(.is-active) { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
   .lw-members__tabsrefresh {
     margin-inline-start: auto; display: inline-flex; align-items: center; justify-content: center;
     width: 28px; height: 28px; color: var(--ink-soft) !important; border-radius: 6px !important;
@@ -1043,9 +1044,9 @@ const CSS = `
   .lw-members__templatelink {
     display: inline-flex; align-items: center; gap: 5px; margin-top: 8px;
     font-family: var(--font-body); font-size: 0.78rem; color: var(--ink-soft);
-    background: transparent; border: none; padding: 0; cursor: pointer;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; margin-inline-start: -6px; cursor: pointer;
   }
-  .lw-members__templatelink:hover { color: var(--accent); text-decoration: underline; }
+  .lw-members__templatelink:hover { color: var(--accent); text-decoration: underline; background: var(--surface-2, rgba(0,0,0,0.05)); }
 
   .lw-members__bulkpreview { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.8rem; color: var(--ink-soft); padding-top: 9px; }
   .lw-members__bulkpreview .is-warn { color: var(--danger); }
@@ -1144,10 +1145,10 @@ const CSS = `
     background: var(--surface-2); color: var(--ink); border-radius: 20px; padding: 3px 8px;
   }
   .lw-members__role button {
-    display: flex; background: transparent; border: none; padding: 0;
+    display: flex; background: transparent; border: 1px solid var(--line); border-radius: 50%; padding: 2px;
     color: var(--ink-soft); cursor: pointer; line-height: 0;
   }
-  .lw-members__role button:hover { color: var(--danger); }
+  .lw-members__role button:hover { color: var(--danger); background: var(--surface-2, rgba(0,0,0,0.05)); }
   .lw-members__roleadd {
     display: inline-flex; align-items: center; gap: 3px;
     font-family: var(--font-mono); font-size: 10px;
@@ -1192,19 +1193,6 @@ const CSS = `
   }
   .lw-members__enrollinline button:hover:not(:disabled) { color: var(--ink); }
   .lw-members__enrollinline button:disabled { opacity: 0.45; cursor: not-allowed; }
-
-  .lw-members__readonly { font-size: 0.83rem; color: var(--ink-soft); margin-top: 18px; font-style: italic; }
-
-  /* Same dashed-card empty-state pattern as ProductsScreen's .lw-prod__empty
-     — reused rather than reinvented, so "nothing here yet" reads the same
-     across screens. */
-  .lw-members__empty {
-    text-align: center; color: var(--ink-soft);
-    background: var(--surface); border: 1px dashed var(--line);
-    border-radius: var(--radius-sm); padding: 40px 26px;
-  }
-  .lw-members__empty h2 { font-family: var(--font-display); font-size: 1.1rem; color: var(--ink); margin: 12px 0 8px; }
-  .lw-members__empty p { font-size: 0.88rem; max-width: 46ch; margin: 0 auto; line-height: 1.6; }
 
   /* Groups the Create Invitation form's fields (Who / How / Enrollment /
      Recipients) without breaking the label-left/value-right grid the fields

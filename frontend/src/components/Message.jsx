@@ -10,12 +10,17 @@ import { AlertCircle, CheckCircle2 } from "lucide-react";
    everything regardless of where in the DOM it's mounted (including inside
    a modal), since none of this app's overlay/panel wrappers use `transform`
    to center themselves (that would create a containing block and break
-   `position: fixed`) — confirmed against `.lw-overlay` etc. Styled with
-   fixed inline values rather than this app's `var(--ink)`-style theme
-   tokens, for the same portability reason as InfoTip/RequiredMark
-   (UIC-001/UIC-002) — those tokens only ever exist inside each screen's own
-   scoped CSS, and this component has to drop into any of them, logged in
-   or not.
+   `position: fixed`) — confirmed against `.lw-overlay` etc.
+
+   Colors use `var(--token, fixedFallback)` rather than a bare theme token —
+   pre-auth screens never mount inside `.lw-root`, so no `--danger`/
+   `--surface` exist there and the fallback (this component's original
+   fixed light values) is what renders, same portability InfoTip/
+   RequiredMark rely on (UIC-001/UIC-002). Post-login, `.lw-root`'s theme
+   vars are inherited (Message is still a DOM descendant despite floating
+   via `position: fixed`), so the toast now follows dark mode instead of
+   always looking light-mode (2026-08-21 fix — see --success/--danger in
+   App.jsx's theme palettes).
    ========================================================================= */
 
 const VISIBLE_MS = 4200;
@@ -26,20 +31,23 @@ const BASE_STYLE = {
   display: "flex", alignItems: "center", gap: 9,
   maxWidth: 360, borderRadius: 10, borderWidth: 1, borderStyle: "solid",
   padding: "12px 15px", fontSize: "0.87rem", lineHeight: 1.4,
-  background: "#fff", boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+  background: "var(--surface, #fff)", boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
   transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`,
 };
 
 const VARIANTS = {
   error: {
-    Icon: AlertCircle, color: "#C0392B",
-    background: "#FDF1EF", borderColor: "rgba(192, 57, 43, 0.35)",
+    Icon: AlertCircle, color: "var(--danger, #C0392B)",
+    background: "color-mix(in srgb, var(--danger, #C0392B) 12%, var(--surface, #FDF1EF))",
+    borderColor: "color-mix(in srgb, var(--danger, #C0392B) 35%, transparent)",
   },
   success: {
     // color nudged 2026-08-15 (WCAG pass) — #1E7F63 cleared only 4.48:1
-    // against this background (needs 4.5:1); #1E7D61 clears 4.59:1.
-    Icon: CheckCircle2, color: "#1E7D61",
-    background: "#EBF7F2", borderColor: "rgba(30, 127, 99, 0.35)",
+    // against this background (needs 4.5:1); #1E7D61 clears 4.59:1. Reused
+    // as --success's light-theme value in App.jsx.
+    Icon: CheckCircle2, color: "var(--success, #1E7D61)",
+    background: "color-mix(in srgb, var(--success, #1E7D61) 12%, var(--surface, #EBF7F2))",
+    borderColor: "color-mix(in srgb, var(--success, #1E7D61) 35%, transparent)",
   },
 };
 

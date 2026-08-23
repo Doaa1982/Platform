@@ -201,10 +201,10 @@ const CSS = `
   [dir="rtl"] .pl-apply__card::after { transform: scaleX(-1); }
   .pl-apply__back {
     display: inline-flex; align-items: center; gap: 5px; background: transparent;
-    border: none; padding: 0; margin-bottom: 20px; font-family: inherit;
+    border: 1px solid var(--line, rgba(241,234,217,0.14)); border-radius: 6px; padding: 3px 6px; margin-bottom: 20px; margin-inline-start: -6px; font-family: inherit;
     font-size: 0.82rem; color: var(--ink-soft); cursor: pointer;
   }
-  .pl-apply__back:hover { color: var(--ink); }
+  .pl-apply__back:hover { color: var(--ink); background: var(--surface-2, rgba(241,234,217,0.08)); }
 
   .pl-apply__mark {
     width: 46px; height: 46px; border-radius: 12px; margin-bottom: 16px;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LoaderCircle, BookOpen, CheckCircle2, ClipboardCheck, Award, Trophy, Clock, PlayCircle, ChevronRight,
 } from "lucide-react";
@@ -74,7 +74,6 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
   const [setup, setSetup] = useState(null);
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
-  const continueRowRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,36 +110,38 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
       <h1>{firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")}</h1>
 
       {stats.continueLearning.length > 0 && (
-        <div className="lw-lh__continuewrap">
-          <div className="lw-lh__continuelabel">{t("learnerHome.continueLearning")}</div>
-          <div className="lw-lh__continuerow" ref={continueRowRef}>
+        <div className="lw-lh__continuepanel">
+          <div className="lw-lh__continueheader">
+            <span className="lw-lh__continueheadericon"><PlayCircle size={20} /></span>
+            <div>
+              <div className="lw-lh__continueheading">{t("learnerHome.continueLearning")}</div>
+              <div className="lw-lh__continuesubtitle">{t("learnerHome.continueSubtitle")}</div>
+            </div>
+          </div>
+
+          <div className="lw-lh__continuelist">
             {stats.continueLearning.map((c) => (
-              <button key={c.lessonId} className="lw-lh__continuecard"
+              <button key={c.lessonId} className="lw-lh__featured"
                       onClick={() => onContinueLesson?.(c.productId, c.lessonId)}>
-                <div className={`lw-lh__continuethumb ${c.productCoverImageAssetId ? "" : `lw-cover--${coverVariant(c.productId)}`}`}>
+                <div className={`lw-lh__featuredthumb ${c.productCoverImageAssetId ? "" : `lw-cover--${coverVariant(c.productId)}`}`}>
                   {c.productCoverImageAssetId && (
                     <img className="lw-lh__continueimg" alt=""
                          src={api.learningAssetDownloadUrl(session.token, slug, c.productCoverImageAssetId)} />
                   )}
-                  <span className="lw-lh__continueplay"><PlayCircle size={30} /></span>
+                  <span className="lw-lh__continueplay"><PlayCircle size={40} /></span>
                 </div>
-                <div className="lw-lh__continuebody">
+                <div className="lw-lh__featuredbody">
                   <div className="lw-lh__continuecourse">{c.productTitle}</div>
-                  <div className="lw-lh__continuetitle">{c.lessonTitle}</div>
+                  <div className="lw-lh__featuredlessontitle">{c.lessonTitle}</div>
                   <div className="lw-lh__continuemeta">
                     {t("learnerHome.lesson")}
                     {c.estimatedMinutes != null && <> · {c.estimatedMinutes}{t("learnerHome.minShort")}</>}
                   </div>
+                  <span className="lw-lh__featuredcta">{t("learnerHome.continueButton")} <ChevronRight size={16} /></span>
                 </div>
               </button>
             ))}
           </div>
-          {stats.continueLearning.length > 3 && (
-            <button className="lw-lh__continuescroll" aria-label={t("learnerHome.scrollMore")}
-                    onClick={() => continueRowRef.current?.scrollBy({ left: 320, behavior: "smooth" })}>
-              <ChevronRight size={18} />
-            </button>
-          )}
         </div>
       )}
 
@@ -182,37 +183,63 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
 
 const CSS = `
   .lw-lh__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-lh__continuewrap { position: relative; max-width: 900px; margin: 0 auto 22px; }
-  .lw-lh__continuelabel {
-    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--ink-soft); margin-bottom: 9px;
+
+  /* The "resume learning" panel — deliberately its own boxed-off, tinted
+     card (not just another block on the page) so it reads as a distinct
+     destination, not one item among the stat tiles below it. */
+  .lw-lh__continuepanel {
+    max-width: 900px; margin: 0 auto 26px;
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+    border-radius: 18px; padding: 18px 20px 20px;
   }
-  .lw-lh__continuerow {
-    display: flex; gap: 14px; overflow-x: auto; padding-bottom: 4px;
-    scroll-snap-type: x proximity;
+  .lw-lh__continueheader { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .lw-lh__continueheadericon {
+    width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent); color: var(--on-accent, #fff);
   }
-  .lw-lh__continuecard {
-    display: flex; flex-direction: column; text-align: start; cursor: pointer; padding: 0;
-    flex: 0 0 240px; scroll-snap-align: start;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-    overflow: hidden; font-family: var(--font-body);
+  .lw-lh__continueheading { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; color: var(--ink); line-height: 1.2; }
+  .lw-lh__continuesubtitle { font-size: 0.8rem; color: var(--ink-soft); margin-top: 1px; }
+
+  /* Every in-progress lesson gets the exact same "resume here" treatment —
+     no small/large split, every item in this list is equally prominent
+     (thumbnail, big title, explicit CTA), Netflix continue-watching style. */
+  .lw-lh__continuelist { display: flex; flex-direction: column; gap: 12px; }
+  .lw-lh__featured {
+    display: flex; text-align: start; cursor: pointer; padding: 0; width: 100%;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 14px;
+    overflow: hidden; font-family: var(--font-body); transition: border-color .12s;
   }
-  .lw-lh__continuecard:hover { border-color: var(--accent); }
-  .lw-lh__continuethumb { height: 110px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .lw-lh__featured:hover { border-color: var(--accent); }
+  .lw-lh__featuredthumb { position: relative; flex: 0 0 220px; min-height: 140px; display: flex; align-items: center; justify-content: center; }
   .lw-lh__continueimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .lw-lh__continueplay { position: relative; color: rgba(255,255,255,0.92); display: flex; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35)); }
-  .lw-lh__continuebody { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 3px; }
-  .lw-lh__continuecourse { font-size: 0.72rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lw-lh__continuetitle { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600; color: var(--ink); line-height: 1.3; }
-  .lw-lh__continuemeta { font-size: 0.76rem; color: var(--ink-soft); margin-top: 2px; }
-  .lw-lh__continuescroll {
-    position: absolute; top: 50%; inset-inline-end: -6px; transform: translateY(-6px);
-    width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    background: var(--surface); border: 1px solid var(--line); color: var(--ink-soft); cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  .lw-lh__featuredbody { flex: 1; min-width: 0; padding: 14px 18px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+  .lw-lh__continuecourse { font-size: 0.74rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lw-lh__featuredlessontitle { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--ink); line-height: 1.25; }
+  .lw-lh__continuemeta { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
+  .lw-lh__featuredcta {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; width: fit-content;
+    font-size: 0.85rem; font-weight: 700; color: var(--accent);
   }
-  .lw-lh__continuescroll:hover { color: var(--ink); }
-  [dir="rtl"] .lw-lh__continuescroll { transform: translateY(-6px) scaleX(-1); }
+  [dir="rtl"] .lw-lh__featuredcta svg { transform: scaleX(-1); }
+
+  /* Most students open this on a phone — each card stacks (thumb full-width
+     on top), and its CTA becomes a real full-width button, so every single
+     "continue here" is unmissable and easy to tap without any side-scrolling. */
+  @media (max-width: 640px) {
+    .lw-lh__continuepanel { padding: 14px 14px 16px; border-radius: 14px; }
+    .lw-lh__featured { flex-direction: column; }
+    .lw-lh__featuredthumb { flex: none; width: 100%; height: 170px; }
+    .lw-lh__featuredbody { padding: 14px 16px 16px; }
+    .lw-lh__featuredlessontitle { font-size: 1.1rem; }
+    .lw-lh__featuredcta {
+      justify-content: center; width: 100%; margin-top: 12px;
+      background: var(--accent); color: var(--on-accent, #fff);
+      padding: 11px; border-radius: 10px;
+    }
+  }
   .lw-lh__cards {
     display: flex; flex-wrap: wrap; justify-content: center; gap: 14px;
     max-width: 900px; margin: 0 auto;

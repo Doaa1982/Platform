@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+import Notice from "../components/Notice";
 
 /* =========================================================================
    ASSESSMENTS OVERVIEW — the tutor's gradebook: one row per lesson with a
@@ -53,6 +54,7 @@ function OverviewTable({ slug, token, onSelect, t }) {
       <style>{CSS}</style>
       <div className="lw-eyebrow">{t("assessOverview.eyebrow")}</div>
       <h1>{t("assessOverview.title")}</h1>
+      <p className="lw-sub">{t("assessOverview.lead")}</p>
 
       {error && <Message type="error">{error}</Message>}
 
@@ -61,12 +63,9 @@ function OverviewTable({ slug, token, onSelect, t }) {
       )}
 
       {data && data.assessments.length === 0 && (
-        <div className="lw-nby">
-          <span className="lw-nby__icon" aria-hidden="true"><ClipboardCheck size={20} /></span>
-          <div>
-            <p className="lw-nby__lead">{t("assessOverview.emptyLead")}</p>
-          </div>
-        </div>
+        <Notice tone="empty" layout="row" icon={ClipboardCheck}>
+          <p>{t("assessOverview.emptyLead")}</p>
+        </Notice>
       )}
 
       {data && data.assessments.length > 0 && (
@@ -200,25 +199,14 @@ const CSS = `
   .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
   .lw-learn__back {
     display: inline-flex; align-items: center; gap: 6px;
-    background: transparent; border: none; color: var(--ink-soft);
-    font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 0; margin-bottom: 14px;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft);
+    font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 3px 6px; margin-bottom: 14px; margin-inline-start: -6px;
   }
-  .lw-learn__back:hover { color: var(--ink); }
+  .lw-learn__back:hover { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
   .lw-learn__spin { animation: lwLearnSpin 0.9s linear infinite; }
   @keyframes lwLearnSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .lw-learn__spin { animation: none; } }
 
-  .lw-nby {
-    display: flex; gap: 16px; align-items: flex-start;
-    background: var(--surface); border: 1px dashed var(--line);
-    border-radius: var(--radius-sm); padding: 24px 26px; max-width: 62ch;
-  }
-  .lw-nby__icon {
-    width: 42px; height: 42px; border-radius: var(--radius-sm); flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--surface-2); color: var(--ink-soft);
-  }
-  .lw-nby__lead { font-size: 0.95rem; margin: 0; line-height: 1.6; }
 
   .lw-assess__table { width: 100%; border-collapse: collapse; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; font-size: 0.86rem; }
   .lw-assess__table th {

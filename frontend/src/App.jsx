@@ -96,6 +96,11 @@ const TUTOR_LIGHT = {
   // .lw-badge.is-earned svg); #855E25 clears 4.5:1+ there and also improves
   // (without breaking) the accent-2-as-fill-with-white-text spots.
   "--accent-2": "#855E25", "--line": "#D8C9A3", "--danger": "#7A2E2E",
+  // success (2026-08-21, added for Message's toast, the only place that
+  // previously ignored theming): #1E7D61 already clears 4.5:1+ against
+  // every light --surface in this app (calibrated 2026-08-15 for Message's
+  // old fixed light background), reused here rather than picked anew.
+  "--success": "#1E7D61",
   "--on-accent": "#F3ECD8",
   // Added 2026-08-15 (WCAG pass): --accent-2 is also used as a solid FILL
   // behind text/icons (chat avatars, stepper dots, active row buttons) —
@@ -120,6 +125,10 @@ const TUTOR_DARK = {
   // 4.34:1 as --danger text against --bg (needs 4.5:1); #C2655E clears it
   // while keeping the same rust hue.
   "--accent-2": "#C2655E", "--line": "rgba(241,234,217,0.16)", "--danger": "#C2655E",
+  // success (2026-08-21): a light mint clears 7.3:1+ against this theme's
+  // dark surfaces (--bg #1C1712, --surface #241D16) — same role #1E7D61
+  // plays in the light themes, lightened for a dark background.
+  "--success": "#5FCB9E",
   "--on-accent": "#1C1712",
   // Added 2026-08-15 (WCAG pass): unlike --on-accent, --accent-2's fill
   // (chat avatars, stepper dots, active row buttons) needs a DARK label —
@@ -150,6 +159,9 @@ const STUDENT_LIGHT = {
   // accent-2 darkened — #3B6FD9 cleared only 4.14:1 as --bar-role-ink /
   // --bar-active-ink text against --bar-role-bg (needs 4.5:1).
   "--accent-2": "#2E66D7", "--line": "#B9D0EE", "--danger": "#D52929",
+  // success (2026-08-21): same value as the tutor light theme — this green
+  // clears 4.5:1+ against --surface/--bg here too, no role-specific tuning needed.
+  "--success": "#1E7D61",
   "--on-accent": "#FFFFFF",
   // Added 2026-08-15 (WCAG pass): --accent-2 fill (chat avatars, stepper
   // dots, active row buttons) — white clears 5.25:1 here, same as --on-accent.
@@ -176,6 +188,9 @@ const STUDENT_DARK = {
   // 4.46:1 as accent/danger text against --surface (needs 4.5:1).
   "--accent": "#E16E62",
   "--accent-2": "#6FB3D9", "--line": "rgba(245,243,236,0.16)", "--danger": "#E16E62",
+  // success (2026-08-21): same mint as the tutor dark theme — clears 7.3:1+
+  // against this theme's dark surfaces (--bg #16241D, --surface #1C2C23).
+  "--success": "#5FCB9E",
   "--on-accent": "#16241D",
   // Added 2026-08-15 (WCAG pass): the worst case found in the audit —
   // --accent-2 here is a light sky-blue (correct as small text against the
@@ -1049,9 +1064,9 @@ const CSS = `
   .lw-accountbar button { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--bar-line); color: var(--ink-soft); border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
   .lw-accountbar button:hover { color: var(--bar-ink); border-color: var(--bar-hover-line); }
   .lw-accountbar .lw-accountbar__who {
-    background: transparent; border: 1px solid transparent; color: var(--ink-soft); padding: 4px 6px;
+    background: transparent; border: 1px solid var(--line); color: var(--ink-soft); padding: 4px 6px;
   }
-  .lw-accountbar .lw-accountbar__who:hover { color: var(--bar-ink); border-color: var(--bar-line); }
+  .lw-accountbar .lw-accountbar__who:hover { color: var(--bar-ink); border-color: var(--bar-line); background: var(--surface-2, rgba(0,0,0,0.05)); }
   .lw-accountbar__avatar {
     display: flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; border-radius: 50%;
@@ -1345,6 +1360,43 @@ const CSS = `
   .lw-root--learner .lw-aicard { transform: rotate(-0.6deg); }
   .lw-aicard__body { flex: 1; }
   .lw-aicard__actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .lw-aicard__dismiss {
+    background: transparent; border: none; color: var(--ink-soft); cursor: pointer;
+    flex-shrink: 0; padding: 2px; border-radius: 6px; display: flex;
+  }
+  .lw-aicard__dismiss:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+
+  /* NOTICE — the shared "state of the page" / "before you do this" callout
+     (see components/Notice.jsx). Three tones, one visual identity each,
+     replacing what used to be a byte-identical *__readonly/*__empty rule
+     redefined separately on every screen. */
+  .lw-notice--readonly { font-size: 0.83rem; color: var(--ink-soft); font-style: italic; margin-top: 16px; }
+  .lw-notice--empty {
+    text-align: center; color: var(--ink-soft);
+    background: var(--surface); border: 1px dashed var(--line);
+    border-radius: var(--radius-sm); padding: 40px 26px;
+  }
+  .lw-notice--empty h2 { font-family: var(--font-display); font-size: 1.1rem; color: var(--ink); margin: 12px 0 8px; }
+  .lw-notice--empty p { font-size: 0.88rem; max-width: 46ch; margin: 0 auto; line-height: 1.6; }
+  .lw-notice--empty.lw-notice--row {
+    display: flex; gap: 16px; align-items: flex-start; text-align: start; max-width: 62ch;
+  }
+  .lw-notice__iconchip {
+    width: 42px; height: 42px; border-radius: var(--radius-sm); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-2); color: var(--ink-soft);
+  }
+  .lw-notice--row .lw-notice__body p { font-size: 0.95rem; margin: 0 0 10px; line-height: 1.6; }
+  .lw-notice--row .lw-notice__body p:last-of-type { margin-bottom: 16px; }
+  .lw-notice--warning {
+    display: flex; align-items: flex-start; gap: 8px;
+    background: color-mix(in srgb, #E0912E 12%, transparent);
+    border: 1px solid color-mix(in srgb, #E0912E 35%, transparent);
+    color: #E0912E; border-radius: var(--radius-sm); padding: 9px 12px;
+    font-size: 0.8rem; line-height: 1.5;
+  }
+  .lw-notice--warning svg { flex-shrink: 0; margin-top: 1px; }
+  .lw-notice--warning .lw-notice__body { flex: 1; }
 
   .lw-unitlist { display: flex; flex-direction: column; gap: 14px; }
   .lw-unitcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }

@@ -218,10 +218,11 @@ const CSS = `
   .lw-enroll__tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
   .lw-enroll__tabs button {
     font-family: inherit; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft);
-    background: transparent; border: none; border-bottom: 2px solid transparent;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; border-bottom: 2px solid transparent;
     padding: 9px 14px; cursor: pointer; margin-bottom: -1px;
   }
   .lw-enroll__tabs button.is-active { color: var(--accent); border-bottom-color: var(--accent); }
+  .lw-enroll__tabs button:hover, .lw-enroll__tabs button:focus-visible { background: var(--surface-2, rgba(0,0,0,0.05)); }
 
   .lw-enroll__empty { font-size: 0.83rem; color: var(--ink-soft); font-style: italic; margin-top: 18px; }
 

@@ -162,8 +162,16 @@ public class LearningDeliveryService(
         var continueLearning = new List<LearnerContinueLearningRow>();
         foreach (var progress in latestOpenPerEnrollment)
         {
+            // publishedLessonIdSet already means "Published, and currently
+            // placed in a Published curriculum" — without this check, a
+            // lesson a Learner started before the tutor unpublished (or
+            // entirely removed) its curriculum would keep showing up here as
+            // "continue" even though My Learnings correctly hides the whole
+            // product now that it has no reachable content.
+            if (!publishedLessonIdSet.Contains(progress.LessonId)) continue;
+
             var lesson = await db.Lessons.AsNoTracking()
-                .FirstOrDefaultAsync(l => l.Id == progress.LessonId && l.Status == LessonStatus.Published, ct);
+                .FirstOrDefaultAsync(l => l.Id == progress.LessonId, ct);
             if (lesson is null) continue;
 
             var product = await db.LearningProducts.AsNoTracking()
