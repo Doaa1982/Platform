@@ -19,7 +19,7 @@ namespace Platform.Api.Services;
 /// manually marks that invoice paid.
 /// </summary>
 public class CommercialSubscriptionService(
-    PlatformDbContext db, ConfigurationService configuration, LicensingService licensing)
+    PlatformDbContext db, ConfigurationService configuration, LicensingService licensing, ICreditLedgerService credits)
 {
     /// <summary>Billing is a commercial decision about the Workspace, not an authoring one — Teacher is deliberately excluded here, unlike LearningProductService's AuthorRoles.</summary>
     private static readonly WorkspaceRoleName[] BillingRoles =
@@ -39,6 +39,17 @@ public class CommercialSubscriptionService(
                         && s.Status != SubscriptionStatus.Cancelled && s.Status != SubscriptionStatus.Expired, ct);
         if (hasOpenSubscription)
             return Fail((ProvisioningError.Conflict, "This workspace already has an active or pending subscription."));
+
+        // §A7 (AICreditsCommercialContractAndImplementationPlan.md): a
+        // one-time 200-credit trial grant, given the first time a workspace
+        // ever subscribes — not on every checkout, so a workspace that
+        // cancelled and comes back doesn't get a second trial. Checked here
+        // (Subscription.Create is about to run below) rather than at bare
+        // Workspace.Create, since a Workspace with no Subscription yet has no
+        // WorkspaceLicense either, and nothing resolves an AI entitlement for
+        // it — the trial would have nothing to attach to any earlier than this.
+        var isFirstEverSubscription = !await db.Subscriptions.AsNoTracking()
+            .AnyAsync(s => s.WorkspaceId == ctx.Workspace!.Id, ct);
 
         var configResult = await configuration.ResolveAsync(ctx.Workspace!.Id, request.PlanCode, request.PackCodes, billingCycle, ct);
         if (!configResult.Ok) return Fail((configResult.Error, configResult.Message!));
@@ -62,35 +73,57 @@ public class CommercialSubscriptionService(
         var subscription = Subscription.Create(ctx.Workspace.Id, billingAccount.Id, snapshot.Id, billingCycle);
         db.Subscriptions.Add(subscription);
 
-        // Recommended invoice structure, Billing Architecture §66 — one line for the
-        // base plan, one per selected add-on. Due in 7 days: there is no concrete
-        // policy value in any source doc, so a short, reasonable default is used.
-        var invoice = Invoice.Create(
-            billingAccount.Id, subscription.Id, snapshot.Id,
-            subscription.StartDate, subscription.CurrentPeriodEnd,
-            dueDate: subscription.StartDate.AddDays(7), snapshot.PriceCurrency);
-
-        invoice.AddLine(
-            $"{product.Name} ({billingCycle})", InvoiceComponentType.BasePlan,
-            billingCycle == BillingCycle.Annual ? version.AnnualPrice : version.MonthlyPrice);
-
-        var packVersions = await db.CommercialPackVersions.AsNoTracking()
-            .Where(v => snapshot.SelectedPackVersionIds.Contains(v.Id))
-            .ToListAsync(ct);
-        var packNamesById = await db.CommercialPacks.AsNoTracking()
-            .Where(p => packVersions.Select(v => v.PackId).Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
-
-        foreach (var packVersion in packVersions)
+        if (isFirstEverSubscription)
         {
-            invoice.AddLine(
-                packNamesById.GetValueOrDefault(packVersion.PackId, "Add-on"),
-                packVersion.ExtraTutorCapacity > 0 ? InvoiceComponentType.Capacity : InvoiceComponentType.CapabilityPack,
-                billingCycle == BillingCycle.Annual ? packVersion.MonthlyPrice * 10m : packVersion.MonthlyPrice);
+            db.CreditLedgerEntries.Add(CreditLedgerEntry.Grant(
+                ctx.Workspace.Id, CreditLedgerEntryType.TrialGrant, amount: 200,
+                expiresAtUtc: DateTime.UtcNow.AddDays(30)));
         }
 
-        invoice.Issue();
-        db.Invoices.Add(invoice);
+        if (snapshot.PriceAmount == 0)
+        {
+            // Nothing to collect — a 0-priced plan (and no paid add-ons selected)
+            // has no Manual Commercial Activation step to wait on: there is no
+            // invoice for a Platform Operator to ever mark paid, so activation
+            // happens immediately instead, the same transition
+            // CommercialOpsService.MarkInvoicePaidAsync would otherwise perform.
+            subscription.Activate();
+            db.SubscriptionEvents.Add(SubscriptionEvent.Record(
+                subscription.Id, "FreePlanActivated", callerIdentityId,
+                "No invoice — the resolved plan and add-ons total 0."));
+        }
+        else
+        {
+            // Recommended invoice structure, Billing Architecture §66 — one line for the
+            // base plan, one per selected add-on. Due in 7 days: there is no concrete
+            // policy value in any source doc, so a short, reasonable default is used.
+            var invoice = Invoice.Create(
+                billingAccount.Id, subscription.Id, snapshot.Id,
+                subscription.StartDate, subscription.CurrentPeriodEnd,
+                dueDate: subscription.StartDate.AddDays(7), snapshot.PriceCurrency);
+
+            invoice.AddLine(
+                $"{product.Name} ({billingCycle})", InvoiceComponentType.BasePlan,
+                billingCycle == BillingCycle.Annual ? version.AnnualPrice : version.MonthlyPrice);
+
+            var packVersions = await db.CommercialPackVersions.AsNoTracking()
+                .Where(v => snapshot.SelectedPackVersionIds.Contains(v.Id))
+                .ToListAsync(ct);
+            var packNamesById = await db.CommercialPacks.AsNoTracking()
+                .Where(p => packVersions.Select(v => v.PackId).Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
+
+            foreach (var packVersion in packVersions)
+            {
+                invoice.AddLine(
+                    packNamesById.GetValueOrDefault(packVersion.PackId, "Add-on"),
+                    packVersion.ExtraTutorCapacity > 0 ? InvoiceComponentType.Capacity : InvoiceComponentType.CapabilityPack,
+                    billingCycle == BillingCycle.Annual ? packVersion.MonthlyPrice * 10m : packVersion.MonthlyPrice);
+            }
+
+            invoice.Issue();
+            db.Invoices.Add(invoice);
+        }
 
         await db.SaveChangesAsync(ct);
         await licensing.RecomputeLicenseAsync(subscription.Id, ct);
@@ -164,6 +197,14 @@ public class CommercialSubscriptionService(
                 + $"(active or pending). The selected plan supports {snapshot.TutorCapacity}. "
                 + "Remove a member or let a pending invitation lapse before downgrading."));
 
+        // A decrease contradicts any outstanding request to pay more — void
+        // that request's Invoice before scheduling the decrease.
+        if (subscription.RequestedInvoiceId is { } staleInvoiceId)
+        {
+            var staleInvoice = await db.Invoices.FirstOrDefaultAsync(i => i.Id == staleInvoiceId, ct);
+            staleInvoice?.Void();
+        }
+
         try { subscription.ScheduleDowngrade(snapshot.Id); }
         catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
 
@@ -176,12 +217,14 @@ public class CommercialSubscriptionService(
     }
 
     /// <summary>
-    /// §15-16 / Billing Architecture §25-27: an Upgrade applies immediately
-    /// and bills a prorated difference for the remainder of the current
-    /// period, rather than waiting for period end like Downgrade. Rejected
+    /// §15-16 / Billing Architecture §25-27: a price-increasing plan/pack
+    /// change. Unlike the old immediate-apply behavior, this only *requests*
+    /// the change and issues a prorated invoice for a Platform Operator to
+    /// manually confirm (Manual Commercial Activation, §27a) — the workspace
+    /// keeps its currently-confirmed plan's entitlements until then. Rejected
     /// if the target isn't actually more expensive at the current billing
     /// cycle — that direction is Downgrade's job, which has its own Impact
-    /// Analysis this path doesn't need (an upgrade can only ever grant more
+    /// Analysis this path doesn't need (an increase can only ever request more
     /// capacity, never less).
     /// </summary>
     public async Task<ProvisioningResult<SubscriptionSummary>> UpgradeAsync(
@@ -220,28 +263,37 @@ public class CommercialSubscriptionService(
         var prorationFraction = totalDays > 0 ? remainingDays / totalDays : 0;
         var prorationAmount = Math.Round((newSnapshot.PriceAmount - oldSnapshot.PriceAmount) * (decimal)prorationFraction, 2);
 
-        try { subscription.ApplyUpgrade(newSnapshot.Id); }
-        catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
-
         var billingAccount = await db.BillingAccounts.FirstOrDefaultAsync(b => b.WorkspaceId == ctx.Workspace.Id, ct);
         if (billingAccount is null)
             return Fail((ProvisioningError.Conflict, "This workspace has no billing account to invoice the upgrade against."));
+
+        // A new request supersedes any prior one still awaiting confirmation —
+        // "replace, don't stack," same convention ScheduleDowngrade already uses.
+        if (subscription.RequestedInvoiceId is { } staleInvoiceId)
+        {
+            var staleInvoice = await db.Invoices.FirstOrDefaultAsync(i => i.Id == staleInvoiceId, ct);
+            staleInvoice?.Void();
+        }
 
         var invoice = Invoice.Create(
             billingAccount.Id, subscription.Id, newSnapshot.Id,
             billingPeriodStart: now, billingPeriodEnd: subscription.CurrentPeriodEnd,
             dueDate: now.AddDays(7), newSnapshot.PriceCurrency);
         invoice.AddLine(
-            $"Upgrade proration: {oldSnapshot.PlanCode} → {newSnapshot.PlanCode}",
+            $"Plan change: {oldSnapshot.PlanCode} → {newSnapshot.PlanCode}",
             InvoiceComponentType.Proration, prorationAmount);
         invoice.Issue();
         db.Invoices.Add(invoice);
 
-        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "Upgraded", callerIdentityId,
-            $"From {oldSnapshot.PlanCode} to {newSnapshot.PlanCode}, prorated {prorationAmount} {newSnapshot.PriceCurrency}."));
+        try { subscription.RequestChange(newSnapshot.Id, invoice.Id); }
+        catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
+
+        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "ChangeRequested", callerIdentityId,
+            $"From {oldSnapshot.PlanCode} to {newSnapshot.PlanCode}, prorated {prorationAmount} {newSnapshot.PriceCurrency} — awaiting confirmation."));
 
         await db.SaveChangesAsync(ct);
-        await licensing.RecomputeLicenseAsync(subscription.Id, ct);
+        // Nothing about current entitlements changed — the request only takes
+        // effect once a Platform Operator confirms the invoice (CommercialOpsService.MarkInvoicePaidAsync).
 
         return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
     }
@@ -286,6 +338,31 @@ public class CommercialSubscriptionService(
         return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
     }
 
+    /// <summary>The tutor's own "never mind" for an unconfirmed request — withdraws it and voids the tied Invoice before a Platform Operator ever acts on it.</summary>
+    public async Task<ProvisioningResult<SubscriptionSummary>> CancelRequestedChangeAsync(
+        string slug, Guid callerIdentityId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, callerIdentityId, requireBillingRole: true, ct);
+        if (ctx.Error is not null) return Fail(ctx.Error.Value);
+
+        var subscription = await CurrentSubscriptionAsync(ctx.Workspace!.Id, tracked: true, ct);
+        if (subscription is null) return Fail((ProvisioningError.NotFound, "This workspace has no subscription."));
+
+        if (subscription.RequestedInvoiceId is { } invoiceId)
+        {
+            var invoice = await db.Invoices.FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
+            invoice?.Void();
+        }
+
+        try { subscription.CancelRequestedChange(); }
+        catch (InvalidOperationException ex) { return Fail((ProvisioningError.Conflict, ex.Message)); }
+
+        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "RequestedChangeWithdrawn", callerIdentityId, null));
+        await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
+    }
+
     /// <summary>Same TutorRoles set as WorkspaceMemberService — Owner/Administrator/Teacher/AssistantTeacher draw against tutor-capacity, Learner/Parent/FinanceManager don't.</summary>
     private static readonly List<WorkspaceRoleName> TutorSeatRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher, WorkspaceRoleName.AssistantTeacher];
@@ -300,6 +377,68 @@ public class CommercialSubscriptionService(
         if (subscription is null) return Fail((ProvisioningError.NotFound, "This workspace has no subscription."));
 
         return ProvisioningResult<SubscriptionSummary>.Success(await BuildSummaryAsync(subscription, ct));
+    }
+
+    /// <summary>
+    /// Confirmed add-on history — every past Manual Commercial Activation
+    /// that actually changed the selected Capability Packs, newest first.
+    /// Read from SubscriptionEvent's before/after snapshot pair (see its own
+    /// doc) since Subscription itself keeps no history of past snapshots.
+    /// </summary>
+    public async Task<ProvisioningResult<IReadOnlyList<SubscriptionHistoryEntry>>> GetHistoryAsync(
+        string slug, Guid callerIdentityId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, callerIdentityId, requireBillingRole: false, ct);
+        if (ctx.Error is not null)
+            return ProvisioningResult<IReadOnlyList<SubscriptionHistoryEntry>>.Fail(ctx.Error.Value.Error, ctx.Error.Value.Message);
+
+        var subscription = await CurrentSubscriptionAsync(ctx.Workspace!.Id, tracked: false, ct);
+        if (subscription is null)
+            return ProvisioningResult<IReadOnlyList<SubscriptionHistoryEntry>>.Success([]);
+
+        var events = await db.SubscriptionEvents.AsNoTracking()
+            .Where(e => e.SubscriptionId == subscription.Id
+                     && e.PreviousConfigurationSnapshotId != null && e.NewConfigurationSnapshotId != null)
+            .OrderByDescending(e => e.OccurredAt)
+            .ToListAsync(ct);
+
+        if (events.Count == 0)
+            return ProvisioningResult<IReadOnlyList<SubscriptionHistoryEntry>>.Success([]);
+
+        var snapshotIds = events
+            .SelectMany(e => new[] { e.PreviousConfigurationSnapshotId!.Value, e.NewConfigurationSnapshotId!.Value })
+            .Distinct().ToList();
+        var snapshots = await db.ConfigurationSnapshots.AsNoTracking()
+            .Where(s => snapshotIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, ct);
+
+        var packNames = await db.CommercialPacks.AsNoTracking()
+            .ToDictionaryAsync(p => p.Code.ToString(), p => p.Name, ct);
+
+        var entries = new List<SubscriptionHistoryEntry>();
+        foreach (var e in events)
+        {
+            if (!snapshots.TryGetValue(e.PreviousConfigurationSnapshotId!.Value, out var before)
+                || !snapshots.TryGetValue(e.NewConfigurationSnapshotId!.Value, out var after))
+                continue; // Snapshot rows are never deleted, but skip defensively rather than 500 on a gap.
+
+            var addedPacks = after.SelectedPackCodes.Except(before.SelectedPackCodes).ToList();
+            var removedPacks = before.SelectedPackCodes.Except(after.SelectedPackCodes).ToList();
+            if (addedPacks.Count == 0 && removedPacks.Count == 0)
+                continue; // A plan-only change (same packs before/after) isn't add-on history.
+
+            entries.Add(new SubscriptionHistoryEntry(
+                ConfirmedAt: e.OccurredAt,
+                AddedPackNames: addedPacks.Select(c => packNames.GetValueOrDefault(c, c)).ToList(),
+                RemovedPackNames: removedPacks.Select(c => packNames.GetValueOrDefault(c, c)).ToList(),
+                TutorCapacityBefore: before.TutorCapacity, TutorCapacityAfter: after.TutorCapacity,
+                LearnerCapacityBefore: before.LearnerCapacity, LearnerCapacityAfter: after.LearnerCapacity,
+                VideoStorageGbBefore: before.VideoStorageGb, VideoStorageGbAfter: after.VideoStorageGb,
+                ResourceStorageGbBefore: before.ResourceStorageGb, ResourceStorageGbAfter: after.ResourceStorageGb,
+                AiCreditsIncludedBefore: before.AiCreditsIncluded, AiCreditsIncludedAfter: after.AiCreditsIncluded));
+        }
+
+        return ProvisioningResult<IReadOnlyList<SubscriptionHistoryEntry>>.Success(entries);
     }
 
     // ── Shared ───────────────────────────────────────────────────────────────
@@ -335,6 +474,49 @@ public class CommercialSubscriptionService(
                 .FirstOrDefaultAsync(s => s.Id == pendingId, ct))?.PlanCode;
         }
 
+        string? requestedPlanCode = null;
+        IReadOnlyList<string>? requestedPackCodes = null;
+        if (subscription.RequestedConfigurationSnapshotId is { } requestedId)
+        {
+            var requestedSnapshot = await db.ConfigurationSnapshots.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == requestedId, ct);
+            requestedPlanCode = requestedSnapshot?.PlanCode;
+            requestedPackCodes = requestedSnapshot?.SelectedPackCodes.ToList();
+        }
+
+        var aiCreditsRemaining = await credits.GetBalanceAsync(subscription.WorkspaceId, ct);
+
+        // Actual consumption against the four metered capacity entitlements —
+        // mirrors the sum queries WorkspaceMemberService/LearningAssetService
+        // already run privately to gate invites/uploads, duplicated here
+        // (rather than injecting those services) since each is a single
+        // trivial aggregate against tables this service already queries.
+        var usedByKey = new Dictionary<string, string>();
+        if (license?.Entitlements is { Count: > 0 })
+        {
+            var activeTutors = await db.Memberships
+                .Where(m => m.WorkspaceId == subscription.WorkspaceId && m.Status == MembershipStatus.Active)
+                .Where(m => m.Roles.Any(r => TutorSeatRoles.Contains(r.Name)))
+                .CountAsync(ct);
+            var activeLearners = await db.Memberships
+                .Where(m => m.WorkspaceId == subscription.WorkspaceId && m.Status == MembershipStatus.Active)
+                .Where(m => m.Roles.Any(r => r.Name == WorkspaceRoleName.Learner))
+                .CountAsync(ct);
+            var videoBytesUsed = await db.LearningAssets
+                .Where(a => a.WorkspaceId == subscription.WorkspaceId && a.Category == LearningAssetCategory.Video && a.Status != LearningAssetStatus.Archived)
+                .SumAsync(a => a.FileSizeBytes, ct);
+            var resourceBytesUsed = await db.LearningAssets
+                .Where(a => a.WorkspaceId == subscription.WorkspaceId
+                         && (a.Category == LearningAssetCategory.Resource || a.Category == LearningAssetCategory.Image)
+                         && a.Status != LearningAssetStatus.Archived)
+                .SumAsync(a => a.FileSizeBytes, ct);
+
+            usedByKey[EntitlementResolutionService.TutorCapacityKey] = activeTutors.ToString();
+            usedByKey[EntitlementResolutionService.LearnerCapacityKey] = activeLearners.ToString();
+            usedByKey[EntitlementResolutionService.VideoStorageGbKey] = (videoBytesUsed / 1_000_000_000.0).ToString("0.#");
+            usedByKey[EntitlementResolutionService.ResourceStorageGbKey] = (resourceBytesUsed / 1_000_000_000.0).ToString("0.#");
+        }
+
         return new SubscriptionSummary(
             SubscriptionId: subscription.Id,
             Status: subscription.Status.ToString(),
@@ -347,6 +529,8 @@ public class CommercialSubscriptionService(
             CancellationEffectiveDate: subscription.CancellationEffectiveDate,
             PendingPlanCode: pendingPlanCode,
             PendingChangeEffectiveDate: subscription.PendingChangeEffectiveDate,
+            RequestedPlanCode: requestedPlanCode,
+            RequestedPackCodes: requestedPackCodes,
             CurrentInvoiceId: invoice?.Id,
             CurrentInvoiceStatus: invoice?.Status.ToString(),
             CurrentInvoiceDueDate: invoice?.DueDate,
@@ -354,8 +538,10 @@ public class CommercialSubscriptionService(
             CurrentInvoiceCurrency: invoice?.Currency,
             LicenseStatus: license?.Status.ToString() ?? LicenseStatus.Pending.ToString(),
             Entitlements: license?.Entitlements
-                .Select(e => new EntitlementRow(e.Type.ToString(), e.Domain?.ToString(), e.Key, e.Value, e.Source.ToString()))
-                .ToList() ?? []);
+                .Select(e => new EntitlementRow(e.Type.ToString(), e.Domain?.ToString(), e.Key, e.Value, e.Source.ToString(),
+                    usedByKey.GetValueOrDefault(e.Key)))
+                .ToList() ?? [],
+            AiCreditsRemaining: aiCreditsRemaining);
     }
 
     private record Context(Workspace? Workspace, Guid MembershipId, bool CanManageBilling,

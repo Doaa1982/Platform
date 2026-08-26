@@ -46,19 +46,19 @@ public class GenerateWorkspaceProfileSkill(AiOrchestrator orchestrator)
         """;
 
     public async Task<string> SuggestDescriptionAsync(
-        string name, IReadOnlyList<string>? courseCategories, CancellationToken ct = default)
+        string name, IReadOnlyList<string>? courseCategories, Guid workspaceId, CancellationToken ct = default)
     {
         var userPrompt = $"""
             Academy name: {name}
             Course categories: {(courseCategories is { Count: > 0 } ? string.Join(", ", courseCategories) : "(none)")}
             """;
 
-        var description = await orchestrator.RunTextAsync(DescriptionSystemPrompt, userPrompt, ct);
+        var description = await orchestrator.RunTextAsync(DescriptionSystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateWorkspaceProfile, ct: ct);
         return description.Trim().Trim('"');
     }
 
     public async Task<string> SuggestWelcomeMessageAsync(
-        string name, string? description, IReadOnlyList<string>? courseCategories, CancellationToken ct = default)
+        string name, string? description, IReadOnlyList<string>? courseCategories, Guid workspaceId, CancellationToken ct = default)
     {
         var userPrompt = $"""
             Academy name: {name}
@@ -66,7 +66,7 @@ public class GenerateWorkspaceProfileSkill(AiOrchestrator orchestrator)
             Course categories: {(courseCategories is { Count: > 0 } ? string.Join(", ", courseCategories) : "(none)")}
             """;
 
-        var welcome = await orchestrator.RunTextAsync(WelcomeSystemPrompt, userPrompt, ct);
+        var welcome = await orchestrator.RunTextAsync(WelcomeSystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateWorkspaceProfile, ct: ct);
         return welcome.Trim().Trim('"');
     }
 }

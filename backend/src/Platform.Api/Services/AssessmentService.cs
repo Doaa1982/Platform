@@ -269,17 +269,18 @@ public class AssessmentService(
         try
         {
             suggestions = chapters is { Count: > 0 }
-                ? await SuggestFromChaptersAsync(ctx.LessonTitle ?? "Untitled lesson", chapters, request.VideoDurationSeconds, outputLanguage, ct)
+                ? await SuggestFromChaptersAsync(ctx.LessonTitle ?? "Untitled lesson", chapters, request.VideoDurationSeconds, outputLanguage, ctx.Workspace!.Id, ct)
                 : await generateQuestions.SuggestAsync(
                     ctx.LessonTitle ?? "Untitled lesson", revision?.Body, revision?.Transcript, ParseSegments(revision),
                     request.VideoDurationSeconds, Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions),
-                    outputLanguage, ct);
+                    outputLanguage, ctx.Workspace!.Id, ct);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
-            // Model unavailable, misconfigured key, or unparseable output —
-            // surfaced as a normal failure rather than a 500, so the tutor
-            // sees a clear message instead of a crash.
+            // Model unavailable, misconfigured key, unparseable output, or
+            // (CreditsExhaustedException) this workspace's AI credit balance
+            // can't cover it — all surfaced as a normal failure rather than a
+            // 500, so the tutor sees a clear message instead of a crash.
             return Fail<IReadOnlyList<SuggestedQuestion>>((ProvisioningError.Conflict, $"AI question generation failed: {ex.Message}"));
         }
 
@@ -296,7 +297,7 @@ public class AssessmentService(
     /// </summary>
     private async Task<IReadOnlyList<SuggestedQuestion>> SuggestFromChaptersAsync(
         string lessonTitle, IReadOnlyList<TranscriptChapter> chapters, int videoDurationSeconds,
-        string? outputLanguage, CancellationToken ct)
+        string? outputLanguage, Guid workspaceId, CancellationToken ct)
     {
         var results = new List<SuggestedQuestion>();
         var picked = chapters.Take(MaxSuggestedQuestions).ToList();
@@ -306,7 +307,7 @@ public class AssessmentService(
             var chapter = picked[i];
             var questionType = QuestionTypeRotation[i % QuestionTypeRotation.Length];
             var suggestion = await generateQuestions.SuggestForChapterAsync(
-                lessonTitle, chapter.Title, chapter.Summary, questionType, outputLanguage, ct);
+                lessonTitle, chapter.Title, chapter.Summary, questionType, outputLanguage, workspaceId, ct);
 
             var timestamp = Math.Clamp((int)chapter.StartSeconds, 0, Math.Max(videoDurationSeconds - 1, 0));
             results.Add(suggestion with { VideoTimestampSeconds = timestamp });
@@ -339,13 +340,13 @@ public class AssessmentService(
             suggestions = await generateStandaloneQuestions.SuggestAsync(
                 ctx.LessonTitle ?? "Untitled lesson", revision?.Body, revision?.Transcript,
                 revision?.WhatYoullLearn, revision?.LearningObjectives, revision?.Glossary,
-                count, outputLanguage, ct);
+                count, outputLanguage, ctx.Workspace!.Id, ct);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
-            // Model unavailable, misconfigured key, or unparseable output —
-            // surfaced as a normal failure rather than a 500, same as
-            // SuggestQuestionsAsync's identical handling.
+            // Model unavailable, misconfigured key, unparseable output, or
+            // out of AI credits — surfaced as a normal failure rather than a
+            // 500, same as SuggestQuestionsAsync's identical handling.
             return Fail<IReadOnlyList<SuggestedStandaloneQuestion>>((ProvisioningError.Conflict, $"AI question generation failed: {ex.Message}"));
         }
 
@@ -443,13 +444,13 @@ public class AssessmentService(
         {
             feedback = await gradeAssessment.ReviewAsync(
                 ctx.LessonTitle ?? "This lesson", graded.ScorePercent, graded.Passed,
-                assessment.PassingThresholdPercent, openAnswers, ct);
+                assessment.PassingThresholdPercent, openAnswers, ctx.Workspace!.Id, ct);
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
-            // Model unavailable/misconfigured — fall back to the deterministic
-            // summary rather than failing a preview the score itself already
-            // computed successfully.
+            // Model unavailable/misconfigured, or out of AI credits — fall
+            // back to the deterministic summary rather than failing a
+            // preview the score itself already computed successfully.
             var openNote = openAnswers.Count > 0
                 ? $" {openAnswers.Count} open-ended response{(openAnswers.Count == 1 ? "" : "s")} reviewed for participation, not scored."
                 : "";

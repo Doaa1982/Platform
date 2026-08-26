@@ -71,7 +71,7 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
     public async Task<IReadOnlyList<SuggestedStandaloneQuestion>> SuggestAsync(
         string lessonTitle, string? body, string? transcript,
         string? whatYoullLearn, string? learningObjectives, string? glossary,
-        int questionCount, string? outputLanguage, CancellationToken ct = default)
+        int questionCount, string? outputLanguage, Guid workspaceId, CancellationToken ct = default)
     {
         var truncatedTranscript = Truncate(transcript, MaxTranscriptChars);
 
@@ -101,7 +101,7 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
             """;
 
         var suggestions = await orchestrator.RunAsync<List<SuggestedStandaloneQuestion>>(
-            SystemPrompt, userPrompt,
+            SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateStandaloneQuestions, band: questionCount,
             isValid: qs => qs.Count > 0 && qs.All(q => !string.IsNullOrWhiteSpace(q.Prompt)),
             ct: ct);
 

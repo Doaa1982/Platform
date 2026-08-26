@@ -38,8 +38,10 @@ public class AdminController(
         => Ok(await signups.ListAsync(ct));
 
     /// <summary>
-    /// Approves an application. The applicant is not yet a tutor — payment comes
-    /// next, inside this flow rather than as an assumed external event (BA-006).
+    /// Approves an application — immediately ready for provisioning (§7.2).
+    /// There is no payment gate to wait on any more (2026-08-24 correction):
+    /// which plan the resulting Workspace ends up on, free or paid, is decided
+    /// later and separately, at Subscription checkout.
     /// </summary>
     [HttpPost("signup-requests/{id:guid}/approve")]
     public async Task<IActionResult> ApproveSignup(Guid id, CancellationToken ct)
@@ -51,10 +53,7 @@ public class AdminController(
         return result.Ok ? Ok(new { status = result.Value }) : Problem(result);
     }
 
-    /// <summary>
-    /// Rejects an application. Distinct from an expired payment window (BA-007):
-    /// this is a decision about the applicant, and is terminal.
-    /// </summary>
+    /// <summary>Rejects an application (BA-007). A decision about the applicant, and terminal.</summary>
     [HttpPost("signup-requests/{id:guid}/reject")]
     public async Task<IActionResult> RejectSignup(
         Guid id, [FromBody] RejectSignupRequest request, CancellationToken ct)
@@ -67,7 +66,7 @@ public class AdminController(
     }
 
     /// <summary>
-    /// POST /api/admin/signup-requests/{id}/provision — §7.2 for a paid applicant.
+    /// POST /api/admin/signup-requests/{id}/provision — §7.2 for an approved applicant.
     ///
     /// Provisioning stays admin-initiated rather than firing automatically on
     /// payment (BA-004's Version 1 recommendation), but the application is
@@ -206,6 +205,18 @@ public class AdminController(
         return result.Ok ? Ok(result.Value) : Problem(result);
     }
 
+    /// <summary>POST /api/admin/invoices/{id}/void — rejects an Invoice nobody confirmed paying; if it was tied to a requested plan/pack change, withdraws that request too.</summary>
+    [HttpPost("invoices/{id:guid}/void")]
+    public async Task<ActionResult<SubscriptionSummary>> VoidInvoice(
+        Guid id, [FromBody] MarkInvoicePaidRequest request, CancellationToken ct)
+    {
+        if (!TryGetIdentityId(out var operatorIdentityId))
+            return Unauthorized(new { message = "Token does not carry a valid identity." });
+
+        var result = await commercialOps.VoidInvoiceAsync(id, operatorIdentityId, request.ReferenceNote, ct);
+        return result.Ok ? Ok(result.Value) : Problem(result);
+    }
+
     /// <summary>
     /// POST /api/admin/invoices/sweep-overdue — no scheduler exists in this
     /// codebase yet (§29's "Overdue Invoice" is date-driven, not payment-driven),
@@ -216,6 +227,11 @@ public class AdminController(
     [HttpPost("invoices/sweep-overdue")]
     public async Task<IActionResult> SweepOverdueInvoices(CancellationToken ct)
         => Ok(new { subscriptionsAffected = await commercialOps.SweepOverdueInvoicesAsync(ct) });
+
+    /// <summary>Re-derives entitlements from the current Configuration Snapshot without changing subscription state — for when resolution logic gains a new key after a License was already materialized.</summary>
+    [HttpPost("subscriptions/{id:guid}/recompute-entitlements")]
+    public async Task<ActionResult<SubscriptionSummary>> RecomputeEntitlements(Guid id, CancellationToken ct)
+        => await RunCommercialTransition(id, ct, commercialOps.RecomputeEntitlementsAsync);
 
     [HttpPost("subscriptions/{id:guid}/advance-to-grace")]
     public async Task<ActionResult<SubscriptionSummary>> AdvanceSubscriptionToGrace(Guid id, CancellationToken ct)

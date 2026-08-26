@@ -30,6 +30,11 @@ public class CatalogAdminController(CatalogAdminService catalog) : ControllerBas
         Guid id, [FromBody] CreateProductVersionRequest request, CancellationToken ct)
         => Run(await catalog.CreateProductVersionAsync(id, request.Version, ct));
 
+    [HttpPut("products/{id:guid}/versions/{versionId:guid}")]
+    public async Task<ActionResult<ProductAdminRow>> UpdateProductVersion(
+        Guid id, Guid versionId, [FromBody] UpdateProductVersionRequest request, CancellationToken ct)
+        => Run(await catalog.UpdateProductVersionAsync(id, versionId, request.Version, ct));
+
     [HttpPost("products/{id:guid}/versions/{versionId:guid}/publish")]
     public async Task<ActionResult<ProductAdminRow>> PublishProductVersion(Guid id, Guid versionId, CancellationToken ct)
         => Run(await catalog.PublishProductVersionAsync(id, versionId, ct));
@@ -50,6 +55,11 @@ public class CatalogAdminController(CatalogAdminService catalog) : ControllerBas
     public async Task<ActionResult<PackAdminRow>> CreatePackVersion(
         Guid id, [FromBody] CreatePackVersionRequest request, CancellationToken ct)
         => Run(await catalog.CreatePackVersionAsync(id, request.Version, ct));
+
+    [HttpPut("packs/{id:guid}/versions/{versionId:guid}")]
+    public async Task<ActionResult<PackAdminRow>> UpdatePackVersion(
+        Guid id, Guid versionId, [FromBody] UpdatePackVersionRequest request, CancellationToken ct)
+        => Run(await catalog.UpdatePackVersionAsync(id, versionId, request.Version, ct));
 
     [HttpPost("packs/{id:guid}/versions/{versionId:guid}/publish")]
     public async Task<ActionResult<PackAdminRow>> PublishPackVersion(Guid id, Guid versionId, CancellationToken ct)

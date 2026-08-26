@@ -24,11 +24,24 @@ public class SubscriptionEvent
     public Guid? TriggeredByIdentityId { get; private set; }
     public string? ReferenceNote { get; private set; }
 
+    /// <summary>
+    /// The ConfigurationSnapshot that was current immediately before this
+    /// event, and the one it changed to — both null unless this event is a
+    /// confirmed plan/pack change (Manual Commercial Activation applying a
+    /// Requested Change). Subscription mutates its own snapshot pointers in
+    /// place with no history of its own, so this is the only record of what a
+    /// past confirmed change actually altered — the tutor-facing add-on/plan
+    /// change history reads from this pair.
+    /// </summary>
+    public Guid? PreviousConfigurationSnapshotId { get; private set; }
+    public Guid? NewConfigurationSnapshotId { get; private set; }
+
     // Required by EF Core — not for application use
     private SubscriptionEvent() { }
 
     public static SubscriptionEvent Record(
-        Guid subscriptionId, string eventType, Guid? triggeredByIdentityId, string? referenceNote)
+        Guid subscriptionId, string eventType, Guid? triggeredByIdentityId, string? referenceNote,
+        Guid? previousConfigurationSnapshotId = null, Guid? newConfigurationSnapshotId = null)
     {
         if (subscriptionId == Guid.Empty)
             throw new ArgumentException("A Subscription Event belongs to exactly one Subscription.", nameof(subscriptionId));
@@ -42,6 +55,8 @@ public class SubscriptionEvent
             OccurredAt = DateTime.UtcNow,
             TriggeredByIdentityId = triggeredByIdentityId,
             ReferenceNote = string.IsNullOrWhiteSpace(referenceNote) ? null : referenceNote.Trim(),
+            PreviousConfigurationSnapshotId = previousConfigurationSnapshotId,
+            NewConfigurationSnapshotId = newConfigurationSnapshotId,
         };
     }
 }

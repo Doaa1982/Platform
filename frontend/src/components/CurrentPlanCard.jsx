@@ -28,8 +28,11 @@ export default function CurrentPlanCard({ plan, packs, subscription, children })
         <span className="lw-plancards__currentname">{plan?.name ?? subscription.planCode}</span>
         {plan && (
           <span className="lw-plancards__currentprice">
-            {price} {plan.currency}
-            <span>{subscription.billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</span>
+            {price === 0
+              ? t("subscription.free")
+              : <>{price} {plan.currency}
+                  <span>{subscription.billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</span>
+                </>}
           </span>
         )}
         <span className="lw-plancards__currentcycle">
@@ -61,6 +64,24 @@ export default function CurrentPlanCard({ plan, packs, subscription, children })
                   <li>
                     <span>{t("subscription.tutorCapacity")}</span>
                     <strong>+{pack.extraTutorCapacity}</strong>
+                  </li>
+                )}
+                {pack.extraLearnerCapacity > 0 && (
+                  <li>
+                    <span>{t("subscription.learnerCapacity")}</span>
+                    <strong>+{pack.extraLearnerCapacity}</strong>
+                  </li>
+                )}
+                {pack.extraVideoStorageGb > 0 && (
+                  <li>
+                    <span>{t("subscription.videoStorage")}</span>
+                    <strong>+{pack.extraVideoStorageGb} GB</strong>
+                  </li>
+                )}
+                {pack.extraResourceStorageGb > 0 && (
+                  <li>
+                    <span>{t("subscription.resourceStorage")}</span>
+                    <strong>+{pack.extraResourceStorageGb} GB</strong>
                   </li>
                 )}
               </ul>

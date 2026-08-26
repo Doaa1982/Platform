@@ -30,16 +30,24 @@ public class CommercialOpsService(
         var subscription = await db.Subscriptions.FirstOrDefaultAsync(s => s.Id == invoice.SubscriptionId, ct);
         if (subscription is null) return Fail(ProvisioningError.NotFound, "No such subscription.");
 
-        var activation = SubscriptionEvent.Record(subscription.Id, "InvoiceMarkedPaid", operatorIdentityId, referenceNote);
+        // Captured before ApplyRequestedChange() mutates these pointers in
+        // place — this is the only place a confirmed change's before/after
+        // snapshot pair ever gets recorded (see SubscriptionEvent's own doc).
+        var isConfirmingRequestedChange = subscription.RequestedInvoiceId == invoice.Id;
+        var previousSnapshotId = isConfirmingRequestedChange ? subscription.CurrentConfigurationSnapshotId : (Guid?)null;
+        var newSnapshotId = isConfirmingRequestedChange ? subscription.RequestedConfigurationSnapshotId : null;
+
+        var activation = SubscriptionEvent.Record(
+            subscription.Id, "InvoiceMarkedPaid", operatorIdentityId, referenceNote, previousSnapshotId, newSnapshotId);
 
         try
         {
             invoice.MarkPaid(activation.Id);
-            // Upgrade proration invoices are paid against a Subscription that's
-            // already Active (ApplyUpgrade took effect immediately, before the
-            // invoice existed) — Activate() only applies to first activation
-            // and PastDue/Grace recovery.
-            if (subscription.Status != SubscriptionStatus.Active)
+            if (isConfirmingRequestedChange)
+                // This confirms a requested plan/pack change — promote it now.
+                subscription.ApplyRequestedChange();
+            else if (subscription.Status != SubscriptionStatus.Active)
+                // First activation, or PastDue/Grace recovery.
                 subscription.Activate();
         }
         catch (InvalidOperationException ex) { return Fail(ProvisioningError.Conflict, ex.Message); }
@@ -47,6 +55,30 @@ public class CommercialOpsService(
         db.SubscriptionEvents.Add(activation);
         await db.SaveChangesAsync(ct);
         await licensing.RecomputeLicenseAsync(subscription.Id, ct);
+
+        return ProvisioningResult<SubscriptionSummary>.Success(await subscriptions.BuildSummaryAsync(subscription, ct));
+    }
+
+    /// <summary>Rejects an Invoice nobody confirmed paying — voids it, and if it was tied to a requested plan/pack change, withdraws that request too (nothing is granted).</summary>
+    public async Task<ProvisioningResult<SubscriptionSummary>> VoidInvoiceAsync(
+        Guid invoiceId, Guid operatorIdentityId, string? reason, CancellationToken ct = default)
+    {
+        var invoice = await db.Invoices.FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
+        if (invoice is null) return Fail(ProvisioningError.NotFound, "No such invoice.");
+
+        var subscription = await db.Subscriptions.FirstOrDefaultAsync(s => s.Id == invoice.SubscriptionId, ct);
+        if (subscription is null) return Fail(ProvisioningError.NotFound, "No such subscription.");
+
+        try
+        {
+            invoice.Void();
+            if (subscription.RequestedInvoiceId == invoice.Id)
+                subscription.CancelRequestedChange();
+        }
+        catch (InvalidOperationException ex) { return Fail(ProvisioningError.Conflict, ex.Message); }
+
+        db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "InvoiceVoided", operatorIdentityId, reason));
+        await db.SaveChangesAsync(ct);
 
         return ProvisioningResult<SubscriptionSummary>.Success(await subscriptions.BuildSummaryAsync(subscription, ct));
     }
@@ -84,6 +116,28 @@ public class CommercialOpsService(
             await licensing.RecomputeLicenseAsync(subscriptionId, ct);
 
         return affectedSubscriptionIds.Count;
+    }
+
+    /// <summary>
+    /// Re-derives a Workspace's Entitlement Set from its current Configuration
+    /// Snapshot without changing Subscription state. Needed because
+    /// EntitlementResolutionService writes a materialized set rather than
+    /// resolving live (its own class remarks) — whenever resolution logic
+    /// gains a new key (e.g. resource storage), an already-Active subscription
+    /// with no further checkout/upgrade/downgrade/etc. activity stays stuck
+    /// missing that key until something calls RecomputeLicenseAsync again.
+    /// No SubscriptionEvent is recorded — this is a data-hygiene action, not
+    /// a business decision about the subscription itself.
+    /// </summary>
+    public async Task<ProvisioningResult<SubscriptionSummary>> RecomputeEntitlementsAsync(
+        Guid subscriptionId, Guid operatorIdentityId, CancellationToken ct = default)
+    {
+        var subscription = await db.Subscriptions.FirstOrDefaultAsync(s => s.Id == subscriptionId, ct);
+        if (subscription is null) return Fail(ProvisioningError.NotFound, "No such subscription.");
+
+        await licensing.RecomputeLicenseAsync(subscription.Id, ct);
+
+        return ProvisioningResult<SubscriptionSummary>.Success(await subscriptions.BuildSummaryAsync(subscription, ct));
     }
 
     public Task<ProvisioningResult<SubscriptionSummary>> AdvanceToGraceAsync(

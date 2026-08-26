@@ -558,10 +558,10 @@ public class ContentStudioService(
         try
         {
             var fileBytes = await File.ReadAllBytesAsync(assetStorage.ResolvePath(asset.ObjectKey), ct);
-            var extracted = await extractLessonContent.ExtractAsync(fileBytes, mediaType, ct);
+            var extracted = await extractLessonContent.ExtractAsync(fileBytes, mediaType, ctx.Workspace!.Id, ct);
             return ProvisioningResult<ExtractResourceContentResponse>.Success(extracted);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict, $"AI content extraction failed: {ex.Message}"));
         }
@@ -625,10 +625,10 @@ public class ContentStudioService(
 
         try
         {
-            var structured = await extractLessonContent.StructureFromTextAsync(pastedText, ct);
+            var structured = await extractLessonContent.StructureFromTextAsync(pastedText, ctx.Workspace!.Id, ct);
             return ProvisioningResult<ExtractResourceContentResponse>.Success(structured);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict, $"AI content extraction failed: {ex.Message}"));
         }
@@ -784,10 +784,10 @@ public class ContentStudioService(
         try
         {
             var body = await generateLessonBody.SuggestAsync(
-                request.Title, request.Body, transcript, request.EstimatedMinutes, outputLanguage, ct);
+                request.Title, request.Body, transcript, request.EstimatedMinutes, outputLanguage, ctx.Workspace!.Id, ct);
             return ProvisioningResult<AiSuggestBodyResponse>.Success(new AiSuggestBodyResponse(body));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return Fail<AiSuggestBodyResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
         }
@@ -826,10 +826,10 @@ public class ContentStudioService(
 
         try
         {
-            var result = await generateWhatYoullLearn.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
+            var result = await generateWhatYoullLearn.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ctx.Workspace!.Id, ct);
             return ProvisioningResult<AiSuggestWhatYoullLearnResponse>.Success(new AiSuggestWhatYoullLearnResponse(result));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return Fail<AiSuggestWhatYoullLearnResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
         }
@@ -869,10 +869,10 @@ public class ContentStudioService(
 
         try
         {
-            var result = await generateLessonTitle.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
+            var result = await generateLessonTitle.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ctx.Workspace!.Id, ct);
             return ProvisioningResult<AiSuggestTitleResponse>.Success(new AiSuggestTitleResponse(result));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return Fail<AiSuggestTitleResponse>((ProvisioningError.Conflict, $"AI title generation failed: {ex.Message}"));
         }
@@ -910,10 +910,10 @@ public class ContentStudioService(
 
         try
         {
-            var result = await generateLearningObjectives.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
+            var result = await generateLearningObjectives.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ctx.Workspace!.Id, ct);
             return ProvisioningResult<AiSuggestLearningObjectivesResponse>.Success(new AiSuggestLearningObjectivesResponse(result));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return Fail<AiSuggestLearningObjectivesResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
         }
@@ -951,10 +951,10 @@ public class ContentStudioService(
 
         try
         {
-            var result = await generateGlossary.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
+            var result = await generateGlossary.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ctx.Workspace!.Id, ct);
             return ProvisioningResult<AiSuggestGlossaryResponse>.Success(new AiSuggestGlossaryResponse(result));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return Fail<AiSuggestGlossaryResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
         }
@@ -992,10 +992,10 @@ public class ContentStudioService(
 
         try
         {
-            var result = await generateHomework.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ct);
+            var result = await generateHomework.SuggestAsync(request.Title, request.Body, transcript, outputLanguage, ctx.Workspace!.Id, ct);
             return ProvisioningResult<AiSuggestHomeworkResponse>.Success(new AiSuggestHomeworkResponse(result));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return Fail<AiSuggestHomeworkResponse>((ProvisioningError.Conflict, $"AI content generation failed: {ex.Message}"));
         }

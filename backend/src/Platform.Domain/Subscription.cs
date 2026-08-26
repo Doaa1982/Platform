@@ -45,6 +45,20 @@ public class Subscription
     public Guid? PendingConfigurationSnapshotId { get; private set; }
     public DateTime? PendingChangeEffectiveDate { get; private set; }
 
+    /// <summary>
+    /// A plan/pack change that costs more than what's already confirmed —
+    /// distinct from <see cref="PendingConfigurationSnapshotId"/> (Downgrade's
+    /// period-end auto-apply): this needs a Platform Operator to manually
+    /// confirm the tied Invoice (Manual Commercial Activation, §27a) before it
+    /// takes effect at all. <see cref="CurrentConfigurationSnapshotId"/> never
+    /// changes just because a change is requested — only
+    /// <see cref="ApplyRequestedChange"/> (invoice confirmed) or
+    /// <see cref="CancelRequestedChange"/> (withdrawn or rejected) resolve it.
+    /// Both null when no request is outstanding.
+    /// </summary>
+    public Guid? RequestedConfigurationSnapshotId { get; private set; }
+    public Guid? RequestedInvoiceId { get; private set; }
+
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
@@ -144,30 +158,65 @@ public class Subscription
 
         PendingConfigurationSnapshotId = targetConfigurationSnapshotId;
         PendingChangeEffectiveDate = CurrentPeriodEnd;
+        // A decrease contradicts any outstanding request to pay more — the
+        // caller (CommercialSubscriptionService) is responsible for voiding
+        // that request's Invoice; this only clears this Aggregate's pointer.
+        RequestedConfigurationSnapshotId = null;
+        RequestedInvoiceId = null;
         Touch();
     }
 
     /// <summary>
-    /// §15-16 / Billing Architecture §27: an Upgrade applies immediately,
-    /// mid-period, unlike Downgrade — the caller (CommercialSubscriptionService)
-    /// is responsible for pricing and issuing the prorated Invoice before or
-    /// after calling this; this method only ever changes which Configuration
-    /// Snapshot is current. Supersedes any pending Downgrade, since scheduling
-    /// a future downgrade while upgrading right now would leave two
-    /// contradictory changes queued.
+    /// §15-16 / Billing Architecture §27: a price-increasing plan/pack change
+    /// — unlike Downgrade, this needs Manual Commercial Activation (§27a)
+    /// before it takes effect at all, so it only ever records the request; it
+    /// never touches <see cref="CurrentConfigurationSnapshotId"/>. The caller
+    /// (CommercialSubscriptionService) prices and issues the Invoice before
+    /// calling this. Supersedes any scheduled Downgrade, since scheduling a
+    /// future decrease while requesting an increase right now would leave two
+    /// contradictory changes queued. Replacing an already-outstanding request
+    /// is the caller's job (void the old Invoice first) — this only overwrites
+    /// the pointer.
     /// </summary>
-    public void ApplyUpgrade(Guid newConfigurationSnapshotId)
+    public void RequestChange(Guid requestedConfigurationSnapshotId, Guid requestedInvoiceId)
     {
         if (Status != SubscriptionStatus.Active)
             throw new InvalidOperationException(
-                $"A Subscription that is {Status} cannot be upgraded. Only an Active subscription can.");
-        if (newConfigurationSnapshotId == Guid.Empty)
+                $"A Subscription that is {Status} cannot request a plan change. Only an Active subscription can.");
+        if (requestedConfigurationSnapshotId == Guid.Empty)
             throw new ArgumentException(
-                "An upgrade must reference a Configuration Snapshot.", nameof(newConfigurationSnapshotId));
+                "A requested change must reference a Configuration Snapshot.", nameof(requestedConfigurationSnapshotId));
+        if (requestedInvoiceId == Guid.Empty)
+            throw new ArgumentException(
+                "A requested change must reference the Invoice awaiting confirmation.", nameof(requestedInvoiceId));
 
-        CurrentConfigurationSnapshotId = newConfigurationSnapshotId;
+        RequestedConfigurationSnapshotId = requestedConfigurationSnapshotId;
+        RequestedInvoiceId = requestedInvoiceId;
         PendingConfigurationSnapshotId = null;
         PendingChangeEffectiveDate = null;
+        Touch();
+    }
+
+    /// <summary>A Platform Operator confirmed the requested change's Invoice was paid — promotes it to current.</summary>
+    public void ApplyRequestedChange()
+    {
+        if (RequestedConfigurationSnapshotId is not { } snapshotId)
+            throw new InvalidOperationException("This Subscription has no requested change to apply.");
+
+        CurrentConfigurationSnapshotId = snapshotId;
+        RequestedConfigurationSnapshotId = null;
+        RequestedInvoiceId = null;
+        Touch();
+    }
+
+    /// <summary>Withdrawn by the subscriber, or rejected by a Platform Operator voiding the tied Invoice — either way, nothing is promoted.</summary>
+    public void CancelRequestedChange()
+    {
+        if (RequestedConfigurationSnapshotId is null)
+            throw new InvalidOperationException("This Subscription has no requested change to cancel.");
+
+        RequestedConfigurationSnapshotId = null;
+        RequestedInvoiceId = null;
         Touch();
     }
 

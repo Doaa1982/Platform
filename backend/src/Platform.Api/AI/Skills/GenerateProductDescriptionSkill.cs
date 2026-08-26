@@ -30,7 +30,7 @@ public class GenerateProductDescriptionSkill(AiOrchestrator orchestrator)
         """;
 
     public async Task<string> SuggestAsync(
-        string title, string? category, IReadOnlyList<string>? tags, CancellationToken ct = default)
+        string title, string? category, IReadOnlyList<string>? tags, Guid workspaceId, CancellationToken ct = default)
     {
         var userPrompt = $"""
             Title: {title}
@@ -38,7 +38,7 @@ public class GenerateProductDescriptionSkill(AiOrchestrator orchestrator)
             Tags: {(tags is { Count: > 0 } ? string.Join(", ", tags) : "(none)")}
             """;
 
-        var description = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, ct);
+        var description = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateProductDescription, ct: ct);
         return description.Trim().Trim('"');
     }
 }

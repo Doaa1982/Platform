@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Platform.Api.AI;
 using Platform.Api.AI.Skills;
 using Platform.Api.Models;
 using Platform.Domain;
@@ -206,10 +207,10 @@ public class WorkspaceSetupService(
 
         try
         {
-            var description = await generateProfile.SuggestDescriptionAsync(request.Name, request.CourseCategories, ct);
+            var description = await generateProfile.SuggestDescriptionAsync(request.Name, request.CourseCategories, workspace!.Id, ct);
             return ProvisioningResult<AiSuggestTextResponse>.Success(new AiSuggestTextResponse(description));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return ProvisioningResult<AiSuggestTextResponse>.Fail(
                 ProvisioningError.Conflict, $"AI description generation failed: {ex.Message}");
@@ -236,10 +237,10 @@ public class WorkspaceSetupService(
         try
         {
             var welcome = await generateProfile.SuggestWelcomeMessageAsync(
-                request.Name, request.Description, request.CourseCategories, ct);
+                request.Name, request.Description, request.CourseCategories, workspace!.Id, ct);
             return ProvisioningResult<AiSuggestTextResponse>.Success(new AiSuggestTextResponse(welcome));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return ProvisioningResult<AiSuggestTextResponse>.Fail(
                 ProvisioningError.Conflict, $"AI welcome message generation failed: {ex.Message}");

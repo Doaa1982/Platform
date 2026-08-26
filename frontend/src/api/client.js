@@ -913,13 +913,6 @@ export function getSignupStatus(token) {
   return request(`/signup-requests/status/${encodeURIComponent(token)}`);
 }
 
-/** POST /api/signup-requests/status/{token}/payment — record a payment outcome */
-export function recordSignupPayment(token, succeeded) {
-  return request(`/signup-requests/status/${encodeURIComponent(token)}/payment?succeeded=${succeeded}`, {
-    method: "POST",
-  });
-}
-
 /** GET /api/admin/signup-requests — the reviewer's application queue */
 export function getSignupRequests(token) {
   return request("/admin/signup-requests", { token });
@@ -935,7 +928,7 @@ export function rejectSignup(token, id, body) {
   return request(`/admin/signup-requests/${id}/reject`, { method: "POST", body, token });
 }
 
-/** POST /api/admin/signup-requests/{id}/provision — §7.2 for a paid applicant */
+/** POST /api/admin/signup-requests/{id}/provision — §7.2 for an approved applicant */
 export function provisionForSignup(token, id, body) {
   return request(`/admin/signup-requests/${id}/provision`, { method: "POST", body, token });
 }
@@ -1032,7 +1025,7 @@ export function downgradeSubscription(token, slug, planCode, packCodes) {
     { method: "POST", body: { planCode, packCodes: packCodes ?? [] }, token });
 }
 
-/** POST .../subscription/upgrade — applies a plan/pack change immediately and issues a prorated invoice for the remainder of the current period. */
+/** POST .../subscription/upgrade — requests a plan/pack change and issues its prorated invoice; stays on the current plan until a Platform Operator confirms it. */
 export function upgradeSubscription(token, slug, planCode, packCodes) {
   return request(`/workspaces/${encodeURIComponent(slug)}/subscription/upgrade`,
     { method: "POST", body: { planCode, packCodes: packCodes ?? [] }, token });
@@ -1043,9 +1036,35 @@ export function cancelPendingSubscriptionChange(token, slug) {
   return request(`/workspaces/${encodeURIComponent(slug)}/subscription/cancel-pending-change`, { method: "POST", token });
 }
 
+/** POST .../subscription/cancel-requested-change — withdraws an unconfirmed plan/pack change request before a Platform Operator acts on it. */
+export function cancelRequestedSubscriptionChange(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/cancel-requested-change`, { method: "POST", token });
+}
+
 /** POST .../subscription/reactivate — undoes a Cancel while still within the paid period. */
 export function reactivateSubscription(token, slug) {
   return request(`/workspaces/${encodeURIComponent(slug)}/subscription/reactivate`, { method: "POST", token });
+}
+
+/** GET .../subscription/history → confirmed add-on/plan changes with a real before/after diff, newest first. */
+export function getSubscriptionHistory(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/subscription/history`, { token });
+}
+
+/** GET /api/catalog/credit-packs → the public AI-credit top-up tiers (no auth) */
+export function getCreditPackTiers() {
+  return request("/catalog/credit-packs");
+}
+
+/** GET /api/workspaces/{slug}/credit-purchases → this workspace's top-up purchase history */
+export function getCreditPurchases(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/credit-purchases`, { token });
+}
+
+/** POST .../credit-purchases → { creditPackCode } — requests a top-up; a Platform Operator confirms payment before credits are granted. */
+export function requestCreditPurchase(token, slug, creditPackCode) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/credit-purchases`,
+    { method: "POST", body: { creditPackCode }, token });
 }
 
 /* ── Platform admin: subscriptions & invoices ────────────────────────────
@@ -1064,6 +1083,11 @@ export function markInvoicePaid(token, invoiceId, referenceNote) {
   return request(`/admin/invoices/${invoiceId}/mark-paid`, { method: "POST", body: { referenceNote }, token });
 }
 
+/** POST /api/admin/invoices/{id}/void — rejects an invoice nobody confirmed paying; withdraws any requested plan/pack change it was tied to. */
+export function voidInvoice(token, invoiceId, referenceNote) {
+  return request(`/admin/invoices/${invoiceId}/void`, { method: "POST", body: { referenceNote }, token });
+}
+
 /** POST /api/admin/invoices/sweep-overdue — marks every past-due Invoice Overdue and its Subscription PastDue */
 export function sweepOverdueInvoices(token) {
   return request("/admin/invoices/sweep-overdue", { method: "POST", token });
@@ -1072,6 +1096,21 @@ export function sweepOverdueInvoices(token) {
 /** POST /api/admin/subscriptions/{id}/{action} — advance-to-grace | suspend | expire | apply-pending-change */
 export function subscriptionAdminAction(token, subscriptionId, action) {
   return request(`/admin/subscriptions/${subscriptionId}/${action}`, { method: "POST", token });
+}
+
+/** GET /api/admin/credit-purchases → every Workspace's pending AI-credit top-up requests */
+export function getAdminCreditPurchases(token) {
+  return request("/admin/credit-purchases", { token });
+}
+
+/** POST /api/admin/credit-purchases/{id}/mark-paid — grants the purchased credits */
+export function markCreditPurchasePaid(token, orderId, referenceNote) {
+  return request(`/admin/credit-purchases/${orderId}/mark-paid`, { method: "POST", body: { referenceNote }, token });
+}
+
+/** POST /api/admin/credit-purchases/{id}/void — rejects a bogus/duplicate request; grants nothing */
+export function voidCreditPurchase(token, orderId, referenceNote) {
+  return request(`/admin/credit-purchases/${orderId}/void`, { method: "POST", body: { referenceNote }, token });
 }
 
 /* ── Platform admin: catalog (Products/Packs) ────────────────────────────
@@ -1092,6 +1131,11 @@ export function createCatalogProduct(token, body) {
 /** POST /api/admin/catalog/products/{id}/versions → { version: {...} } */
 export function createProductVersion(token, productId, version) {
   return request(`/admin/catalog/products/${productId}/versions`, { method: "POST", body: { version }, token });
+}
+
+/** PUT /api/admin/catalog/products/{id}/versions/{versionId} → { version: {...} } */
+export function updateProductVersion(token, productId, versionId, version) {
+  return request(`/admin/catalog/products/${productId}/versions/${versionId}`, { method: "PUT", body: { version }, token });
 }
 
 /** POST /api/admin/catalog/products/{id}/versions/{versionId}/publish */
@@ -1117,6 +1161,11 @@ export function createPack(token, body) {
 /** POST /api/admin/catalog/packs/{id}/versions → { version: {...} } */
 export function createPackVersion(token, packId, version) {
   return request(`/admin/catalog/packs/${packId}/versions`, { method: "POST", body: { version }, token });
+}
+
+/** PUT /api/admin/catalog/packs/{id}/versions/{versionId} → { version: {...} } */
+export function updatePackVersion(token, packId, versionId, version) {
+  return request(`/admin/catalog/packs/${packId}/versions/${versionId}`, { method: "PUT", body: { version }, token });
 }
 
 /** POST /api/admin/catalog/packs/{id}/versions/{versionId}/publish */

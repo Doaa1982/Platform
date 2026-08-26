@@ -4,10 +4,7 @@ import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 import * as api from "../api/client";
-import {
-  levelLabel, aiLabel, domainLabel, ENTITLEMENT_DOMAINS, planProfileForDomain,
-  aiLevelForProfile, parseRequirement, packGrants,
-} from "../i18n/subscriptionLabels";
+import PlanPickerCards, { PLAN_PICKER_CARDS_CSS } from "../components/PlanPickerCards";
 
 /* =========================================================================
    LANDING — https://platform.com/
@@ -43,12 +40,12 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
   // The public Solo plan catalog — no auth required, same source the
   // subscribed-tutor Billing screen reads. A stranger deciding whether to
   // apply should be able to see what it costs without signing in first.
+  // Add-ons are deliberately not fetched/shown here — this page sells the
+  // base plan; capability packs are an in-app upsell once someone's a tutor.
   const [plans, setPlans] = useState(null);
-  const [packs, setPacks] = useState(null);
   useEffect(() => {
     let cancelled = false;
     api.getCommercialPlans().then((p) => { if (!cancelled) setPlans(p); }).catch(() => {});
-    api.getCommercialPacks().then((p) => { if (!cancelled) setPacks(p); }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -138,7 +135,7 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
         <WorkspacePreview />
       </section>
 
-      {plans && plans.length > 0 && <PlansSection plans={plans} packs={packs} onBecomeTutor={onBecomeTutor} />}
+      {plans && plans.length > 0 && <PlansSection plans={plans} onBecomeTutor={onBecomeTutor} />}
 
       <footer className="pl-land__foot">
         <span>{t("landing.footer")}</span>
@@ -179,114 +176,24 @@ function WorkspacePreview() {
   );
 }
 
-/* Shopify-style pricing teaser. Every card's button is the SAME call to
-   action as the hero (onBecomeTutor) — ADR-EA-002 permits exactly one CTA
-   on this page, so pricing here sells the plan, it doesn't open a second
-   funnel. There is no checkout to send a stranger into: only a Workspace
-   Owner with a real Workspace can subscribe, on the Billing screen. */
-function PlansSection({ plans, packs, onBecomeTutor }) {
+/* Shopify-style pricing teaser, rendered by the shared PlanPickerCards
+   component (same one Billing uses) in its carousel layout — one plan
+   centered and "near", the rest fading out to either side, drag/swipe or
+   arrow-button to bring another into focus. Every card's button is still the
+   SAME call to action as the hero (onBecomeTutor) — ADR-EA-002 permits
+   exactly one CTA on this page, so pricing here sells the plan, it doesn't
+   open a second funnel. There is no checkout to send a stranger into: only a
+   Workspace Owner with a real Workspace can subscribe, on the Billing screen. */
+function PlansSection({ plans, onBecomeTutor }) {
   const { t } = useLanguage();
-  const [billingCycle, setBillingCycle] = useState("Monthly");
 
   return (
     <section className="pl-plans">
       <h2 className="pl-plans__title">{t("landing.plansTitle")}</h2>
       <p className="pl-plans__lead">{t("landing.plansLead")}</p>
 
-      <div className="pl-plans__cycle" role="tablist">
-        <button type="button" role="tab" aria-selected={billingCycle === "Monthly"}
-                className={billingCycle === "Monthly" ? "is-active" : ""} onClick={() => setBillingCycle("Monthly")}>
-          {t("subscription.billingMonthly")}
-        </button>
-        <button type="button" role="tab" aria-selected={billingCycle === "Annual"}
-                className={billingCycle === "Annual" ? "is-active" : ""} onClick={() => setBillingCycle("Annual")}>
-          {t("subscription.billingAnnual")}
-        </button>
-      </div>
-
-      <div className="pl-plans__grid">
-        {plans.map((plan) => (
-          <div className="pl-plans__card" key={plan.code}>
-            <div className="pl-plans__name">{plan.name}</div>
-            <div className="pl-plans__price">
-              {billingCycle === "Annual" ? plan.annualPrice : plan.monthlyPrice} {plan.currency}
-              <span>{billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</span>
-            </div>
-
-            <ul className="pl-plans__features">
-              <li><span>{t("subscription.tutorCapacity")}</span>
-                <strong>
-                  {plan.tutorCapacityMax > plan.tutorCapacityBase
-                    ? `${plan.tutorCapacityBase}–${plan.tutorCapacityMax}` : plan.tutorCapacityBase}
-                </strong>
-              </li>
-              <li><span>{t("subscription.aiCredits")}</span><strong>{plan.aiCreditsIncluded.toLocaleString()}</strong></li>
-              {ENTITLEMENT_DOMAINS.map((domain) => {
-                const level = planProfileForDomain(plan, domain);
-                return (
-                  <li key={domain}>
-                    <span>{domainLabel(t, domain)}</span>
-                    <strong>
-                      {levelLabel(t, level)}
-                      <em className="pl-plans__aitag">{aiLabel(t, aiLevelForProfile(level))}</em>
-                    </strong>
-                  </li>
-                );
-              })}
-            </ul>
-
-            <button className="pl-plans__cta" onClick={onBecomeTutor}>
-              {t("landing.cta")} <ArrowRight size={15} aria-hidden="true" />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Add-ons are the same catalog regardless of plan (only AI Assessment
-          carries a dependency) — one shared list under the grid rather than
-          repeating it per card. Still no second CTA: same onBecomeTutor. */}
-      {packs && packs.length > 0 && (
-        <div className="pl-plans__addons">
-          <h3 className="pl-plans__addonstitle">{t("subscription.addOns")}</h3>
-          <ul className="pl-plans__addonlist">
-            {packs.map((pack) => {
-              const req = parseRequirement(pack.requiresMinProfile);
-              return (
-                <li className="pl-plans__addon" key={pack.code}>
-                  <div className="pl-plans__addonhead">
-                    <span className="pl-plans__addonname">{pack.name}</span>
-                    <span className="pl-plans__addonprice">
-                      +{pack.monthlyPrice} {pack.currency}<span>{t("subscription.perMonth")}</span>
-                    </span>
-                  </div>
-                  <ul className="pl-plans__addongrants">
-                    {packGrants(pack).map(({ domain, level }) => (
-                      <li key={domain}>
-                        <span>{domainLabel(t, domain)}</span>
-                        <strong>
-                          {levelLabel(t, level)}
-                          <em className="pl-plans__aitag">{aiLabel(t, aiLevelForProfile(level))}</em>
-                        </strong>
-                      </li>
-                    ))}
-                    {pack.extraTutorCapacity > 0 && (
-                      <li>
-                        <span>{t("subscription.tutorCapacity")}</span>
-                        <strong>+{pack.extraTutorCapacity}</strong>
-                      </li>
-                    )}
-                  </ul>
-                  {req && (
-                    <span className="pl-plans__addonnote">
-                      {t("subscription.packRequires", { domain: domainLabel(t, req.domain), level: levelLabel(t, req.level) })}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <PlanPickerCards plans={plans} layout="carousel"
+        ctaLabel={t("landing.cta")} onChoosePlan={() => onBecomeTutor()} />
     </section>
   );
 }
@@ -474,63 +381,8 @@ const CSS = `
   }
   .pl-plans__lead { color: var(--ink-soft); font-size: 0.94rem; margin: 0 0 22px; }
 
-  .pl-plans__cycle {
-    display: inline-flex; border: 1px solid rgba(241,234,217,0.16); border-radius: 999px;
-    padding: 3px; margin-bottom: 28px;
-  }
-  .pl-plans__cycle button {
-    border: none; background: transparent; padding: 7px 18px; border-radius: 999px;
-    font-family: inherit; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); cursor: pointer;
-  }
-  .pl-plans__cycle button.is-active { background: var(--accent); color: #241A10; }
-
-  .pl-plans__grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px;
-    text-align: start;
-  }
-  .pl-plans__card {
-    display: flex; flex-direction: column; gap: 14px;
-    background: rgba(241,234,217,0.045); border: 1px solid rgba(241,234,217,0.1);
-    border-radius: 16px; padding: 22px;
-  }
-  .pl-plans__name { font-weight: 700; font-size: 1.02rem; }
-  .pl-plans__price { font-family: 'Fraunces', Georgia, serif; font-size: 1.7rem; color: var(--accent); }
-  .pl-plans__price span { font-family: inherit; font-size: 0.78rem; color: var(--ink-soft); margin-inline-start: 5px; }
-
-  .pl-plans__features { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.84rem; }
-  .pl-plans__features li { display: flex; justify-content: space-between; gap: 10px; }
-  .pl-plans__features li span { color: var(--ink-soft); }
-  .pl-plans__features li strong { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
-  .pl-plans__aitag { font-style: normal; font-size: 0.68rem; font-weight: 600; color: var(--ink-soft); }
-
-  .pl-plans__cta {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    font-family: 'Lora', Georgia, serif; font-size: 0.88rem; font-weight: 700; color: #241A10;
-    background: linear-gradient(100deg, #E8C787, #D4AF6A);
-    border: none; border-radius: 10px; padding: 11px 18px; cursor: pointer;
-    margin-top: auto; transition: transform .18s, box-shadow .18s;
-  }
-  .pl-plans__cta:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(212,175,106,0.36); }
-  .pl-plans__cta:focus-visible { outline: 2px solid #F3ECD8; outline-offset: 2px; }
-
-  .pl-plans__addons { margin-top: 34px; text-align: start; }
-  .pl-plans__addonstitle { color: var(--ink); font-size: 1rem; font-weight: 700; margin: 0 0 14px; }
-  .pl-plans__addonlist {
-    list-style: none; margin: 0; padding: 0;
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
-  }
-  .pl-plans__addon {
-    background: rgba(241,234,217,0.035); border: 1px solid rgba(241,234,217,0.09);
-    border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
-  }
-  .pl-plans__addonhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .pl-plans__addonname { font-weight: 700; font-size: 0.88rem; }
-  .pl-plans__addonprice { font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
-  .pl-plans__addongrants { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; }
-  .pl-plans__addongrants li { display: flex; justify-content: space-between; gap: 10px; }
-  .pl-plans__addongrants li span { color: var(--ink-soft); }
-  .pl-plans__addongrants li strong { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
-  .pl-plans__addonnote { font-size: 0.72rem; color: #D4AF6A; }
+  /* Card/cycle/add-on styling for this section now lives in PLAN_PICKER_CARDS_CSS
+     (layout="carousel") — the .lw-plancards__* rules pulled in below. */
 
   /* ── Foot ───────────────────────────────────────────────────────────── */
   .pl-land__foot {
@@ -554,4 +406,5 @@ const CSS = `
   }
 
   ${LANGUAGE_TOGGLE_CSS}
+  ${PLAN_PICKER_CARDS_CSS}
 `;

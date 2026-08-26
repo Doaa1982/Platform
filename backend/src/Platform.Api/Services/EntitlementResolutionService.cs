@@ -18,7 +18,7 @@ namespace Platform.Api.Services;
 /// configuration snapshot). <see cref="HasEntitlementAsync"/> is the fast read
 /// against that materialized set.
 /// </summary>
-public class EntitlementResolutionService(PlatformDbContext db)
+public class EntitlementResolutionService(PlatformDbContext db, ICreditLedgerService credits)
 {
     private static readonly CapabilityDomain[] ProfileDomains =
     [
@@ -59,9 +59,21 @@ public class EntitlementResolutionService(PlatformDbContext db)
         // Expired additionally grants nothing at all — HasEntitlementAsync
         // shortcuts on license status before ever looking at these rows, but
         // recording an empty set keeps "what does this license currently
-        // grant" honest for anyone reading Entitlements directly too.
-        var noAccess = license.Status == LicenseStatus.Expired;
-        var restrictAi = license.Status is LicenseStatus.Restricted or LicenseStatus.Expired;
+        // grant" honest for anyone reading Entitlements directly too. Pending
+        // grants nothing either: a paid Subscription with an unconfirmed
+        // Invoice (Manual Commercial Activation, §27a) has no confirmed plan
+        // yet — this should be rare once every Workspace auto-checks-out onto
+        // Free at creation, but must still hold for a genuinely first-ever
+        // paid checkout with no confirmed baseline behind it.
+        var noAccess = license.Status is LicenseStatus.Expired or LicenseStatus.Pending;
+
+        // §A5 (AICreditsCommercialContractAndImplementationPlan.md): Block,
+        // not silent overage billing — a workspace at zero AI credit balance
+        // is force-restricted to Manual the same way a Restricted/Expired
+        // license already is. Skipped when noAccess, since that path grants
+        // nothing at all regardless (checking the ledger would be wasted work).
+        var zeroBalance = !noAccess && await credits.GetBalanceAsync(license.WorkspaceId, ct) <= 0;
+        var restrictAi = license.Status is LicenseStatus.Restricted or LicenseStatus.Expired || zeroBalance;
 
         var resolved = new List<ResolvedEntitlement>();
 
@@ -80,6 +92,15 @@ public class EntitlementResolutionService(PlatformDbContext db)
 
             var (tutorValue, tutorSource, tutorRef) = ResolveScalar(TutorCapacityKey, snapshot.TutorCapacity.ToString(), activeOverrides);
             resolved.Add(new ResolvedEntitlement(EntitlementType.Capacity, null, TutorCapacityKey, tutorValue, tutorSource, tutorRef));
+
+            var (learnerValue, learnerSource, learnerRef) = ResolveScalar(LearnerCapacityKey, snapshot.LearnerCapacity.ToString(), activeOverrides);
+            resolved.Add(new ResolvedEntitlement(EntitlementType.Capacity, null, LearnerCapacityKey, learnerValue, learnerSource, learnerRef));
+
+            var (storageValue, storageSource, storageRef) = ResolveScalar(VideoStorageGbKey, snapshot.VideoStorageGb.ToString(), activeOverrides);
+            resolved.Add(new ResolvedEntitlement(EntitlementType.Capacity, null, VideoStorageGbKey, storageValue, storageSource, storageRef));
+
+            var (resourceStorageValue, resourceStorageSource, resourceStorageRef) = ResolveScalar(ResourceStorageGbKey, snapshot.ResourceStorageGb.ToString(), activeOverrides);
+            resolved.Add(new ResolvedEntitlement(EntitlementType.Capacity, null, ResourceStorageGbKey, resourceStorageValue, resourceStorageSource, resourceStorageRef));
 
             var (creditsValue, creditsSource, creditsRef) = ResolveScalar(AiCreditsKey, snapshot.AiCreditsIncluded.ToString(), activeOverrides);
             resolved.Add(new ResolvedEntitlement(EntitlementType.UsageAllowance, null, AiCreditsKey, creditsValue, creditsSource, creditsRef));
@@ -124,6 +145,9 @@ public class EntitlementResolutionService(PlatformDbContext db)
     public static string ProfileKey(CapabilityDomain domain) => $"profile:{domain}";
     public static string AiKey(CapabilityDomain domain) => $"ai:{domain}";
     public const string TutorCapacityKey = "capacity:tutors";
+    public const string LearnerCapacityKey = "capacity:learners";
+    public const string VideoStorageGbKey = "capacity:video-storage-gb";
+    public const string ResourceStorageGbKey = "capacity:resource-storage-gb";
     public const string AiCreditsKey = "credits:ai";
 
     /// <summary>

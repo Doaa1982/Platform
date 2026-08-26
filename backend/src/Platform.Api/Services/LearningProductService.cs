@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Platform.Api.AI;
 using Platform.Api.AI.Skills;
 using Platform.Api.Models;
 using Platform.Domain;
@@ -208,10 +209,10 @@ public class LearningProductService(
 
         try
         {
-            var description = await generateDescription.SuggestAsync(request.Title, request.Category, request.Tags, ct);
+            var description = await generateDescription.SuggestAsync(request.Title, request.Category, request.Tags, ctx.Workspace!.Id, ct);
             return ProvisioningResult<AiSuggestDescriptionResponse>.Success(new AiSuggestDescriptionResponse(description));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
             return ProvisioningResult<AiSuggestDescriptionResponse>.Fail(
                 ProvisioningError.Conflict, $"AI description generation failed: {ex.Message}");

@@ -23,9 +23,6 @@ public record SignupStatusResponse(
     string Status,
     string Headline,
     string Detail,
-    /// <summary>True only while payment can still be attempted.</summary>
-    bool CanPay,
-    DateTime? PaymentWindowEndsAt,
     DateTime SubmittedAt);
 
 /// <summary>One row of the Platform Administrator's application queue.</summary>
@@ -35,11 +32,9 @@ public record SignupRequestRow(
     string Email,
     string? About,
     string Status,
-    string Payment,
     DateTime SubmittedAt,
     DateTime? ReviewedAt,
-    DateTime? PaymentWindowEndsAt,
-    /// <summary>Set once §7.2 has run, so an approved-and-paid applicant is provisioned once.</summary>
+    /// <summary>Set once §7.2 has run, so an approved applicant is provisioned once.</summary>
     Guid? ProvisionedWorkspaceId);
 
 /// <summary>

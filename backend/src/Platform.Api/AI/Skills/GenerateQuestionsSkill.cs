@@ -250,7 +250,7 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
 
     public async Task<IReadOnlyList<SuggestedQuestion>> SuggestAsync(
         string lessonTitle, string? lessonBody, string? transcript, IReadOnlyList<TranscriptSegment>? segments,
-        int videoDurationSeconds, int count, string? outputLanguage, CancellationToken ct = default)
+        int videoDurationSeconds, int count, string? outputLanguage, Guid workspaceId, CancellationToken ct = default)
     {
         var hasSegments = segments is { Count: > 0 };
         var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
@@ -287,7 +287,7 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
             """;
 
         var suggestions = await orchestrator.RunAsync<List<SuggestedQuestion>>(
-            SystemPrompt, userPrompt, isValid: HasUsableContent, ct: ct);
+            SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateQuestions, isValid: HasUsableContent, ct: ct);
 
         // Defensive clamp: a model-proposed timestamp outside the video's
         // actual duration would place a checkpoint nobody can reach. Options
@@ -384,7 +384,7 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
 
     public async Task<SuggestedQuestion> SuggestForChapterAsync(
         string lessonTitle, string chapterTitle, string? chapterSummary, string questionType,
-        string? outputLanguage, CancellationToken ct = default)
+        string? outputLanguage, Guid workspaceId, CancellationToken ct = default)
     {
         var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
             ? ""
@@ -400,7 +400,7 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
             """;
 
         var suggestions = await orchestrator.RunAsync<List<SuggestedQuestion>>(
-            ChapterSystemPrompt, userPrompt, isValid: HasUsableContent, ct: ct);
+            ChapterSystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateQuestions, isValid: HasUsableContent, ct: ct);
         var suggestion = suggestions.FirstOrDefault()
             ?? throw new InvalidOperationException("The model returned no question for this chapter.");
 

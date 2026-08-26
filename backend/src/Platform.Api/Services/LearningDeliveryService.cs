@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Platform.Api.AI;
 using Platform.Api.AI.Skills;
 using Platform.Api.Models;
 using Platform.Domain;
@@ -545,12 +546,22 @@ public class LearningDeliveryService(
         var progress = await EnsureProgressAsync(enrollment.Id, lessonId, lesson.CurrentRevisionId!.Value, ct);
         var revision = lesson.Revisions.First(r => r.Id == progress.LessonRevisionId);
 
-        var answer = await lessonAssistant.AnswerAsync(
-            revision.Title, revision.Body, revision.Transcript,
-            revision.WhatYoullLearn, revision.LearningObjectives, revision.Glossary,
-            question.Trim(), ct);
+        try
+        {
+            var answer = await lessonAssistant.AnswerAsync(
+                revision.Title, revision.Body, revision.Transcript,
+                revision.WhatYoullLearn, revision.LearningObjectives, revision.Glossary,
+                question.Trim(), ctx.Workspace!.Id, ct);
 
-        return ProvisioningResult<AskLessonAssistantResponse>.Success(new AskLessonAssistantResponse(answer));
+            return ProvisioningResult<AskLessonAssistantResponse>.Success(new AskLessonAssistantResponse(answer));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        {
+            // Model unavailable/misconfigured, or this workspace is out of AI
+            // credits — surfaced as a normal failure rather than a 500, same
+            // pattern as the tutor-side AI-suggest endpoints.
+            return Fail<AskLessonAssistantResponse>((ProvisioningError.Conflict, $"The assistant couldn't answer that: {ex.Message}"));
+        }
     }
 
     private static readonly string[] ValidDifficulties = ["Easy", "Medium", "Hard"];
@@ -592,12 +603,19 @@ public class LearningDeliveryService(
         var revision = lesson.Revisions.First(r => r.Id == progress.LessonRevisionId);
         var outputLanguage = await GetLessonLanguageAsync(lesson.LearningProductId, ct);
 
-        var questions = await generateLessonQuiz.GenerateAsync(
-            revision.Title, revision.Body, revision.Transcript,
-            revision.WhatYoullLearn, revision.LearningObjectives, revision.Glossary,
-            count, difficulty, request.Topic, outputLanguage, ct);
+        try
+        {
+            var questions = await generateLessonQuiz.GenerateAsync(
+                revision.Title, revision.Body, revision.Transcript,
+                revision.WhatYoullLearn, revision.LearningObjectives, revision.Glossary,
+                count, difficulty, request.Topic, outputLanguage, ctx.Workspace!.Id, ct);
 
-        return ProvisioningResult<GenerateLessonQuizResponse>.Success(new GenerateLessonQuizResponse(questions));
+            return ProvisioningResult<GenerateLessonQuizResponse>.Success(new GenerateLessonQuizResponse(questions));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        {
+            return Fail<GenerateLessonQuizResponse>((ProvisioningError.Conflict, $"AI quiz generation failed: {ex.Message}"));
+        }
     }
 
     // ── Interaction ──────────────────────────────────────────────────────────

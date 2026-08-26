@@ -173,7 +173,7 @@ tutor's homework-generation interface.
 """;
 
     public async Task<string> SuggestAsync(
-        string title, string? body, string? transcript, string? outputLanguage, CancellationToken ct = default)
+        string title, string? body, string? transcript, string? outputLanguage, Guid workspaceId, CancellationToken ct = default)
     {
         var (sourceLabel, source) = !string.IsNullOrWhiteSpace(transcript)
             ? ("Video transcript", transcript)
@@ -192,7 +192,7 @@ tutor's homework-generation interface.
             {source ?? "(none)"}
             """;
 
-        var result = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, ct);
+        var result = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateHomework, ct: ct);
         return result.Trim();
     }
 }

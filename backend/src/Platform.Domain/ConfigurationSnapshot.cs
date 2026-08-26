@@ -34,6 +34,9 @@ public class ConfigurationSnapshot
     public IReadOnlyList<Guid> SelectedPackVersionIds => _selectedPackVersionIds.AsReadOnly();
 
     public int TutorCapacity { get; private set; }
+    public int LearnerCapacity { get; private set; }
+    public int VideoStorageGb { get; private set; }
+    public int ResourceStorageGb { get; private set; }
     public int AiCreditsIncluded { get; private set; }
 
     public CapabilityProfileLevel LearningProfile { get; private set; }
@@ -56,6 +59,9 @@ public class ConfigurationSnapshot
         IEnumerable<string> selectedPackCodes,
         IEnumerable<Guid> selectedPackVersionIds,
         int tutorCapacity,
+        int learnerCapacity,
+        int videoStorageGb,
+        int resourceStorageGb,
         int aiCreditsIncluded,
         CapabilityProfileLevel learningProfile,
         CapabilityProfileLevel assessmentProfile,
@@ -71,6 +77,12 @@ public class ConfigurationSnapshot
         ArgumentException.ThrowIfNullOrWhiteSpace(planCode);
         if (tutorCapacity <= 0)
             throw new ArgumentException("Tutor capacity must be at least one.", nameof(tutorCapacity));
+        if (learnerCapacity <= 0)
+            throw new ArgumentException("Learner capacity must be at least one.", nameof(learnerCapacity));
+        if (videoStorageGb <= 0)
+            throw new ArgumentException("Video storage capacity must be at least one gigabyte.", nameof(videoStorageGb));
+        if (resourceStorageGb <= 0)
+            throw new ArgumentException("Resource storage capacity must be at least one gigabyte.", nameof(resourceStorageGb));
         if (aiCreditsIncluded < 0)
             throw new ArgumentException("AI credits cannot be negative.", nameof(aiCreditsIncluded));
         if (priceAmount < 0)
@@ -84,6 +96,9 @@ public class ConfigurationSnapshot
             PlanCode = planCode,
             ProductVersionId = productVersionId,
             TutorCapacity = tutorCapacity,
+            LearnerCapacity = learnerCapacity,
+            VideoStorageGb = videoStorageGb,
+            ResourceStorageGb = resourceStorageGb,
             AiCreditsIncluded = aiCreditsIncluded,
             LearningProfile = learningProfile,
             AssessmentProfile = assessmentProfile,

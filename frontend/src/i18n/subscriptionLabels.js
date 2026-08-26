@@ -14,6 +14,25 @@ export const domainLabel = (t, v) => t(DOMAIN_KEY[v] ?? "") || v;
 export const LEVEL_ORDER = { Foundation: 0, Professional: 1, AiPlus: 2 };
 export const ENTITLEMENT_DOMAINS = ["Learning", "Assessment", "Analytics", "Branding"];
 
+/** Mirrors the backend's CommercialCatalog.FreePlanCode — the one plan whose
+ * capacity Base/Max is an enforced hard cap. Every paid plan has no ceiling:
+ * Base is just what's included, and a tutor can keep buying capacity add-ons
+ * past it with no upper bound (ConfigurationService only checks the Max
+ * ceiling when the plan code matches this constant). */
+export const FREE_PLAN_CODE = "solo-free";
+
+/** Capacity display text for one plan-card row. On the Free plan, Base/Max is
+ * a real ceiling, so a wider Max is shown as a range ("15–265"). On every
+ * paid plan the Max column is inert (kept equal to Base by the catalog seed),
+ * so only Base is shown — appending `unit` (e.g. "GB") when given. */
+export function capacityValue(plan, base, max, unit = "") {
+  const suffix = unit ? ` ${unit}` : "";
+  return plan.code === FREE_PLAN_CODE && max > base ? `${base}–${max}${suffix}` : `${base}${suffix}`;
+}
+
+/** Whether this plan-card row should carry the "no cap" hint — true for every paid plan. */
+export const capacityUncapped = (plan) => plan.code !== FREE_PLAN_CODE;
+
 /** learningProfile / assessmentProfile / analyticsProfile / brandingProfile — the plan's own field naming. */
 export function planProfileForDomain(plan, domain) {
   return plan[`${domain.charAt(0).toLowerCase()}${domain.slice(1)}Profile`];

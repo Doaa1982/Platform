@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   LoaderCircle, Plus, RefreshCw, X, Copy, Check,
-  ShieldAlert, LogOut, Building2, PauseCircle, PlayCircle, Archive, Clock, Receipt,
+  ShieldAlert, LogOut, Building2, PauseCircle, PlayCircle, Archive, Clock, Receipt, UserPlus,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 import AdminCatalogSection from "./AdminCatalogSection";
 import Message from "../components/Message";
+import PaginationControls, { PAGINATION_CONTROLS_CSS } from "../components/PaginationControls";
+import { usePagination } from "../hooks/usePagination";
 
 /* =========================================================================
    ADMIN SCREEN — the Platform Administrator's console.
@@ -29,11 +32,8 @@ const NEEDS_ACTION = new Set(["Awaiting Invitation", "Invitation Expired"]);
 /** Application statuses still waiting on a reviewer's decision (§7.1). */
 const AWAITING = new Set(["Submitted", "UnderReview"]);
 
-/** ApprovedAwaitingPayment → "Approved — awaiting payment" */
 function humanStatus(status) {
-  return status
-    .replace("ApprovedAwaitingPayment", "Approved — awaiting payment")
-    .replace(/([a-z])([A-Z])/g, "$1 $2");
+  return status.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 /** Subscription statuses needing operator attention (§9's ordering convention, applied to the commercial domain too). */
@@ -61,6 +61,8 @@ export default function AdminScreen() {
   const [applications, setApplications] = useState([]);
   const [subscriptions, setSubscriptions] = useState(null);
   const [invoiceNotes, setInvoiceNotes] = useState({});   // subscriptionId -> reference note text, for Mark Paid
+  const [creditPurchases, setCreditPurchases] = useState(null);
+  const [creditPurchaseNotes, setCreditPurchaseNotes] = useState({});   // orderId -> reference note text
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [denied, setDenied] = useState(false);
@@ -68,7 +70,14 @@ export default function AdminScreen() {
   const [showForm, setShowForm] = useState(false);
   const [provisionFor, setProvisionFor] = useState(null);  // the paid applicant being provisioned
   const [issued, setIssued] = useState(null);   // most recently created/resent link
-  const [tab, setTab] = useState("operations");  // "operations" | "catalog"
+  const [tab, setTab] = useState("applications");  // "applications" | "invitations" | "subscriptions" | "creditPurchases" | "catalog"
+
+  // Declared unconditionally, before the `denied` early return below — Rules
+  // of Hooks — even though their data only ever renders past that guard.
+  const applicationsPage = usePagination(applications);
+  const workspacesPage = usePagination(rows);
+  const subscriptionsPage = usePagination(subscriptions);
+  const creditPurchasesPage = usePagination(creditPurchases);
 
   /* Used by the refresh button and after every mutation. State lands in the
      promise callbacks, never synchronously. */
@@ -77,8 +86,11 @@ export default function AdminScreen() {
       api.getProvisioningView(session.token),
       api.getSignupRequests(session.token),
       api.getAdminSubscriptions(session.token),
+      api.getAdminCreditPurchases(session.token),
     ])
-      .then(([workspaces, signups, subs]) => { setRows(workspaces); setApplications(signups); setSubscriptions(subs); setError(null); })
+      .then(([workspaces, signups, subs, purchases]) => {
+        setRows(workspaces); setApplications(signups); setSubscriptions(subs); setCreditPurchases(purchases); setError(null);
+      })
       .catch((e) => {
         // 403 is not an error to retry — it is the answer. The account is
         // signed in but holds no PlatformOperator grant.
@@ -96,10 +108,11 @@ export default function AdminScreen() {
       api.getProvisioningView(session.token),
       api.getSignupRequests(session.token),
       api.getAdminSubscriptions(session.token),
+      api.getAdminCreditPurchases(session.token),
     ])
-      .then(([workspaces, signups, subs]) => {
+      .then(([workspaces, signups, subs, purchases]) => {
         if (cancelled) return;
-        setRows(workspaces); setApplications(signups); setSubscriptions(subs); setError(null);
+        setRows(workspaces); setApplications(signups); setSubscriptions(subs); setCreditPurchases(purchases); setError(null);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -140,6 +153,17 @@ export default function AdminScreen() {
     );
   }
 
+  // Splitting Operations into tabs hides whatever isn't the active one, so a
+  // small count on the tab label is what used to be "just visible on the
+  // page" — applications awaiting review, workspaces stuck on invitation,
+  // subscriptions needing back-office action (past due/grace/suspended, or
+  // an invoice/pending-change awaiting confirmation).
+  const applicationsAttentionCount = applications?.filter((a) => AWAITING.has(a.status)).length ?? 0;
+  const invitationsAttentionCount = rows?.filter((r) => NEEDS_ACTION.has(r.provisioningStatus)).length ?? 0;
+  const subscriptionsAttentionCount = subscriptions?.filter((s) =>
+    SUB_NEEDS_ACTION.has(s.status) || s.currentInvoiceStatus === "Issued" || s.currentInvoiceStatus === "Overdue" || s.pendingPlanCode
+  ).length ?? 0;
+
   return (
     <Shell>
       <header className="pl-admin__head">
@@ -161,9 +185,25 @@ export default function AdminScreen() {
       </header>
 
       <div className="pl-admin__tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === "operations"}
-                className={tab === "operations" ? "is-active" : ""} onClick={() => setTab("operations")}>
-          {t("admin.tabOperations")}
+        <button type="button" role="tab" aria-selected={tab === "applications"}
+                className={tab === "applications" ? "is-active" : ""} onClick={() => setTab("applications")}>
+          {t("admin.tabApplications")}
+          {applicationsAttentionCount > 0 && <span className="pl-admin__tabbadge">{applicationsAttentionCount}</span>}
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "invitations"}
+                className={tab === "invitations" ? "is-active" : ""} onClick={() => setTab("invitations")}>
+          {t("admin.tabInvitations")}
+          {invitationsAttentionCount > 0 && <span className="pl-admin__tabbadge">{invitationsAttentionCount}</span>}
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "subscriptions"}
+                className={tab === "subscriptions" ? "is-active" : ""} onClick={() => setTab("subscriptions")}>
+          {t("admin.subscriptions")}
+          {subscriptionsAttentionCount > 0 && <span className="pl-admin__tabbadge">{subscriptionsAttentionCount}</span>}
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "creditPurchases"}
+                className={tab === "creditPurchases" ? "is-active" : ""} onClick={() => setTab("creditPurchases")}>
+          {t("admin.creditPurchases")}
+          {creditPurchases?.length > 0 && <span className="pl-admin__tabbadge">{creditPurchases.length}</span>}
         </button>
         <button type="button" role="tab" aria-selected={tab === "catalog"}
                 className={tab === "catalog" ? "is-active" : ""} onClick={() => setTab("catalog")}>
@@ -171,13 +211,15 @@ export default function AdminScreen() {
         </button>
       </div>
 
-      {tab === "catalog" && <AdminCatalogSection />}
-
-      {tab === "operations" && <>
-
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
 
+      {tab === "catalog" && <AdminCatalogSection />}
+
+      {/* Both triggered from the always-visible header button/Applications-tab
+          buttons, so rendered unconditionally rather than gated to one tab —
+          a modal opened from one tab shouldn't vanish just because it isn't
+          the active one. */}
       {showForm && (
         <ProvisionForm
           busy={busy}
@@ -191,14 +233,22 @@ export default function AdminScreen() {
 
       {issued && <IssuedLink issued={issued} onDismiss={() => setIssued(null)} />}
 
-      {/* §7.1 — applications, which come before any workspace exists. Placed
-          first because an unreviewed one is the platform's oldest outstanding
-          work: nothing else can happen for that person until it's decided. */}
-      {applications.length > 0 && (
+      {/* §7.1 — applications, which come before any workspace exists. Own tab
+          because it's the platform's oldest outstanding work: nothing else
+          can happen for that person until it's decided, and reviewing it is
+          a distinct concern from tracking a workspace's own invitation. */}
+      {tab === "applications" && applications.length === 0 && (
+        <div className="pl-admin__empty">
+          <UserPlus size={26} aria-hidden="true" />
+          <p>{t("admin.noApplicationsYet")}</p>
+        </div>
+      )}
+
+      {tab === "applications" && applications.length > 0 && (
         <section className="pl-admin__apps">
           <h2 className="pl-admin__h2">{t("admin.tutorApplications")}</h2>
           <div className="pl-admin__applist">
-            {applications.map((a) => (
+            {applicationsPage.pageItems.map((a) => (
               <div key={a.id} className={`pl-admin__app ${AWAITING.has(a.status) ? "is-attention" : ""}`}>
                 <div className="pl-admin__appwho">
                   <strong>{a.fullName}</strong>
@@ -206,10 +256,9 @@ export default function AdminScreen() {
                   {a.about && <p>{a.about}</p>}
                 </div>
                 <div className="pl-admin__appstate">
-                  <span className={`pl-admin__pill ${AWAITING.has(a.status) ? "is-warn" : a.status === "Paid" ? "is-ok" : ""}`}>
+                  <span className={`pl-admin__pill ${AWAITING.has(a.status) ? "is-warn" : a.status === "Approved" ? "is-ok" : ""}`}>
                     {humanStatus(a.status)}
                   </span>
-                  {a.payment !== "NotStarted" && <span className="pl-admin__pill">{t("admin.payment")} {a.payment}</span>}
                 </div>
                 <div className="pl-admin__actions">
                   {AWAITING.has(a.status) && (
@@ -223,8 +272,8 @@ export default function AdminScreen() {
                       </button>
                     </>
                   )}
-                  {/* Paid but not yet provisioned — §7.2 stays admin-initiated (BA-004) */}
-                  {a.status === "Paid" && !a.provisionedWorkspaceId && (
+                  {/* Approved but not yet provisioned — §7.2 stays admin-initiated (BA-004) */}
+                  {a.status === "Approved" && !a.provisionedWorkspaceId && (
                     <button disabled={busy} onClick={() => setProvisionFor(a)}>
                       <Plus size={12} /> {t("admin.provisionWorkspace")}
                     </button>
@@ -234,6 +283,7 @@ export default function AdminScreen() {
               </div>
             ))}
           </div>
+          <PaginationControls page={applicationsPage.page} totalPages={applicationsPage.totalPages} onChange={applicationsPage.setPage} />
         </section>
       )}
 
@@ -249,20 +299,20 @@ export default function AdminScreen() {
         />
       )}
 
-      {rows === null && (
+      {tab === "invitations" && rows === null && (
         <div className="pl-admin__loading">
           <LoaderCircle size={20} className="pl-admin__spin" aria-hidden="true" /> {t("admin.loadingWorkspaces")}
         </div>
       )}
 
-      {rows?.length === 0 && (
+      {tab === "invitations" && rows?.length === 0 && (
         <div className="pl-admin__empty">
           <Building2 size={26} aria-hidden="true" />
           <p>{t("admin.noWorkspacesYet")}</p>
         </div>
       )}
 
-      {rows && rows.length > 0 && (
+      {tab === "invitations" && rows && rows.length > 0 && (
         <div className="pl-admin__tablewrap">
           <table className="pl-admin__table">
             <thead>
@@ -276,7 +326,7 @@ export default function AdminScreen() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {workspacesPage.pageItems.map((r) => (
                 <tr key={r.workspaceId} className={NEEDS_ACTION.has(r.provisioningStatus) ? "is-attention" : ""}>
                   <td>
                     <span className="pl-admin__wsname">{r.name}</span>
@@ -343,10 +393,14 @@ export default function AdminScreen() {
           </table>
         </div>
       )}
+      {tab === "invitations" && (
+        <PaginationControls page={workspacesPage.page} totalPages={workspacesPage.totalPages} onChange={workspacesPage.setPage} />
+      )}
 
       {/* Manual Commercial Activation (2026-08-09 correction: this platform
           collects no payment) — every Workspace's commercial state, and the
           back-office actions that stand in for a payment provider's webhook. */}
+      {tab === "subscriptions" && (
       <section className="pl-admin__subs">
         <div className="pl-admin__subshead">
           <h2 className="pl-admin__h2">{t("admin.subscriptions")}</h2>
@@ -381,7 +435,7 @@ export default function AdminScreen() {
                 </tr>
               </thead>
               <tbody>
-                {subscriptions.map((s) => (
+                {subscriptionsPage.pageItems.map((s) => (
                   <tr key={s.subscriptionId} className={SUB_NEEDS_ACTION.has(s.status) ? "is-attention" : ""}>
                     <td>
                       <span className="pl-admin__wsname">{s.workspaceName}</span>
@@ -428,6 +482,10 @@ export default function AdminScreen() {
                                   onClick={() => run(() => api.markInvoicePaid(session.token, s.currentInvoiceId, invoiceNotes[s.subscriptionId] || null), t("admin.toastInvoicePaid", { name: s.workspaceName }))}>
                             <Check size={12} aria-hidden="true" /> {t("admin.markPaid")}
                           </button>
+                          <button disabled={busy}
+                                  onClick={() => run(() => api.voidInvoice(session.token, s.currentInvoiceId, invoiceNotes[s.subscriptionId] || null), t("admin.toastInvoiceVoided", { name: s.workspaceName }))}>
+                            <X size={12} aria-hidden="true" /> {t("admin.voidInvoice")}
+                          </button>
                         </>
                       )}
                       {s.status === "PastDue" && (
@@ -453,6 +511,10 @@ export default function AdminScreen() {
                           <Check size={12} aria-hidden="true" /> {t("admin.applyPendingChange")}
                         </button>
                       )}
+                      <button disabled={busy} title={t("admin.recomputeEntitlementsHint")}
+                              onClick={() => run(() => api.subscriptionAdminAction(session.token, s.subscriptionId, "recompute-entitlements"), t("admin.toastEntitlementsRecomputed", { name: s.workspaceName }))}>
+                        <RefreshCw size={12} aria-hidden="true" /> {t("admin.recomputeEntitlements")}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -460,9 +522,76 @@ export default function AdminScreen() {
             </table>
           </div>
         )}
+        <PaginationControls page={subscriptionsPage.page} totalPages={subscriptionsPage.totalPages} onChange={subscriptionsPage.setPage} />
       </section>
+      )}
 
-      </>}
+      {/* AI-credit top-up requests — same Manual Commercial Activation pattern as invoices above, just for a one-time, subscription-independent purchase. */}
+      {tab === "creditPurchases" && (
+      <section className="pl-admin__subs">
+        <div className="pl-admin__subshead">
+          <h2 className="pl-admin__h2">{t("admin.creditPurchases")}</h2>
+        </div>
+
+        {creditPurchases === null && (
+          <div className="pl-admin__loading">
+            <LoaderCircle size={20} className="pl-admin__spin" aria-hidden="true" /> {t("admin.loadingCreditPurchases")}
+          </div>
+        )}
+
+        {creditPurchases?.length === 0 && (
+          <div className="pl-admin__empty">
+            <Receipt size={26} aria-hidden="true" />
+            <p>{t("admin.noCreditPurchasesPending")}</p>
+          </div>
+        )}
+
+        {creditPurchases && creditPurchases.length > 0 && (
+          <div className="pl-admin__tablewrap">
+            <table className="pl-admin__table">
+              <thead>
+                <tr>
+                  <th>{t("admin.colWorkspace")}</th>
+                  <th>{t("admin.colCreditPack")}</th>
+                  <th>{t("admin.colAmount")}</th>
+                  <th aria-label={t("admin.colActions")} />
+                </tr>
+              </thead>
+              <tbody>
+                {creditPurchasesPage.pageItems.map((o) => (
+                  <tr key={o.id}>
+                    <td>
+                      <span className="pl-admin__wsname">{o.workspaceName}</span>
+                      <span className="pl-admin__slug">/{o.workspaceSlug}</span>
+                    </td>
+                    <td>{o.creditPackName}</td>
+                    <td>{o.priceAmount} {o.priceCurrency}</td>
+                    <td className="pl-admin__actions">
+                      <input
+                        className="pl-admin__noteinput"
+                        placeholder={t("admin.referenceNotePlaceholder")}
+                        value={creditPurchaseNotes[o.id] ?? ""}
+                        disabled={busy}
+                        onChange={(e) => setCreditPurchaseNotes((n) => ({ ...n, [o.id]: e.target.value }))}
+                      />
+                      <button disabled={busy}
+                              onClick={() => run(() => api.markCreditPurchasePaid(session.token, o.id, creditPurchaseNotes[o.id] || null), t("admin.toastPurchaseApproved", { name: o.workspaceName }))}>
+                        <Check size={12} aria-hidden="true" /> {t("admin.approvePurchase")}
+                      </button>
+                      <button disabled={busy}
+                              onClick={() => run(() => api.voidCreditPurchase(session.token, o.id, creditPurchaseNotes[o.id] || null), t("admin.toastPurchaseVoided", { name: o.workspaceName }))}>
+                        <X size={12} aria-hidden="true" /> {t("admin.voidPurchase")}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <PaginationControls page={creditPurchasesPage.page} totalPages={creditPurchasesPage.totalPages} onChange={creditPurchasesPage.setPage} />
+      </section>
+      )}
     </Shell>
   );
 }
@@ -570,7 +699,13 @@ function IssuedLink({ issued, onDismiss }) {
 }
 
 function Shell({ children }) {
-  return <div className="pl-admin"><style>{CSS}</style><div className="pl-admin__inner">{children}</div></div>;
+  return (
+    <div className="pl-admin">
+      <style>{CSS}</style>
+      <div className="pl-admin__langtoggle"><LanguageToggle /></div>
+      <div className="pl-admin__inner">{children}</div>
+    </div>
+  );
 }
 
 const CSS = `
@@ -579,10 +714,11 @@ const CSS = `
     --surface: #1B1F24; --bg: #131619; --accent: #4C8DFF;
     --warn: #E0A83E; --ok: #4FBF8B; --danger: #E0615A;
     font-family: 'Karla', system-ui, sans-serif;
-    background: var(--bg); color: var(--ink); min-height: 100vh; padding: 32px 26px 64px;
+    background: var(--bg); color: var(--ink); min-height: 100vh; padding: 32px 26px 64px; position: relative;
   }
   .pl-admin *, .pl-admin *::before, .pl-admin *::after { box-sizing: border-box; }
   .pl-admin__inner { max-width: 1080px; margin: 0 auto; }
+  .pl-admin__langtoggle { position: absolute; top: 20px; inset-inline-end: 26px; z-index: 3; }
 
   /* UIC-004: the page's own header (eyebrow + h1) is centered; its actions
      sit in their own row underneath rather than beside it. */
@@ -735,6 +871,11 @@ const CSS = `
   }
   .pl-admin__tabs button.is-active { color: var(--ink); border-bottom-color: var(--accent); }
   .pl-admin__tabs button:hover:not(.is-active) { color: var(--ink); background: var(--surface-2, rgba(255,255,255,0.06)); }
+  .pl-admin__tabbadge {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px;
+    margin-inline-start: 6px; padding: 0 5px; border-radius: 999px;
+    background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
+  }
 
   /* ── Catalog ──────────────────────────────────────────────────────────── */
   .pl-admin__cataloggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
@@ -782,4 +923,7 @@ const CSS = `
     background: #0F1215; color: var(--ink); border: 1px solid var(--line);
     border-radius: 8px; padding: 9px 11px;
   }
+
+  ${LANGUAGE_TOGGLE_CSS}
+  ${PAGINATION_CONTROLS_CSS}
 `;

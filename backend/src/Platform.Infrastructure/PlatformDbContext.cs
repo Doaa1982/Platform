@@ -49,6 +49,11 @@ public class PlatformDbContext : DbContext
     public DbSet<CommercialPack> CommercialPacks => Set<CommercialPack>();
     public DbSet<CommercialPackVersion> CommercialPackVersions => Set<CommercialPackVersion>();
 
+    // ── Commercial Domain — AI Credit Ledger ─────────────────────────────────
+    public DbSet<CreditLedgerEntry> CreditLedgerEntries => Set<CreditLedgerEntry>();
+    public DbSet<SkillCreditCost> SkillCreditCosts => Set<SkillCreditCost>();
+    public DbSet<CreditPurchaseOrder> CreditPurchaseOrders => Set<CreditPurchaseOrder>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Identity>(entity =>
@@ -323,10 +328,6 @@ public class PlatformDbContext : DbContext
             entity.HasIndex(e => e.Email);
 
             entity.Property(e => e.Status)
-                  .HasConversion<string>()
-                  .HasMaxLength(32);
-
-            entity.Property(e => e.Payment)
                   .HasConversion<string>()
                   .HasMaxLength(32);
         });
@@ -915,6 +916,52 @@ public class PlatformDbContext : DbContext
 
             entity.HasIndex(e => new { e.PackId, e.Status });
             entity.HasIndex(e => new { e.PackId, e.VersionNumber }).IsUnique();
+        });
+
+        modelBuilder.Entity<CreditLedgerEntry>(entity =>
+        {
+            entity.ToTable("credit_ledger_entries");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.EntryType).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.SkillKey).HasMaxLength(128);
+
+            // GetBalanceAsync sums every non-expired row for a workspace on
+            // (effectively) every AI-assist call — the hot path this ledger exists for.
+            entity.HasIndex(e => new { e.WorkspaceId, e.ExpiresAtUtc });
+        });
+
+        modelBuilder.Entity<SkillCreditCost>(entity =>
+        {
+            entity.ToTable("skill_credit_costs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.SkillKey).IsRequired().HasMaxLength(128);
+
+            // TryDebitAsync's price lookup: current row for a (SkillKey, Band).
+            entity.HasIndex(e => new { e.SkillKey, e.Band, e.EffectiveFrom });
+        });
+
+        modelBuilder.Entity<CreditPurchaseOrder>(entity =>
+        {
+            entity.ToTable("credit_purchase_orders");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.CreditPackCode).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.PriceCurrency).IsRequired().HasMaxLength(8);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.RequestedByIdentityId).IsRequired();
+            entity.Property(e => e.ReferenceNote).HasMaxLength(2000);
+
+            // A workspace's own purchase history
+            entity.HasIndex(e => e.WorkspaceId);
+            // The admin console's pending-requests list
+            entity.HasIndex(e => e.Status);
         });
     }
 }

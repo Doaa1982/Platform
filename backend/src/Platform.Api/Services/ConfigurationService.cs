@@ -72,11 +72,37 @@ public class ConfigurationService(PlatformDbContext db, CatalogQueryService cata
         var branding = Max(version.BrandingProfile, PackGrantFor(packVersions, CapabilityDomain.Branding));
 
         // ── Resolve Capacity (§42 step 8, additive — Licensing & Entitlements §14) ──
+        // The Base/Max ceiling is only enforced on the Free plan. Every paid
+        // plan lets a tutor keep stacking capacity add-ons with no upper
+        // bound — the plan tier (AI level, branding, analytics) is the
+        // upsell lever here, not raw storage/seat count, and Free needs its
+        // own hard ceiling so it can't be grown into an enterprise-size
+        // workspace for the price of a few add-ons (CommercialCatalog.FreePlanCode).
+        var enforceCeiling = product.Code == CommercialCatalog.FreePlanCode;
+
         var tutorCapacity = version.TutorCapacityBase + packVersions.Sum(v => v.ExtraTutorCapacity);
-        if (tutorCapacity > version.TutorCapacityMax)
+        if (enforceCeiling && tutorCapacity > version.TutorCapacityMax)
             return ProvisioningResult<ConfigurationSnapshot>.Fail(
                 ProvisioningError.Invalid,
                 $"{product.Name} supports at most {version.TutorCapacityMax} tutor(s) — the selected add-ons would need {tutorCapacity}.");
+
+        var learnerCapacity = version.LearnerCapacityBase + packVersions.Sum(v => v.ExtraLearnerCapacity);
+        if (enforceCeiling && learnerCapacity > version.LearnerCapacityMax)
+            return ProvisioningResult<ConfigurationSnapshot>.Fail(
+                ProvisioningError.Invalid,
+                $"{product.Name} supports at most {version.LearnerCapacityMax} learner(s) — the selected add-ons would need {learnerCapacity}.");
+
+        var videoStorageGb = version.VideoStorageGbBase + packVersions.Sum(v => v.ExtraVideoStorageGb);
+        if (enforceCeiling && videoStorageGb > version.VideoStorageGbMax)
+            return ProvisioningResult<ConfigurationSnapshot>.Fail(
+                ProvisioningError.Invalid,
+                $"{product.Name} supports at most {version.VideoStorageGbMax}GB of video storage — the selected add-ons would need {videoStorageGb}GB.");
+
+        var resourceStorageGb = version.ResourceStorageGbBase + packVersions.Sum(v => v.ExtraResourceStorageGb);
+        if (enforceCeiling && resourceStorageGb > version.ResourceStorageGbMax)
+            return ProvisioningResult<ConfigurationSnapshot>.Fail(
+                ProvisioningError.Invalid,
+                $"{product.Name} supports at most {version.ResourceStorageGbMax}GB of resource storage — the selected add-ons would need {resourceStorageGb}GB.");
 
         // ── Calculate Price (§42 step 11) — placeholder pricing (Commercial Product Management §25) ──
         var isAnnual = billingCycle == BillingCycle.Annual;
@@ -85,6 +111,20 @@ public class ConfigurationService(PlatformDbContext db, CatalogQueryService cata
         // (10× monthly instead of 12×) is applied to pack add-ons too, for consistency.
         var packPrice = packVersions.Sum(v => isAnnual ? v.MonthlyPrice * 10m : v.MonthlyPrice);
 
+        // A credit allowance only means something where at least one domain
+        // actually resolves above Foundation — Foundation always maps to
+        // AiAssistanceLevel.Manual (EntitlementResolutionService.AiLevelFor),
+        // which blocks every AI skill call outright. Granting credits nobody
+        // can spend (e.g. Solo Essential alone, before any AI-enabling pack)
+        // just misrepresents the plan. This is resolved per configuration,
+        // not hardcoded per plan, so the same base plan correctly keeps its
+        // credits once a pack raises any one domain above Foundation.
+        var anyDomainHasAi = learning != CapabilityProfileLevel.Foundation
+                           || assessment != CapabilityProfileLevel.Foundation
+                           || analytics != CapabilityProfileLevel.Foundation
+                           || branding != CapabilityProfileLevel.Foundation;
+        var aiCreditsIncluded = anyDomainHasAi ? version.AiCreditsIncluded : 0;
+
         var snapshot = ConfigurationSnapshot.Create(
             workspaceId: workspaceId,
             productVersionId: version.Id,
@@ -92,7 +132,10 @@ public class ConfigurationService(PlatformDbContext db, CatalogQueryService cata
             selectedPackCodes: packs.Select(p => p.Pack.Code.ToString()),
             selectedPackVersionIds: packs.Select(p => p.Version.Id),
             tutorCapacity: tutorCapacity,
-            aiCreditsIncluded: version.AiCreditsIncluded,
+            learnerCapacity: learnerCapacity,
+            videoStorageGb: videoStorageGb,
+            resourceStorageGb: resourceStorageGb,
+            aiCreditsIncluded: aiCreditsIncluded,
             learningProfile: learning,
             assessmentProfile: assessment,
             analyticsProfile: analytics,

@@ -3,6 +3,7 @@ import { LoaderCircle, ArrowRight, ArrowLeft, ShieldCheck } from "lucide-react";
 import { useAuth } from "../auth/authContext";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
+import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 import Message from "../components/Message";
 
 /* =========================================================================
@@ -51,6 +52,7 @@ export default function AdminLogin({ onBack }) {
   return (
     <div className="pl-alogin">
       <style>{CSS}</style>
+      <div className="pl-alogin__langtoggle"><LanguageToggle /></div>
       <div className="pl-alogin__card">
         <button type="button" className="pl-alogin__back" onClick={onBack}>
           <ArrowLeft size={14} aria-hidden="true" /> {t("apply.back")}
@@ -98,10 +100,11 @@ const CSS = `
     --ink: #E8EAED; --ink-soft: #949AA5; --line: #2A2F36;
     --surface: #1B1F24; --accent: #4C8DFF;
     font-family: 'Karla', system-ui, sans-serif;
-    background: #131619; color: var(--ink); min-height: 100vh;
+    background: #131619; color: var(--ink); min-height: 100vh; position: relative;
     display: flex; align-items: center; justify-content: center; padding: 40px 22px;
   }
   .pl-alogin *, .pl-alogin *::before, .pl-alogin *::after { box-sizing: border-box; }
+  .pl-alogin__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; z-index: 3; }
 
   .pl-alogin__card {
     width: 100%; max-width: 400px; background: var(--surface);
@@ -157,4 +160,6 @@ const CSS = `
   .pl-alogin__spin { animation: plALSpin 0.9s linear infinite; }
   @keyframes plALSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .pl-alogin__spin { animation: none; } }
+
+  ${LANGUAGE_TOGGLE_CSS}
 `;

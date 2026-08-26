@@ -266,12 +266,14 @@ builder.Services.AddHostedService<TranscriptionBackgroundService>();
 // Commercial Domain — core spine (V1a)
 builder.Services.AddScoped<CatalogQueryService>();
 builder.Services.AddScoped<ConfigurationService>();
+builder.Services.AddScoped<ICreditLedgerService, CreditLedgerService>();
 builder.Services.AddScoped<EntitlementResolutionService>();
 builder.Services.AddScoped<LicensingService>();
 builder.Services.AddScoped<EntitlementOverrideService>();
 builder.Services.AddScoped<CommercialSubscriptionService>();
 builder.Services.AddScoped<CommercialOpsService>();
 builder.Services.AddScoped<CatalogAdminService>();
+builder.Services.AddScoped<CreditPurchaseService>();
 
 // Guards the one endpoint a stranger can reach that creates an Identity, and
 // the forgot/reset-password endpoints (create nothing, but reachable by anyone)
@@ -436,7 +438,11 @@ if (app.Environment.IsDevelopment())
             var version = CommercialProductVersion.Create(
                 product.Id, versionNumber: 1,
                 plan.MonthlyPrice, plan.AnnualPrice, plan.Currency,
-                plan.TutorCapacityBase, plan.TutorCapacityMax, plan.AiCreditsIncluded,
+                plan.TutorCapacityBase, plan.TutorCapacityMax,
+                plan.LearnerCapacityBase, plan.LearnerCapacityMax,
+                plan.VideoStorageGbBase, plan.VideoStorageGbMax,
+                plan.ResourceStorageGbBase, plan.ResourceStorageGbMax,
+                plan.AiCreditsIncluded,
                 plan.LearningProfile, plan.AssessmentProfile, plan.AnalyticsProfile, plan.BrandingProfile);
             version.Publish();
             product.Publish();
@@ -451,7 +457,7 @@ if (app.Environment.IsDevelopment())
                 pack.Id, versionNumber: 1, packDef.MonthlyPrice, packDef.Currency,
                 GrantFor(packDef, CapabilityDomain.Learning), GrantFor(packDef, CapabilityDomain.Assessment),
                 GrantFor(packDef, CapabilityDomain.Analytics), GrantFor(packDef, CapabilityDomain.Branding),
-                packDef.ExtraTutorCapacity,
+                packDef.ExtraTutorCapacity, packDef.ExtraLearnerCapacity, packDef.ExtraVideoStorageGb, packDef.ExtraResourceStorageGb,
                 packDef.RequiresMinProfile?.Domain, packDef.RequiresMinProfile?.MinLevel);
             version.Publish();
             pack.Publish();
@@ -463,6 +469,39 @@ if (app.Environment.IsDevelopment())
 
         static CapabilityProfileLevel? GrantFor(CapabilityPackDefinition pack, CapabilityDomain domain) =>
             pack.DomainGrants.TryGetValue(domain, out var level) ? level : null;
+    }
+
+    // ── AI Skill Credit Cost seed ────────────────────────────────────────────
+    // Prices from Documents/AICreditsCommercialContractAndImplementationPlan.md
+    // §A2 — same "seed at startup, dev-only for now" caveat as the Commercial
+    // Catalog seed just above (move alongside a real migration step once one
+    // exists). Banded skills' top tier uses CreditLedgerService.UnboundedBand
+    // instead of null, so "null Band" means exactly one thing everywhere in
+    // this service: a flat-priced skill.
+    if (!db.SkillCreditCosts.Any())
+    {
+        db.SkillCreditCosts.AddRange(
+            SkillCreditCost.Create(AiSkillKeys.LessonAssistant, null, 20),
+            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, 10, 8),
+            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, 30, 20),
+            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, CreditLedgerService.UnboundedBand, 35),
+            SkillCreditCost.Create(AiSkillKeys.GenerateQuestions, null, 15),
+            SkillCreditCost.Create(AiSkillKeys.GenerateStandaloneQuestions, 15, 15),
+            SkillCreditCost.Create(AiSkillKeys.GenerateStandaloneQuestions, CreditLedgerService.UnboundedBand, 30),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLessonQuiz, 10, 15),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLessonQuiz, CreditLedgerService.UnboundedBand, 30),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLessonTitle, null, 5),
+            SkillCreditCost.Create(AiSkillKeys.GenerateWorkspaceProfile, null, 10),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLearningObjectives, null, 10),
+            SkillCreditCost.Create(AiSkillKeys.GenerateWhatYoullLearn, null, 8),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLessonBody, null, 30),
+            SkillCreditCost.Create(AiSkillKeys.GenerateHomework, null, 15),
+            SkillCreditCost.Create(AiSkillKeys.GenerateGlossary, null, 10),
+            SkillCreditCost.Create(AiSkillKeys.GenerateProductDescription, null, 8),
+            SkillCreditCost.Create(AiSkillKeys.ExtractLessonContentFromResource, 2, 25),
+            SkillCreditCost.Create(AiSkillKeys.ExtractLessonContentFromResource, CreditLedgerService.UnboundedBand, 60));
+
+        db.SaveChanges();
     }
 
     // ── Demo subscription seed ──────────────────────────────────────────────

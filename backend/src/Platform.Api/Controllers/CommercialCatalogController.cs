@@ -30,19 +30,42 @@ public class CommercialCatalogController(CatalogQueryService catalogQuery) : Con
         return Ok(packs.Select(p => Describe(p.Pack, p.Version)).ToList());
     }
 
-    internal static PlanSummary Describe(CommercialProduct product, CommercialProductVersion version) => new(
-        Code: product.Code,
-        Name: product.Name,
-        MonthlyPrice: version.MonthlyPrice,
-        AnnualPrice: version.AnnualPrice,
-        Currency: version.Currency,
-        TutorCapacityBase: version.TutorCapacityBase,
-        TutorCapacityMax: version.TutorCapacityMax,
-        AiCreditsIncluded: version.AiCreditsIncluded,
-        LearningProfile: version.LearningProfile.ToString(),
-        AssessmentProfile: version.AssessmentProfile.ToString(),
-        AnalyticsProfile: version.AnalyticsProfile.ToString(),
-        BrandingProfile: version.BrandingProfile.ToString());
+    /// <summary>AI-credit top-up tiers — see CreditPackCatalog's remarks on why these are a static list rather than database-backed.</summary>
+    [HttpGet("credit-packs")]
+    public ActionResult<IReadOnlyList<CreditPackTier>> GetCreditPacks() => Ok(CreditPackCatalog.Tiers);
+
+    internal static PlanSummary Describe(CommercialProduct product, CommercialProductVersion version)
+    {
+        // Same reasoning as ConfigurationService.ResolveAsync's aiCreditsIncluded
+        // clamp: advertising credits on a plan whose base profile is Foundation
+        // everywhere (Manual AI assistance on every domain) misrepresents what
+        // the bare plan actually offers — a browsing prospect hasn't chosen any
+        // pack yet, so this reflects the plan alone, not a resolved configuration.
+        var anyDomainHasAi = version.LearningProfile != CapabilityProfileLevel.Foundation
+                           || version.AssessmentProfile != CapabilityProfileLevel.Foundation
+                           || version.AnalyticsProfile != CapabilityProfileLevel.Foundation
+                           || version.BrandingProfile != CapabilityProfileLevel.Foundation;
+
+        return new(
+            Code: product.Code,
+            Name: product.Name,
+            MonthlyPrice: version.MonthlyPrice,
+            AnnualPrice: version.AnnualPrice,
+            Currency: version.Currency,
+            TutorCapacityBase: version.TutorCapacityBase,
+            TutorCapacityMax: version.TutorCapacityMax,
+            LearnerCapacityBase: version.LearnerCapacityBase,
+            LearnerCapacityMax: version.LearnerCapacityMax,
+            VideoStorageGbBase: version.VideoStorageGbBase,
+            VideoStorageGbMax: version.VideoStorageGbMax,
+            ResourceStorageGbBase: version.ResourceStorageGbBase,
+            ResourceStorageGbMax: version.ResourceStorageGbMax,
+            AiCreditsIncluded: anyDomainHasAi ? version.AiCreditsIncluded : 0,
+            LearningProfile: version.LearningProfile.ToString(),
+            AssessmentProfile: version.AssessmentProfile.ToString(),
+            AnalyticsProfile: version.AnalyticsProfile.ToString(),
+            BrandingProfile: version.BrandingProfile.ToString());
+    }
 
     internal static PackSummary Describe(CommercialPack pack, CommercialPackVersion version)
     {
@@ -59,6 +82,9 @@ public class CommercialCatalogController(CatalogQueryService catalogQuery) : Con
             Currency: version.Currency,
             DomainGrants: grants,
             ExtraTutorCapacity: version.ExtraTutorCapacity,
+            ExtraLearnerCapacity: version.ExtraLearnerCapacity,
+            ExtraVideoStorageGb: version.ExtraVideoStorageGb,
+            ExtraResourceStorageGb: version.ExtraResourceStorageGb,
             RequiresMinProfile: version.RequiresDomain is { } domain
                 ? $"{domain} >= {version.RequiresMinLevel}"
                 : null);

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMediaQuery } from "usehooks-ts";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, Lock, LogOut, Menu, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Users, Wand2, X
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, Lock, LogOut, Menu, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, X
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -16,7 +16,7 @@ import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
 import NotBuiltYet from "./screens/NotBuiltYet";
 import ProductsScreen from "./screens/ProductsScreen";
-import SubscriptionScreen from "./screens/SubscriptionScreen";
+import SubscriptionScreen, { PlansScreen } from "./screens/SubscriptionScreen";
 import ContentStudioScreen, { LessonEditorScreen } from "./screens/ContentStudioScreen";
 import LearnerHomeScreen from "./screens/LearnerHomeScreen";
 import LearnerCoursesScreen from "./screens/LearnerCoursesScreen";
@@ -113,7 +113,10 @@ const TUTOR_LIGHT = {
   "--bar-role-bg": "#F2E1D9", "--bar-role-ink": "#7A2E2E",
   "--bar-active-bg": "#F2E1D9", "--bar-active-ink": "#7A2E2E", "--bar-active-line": "#E3C9BC",
   "--bar-hover-bg": "#F3ECD8", "--bar-unread-bg": "#F2E1D9", "--bar-unread-hover-bg": "#ECD3C4",
-  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 34px, rgba(122,46,46,0.09) 34px 35px)",
+  // page-texture alpha halved (2026-08-26, "make the notebook lines more
+  // transparent" — every theme below matches): decorative-only, so no WCAG
+  // floor applies, just a fainter hint of the ruled-paper texture.
+  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 34px, rgba(122,46,46,0.045) 34px 35px)",
   "--callout-bg": "#EFE4C6", "--callout-line": "#855E25",
 };
 
@@ -141,7 +144,7 @@ const TUTOR_DARK = {
   "--bar-role-bg": "#3A2A22", "--bar-role-ink": "#D4AF6A",
   "--bar-active-bg": "#3A2A22", "--bar-active-ink": "#D4AF6A", "--bar-active-line": "#4A362B",
   "--bar-hover-bg": "#2C2419", "--bar-unread-bg": "#3A2A22", "--bar-unread-hover-bg": "#45301F",
-  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 34px, rgba(212,175,106,0.07) 34px 35px)",
+  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 34px, rgba(212,175,106,0.035) 34px 35px)",
   "--callout-bg": "#2C2419", "--callout-line": "#D4AF6A",
 };
 
@@ -172,7 +175,7 @@ const STUDENT_LIGHT = {
   "--bar-role-bg": "#EAF1FC", "--bar-role-ink": "#2E66D7",
   "--bar-active-bg": "#EAF1FC", "--bar-active-ink": "#2E66D7", "--bar-active-line": "#D3E3FA",
   "--bar-hover-bg": "#FAF6EC", "--bar-unread-bg": "#FDEBEB", "--bar-unread-hover-bg": "#FBDCDC",
-  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(59,111,217,0.16) 27px 28px)",
+  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(59,111,217,0.08) 27px 28px)",
   // callout-line darkened significantly — #E8D877 on #FFF3A3 was 1.28:1,
   // an effectively invisible border (needs 3:1 as a UI/non-text element);
   // #9C8A1A (a mustard olive) clears 3:1 while staying in the same warm-
@@ -205,7 +208,7 @@ const STUDENT_DARK = {
   "--bar-role-bg": "#23384A", "--bar-role-ink": "#6FB3D9",
   "--bar-active-bg": "#23384A", "--bar-active-ink": "#6FB3D9", "--bar-active-line": "#2E4A61",
   "--bar-hover-bg": "#23362A", "--bar-unread-bg": "#3A2426", "--bar-unread-hover-bg": "#472C2E",
-  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(245,243,236,0.06) 27px 28px)",
+  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(245,243,236,0.03) 27px 28px)",
   "--callout-bg": "#23362A", "--callout-line": "#6FB3D9",
 };
 
@@ -574,6 +577,10 @@ const OWNER_NAV = [
   // still-unbuilt "commerce" item above, which is what this tutor charges
   // *their* students, not what they pay the platform.
   { id: "billing", labelKey: "nav.billing", icon: Receipt },
+  // Buying add-ons, AI credits, or upgrading plan — kept as its own nav
+  // destination rather than a button off Billing, so it stays reachable
+  // regardless of the subscription's status (e.g. a Pending first checkout).
+  { id: "plans", labelKey: "nav.plans", icon: Sparkles },
   { id: "settings", labelKey: "nav.workspaceSettings", icon: Settings },
 ];
 
@@ -1011,6 +1018,7 @@ export default function App() {
           {role === "owner" && ownerScreen === "enrollment" && <CourseEnrollmentScreen />}
           {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
           {role === "owner" && ownerScreen === "billing" && <SubscriptionScreen />}
+          {role === "owner" && ownerScreen === "plans" && <PlansScreen />}
 
           {role === "owner" && ownerScreen === "products" && (
             <ProductsScreen onOpenStudio={(id) => { setStudioProductId(id); setOwnerScreen("studio"); }} />

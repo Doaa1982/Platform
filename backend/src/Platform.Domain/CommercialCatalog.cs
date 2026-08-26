@@ -19,6 +19,12 @@ public sealed record SoloPlanDefinition
     public required string Currency { get; init; }
     public required int TutorCapacityBase { get; init; }
     public required int TutorCapacityMax { get; init; }
+    public required int LearnerCapacityBase { get; init; }
+    public required int LearnerCapacityMax { get; init; }
+    public required int VideoStorageGbBase { get; init; }
+    public required int VideoStorageGbMax { get; init; }
+    public required int ResourceStorageGbBase { get; init; }
+    public required int ResourceStorageGbMax { get; init; }
     public required int AiCreditsIncluded { get; init; }
     public required CapabilityProfileLevel LearningProfile { get; init; }
     public required CapabilityProfileLevel AssessmentProfile { get; init; }
@@ -46,6 +52,9 @@ public sealed record CapabilityPackDefinition
         new Dictionary<CapabilityDomain, CapabilityProfileLevel>();
 
     public int ExtraTutorCapacity { get; init; }
+    public int ExtraLearnerCapacity { get; init; }
+    public int ExtraVideoStorageGb { get; init; }
+    public int ExtraResourceStorageGb { get; init; }
 
     /// <summary>
     /// The one concrete dependency rule modeled in this pass (Product
@@ -69,8 +78,50 @@ public static class CommercialCatalog
 {
     public const string DefaultCurrency = "USD";
 
+    /// <summary>
+    /// The one plan whose capacity ceiling (Base/Max) is actually enforced at
+    /// checkout (<c>ConfigurationService.ResolveAsync</c>) — every paid plan lets
+    /// a tutor keep buying capacity add-ons with no upper bound, since the plan
+    /// tier itself (AI level, branding, analytics) is the upsell lever, not raw
+    /// storage/seat count. Free needs its own hard ceiling so it can't be grown
+    /// into an enterprise-size workspace for the price of a few add-ons —
+    /// otherwise it stops functioning as a free tier at all.
+    /// </summary>
+    public const string FreePlanCode = "solo-free";
+
     public static readonly IReadOnlyList<SoloPlanDefinition> Plans =
     [
+        new SoloPlanDefinition
+        {
+            Code = "solo-free",
+            Name = "Solo Free",
+            MonthlyPrice = 0m,
+            AnnualPrice = 0m,
+            Currency = DefaultCurrency,
+            TutorCapacityBase = 1,
+            TutorCapacityMax = 1,
+            LearnerCapacityBase = 15,
+            // Same "room for 1 stacked pack" headroom as every other tier —
+            // buying a paid add-on on top of Free is still possible, it just
+            // means the checkout is no longer 0-priced (CommercialSubscriptionService
+            // routes it through the normal invoice path once that's true).
+            LearnerCapacityMax = 265,
+            VideoStorageGbBase = 2,
+            VideoStorageGbMax = 52,
+            // Documents/worksheets/covers — a separate, much smaller pool from
+            // video, since a tutor's non-video material is typically a handful
+            // of PDFs/images rather than gigabytes of footage.
+            ResourceStorageGbBase = 1,
+            ResourceStorageGbMax = 11, // room for 1 stacked Extra Storage pack (+10GB)
+            // No monthly AI credits — the one-time 200-credit trial grant on first
+            // subscription (§A7) still applies regardless of plan, so a Free
+            // signup isn't left with literally nothing to try AI features with.
+            AiCreditsIncluded = 0,
+            LearningProfile = CapabilityProfileLevel.Foundation,
+            AssessmentProfile = CapabilityProfileLevel.Foundation,
+            AnalyticsProfile = CapabilityProfileLevel.Foundation,
+            BrandingProfile = CapabilityProfileLevel.Foundation,
+        },
         new SoloPlanDefinition
         {
             Code = "solo-essential",
@@ -79,7 +130,16 @@ public static class CommercialCatalog
             AnnualPrice = 190m,
             Currency = DefaultCurrency,
             TutorCapacityBase = 1,
+            // Paid plans have no capacity ceiling — Max is kept equal to Base
+            // here only so the stored values aren't misleading; it is never
+            // read for enforcement on a paid plan (see CommercialCatalog.FreePlanCode).
             TutorCapacityMax = 1,
+            LearnerCapacityBase = 50,
+            LearnerCapacityMax = 50,
+            VideoStorageGbBase = 10,
+            VideoStorageGbMax = 10,
+            ResourceStorageGbBase = 2,
+            ResourceStorageGbMax = 2,
             AiCreditsIncluded = 5_000,
             LearningProfile = CapabilityProfileLevel.Foundation,
             AssessmentProfile = CapabilityProfileLevel.Foundation,
@@ -95,6 +155,12 @@ public static class CommercialCatalog
             Currency = DefaultCurrency,
             TutorCapacityBase = 1,
             TutorCapacityMax = 1,
+            LearnerCapacityBase = 300,
+            LearnerCapacityMax = 300,
+            VideoStorageGbBase = 50,
+            VideoStorageGbMax = 50,
+            ResourceStorageGbBase = 10,
+            ResourceStorageGbMax = 10,
             AiCreditsIncluded = 20_000,
             LearningProfile = CapabilityProfileLevel.Professional,
             AssessmentProfile = CapabilityProfileLevel.Professional,
@@ -109,7 +175,13 @@ public static class CommercialCatalog
             AnnualPrice = 790m,
             Currency = DefaultCurrency,
             TutorCapacityBase = 1,
-            TutorCapacityMax = 2,
+            TutorCapacityMax = 1,
+            LearnerCapacityBase = 1_000,
+            LearnerCapacityMax = 1_000,
+            VideoStorageGbBase = 200,
+            VideoStorageGbMax = 200,
+            ResourceStorageGbBase = 40,
+            ResourceStorageGbMax = 40,
             AiCreditsIncluded = 75_000,
             LearningProfile = CapabilityProfileLevel.AiPlus,
             AssessmentProfile = CapabilityProfileLevel.AiPlus,
@@ -176,6 +248,23 @@ public static class CommercialCatalog
             MonthlyPrice = 5m,
             Currency = DefaultCurrency,
             ExtraTutorCapacity = 1,
+        },
+        new CapabilityPackDefinition
+        {
+            Code = CapabilityPack.ExtraStudents,
+            Name = "Extra Students",
+            MonthlyPrice = 10m,
+            Currency = DefaultCurrency,
+            ExtraLearnerCapacity = 250,
+        },
+        new CapabilityPackDefinition
+        {
+            Code = CapabilityPack.ExtraStorage,
+            Name = "Extra Storage",
+            MonthlyPrice = 8m,
+            Currency = DefaultCurrency,
+            ExtraVideoStorageGb = 50,
+            ExtraResourceStorageGb = 10,
         },
     ];
 }

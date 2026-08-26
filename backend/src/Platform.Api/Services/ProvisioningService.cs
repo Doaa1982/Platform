@@ -34,8 +34,10 @@ public class ProvisioningService(
     PlatformDbContext db,
     IConfiguration config,
     IInvitationDelivery delivery,
-    EmailOptions email)
+    EmailOptions email,
+    CommercialSubscriptionService subscriptions)
 {
+
     private TimeSpan ValidFor =>
         TimeSpan.FromDays(config.GetValue("Invitations:ValidForDays", 7));
 
@@ -339,6 +341,19 @@ public class ProvisioningService(
         invitation.Accept();   // single-use from here: the token can never validate again
 
         await db.SaveChangesAsync(ct);
+
+        if (invitation.IntendedRole == WorkspaceRoleName.Owner)
+        {
+            // Every Workspace starts with a real, active Free subscription —
+            // no tutor action needed, no window where entitlements are just
+            // silently absent. Best-effort: a hiccup here must never block
+            // sign-in, since there is nothing commercial about accepting an
+            // invitation — the tutor would otherwise just land on PlanPicker,
+            // same as before this existed.
+            await subscriptions.CheckoutAsync(
+                workspace!.Slug, identity.Id,
+                new CheckoutRequest(CommercialCatalog.FreePlanCode, null, BillingCycle.Monthly.ToString()), ct);
+        }
 
         return ProvisioningResult<LoginResponse>.Success(tokens.Issue(identity));
     }

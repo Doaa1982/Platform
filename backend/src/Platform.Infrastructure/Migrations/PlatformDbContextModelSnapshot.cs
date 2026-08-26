@@ -146,7 +146,16 @@ namespace Platform.Infrastructure.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)");
 
+                    b.Property<int>("ExtraLearnerCapacity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExtraResourceStorageGb")
+                        .HasColumnType("integer");
+
                     b.Property<int>("ExtraTutorCapacity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExtraVideoStorageGb")
                         .HasColumnType("integer");
 
                     b.Property<string>("LearningGrant")
@@ -262,6 +271,12 @@ namespace Platform.Infrastructure.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)");
 
+                    b.Property<int>("LearnerCapacityBase")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LearnerCapacityMax")
+                        .HasColumnType("integer");
+
                     b.Property<string>("LearningProfile")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -275,6 +290,12 @@ namespace Platform.Infrastructure.Migrations
 
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ResourceStorageGbBase")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ResourceStorageGbMax")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("RetiredAt")
                         .HasColumnType("timestamp with time zone");
@@ -291,6 +312,12 @@ namespace Platform.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<int>("VersionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("VideoStorageGbBase")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("VideoStorageGbMax")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
@@ -329,6 +356,9 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("LearnerCapacity")
+                        .HasColumnType("integer");
+
                     b.Property<string>("LearningProfile")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -350,6 +380,9 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<Guid>("ProductVersionId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("ResourceStorageGb")
+                        .HasColumnType("integer");
+
                     b.PrimitiveCollection<string[]>("SelectedPackCodes")
                         .IsRequired()
                         .HasColumnType("text[]");
@@ -359,6 +392,9 @@ namespace Platform.Infrastructure.Migrations
                         .HasColumnType("uuid[]");
 
                     b.Property<int>("TutorCapacity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("VideoStorageGb")
                         .HasColumnType("integer");
 
                     b.Property<Guid>("WorkspaceId")
@@ -410,6 +446,99 @@ namespace Platform.Infrastructure.Migrations
                     b.HasIndex("LearningProductId", "MembershipId");
 
                     b.ToTable("course_join_requests", (string)null);
+                });
+
+            modelBuilder.Entity("Platform.Domain.CreditLedgerEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Amount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("BillingPeriodId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntryType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SkillKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkspaceId", "ExpiresAtUtc");
+
+                    b.ToTable("credit_ledger_entries", (string)null);
+                });
+
+            modelBuilder.Entity("Platform.Domain.CreditPurchaseOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreditAmount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CreditPackCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("GrantedLedgerEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("PriceAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("PriceCurrency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("ReferenceNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("RequestedByIdentityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ResolvedByIdentityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("WorkspaceId");
+
+                    b.ToTable("credit_purchase_orders", (string)null);
                 });
 
             modelBuilder.Entity("Platform.Domain.Curriculum", b =>
@@ -1470,17 +1599,6 @@ namespace Platform.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.Property<DateTime?>("PaidAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Payment")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<DateTime?>("PaymentWindowEndsAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<Guid?>("ProvisionedWorkspaceId")
                         .HasColumnType("uuid");
 
@@ -1522,6 +1640,32 @@ namespace Platform.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("signup_requests", (string)null);
+                });
+
+            modelBuilder.Entity("Platform.Domain.SkillCreditCost", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Band")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CreditCost")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SkillKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SkillKey", "Band", "EffectiveFrom");
+
+                    b.ToTable("skill_credit_costs", (string)null);
                 });
 
             modelBuilder.Entity("Platform.Domain.Submission", b =>
@@ -1621,6 +1765,12 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<DateTime>("RenewalDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("RequestedConfigurationSnapshotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RequestedInvoiceId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -1652,8 +1802,14 @@ namespace Platform.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<Guid?>("NewConfigurationSnapshotId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("OccurredAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PreviousConfigurationSnapshotId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ReferenceNote")
                         .HasMaxLength(2000)

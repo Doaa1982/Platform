@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle, AlertCircle, Clock, CheckCircle2, CreditCard, XCircle, RotateCcw } from "lucide-react";
+import { LoaderCircle, AlertCircle, Clock, CheckCircle2, XCircle } from "lucide-react";
 import * as api from "../api/client";
 import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
@@ -15,28 +15,26 @@ import Message from "../components/Message";
 
    Every message here comes from §7.1's "What the Prospective Tutor Sees",
    supplied by the API rather than assembled in the client, so the wording that
-   reaches an applicant lives in one place. In particular Rejected and Expired
-   read very differently (BA-007): one is a decision about them, the other is
-   only a clock that ran out.
+   reaches an applicant lives in one place. No payment step lives on this
+   screen at all (2026-08-24 correction) — an approved application is
+   immediately ready for a Platform Operator to provision a Workspace for;
+   which plan (free or paid) that Workspace ends up on is a separate decision
+   made later, at Billing.
    ========================================================================= */
 
 const LOOK = {
-  Submitted:               { icon: Clock,        tone: "wait" },
-  UnderReview:             { icon: Clock,        tone: "wait" },
-  ApprovedAwaitingPayment: { icon: CreditCard,   tone: "act"  },
-  PaymentFailed:           { icon: RotateCcw,    tone: "warn" },
-  Paid:                    { icon: CheckCircle2, tone: "good" },
-  Rejected:                { icon: XCircle,      tone: "done" },
-  Expired:                 { icon: XCircle,      tone: "done" },
+  Submitted:   { icon: Clock,        tone: "wait" },
+  UnderReview: { icon: Clock,        tone: "wait" },
+  Approved:    { icon: CheckCircle2, tone: "good" },
+  Rejected:    { icon: XCircle,      tone: "done" },
 };
 
-export default function SignupStatusScreen({ token, onApplyAgain }) {
+export default function SignupStatusScreen({ token }) {
   useFonts();
   const { t } = useLanguage();
 
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
-  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,18 +43,6 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [token]);
-
-  async function pay(succeeded) {
-    setPaying(true);
-    setError(null);
-    try {
-      setStatus(await api.recordSignupPayment(token, succeeded));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setPaying(false);
-    }
-  }
 
   if (error && !status) {
     return (
@@ -83,9 +69,6 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
 
   const look = LOOK[status.status] ?? { icon: Clock, tone: "wait" };
   const Icon = look.icon;
-  const deadline = status.paymentWindowEndsAt
-    ? new Date(status.paymentWindowEndsAt).toLocaleDateString(undefined, { day: "numeric", month: "long" })
-    : null;
 
   return (
     <Shell>
@@ -96,28 +79,6 @@ export default function SignupStatusScreen({ token, onApplyAgain }) {
         <p className="pl-stat__lead">{status.detail}</p>
 
         {error && <Message type="error">{error}</Message>}
-
-        {status.canPay && (
-          <div className="pl-stat__pay">
-            {deadline && <p className="pl-stat__deadline">{t("signupStatus.completeBy", { date: deadline })}</p>}
-            <button className="pl-stat__primary" disabled={paying} onClick={() => pay(true)}>
-              {paying
-                ? <><LoaderCircle size={15} className="pl-stat__spin" /> {t("signupStatus.processing")}</>
-                : <><CreditCard size={15} /> {t("signupStatus.completePayment")}</>}
-            </button>
-            {/* No payment processor is integrated yet — BA-006 leaves the
-                processor call itself as the one genuinely external step. This
-                stands in for it so the flow can be exercised end to end. */}
-            <button className="pl-stat__ghost" disabled={paying} onClick={() => pay(false)}>
-              {t("signupStatus.simulateFailed")}
-            </button>
-            <p className="pl-stat__note">{t("signupStatus.simulateNote")}</p>
-          </div>
-        )}
-
-        {status.status === "Expired" && (
-          <button className="pl-stat__primary" onClick={onApplyAgain}>{t("signupStatus.applyAgain")}</button>
-        )}
 
         <dl className="pl-stat__meta">
           <div><dt>{t("signupStatus.name")}</dt><dd>{status.fullName}</dd></div>
@@ -162,7 +123,6 @@ const CSS = `
   .is-good .pl-stat__mark { background: rgba(127,211,184,0.16); color: #7FD3B8; }
   .is-warn .pl-stat__mark { background: rgba(224,168,62,0.16); color: #E0A83E; }
   .is-done .pl-stat__mark { background: rgba(255,255,255,0.07); color: var(--ink-soft); }
-  .is-act  .pl-stat__mark { background: rgba(91,141,239,0.2); }
 
   .pl-stat__eyebrow {
     font-family: 'IBM Plex Mono', monospace; font-size: 11px;
@@ -170,24 +130,6 @@ const CSS = `
   }
   .pl-stat h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.4rem; font-weight: 600; margin: 0 0 10px; line-height: 1.25; }
   .pl-stat__lead { color: var(--ink-soft); font-size: 0.9rem; line-height: 1.65; margin: 0; }
-
-  .pl-stat__pay { margin-top: 24px; display: flex; flex-direction: column; gap: 9px; }
-  .pl-stat__deadline { font-size: 0.83rem; color: #E0A83E; margin: 0 0 4px; }
-  .pl-stat__primary {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    font-family: inherit; font-size: 0.93rem; font-weight: 600;
-    color: #08111F; background: linear-gradient(100deg, #7FB0FF, #5B8DEF);
-    border: none; border-radius: 10px; padding: 12px 18px; cursor: pointer;
-  }
-  .pl-stat__primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .pl-stat__ghost {
-    font-family: inherit; font-size: 0.84rem; color: var(--ink-soft);
-    background: transparent; border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 9px; padding: 9px 14px; cursor: pointer;
-  }
-  .pl-stat__ghost:hover:not(:disabled) { color: var(--ink); }
-  .pl-stat__note { font-size: 0.75rem; color: var(--ink-soft); margin: 2px 0 0; opacity: 0.8; }
-
 
   .pl-stat__meta {
     display: flex; justify-content: center; gap: 22px; flex-wrap: wrap;

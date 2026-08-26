@@ -47,6 +47,9 @@ public class WorkspaceMemberService(
     private static readonly List<WorkspaceRoleName> TutorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher, WorkspaceRoleName.AssistantTeacher];
 
+    /// <summary>Roles that draw against the plan's learner-capacity entitlement. Same List&lt;T&gt; reasoning as TutorRoles above.</summary>
+    private static readonly List<WorkspaceRoleName> LearnerRoles = [WorkspaceRoleName.Learner];
+
     private TimeSpan ValidFor => TimeSpan.FromDays(config.GetValue("Invitations:ValidForDays", 7));
 
     /// <summary>
@@ -197,6 +200,13 @@ public class WorkspaceMemberService(
                 return Fail(capacityError, ProvisioningError.Conflict);
         }
 
+        if (LearnerRoles.Contains(role))
+        {
+            var capacityError = await CheckLearnerCapacityAsync(workspace.Id, ct);
+            if (capacityError is not null)
+                return Fail(capacityError, ProvisioningError.Conflict);
+        }
+
         // Named to avoid shadowing the injected EmailOptions
         var inviteeEmail = request.Email.ToLowerInvariant().Trim();
 
@@ -313,8 +323,8 @@ public class WorkspaceMemberService(
             .ToListAsync(ct);
         var openInviteSet = candidateInvitations.Where(i => i.IsOpen()).Select(i => i.Email).ToHashSet();
 
-        // Tutor capacity is a batch-wide question (one role for the whole
-        // request), computed once — not re-checked per recipient.
+        // Tutor/learner capacity are batch-wide questions (one role for the
+        // whole request), computed once — not re-checked per recipient.
         int? remainingTutorSeats = null;
         if (TutorRoles.Contains(role))
         {
@@ -324,6 +334,18 @@ public class WorkspaceMemberService(
             {
                 var (activeTutorSeats, pendingTutorSeats) = await GetTutorSeatUsageAsync(workspace.Id, ct);
                 remainingTutorSeats = Math.Max(0, capacity - activeTutorSeats - pendingTutorSeats);
+            }
+        }
+
+        int? remainingLearnerSeats = null;
+        if (LearnerRoles.Contains(role))
+        {
+            var capacityValue = await entitlements.GetEntitlementValueAsync(
+                workspace.Id, EntitlementResolutionService.LearnerCapacityKey, ct);
+            if (capacityValue is not null && int.TryParse(capacityValue, out var capacity))
+            {
+                var (activeLearnerSeats, pendingLearnerSeats) = await GetLearnerSeatUsageAsync(workspace.Id, ct);
+                remainingLearnerSeats = Math.Max(0, capacity - activeLearnerSeats - pendingLearnerSeats);
             }
         }
 
@@ -358,6 +380,13 @@ public class WorkspaceMemberService(
                 continue;
             }
 
+            if (remainingLearnerSeats is 0)
+            {
+                results.Add(new BulkInvitationRecipientResult(
+                    recipientEmail, "skipped", "This workspace's plan has no remaining learner seats.", null, null, null, null));
+                continue;
+            }
+
             var (invitation, rawToken) = Invitation.Issue(
                 workspaceId:  workspace.Id,
                 email:        recipientEmail,
@@ -373,6 +402,8 @@ public class WorkspaceMemberService(
 
             if (remainingTutorSeats is not null)
                 remainingTutorSeats--;
+            if (remainingLearnerSeats is not null)
+                remainingLearnerSeats--;
         }
 
         await db.SaveChangesAsync(ct);
@@ -539,6 +570,49 @@ public class WorkspaceMemberService(
         return pendingTutorSeats > 0
             ? $"This workspace's plan allows up to {capacity} tutor seat{(capacity == 1 ? "" : "s")} ({activeTutorSeats} active, {pendingTutorSeats} pending). Remove a member, wait for a pending invitation to lapse, or upgrade the plan."
             : $"This workspace's plan allows up to {capacity} tutor seat{(capacity == 1 ? "" : "s")} and is already at capacity. Remove a member or upgrade the plan to invite another tutor.";
+    }
+
+    /// <summary>
+    /// Counts active Learner Memberships plus still-open Learner Invitations —
+    /// the two ingredients of the learner-capacity check, mirroring
+    /// <see cref="GetTutorSeatUsageAsync"/> exactly.
+    /// </summary>
+    private async Task<(int ActiveLearnerSeats, int PendingLearnerSeats)> GetLearnerSeatUsageAsync(Guid workspaceId, CancellationToken ct)
+    {
+        var activeLearnerSeats = await db.Memberships
+            .Where(m => m.WorkspaceId == workspaceId && m.Status == MembershipStatus.Active)
+            .Where(m => m.Roles.Any(r => LearnerRoles.Contains(r.Name)))
+            .CountAsync(ct);
+
+        var openLearnerInvites = await db.Invitations
+            .Where(i => i.WorkspaceId == workspaceId && LearnerRoles.Contains(i.IntendedRole))
+            .ToListAsync(ct);
+        var pendingLearnerSeats = openLearnerInvites.Count(i => i.IsOpen());
+
+        return (activeLearnerSeats, pendingLearnerSeats);
+    }
+
+    /// <summary>
+    /// Counts active Learner Memberships plus still-open Learner Invitations
+    /// against the plan's learner-capacity entitlement, mirroring
+    /// <see cref="CheckTutorCapacityAsync"/> exactly. A Workspace with no
+    /// License yet is left unrestricted, same reasoning as the tutor check.
+    /// </summary>
+    private async Task<string?> CheckLearnerCapacityAsync(Guid workspaceId, CancellationToken ct)
+    {
+        var capacityValue = await entitlements.GetEntitlementValueAsync(
+            workspaceId, EntitlementResolutionService.LearnerCapacityKey, ct);
+        if (capacityValue is null || !int.TryParse(capacityValue, out var capacity))
+            return null;
+
+        var (activeLearnerSeats, pendingLearnerSeats) = await GetLearnerSeatUsageAsync(workspaceId, ct);
+
+        if (activeLearnerSeats + pendingLearnerSeats + 1 <= capacity)
+            return null;
+
+        return pendingLearnerSeats > 0
+            ? $"This workspace's plan allows up to {capacity} learner{(capacity == 1 ? "" : "s")} ({activeLearnerSeats} active, {pendingLearnerSeats} pending). Wait for a pending invitation to lapse, or upgrade the plan."
+            : $"This workspace's plan allows up to {capacity} learner{(capacity == 1 ? "" : "s")} and is already at capacity. Upgrade the plan to invite more learners.";
     }
 
     private Task<DeliveryOutcome> SendInvitationEmailAsync(

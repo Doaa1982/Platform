@@ -125,7 +125,7 @@ public class LessonAssistantSkill(AiOrchestrator orchestrator)
     public async Task<string> AnswerAsync(
         string lessonTitle, string? body, string? transcript,
         string? whatYoullLearn, string? learningObjectives, string? glossary,
-        string question, CancellationToken ct = default)
+        string question, Guid workspaceId, CancellationToken ct = default)
     {
         var truncatedTranscript = Truncate(transcript, MaxTranscriptChars);
 
@@ -150,7 +150,7 @@ public class LessonAssistantSkill(AiOrchestrator orchestrator)
             Learner's question: {question}
             """;
 
-        var answer = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, ct);
+        var answer = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, workspaceId, AiSkillKeys.LessonAssistant, ct: ct);
         return answer.Trim();
     }
 

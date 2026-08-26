@@ -1960,6 +1960,10 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
 const EXTRACTABLE_CONTENT_TYPES = new Set([
   "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
 ]);
+
+/** Client-side hint only — the backend's own allow-list (LearningAssetService.AllowedResourceContentTypes) is what actually enforces this. No video/audio: those belong to the lesson's video upload. */
+const RESOURCE_FILE_ACCEPT =
+  ".pdf,.txt,.csv,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp";
 function isExtractable(asset) {
   return EXTRACTABLE_CONTENT_TYPES.has((asset.contentType || "").toLowerCase());
 }
@@ -2097,7 +2101,7 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
             <span className="lw-dropzone__title">{t("studio.uploadResource")}</span>
             <span className="lw-dropzone__meta">{t("studio.resourceHint")}</span>
             <input
-              ref={fileInputRef} type="file" multiple style={{ display: "none" }}
+              ref={fileInputRef} type="file" multiple accept={RESOURCE_FILE_ACCEPT} style={{ display: "none" }}
               onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
             />
           </div>

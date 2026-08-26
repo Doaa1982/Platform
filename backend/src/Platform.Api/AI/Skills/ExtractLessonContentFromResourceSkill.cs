@@ -131,13 +131,14 @@ public class ExtractLessonContentFromResourceSkill(AiOrchestrator orchestrator)
         """;
 
     public Task<ExtractResourceContentResponse> ExtractAsync(
-        byte[] fileBytes, string mediaType, CancellationToken ct = default)
+        byte[] fileBytes, string mediaType, Guid workspaceId, CancellationToken ct = default)
     {
         const string userPrompt =
             "Extract this document's content into the lesson fields described above.";
 
         return orchestrator.RunAsync<ExtractResourceContentResponse>(
-            SystemPrompt, userPrompt, attachments: [new AiAttachment(fileBytes, mediaType)], ct: ct);
+            SystemPrompt, userPrompt, workspaceId, AiSkillKeys.ExtractLessonContentFromResource,
+            attachments: [new AiAttachment(fileBytes, mediaType)], ct: ct);
     }
 
     /// <summary>
@@ -150,7 +151,7 @@ public class ExtractLessonContentFromResourceSkill(AiOrchestrator orchestrator)
     /// attachments" NotSupportedException it throws by default).
     /// </summary>
     public Task<ExtractResourceContentResponse> StructureFromTextAsync(
-        string pastedText, CancellationToken ct = default)
+        string pastedText, Guid workspaceId, CancellationToken ct = default)
     {
         var userPrompt = $"""
             Turn the following pasted text into the lesson fields described
@@ -163,6 +164,7 @@ public class ExtractLessonContentFromResourceSkill(AiOrchestrator orchestrator)
             ---
             """;
 
-        return orchestrator.RunAsync<ExtractResourceContentResponse>(TextSystemPrompt, userPrompt, ct: ct);
+        return orchestrator.RunAsync<ExtractResourceContentResponse>(
+            TextSystemPrompt, userPrompt, workspaceId, AiSkillKeys.ExtractLessonContentFromResource, ct: ct);
     }
 }

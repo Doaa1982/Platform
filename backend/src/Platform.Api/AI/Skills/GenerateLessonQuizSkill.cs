@@ -138,7 +138,8 @@ public class GenerateLessonQuizSkill(AiOrchestrator orchestrator)
     public async Task<IReadOnlyList<PracticeQuizQuestion>> GenerateAsync(
         string lessonTitle, string? body, string? transcript,
         string? whatYoullLearn, string? learningObjectives, string? glossary,
-        int questionCount, string difficulty, string? topic, string? outputLanguage, CancellationToken ct = default)
+        int questionCount, string difficulty, string? topic, string? outputLanguage,
+        Guid workspaceId, CancellationToken ct = default)
     {
         var truncatedTranscript = Truncate(transcript, MaxTranscriptChars);
 
@@ -169,8 +170,12 @@ public class GenerateLessonQuizSkill(AiOrchestrator orchestrator)
             Topic focus: {(string.IsNullOrWhiteSpace(topic) ? "(none — cover the lesson broadly)" : topic)}
             """;
 
+        // Documents/AICreditsCommercialContractAndImplementationPlan.md §A2 bands
+        // this skill by transcript segment count, but this method only ever
+        // receives a flat, already-truncated transcript string — questionCount
+        // is the closest available proxy for "how much output this call produces."
         var questions = await orchestrator.RunAsync<List<PracticeQuizQuestion>>(
-            SystemPrompt, userPrompt,
+            SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateLessonQuiz, band: questionCount,
             isValid: qs => qs.Count > 0 && qs.All(q => !string.IsNullOrWhiteSpace(q.Prompt)),
             ct: ct);
 

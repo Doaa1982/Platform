@@ -236,6 +236,41 @@ forfeiture rules.
   commercial system supports immediate entitlement activation (per §48),
   rather than waiting for the next renewal.
 
+## A10. Worked Example — Mid-Cycle Top-Up
+
+Ties A5, A6, A8, and A9 together, since this is the single most common
+real-world trigger for this whole feature: a tutor exhausts their monthly
+allowance before the plan's renewal date.
+
+```text
+Day 12 of billing period
+Solo Professional (20,000 credits/mo) — balance reaches 0
+        ↓
+EntitlementResolutionService forces AiAssistanceLevel.Manual (A5)
+UI shows: [Upgrade Plan] [Buy AI Credits]
+        ↓
+Tutor buys Credit Pack M — 20,000 credits, $50 (A8)
+        ↓
+CreditLedgerEntry: EntryType = Purchase, Amount = +20,000, ExpiresAtUtc = null
+        ↓
+No reservation delay (A6) — balance updates and AiAssistanceLevel
+returns to normal on the same request that confirms payment
+        ↓
+Day 30 — subscription renews
+        ↓
+New SubscriptionGrant entry: +20,000 (this period's included allowance)
+Prior period's unused subscription credits: none carried, N/A here (balance was 0)
+Purchased 20,000 from Day 12: still present, untouched (A9 — never expires,
+never forfeited by renewal)
+        ↓
+Balance on Day 30: 20,000 (new subscription grant) + whatever remains of
+the Day-12 purchase — the purchase was never plan-specific and outlives
+the renewal that triggered it.
+```
+
+The tutor's plan and renewal date never change because of the top-up — it's
+a pure ledger event, orthogonal to the subscription lifecycle.
+
 ---
 
 # PART B — Implementation Plan

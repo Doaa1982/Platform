@@ -68,7 +68,7 @@ public class GradeAssessmentSkill(AiOrchestrator orchestrator)
 
     public async Task<string> ReviewAsync(
         string lessonTitle, int scorePercent, bool passed, int passingThreshold,
-        IReadOnlyList<(string Prompt, string Answer)> openAnswers, CancellationToken ct = default)
+        IReadOnlyList<(string Prompt, string Answer)> openAnswers, Guid workspaceId, CancellationToken ct = default)
     {
         var openAnswerBlock = openAnswers.Count == 0
             ? "(no open-ended questions on this assessment)"
@@ -82,7 +82,8 @@ public class GradeAssessmentSkill(AiOrchestrator orchestrator)
             {openAnswerBlock}
             """;
 
-        var feedback = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, ct);
+        var feedback = await orchestrator.RunTextAsync(
+            SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GradeAssessment, band: openAnswers.Count, ct: ct);
         return feedback.Trim();
     }
 }

@@ -30,8 +30,15 @@ public class CatalogAdminService(PlatformDbContext db)
             .Where(v => productIds.Contains(v.ProductId)).ToListAsync(ct);
         var families = await db.ProductFamilies.AsNoTracking().ToDictionaryAsync(f => f.Id, ct);
 
-        return products.Select(p => DescribeProduct(p, families.GetValueOrDefault(p.ProductFamilyId)?.Code ?? "",
-            versions.Where(v => v.ProductId == p.Id).ToList())).ToList();
+        var rows = new List<ProductAdminRow>();
+        foreach (var p in products)
+        {
+            var productVersions = versions.Where(v => v.ProductId == p.Id).ToList();
+            var current = productVersions.Where(v => v.Status == CatalogStatus.Published).OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+            var editable = current is not null && !await ProductVersionInUseAsync(current.Id, ct);
+            rows.Add(DescribeProduct(p, families.GetValueOrDefault(p.ProductFamilyId)?.Code ?? "", productVersions, editable));
+        }
+        return rows;
     }
 
     public async Task<ProvisioningResult<ProductAdminRow>> CreateProductAsync(
@@ -59,7 +66,7 @@ public class CatalogAdminService(PlatformDbContext db)
         await db.SaveChangesAsync(ct);
 
         return ProvisioningResult<ProductAdminRow>.Success(
-            DescribeProduct(product, family.Code, [version]));
+            DescribeProduct(product, family.Code, [version], editable: false));
     }
 
     public async Task<ProvisioningResult<ProductAdminRow>> CreateProductVersionAsync(
@@ -83,6 +90,32 @@ public class CatalogAdminService(PlatformDbContext db)
         db.CommercialProductVersions.Add(version);
         await db.SaveChangesAsync(ct);
 
+        return await GetProductRowAsync(productId, ct);
+    }
+
+    /// <summary>
+    /// Edits a Version's numbers in place instead of creating a new one —
+    /// only permitted while no live Subscription references this exact
+    /// Version yet, so CPR-008's "editing a price means a new Version"
+    /// discipline still holds for anything actually sold.
+    /// </summary>
+    public async Task<ProvisioningResult<ProductAdminRow>> UpdateProductVersionAsync(
+        Guid productId, Guid versionId, ProductVersionFields fields, CancellationToken ct = default)
+    {
+        var product = await db.CommercialProducts.FirstOrDefaultAsync(p => p.Id == productId, ct);
+        if (product is null) return Fail<ProductAdminRow>("No such product.");
+
+        var version = await db.CommercialProductVersions.FirstOrDefaultAsync(v => v.Id == versionId && v.ProductId == productId, ct);
+        if (version is null) return Fail<ProductAdminRow>("No such version on this product.");
+
+        if (await ProductVersionInUseAsync(versionId, ct))
+            return FailConflict<ProductAdminRow>("This version already has a subscription attached — create a new version instead of editing this one.");
+
+        try { UpdateProductVersion(version, fields); }
+        catch (ArgumentException ex) { return Fail<ProductAdminRow>(ex.Message); }
+        catch (InvalidOperationException ex) { return Fail<ProductAdminRow>(ex.Message); }
+
+        await db.SaveChangesAsync(ct);
         return await GetProductRowAsync(productId, ct);
     }
 
@@ -136,7 +169,15 @@ public class CatalogAdminService(PlatformDbContext db)
         var versions = await db.CommercialPackVersions.AsNoTracking()
             .Where(v => packIds.Contains(v.PackId)).ToListAsync(ct);
 
-        return packs.Select(p => DescribePack(p, versions.Where(v => v.PackId == p.Id).ToList())).ToList();
+        var rows = new List<PackAdminRow>();
+        foreach (var p in packs)
+        {
+            var packVersions = versions.Where(v => v.PackId == p.Id).ToList();
+            var current = packVersions.Where(v => v.Status == CatalogStatus.Published).OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+            var editable = current is not null && !await PackVersionInUseAsync(current.Id, ct);
+            rows.Add(DescribePack(p, packVersions, editable));
+        }
+        return rows;
     }
 
     public async Task<ProvisioningResult<PackAdminRow>> CreatePackAsync(
@@ -160,7 +201,7 @@ public class CatalogAdminService(PlatformDbContext db)
         db.CommercialPackVersions.Add(version);
         await db.SaveChangesAsync(ct);
 
-        return ProvisioningResult<PackAdminRow>.Success(DescribePack(pack, [version]));
+        return ProvisioningResult<PackAdminRow>.Success(DescribePack(pack, [version], editable: false));
     }
 
     public async Task<ProvisioningResult<PackAdminRow>> CreatePackVersionAsync(
@@ -184,6 +225,27 @@ public class CatalogAdminService(PlatformDbContext db)
         db.CommercialPackVersions.Add(version);
         await db.SaveChangesAsync(ct);
 
+        return await GetPackRowAsync(packId, ct);
+    }
+
+    /// <summary>Edits a Version's numbers in place instead of creating a new one — same guard as UpdateProductVersionAsync.</summary>
+    public async Task<ProvisioningResult<PackAdminRow>> UpdatePackVersionAsync(
+        Guid packId, Guid versionId, PackVersionFields fields, CancellationToken ct = default)
+    {
+        var pack = await db.CommercialPacks.FirstOrDefaultAsync(p => p.Id == packId, ct);
+        if (pack is null) return Fail<PackAdminRow>("No such pack.");
+
+        var version = await db.CommercialPackVersions.FirstOrDefaultAsync(v => v.Id == versionId && v.PackId == packId, ct);
+        if (version is null) return Fail<PackAdminRow>("No such version on this pack.");
+
+        if (await PackVersionInUseAsync(versionId, ct))
+            return FailConflict<PackAdminRow>("This version already has a subscription attached — create a new version instead of editing this one.");
+
+        try { UpdatePackVersion(version, fields); }
+        catch (ArgumentException ex) { return Fail<PackAdminRow>(ex.Message); }
+        catch (InvalidOperationException ex) { return Fail<PackAdminRow>(ex.Message); }
+
+        await db.SaveChangesAsync(ct);
         return await GetPackRowAsync(packId, ct);
     }
 
@@ -235,8 +297,10 @@ public class CatalogAdminService(PlatformDbContext db)
 
         var family = await db.ProductFamilies.AsNoTracking().FirstOrDefaultAsync(f => f.Id == product.ProductFamilyId, ct);
         var versions = await db.CommercialProductVersions.AsNoTracking().Where(v => v.ProductId == productId).ToListAsync(ct);
+        var current = versions.Where(v => v.Status == CatalogStatus.Published).OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+        var editable = current is not null && !await ProductVersionInUseAsync(current.Id, ct);
 
-        return ProvisioningResult<ProductAdminRow>.Success(DescribeProduct(product, family?.Code ?? "", versions));
+        return ProvisioningResult<ProductAdminRow>.Success(DescribeProduct(product, family?.Code ?? "", versions, editable));
     }
 
     private async Task<ProvisioningResult<PackAdminRow>> GetPackRowAsync(Guid packId, CancellationToken ct)
@@ -245,14 +309,62 @@ public class CatalogAdminService(PlatformDbContext db)
         if (pack is null) return Fail<PackAdminRow>("No such pack.");
 
         var versions = await db.CommercialPackVersions.AsNoTracking().Where(v => v.PackId == packId).ToListAsync(ct);
-        return ProvisioningResult<PackAdminRow>.Success(DescribePack(pack, versions));
+        var current = versions.Where(v => v.Status == CatalogStatus.Published).OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+        var editable = current is not null && !await PackVersionInUseAsync(current.Id, ct);
+
+        return ProvisioningResult<PackAdminRow>.Success(DescribePack(pack, versions, editable));
+    }
+
+    /// <summary>Whether any Subscription (other than a Cancelled/Expired one, which no longer owns any plan) currently or pendingly references this Product Version — the guard for in-place editing.</summary>
+    private async Task<bool> ProductVersionInUseAsync(Guid versionId, CancellationToken ct)
+    {
+        var snapshotIds = await db.ConfigurationSnapshots.AsNoTracking()
+            .Where(cs => cs.ProductVersionId == versionId)
+            .Select(cs => cs.Id)
+            .ToListAsync(ct);
+        if (snapshotIds.Count == 0) return false;
+
+        return await db.Subscriptions.AsNoTracking().AnyAsync(s =>
+            s.Status != SubscriptionStatus.Cancelled && s.Status != SubscriptionStatus.Expired &&
+            (snapshotIds.Contains(s.CurrentConfigurationSnapshotId) ||
+             (s.PendingConfigurationSnapshotId != null && snapshotIds.Contains(s.PendingConfigurationSnapshotId.Value))), ct);
+    }
+
+    /// <summary>Same guard as <see cref="ProductVersionInUseAsync"/>, for a Pack Version selected into a Configuration Snapshot's add-ons.</summary>
+    private async Task<bool> PackVersionInUseAsync(Guid versionId, CancellationToken ct)
+    {
+        var snapshotIds = await db.ConfigurationSnapshots.AsNoTracking()
+            .Where(cs => cs.SelectedPackVersionIds.Contains(versionId))
+            .Select(cs => cs.Id)
+            .ToListAsync(ct);
+        if (snapshotIds.Count == 0) return false;
+
+        return await db.Subscriptions.AsNoTracking().AnyAsync(s =>
+            s.Status != SubscriptionStatus.Cancelled && s.Status != SubscriptionStatus.Expired &&
+            (snapshotIds.Contains(s.CurrentConfigurationSnapshotId) ||
+             (s.PendingConfigurationSnapshotId != null && snapshotIds.Contains(s.PendingConfigurationSnapshotId.Value))), ct);
     }
 
     private static CommercialProductVersion BuildProductVersion(Guid productId, int versionNumber, ProductVersionFields fields) =>
         CommercialProductVersion.Create(
             productId, versionNumber,
             fields.MonthlyPrice, fields.AnnualPrice, fields.Currency,
-            fields.TutorCapacityBase, fields.TutorCapacityMax, fields.AiCreditsIncluded,
+            fields.TutorCapacityBase, fields.TutorCapacityMax,
+            fields.LearnerCapacityBase, fields.LearnerCapacityMax,
+            fields.VideoStorageGbBase, fields.VideoStorageGbMax,
+            fields.ResourceStorageGbBase, fields.ResourceStorageGbMax,
+            fields.AiCreditsIncluded,
+            ParseProfile(fields.LearningProfile, "Learning"), ParseProfile(fields.AssessmentProfile, "Assessment"),
+            ParseProfile(fields.AnalyticsProfile, "Analytics"), ParseProfile(fields.BrandingProfile, "Branding"));
+
+    private static void UpdateProductVersion(CommercialProductVersion version, ProductVersionFields fields) =>
+        version.UpdateFields(
+            fields.MonthlyPrice, fields.AnnualPrice, fields.Currency,
+            fields.TutorCapacityBase, fields.TutorCapacityMax,
+            fields.LearnerCapacityBase, fields.LearnerCapacityMax,
+            fields.VideoStorageGbBase, fields.VideoStorageGbMax,
+            fields.ResourceStorageGbBase, fields.ResourceStorageGbMax,
+            fields.AiCreditsIncluded,
             ParseProfile(fields.LearningProfile, "Learning"), ParseProfile(fields.AssessmentProfile, "Assessment"),
             ParseProfile(fields.AnalyticsProfile, "Analytics"), ParseProfile(fields.BrandingProfile, "Branding"));
 
@@ -261,10 +373,18 @@ public class CatalogAdminService(PlatformDbContext db)
             packId, versionNumber, fields.MonthlyPrice, fields.Currency,
             ParseOptionalProfile(fields.LearningGrant), ParseOptionalProfile(fields.AssessmentGrant),
             ParseOptionalProfile(fields.AnalyticsGrant), ParseOptionalProfile(fields.BrandingGrant),
-            fields.ExtraTutorCapacity,
+            fields.ExtraTutorCapacity, fields.ExtraLearnerCapacity, fields.ExtraVideoStorageGb, fields.ExtraResourceStorageGb,
             ParseOptionalDomain(fields.RequiresDomain), ParseOptionalProfile(fields.RequiresMinLevel));
 
-    private static ProductAdminRow DescribeProduct(CommercialProduct product, string familyCode, IReadOnlyList<CommercialProductVersion> versions)
+    private static void UpdatePackVersion(CommercialPackVersion version, PackVersionFields fields) =>
+        version.UpdateFields(
+            fields.MonthlyPrice, fields.Currency,
+            ParseOptionalProfile(fields.LearningGrant), ParseOptionalProfile(fields.AssessmentGrant),
+            ParseOptionalProfile(fields.AnalyticsGrant), ParseOptionalProfile(fields.BrandingGrant),
+            fields.ExtraTutorCapacity, fields.ExtraLearnerCapacity, fields.ExtraVideoStorageGb, fields.ExtraResourceStorageGb,
+            ParseOptionalDomain(fields.RequiresDomain), ParseOptionalProfile(fields.RequiresMinLevel));
+
+    private static ProductAdminRow DescribeProduct(CommercialProduct product, string familyCode, IReadOnlyList<CommercialProductVersion> versions, bool editable)
     {
         var current = versions.Where(v => v.Status == CatalogStatus.Published).OrderByDescending(v => v.VersionNumber).FirstOrDefault();
         var draft = versions.Where(v => v.Status == CatalogStatus.Draft).OrderByDescending(v => v.VersionNumber).FirstOrDefault();
@@ -274,10 +394,11 @@ public class CatalogAdminService(PlatformDbContext db)
             Id: product.Id, FamilyCode: familyCode, Code: product.Code, Name: product.Name, Status: product.Status.ToString(),
             CurrentVersion: current is null ? null : DescribeVersion(current),
             DraftVersion: draft is null ? null : DescribeVersion(draft),
-            RetiredVersionCount: retiredCount);
+            RetiredVersionCount: retiredCount,
+            CurrentVersionEditable: editable);
     }
 
-    private static PackAdminRow DescribePack(CommercialPack pack, IReadOnlyList<CommercialPackVersion> versions)
+    private static PackAdminRow DescribePack(CommercialPack pack, IReadOnlyList<CommercialPackVersion> versions, bool editable)
     {
         var current = versions.Where(v => v.Status == CatalogStatus.Published).OrderByDescending(v => v.VersionNumber).FirstOrDefault();
         var draft = versions.Where(v => v.Status == CatalogStatus.Draft).OrderByDescending(v => v.VersionNumber).FirstOrDefault();
@@ -287,19 +408,25 @@ public class CatalogAdminService(PlatformDbContext db)
             Id: pack.Id, Code: pack.Code.ToString(), Name: pack.Name, Status: pack.Status.ToString(),
             CurrentVersion: current is null ? null : DescribePackVersion(current),
             DraftVersion: draft is null ? null : DescribePackVersion(draft),
-            RetiredVersionCount: retiredCount);
+            RetiredVersionCount: retiredCount,
+            CurrentVersionEditable: editable);
     }
 
     private static ProductVersionRow DescribeVersion(CommercialProductVersion v) => new(
         v.Id, v.VersionNumber, v.Status.ToString(), v.MonthlyPrice, v.AnnualPrice, v.Currency,
-        v.TutorCapacityBase, v.TutorCapacityMax, v.AiCreditsIncluded,
+        v.TutorCapacityBase, v.TutorCapacityMax,
+        v.LearnerCapacityBase, v.LearnerCapacityMax,
+        v.VideoStorageGbBase, v.VideoStorageGbMax,
+        v.ResourceStorageGbBase, v.ResourceStorageGbMax,
+        v.AiCreditsIncluded,
         v.LearningProfile.ToString(), v.AssessmentProfile.ToString(), v.AnalyticsProfile.ToString(), v.BrandingProfile.ToString(),
         v.CreatedAt, v.PublishedAt, v.RetiredAt);
 
     private static PackVersionRow DescribePackVersion(CommercialPackVersion v) => new(
         v.Id, v.VersionNumber, v.Status.ToString(), v.MonthlyPrice, v.Currency,
         v.LearningGrant?.ToString(), v.AssessmentGrant?.ToString(), v.AnalyticsGrant?.ToString(), v.BrandingGrant?.ToString(),
-        v.ExtraTutorCapacity, v.RequiresDomain?.ToString(), v.RequiresMinLevel?.ToString(),
+        v.ExtraTutorCapacity, v.ExtraLearnerCapacity, v.ExtraVideoStorageGb, v.ExtraResourceStorageGb,
+        v.RequiresDomain?.ToString(), v.RequiresMinLevel?.ToString(),
         v.CreatedAt, v.PublishedAt, v.RetiredAt);
 
     private static CapabilityProfileLevel ParseProfile(string value, string field)
@@ -321,4 +448,5 @@ public class CatalogAdminService(PlatformDbContext db)
     }
 
     private static ProvisioningResult<T> Fail<T>(string message) => ProvisioningResult<T>.Fail(ProvisioningError.Invalid, message);
+    private static ProvisioningResult<T> FailConflict<T>(string message) => ProvisioningResult<T>.Fail(ProvisioningError.Conflict, message);
 }

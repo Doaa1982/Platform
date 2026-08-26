@@ -6,11 +6,13 @@ using Platform.Infrastructure;
 namespace Platform.Api.Services;
 
 /// <summary>
-/// Uploading and serving Learning Assets (video, today) — the digital
-/// resources a Lesson Revision references but never owns (Learning Asset
-/// Aggregate Design §11).
+/// Uploading and serving Learning Assets (video, resource files, and cover
+/// images) — the digital resources a Lesson Revision references but never
+/// owns (Learning Asset Aggregate Design §11). Video and Resource+Image each
+/// draw against their own plan-resolved storage entitlement, checked before
+/// the file is written.
 /// </summary>
-public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage storage)
+public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage storage, EntitlementResolutionService entitlements)
 {
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
@@ -20,6 +22,27 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
 
     /// <summary>10MB cap on a cover photo — generous for a JPEG/PNG, far below a video or slide deck.</summary>
     private const long MaxImageBytes = 10_000_000;
+
+    /// <summary>
+    /// What a lesson Resource may be — documents and the images Extract already
+    /// reads (PDF & Image Lesson Content Extraction §5), deliberately excluding
+    /// video/audio: those belong to the Video upload path (with its own,
+    /// separate storage entitlement), never disguised as a "resource".
+    /// </summary>
+    private static readonly HashSet<string> AllowedResourceContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/pdf",
+        "text/plain",
+        "text/csv",
+        "application/rtf", "text/rtf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+    };
 
     public async Task<ProvisioningResult<LearningAssetResponse>> UploadAsync(
         string slug, Guid caller, string fileName, string contentType, long length, Stream content,
@@ -41,6 +64,10 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
             // same on-brand message.
             if (length > MaxResourceBytes)
                 return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "A video file cannot be larger than 500MB."));
+
+            var storageError = await CheckVideoStorageCapacityAsync(ctx.Workspace!.Id, length, ct);
+            if (storageError is not null)
+                return Fail<LearningAssetResponse>((ProvisioningError.Conflict, storageError));
         }
         else if (category == LearningAssetCategory.Image)
         {
@@ -48,10 +75,28 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
                 return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "Only image files can be uploaded as a cover photo."));
             if (length > MaxImageBytes)
                 return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "A cover photo cannot be larger than 10MB."));
+
+            var storageError = await CheckResourceStorageCapacityAsync(ctx.Workspace!.Id, length, ct);
+            if (storageError is not null)
+                return Fail<LearningAssetResponse>((ProvisioningError.Conflict, storageError));
         }
-        else if (length > MaxResourceBytes)
+        else
         {
-            return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "A resource file cannot be larger than 500MB."));
+            if (!AllowedResourceContentTypes.Contains(contentType))
+            {
+                return Fail<LearningAssetResponse>((ProvisioningError.Invalid,
+                    contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
+                    || contentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)
+                        ? "Video and audio files can't be uploaded as a resource — use the lesson's video upload for those."
+                        : "That file type isn't supported as a resource. Allowed: PDF, Word, Excel, PowerPoint, plain text, CSV, RTF, or an image."));
+            }
+
+            if (length > MaxResourceBytes)
+                return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "A resource file cannot be larger than 500MB."));
+
+            var storageError = await CheckResourceStorageCapacityAsync(ctx.Workspace!.Id, length, ct);
+            if (storageError is not null)
+                return Fail<LearningAssetResponse>((ProvisioningError.Conflict, storageError));
         }
 
         var objectKey = await storage.SaveAsync(ctx.Workspace!.Id, fileName, content, ct);
@@ -105,6 +150,77 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
 
         await db.SaveChangesAsync(ct);
         return ProvisioningResult<LearningAssetResponse>.Success(Describe(asset));
+    }
+
+    /// <summary>
+    /// Sum of stored video bytes for a workspace, excluding archived assets —
+    /// an archived asset's own reference may still be attached to a lesson
+    /// (LearningAsset.Archive's INV-006 deliberately leaves existing
+    /// references alone), so its bytes are never actually reclaimed on disk,
+    /// but excluding it from this sum still gives a tutor "I archived it, it
+    /// no longer counts against my quota" — the commercial promise a storage
+    /// cap is meant to keep, without touching bytes something might still play.
+    /// </summary>
+    private async Task<long> GetVideoStorageUsedBytesAsync(Guid workspaceId, CancellationToken ct) =>
+        await db.LearningAssets
+            .Where(a => a.WorkspaceId == workspaceId && a.Category == LearningAssetCategory.Video && a.Status != LearningAssetStatus.Archived)
+            .SumAsync(a => a.FileSizeBytes, ct);
+
+    /// <summary>
+    /// Checks whether uploading `incomingBytes` more video would exceed the
+    /// plan's video-storage entitlement, mirroring
+    /// WorkspaceMemberService.CheckTutorCapacityAsync's shape (live usage vs.
+    /// resolved entitlement, friendly rejection message). A Workspace with no
+    /// License yet is left unrestricted, same reasoning as tutor capacity.
+    /// </summary>
+    private async Task<string?> CheckVideoStorageCapacityAsync(Guid workspaceId, long incomingBytes, CancellationToken ct)
+    {
+        var capacityValue = await entitlements.GetEntitlementValueAsync(
+            workspaceId, EntitlementResolutionService.VideoStorageGbKey, ct);
+        if (capacityValue is null || !int.TryParse(capacityValue, out var capacityGb))
+            return null;
+
+        // Matches this codebase's existing decimal-MB convention (e.g.
+        // MaxResourceBytes = 500_000_000), not binary GiB.
+        var capacityBytes = capacityGb * 1_000_000_000L;
+        var usedBytes = await GetVideoStorageUsedBytesAsync(workspaceId, ct);
+
+        if (usedBytes + incomingBytes <= capacityBytes)
+            return null;
+
+        var usedGb = usedBytes / 1_000_000_000.0;
+        return $"This workspace's plan allows {capacityGb}GB of video storage — {usedGb:0.#}GB is already used, and this upload would go over. Archive an unused video or upgrade the plan.";
+    }
+
+    /// <summary>
+    /// Sum of stored Resource+Image bytes for a workspace, excluding archived
+    /// assets — same reasoning as <see cref="GetVideoStorageUsedBytesAsync"/>,
+    /// a separate pool from video since non-video material (slides, handouts,
+    /// cover photos) is typically a much smaller quota.
+    /// </summary>
+    private async Task<long> GetResourceStorageUsedBytesAsync(Guid workspaceId, CancellationToken ct) =>
+        await db.LearningAssets
+            .Where(a => a.WorkspaceId == workspaceId
+                     && (a.Category == LearningAssetCategory.Resource || a.Category == LearningAssetCategory.Image)
+                     && a.Status != LearningAssetStatus.Archived)
+            .SumAsync(a => a.FileSizeBytes, ct);
+
+    /// <summary>Mirrors <see cref="CheckVideoStorageCapacityAsync"/>, for the separate resource-storage entitlement.</summary>
+    private async Task<string?> CheckResourceStorageCapacityAsync(Guid workspaceId, long incomingBytes, CancellationToken ct)
+    {
+        var capacityValue = await entitlements.GetEntitlementValueAsync(
+            workspaceId, EntitlementResolutionService.ResourceStorageGbKey, ct);
+        if (capacityValue is null || !int.TryParse(capacityValue, out var capacityGb))
+            return null;
+
+        var capacityBytes = capacityGb * 1_000_000_000L;
+        var usedBytes = await GetResourceStorageUsedBytesAsync(workspaceId, ct);
+
+        if (usedBytes + incomingBytes <= capacityBytes)
+            return null;
+
+        var usedGb = usedBytes / 1_000_000_000.0;
+        return $"This workspace's plan allows {capacityGb}GB of resource storage — {usedGb:0.#}GB is already used, and this upload would go over. Archive an unused file or upgrade the plan.";
     }
 
     internal async Task<LearningAsset?> FindAsync(Guid workspaceId, Guid assetId, CancellationToken ct = default) =>

@@ -148,7 +148,7 @@ Return only the resulting learner-facing lesson body.
 
     public async Task<string> SuggestAsync(
         string title, string? existingBody, string? transcript, int? estimatedMinutes,
-        string? outputLanguage, CancellationToken ct = default)
+        string? outputLanguage, Guid workspaceId, CancellationToken ct = default)
     {
         var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
             ? ""
@@ -165,7 +165,7 @@ Return only the resulting learner-facing lesson body.
             {(string.IsNullOrWhiteSpace(transcript) ? "(none available)" : transcript)}
             """;
 
-        var body = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, ct);
+        var body = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateLessonBody, ct: ct);
         return body.Trim();
     }
 }

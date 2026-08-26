@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Platform.Api.Services;
 
 namespace Platform.Api.AI;
 
@@ -7,16 +8,18 @@ namespace Platform.Api.AI;
 /// needs today from AIOrchestrationArchitecture.md's full sequence:
 ///
 ///   Request -&gt; (caller already checked entitlement/authorization) -&gt;
-///   Context Construction -&gt; Skill's Prompt -&gt; Model Call -&gt;
-///   Response Validation -&gt; Result
+///   Credit Check-and-Debit -&gt; Context Construction -&gt; Skill's Prompt -&gt;
+///   Model Call -&gt; Response Validation -&gt; Result
 ///
-/// Authorization and usage estimation/reservation/reconciliation are left to
-/// the caller (AssessmentService already gates on entitlement before calling
-/// in) and to a future AIUsageAndCostArchitecture slice, respectively — this
-/// class's only job is turning a Skill's instructions + context into a
-/// validated, typed result.
+/// Authorization is still left to the caller (AssessmentService already
+/// gates on entitlement before calling in). Usage estimation/reservation/
+/// reconciliation is Documents/AICreditsCommercialContractAndImplementationPlan.md
+/// Phase 2: every call debits <paramref name="workspaceId"/>'s AI credit
+/// balance for <paramref name="skillKey"/> before the model is ever called
+/// (§A6 — atomic check-then-debit, no reservation state machine), and
+/// refunds that debit if the call ultimately fails.
 /// </summary>
-public class AiOrchestrator(IAiModelProvider provider)
+public class AiOrchestrator(IAiModelProvider provider, ICreditLedgerService credits)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -27,6 +30,15 @@ public class AiOrchestrator(IAiModelProvider provider)
     /// stricter reminder before giving up — a model call returning ordinary
     /// prose instead of the requested shape is common enough to be worth one
     /// retry rather than failing the whole request outright.
+    ///
+    /// <paramref name="skillKey"/> identifies the skill for both credit
+    /// pricing (<see cref="Platform.Domain.SkillCreditCost"/>) and the
+    /// resulting <see cref="Platform.Domain.CreditLedgerEntry"/>'s audit
+    /// trail — use <see cref="AiSkillKeys"/>, never a literal string.
+    /// <paramref name="band"/> is a banded skill's own size signal (open-answer
+    /// count, page count, ...) — <see langword="null"/> for a flat-priced skill.
+    /// Throws <see cref="CreditsExhaustedException"/> before ever calling the
+    /// model if the workspace's balance can't cover the price.
     ///
     /// <paramref name="isValid"/> covers the failure mode JSON parsing can't
     /// catch: <c>System.Text.Json</c> deserializes a well-formed object even
@@ -42,35 +54,64 @@ public class AiOrchestrator(IAiModelProvider provider)
     /// content-free results to the caller.
     /// </summary>
     public async Task<T> RunAsync<T>(
-        string systemPrompt, string userPrompt, IReadOnlyList<AiAttachment>? attachments = null,
+        string systemPrompt, string userPrompt, Guid workspaceId, string skillKey,
+        IReadOnlyList<AiAttachment>? attachments = null, int? band = null,
         Func<T, bool>? isValid = null, CancellationToken ct = default)
     {
-        var raw = await CompleteAsync<T>(systemPrompt, userPrompt, attachments, ct);
+        var debit = await credits.TryDebitAsync(workspaceId, skillKey, band, ct);
+        if (!debit.Success)
+            throw new CreditsExhaustedException(skillKey, debit.Cost, debit.RemainingBalance);
 
-        var result = TryParse<T>(raw);
-        if (result is not null && (isValid is null || isValid(result))) return result;
+        try
+        {
+            var raw = await CompleteAsync<T>(systemPrompt, userPrompt, attachments, ct);
 
-        var retryPrompt = userPrompt +
-            "\n\nYour previous response could not be parsed as the requested JSON shape. " +
-            "Respond with JSON only — no prose, no markdown code fences.";
-        var retryRaw = await CompleteAsync<T>(systemPrompt, retryPrompt, attachments, ct);
+            var result = TryParse<T>(raw);
+            if (result is not null && (isValid is null || isValid(result))) return result;
 
-        var retryResult = TryParse<T>(retryRaw);
-        if (retryResult is not null && (isValid is null || isValid(retryResult))) return retryResult;
+            var retryPrompt = userPrompt +
+                "\n\nYour previous response could not be parsed as the requested JSON shape. " +
+                "Respond with JSON only — no prose, no markdown code fences.";
+            var retryRaw = await CompleteAsync<T>(systemPrompt, retryPrompt, attachments, ct);
 
-        throw new InvalidOperationException(
-            "The AI model did not return a response in the expected shape, even after a retry.");
+            var retryResult = TryParse<T>(retryRaw);
+            if (retryResult is not null && (isValid is null || isValid(retryResult))) return retryResult;
+
+            throw new InvalidOperationException(
+                "The AI model did not return a response in the expected shape, even after a retry.");
+        }
+        catch
+        {
+            if (debit.LedgerEntryId is { } id) await credits.RefundAsync(id, ct);
+            throw;
+        }
     }
 
     /// <summary>
     /// Runs a Skill whose result is free-form text rather than structured
     /// JSON — e.g. narrative feedback. No parsing/retry logic applies here;
     /// the caller is responsible for deciding what "malformed" would even
-    /// mean for its own prompt, and for handling <see cref="IAiModelProvider"/>
-    /// exceptions (unreachable model, bad key, etc.) the same way <see cref="RunAsync{T}"/> callers do.
+    /// mean for its own prompt. Same credit debit/refund behavior as
+    /// <see cref="RunAsync{T}"/> — see its remarks for <paramref name="skillKey"/>/<paramref name="band"/>.
     /// </summary>
-    public Task<string> RunTextAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
-        => provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: false, ct: ct);
+    public async Task<string> RunTextAsync(
+        string systemPrompt, string userPrompt, Guid workspaceId, string skillKey,
+        int? band = null, CancellationToken ct = default)
+    {
+        var debit = await credits.TryDebitAsync(workspaceId, skillKey, band, ct);
+        if (!debit.Success)
+            throw new CreditsExhaustedException(skillKey, debit.Cost, debit.RemainingBalance);
+
+        try
+        {
+            return await provider.CompleteAsync(systemPrompt, userPrompt, jsonMode: false, ct: ct);
+        }
+        catch
+        {
+            if (debit.LedgerEntryId is { } id) await credits.RefundAsync(id, ct);
+            throw;
+        }
+    }
 
     private Task<string> CompleteAsync<T>(string systemPrompt, string userPrompt, IReadOnlyList<AiAttachment>? attachments, CancellationToken ct)
         => attachments is { Count: > 0 }

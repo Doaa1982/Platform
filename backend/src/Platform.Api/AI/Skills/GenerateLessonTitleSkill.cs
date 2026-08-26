@@ -141,7 +141,7 @@ public class GenerateLessonTitleSkill(AiOrchestrator orchestrator)
         """;
 
     public async Task<string> SuggestAsync(
-        string? currentTitle, string? body, string? transcript, string? outputLanguage, CancellationToken ct = default)
+        string? currentTitle, string? body, string? transcript, string? outputLanguage, Guid workspaceId, CancellationToken ct = default)
     {
         var (sourceLabel, source) = !string.IsNullOrWhiteSpace(body)
             ? ("Lesson body", body)
@@ -160,7 +160,7 @@ public class GenerateLessonTitleSkill(AiOrchestrator orchestrator)
             {source ?? "(none)"}
             """;
 
-        var title = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, ct);
+        var title = await orchestrator.RunTextAsync(SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateLessonTitle, ct: ct);
         return title.Trim().Trim('"');
     }
 }

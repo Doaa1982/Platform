@@ -100,7 +100,7 @@ export default function AppRoot() {
   if (statusToken) {
     return (
       <AuthProvider side={null}>
-        <SignupStatusScreen token={statusToken} onApplyAgain={() => navigate("/apply")} />
+        <SignupStatusScreen token={statusToken} />
       </AuthProvider>
     );
   }

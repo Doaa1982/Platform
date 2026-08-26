@@ -29,8 +29,13 @@ public enum CapabilityProfileLevel { Foundation, Professional, AiPlus }
 /// </summary>
 public enum AiAssistanceLevel { Manual, Assist, CoPilot }
 
-/// <summary>The five Capability Packs confirmed to ship at V1 launch (Decision Brief #3).</summary>
-public enum CapabilityPack { AiAuthor, AiAssessment, AiMentor, Branding, Collaboration }
+/// <summary>
+/// The five Capability Packs confirmed to ship at V1 launch (Decision Brief
+/// #3), plus ExtraStudents/ExtraStorage — same additive-capacity shape as
+/// Collaboration (extra tutor seats), added for the learner-capacity and
+/// video-storage caps.
+/// </summary>
+public enum CapabilityPack { AiAuthor, AiAssessment, AiMentor, Branding, Collaboration, ExtraStudents, ExtraStorage }
 
 /// <summary>
 /// Subscription lifecycle (Commercial Domain V1 Scope §2.3's ratified 8-state
@@ -77,6 +82,16 @@ public enum InvoiceStatus { Draft, Issued, Paid, Overdue, Voided }
 /// <summary>What an Invoice Line prices (recommended invoice structure, Billing Architecture §66).</summary>
 /// <summary>Proration added 2026-08-10 for immediate Upgrade billing (Billing Architecture §25-27) — string-backed column (PlatformDbContext), so a new member needs no migration.</summary>
 public enum InvoiceComponentType { BasePlan, CapabilityPack, Capacity, Proration }
+
+/// <summary>
+/// Lifecycle of a <see cref="CreditPurchaseOrder"/> — a one-time AI-credit
+/// top-up, requested by a Workspace and confirmed by a Platform Operator
+/// under the same Manual Commercial Activation model Invoice uses (§27a),
+/// kept as its own small lifecycle rather than reusing InvoiceStatus since a
+/// top-up has no Draft-line-building or Overdue-due-date concept — it's a
+/// single fixed-price request that's either still waiting, paid, or rejected.
+/// </summary>
+public enum CreditPurchaseOrderStatus { Pending, Paid, Voided }
 
 /// <summary>
 /// Lifecycle shared by every catalog entity (CommercialProduct/CommercialProductVersion/
