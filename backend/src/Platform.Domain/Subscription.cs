@@ -59,6 +59,18 @@ public class Subscription
     public Guid? RequestedConfigurationSnapshotId { get; private set; }
     public Guid? RequestedInvoiceId { get; private set; }
 
+    /// <summary>
+    /// The <see cref="CurrentPeriodEnd"/> value for which this period's
+    /// AI credits (Configuration Snapshot's AiCreditsIncluded) have already
+    /// been granted to the ledger — LicensingService's chokepoint compares
+    /// this against the live CurrentPeriodEnd to decide whether a grant is
+    /// still due, so first activation, a Grace/PastDue recovery, and a period
+    /// rollover (<see cref="Renew"/>/<see cref="ApplyPendingChange"/>) each
+    /// grant exactly once and never double-grant the same period. Null means
+    /// no period has ever been credited yet.
+    /// </summary>
+    public DateTime? CreditsGrantedThroughUtc { get; private set; }
+
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
@@ -254,6 +266,46 @@ public class Subscription
         RenewalDate = CurrentPeriodEnd;
         PendingConfigurationSnapshotId = null;
         PendingChangeEffectiveDate = null;
+        Touch();
+    }
+
+    /// <summary>
+    /// Rolls the billing period forward by one cycle with no plan change —
+    /// the "nothing changed, the customer just kept paying" renewal path
+    /// that this codebase never had before (see this class's other
+    /// remarks: ApplyPendingChange was, until now, the only thing that ever
+    /// advanced a period, and only as a side effect of applying a scheduled
+    /// downgrade). Manual, operator-triggered
+    /// (CommercialOpsService.SweepDueRenewalsAsync), the same "no scheduler
+    /// exists in this codebase yet" pattern as every other date-driven
+    /// transition here — the sweep decides eligibility (period actually
+    /// elapsed) and which of Renew/ApplyPendingChange applies; this method
+    /// does not re-check the date itself.
+    /// </summary>
+    public void Renew()
+    {
+        if (Status != SubscriptionStatus.Active)
+            throw new InvalidOperationException(
+                $"A Subscription that is {Status} cannot be renewed. Only an Active subscription can.");
+        if (PendingConfigurationSnapshotId is not null)
+            throw new InvalidOperationException(
+                "This subscription has a scheduled plan change due — apply that instead of a plain renewal.");
+
+        var previousPeriodEnd = CurrentPeriodEnd;
+        CurrentPeriodEnd = BillingCycle == BillingCycle.Annual ? previousPeriodEnd.AddYears(1) : previousPeriodEnd.AddMonths(1);
+        RenewalDate = CurrentPeriodEnd;
+        Touch();
+    }
+
+    /// <summary>
+    /// Marks this period's AI credits as funded — called only by
+    /// LicensingService's chokepoint right after it grants them, so a later
+    /// recompute for the same period (a re-activation, an unrelated status
+    /// change) never grants them a second time.
+    /// </summary>
+    public void MarkCreditsGranted()
+    {
+        CreditsGrantedThroughUtc = CurrentPeriodEnd;
         Touch();
     }
 

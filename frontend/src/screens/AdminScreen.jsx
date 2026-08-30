@@ -407,6 +407,9 @@ export default function AdminScreen() {
           <button className="pl-admin__ghost" disabled={busy} onClick={() => run(() => api.sweepOverdueInvoices(session.token), t("admin.toastOverdueSwept"))}>
             <RefreshCw size={14} aria-hidden="true" /> {t("admin.sweepOverdue")}
           </button>
+          <button className="pl-admin__ghost" disabled={busy} onClick={() => run(() => api.sweepDueRenewals(session.token), t("admin.toastRenewalsSwept"))}>
+            <RefreshCw size={14} aria-hidden="true" /> {t("admin.sweepRenewals")}
+          </button>
         </div>
 
         {subscriptions === null && (

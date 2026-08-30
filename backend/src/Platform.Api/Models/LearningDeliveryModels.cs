@@ -76,13 +76,49 @@ public record LearnerQuestionRow(
 /// see AssessmentKind), from this learner's own point of view. Answer keys
 /// are stripped from Questions exactly like the Interactive ones. Attempted
 /// reflects this learner's own most recent Graded submission on it only.
+///
+/// Questions is empty when IsAdaptive is true (Adaptive Assessment — Design
+/// Proposal §6: "the pool exists server-side; the client only ever sees the
+/// one Question it was just given") — the frontend uses IsAdaptive to switch
+/// to the one-question-at-a-time /adaptive/start + /adaptive/answer flow
+/// instead of rendering this list.
 /// </summary>
 public record LearnerStandaloneAssessmentSummary(
     Guid AssessmentId, string Title, int PassingThresholdPercent,
     IReadOnlyList<LearnerQuestionRow> Questions,
-    bool Attempted, int? ScorePercent, bool? Passed);
+    bool Attempted, int? ScorePercent, bool? Passed,
+    bool IsAdaptive = false,
+    /// <summary>How many questions one adaptive attempt asks — null when IsAdaptive is false. Lets the UI show "Question 3 of 10".</summary>
+    int? AdaptiveQuestionsPerAttempt = null);
 
 public record SubmitAnswersRequest(IReadOnlyList<PreviewAnswer> Answers);
+
+// ── Adaptive Standalone quiz — a multi-round-trip attempt, one question at a
+// time, instead of SubmitAnswersRequest's single batch (Adaptive Assessment
+// — Design Proposal §4a.5). ────────────────────────────────────────────────
+
+/// <summary>
+/// The first Question of a new adaptive attempt (Submission.Start() + the
+/// §4a.5 "first question bootstrap" in one call) — the full answer-key-
+/// stripped Question content, not just its id: the pool stays server-side
+/// (§6), so this is the only place the client ever learns what Question #1
+/// actually asks.
+/// </summary>
+public record AdaptiveStartResponse(Guid SubmissionId, LearnerQuestionRow Question, string DifficultyTier, int AnswerSequence);
+
+/// <summary>
+/// AnswerSequence is the answer count this client last observed (0 for the
+/// first answer, 1 for the second, …) — Submission.RecordAdaptiveAnswer's
+/// §4a.6 concurrency guard: a stale or duplicate value is rejected outright.
+/// </summary>
+public record RecordAdaptiveAnswerRequest(Guid SubmissionId, int AnswerSequence, Guid QuestionId, int? SelectedOptionIndex, string? TextAnswer);
+
+/// <summary>Either the next Question to ask (Complete: false, full content like AdaptiveStartResponse) or the finished attempt's result (Complete: true) — mirrors AdaptiveAnswerOutcome.</summary>
+public record AdaptiveAnswerResponse(
+    bool Complete,
+    LearnerQuestionRow? NextQuestion, string? NextDifficultyTier, int? NextAnswerSequence,
+    int? ScorePercent, bool? Passed, IReadOnlyList<PreviewQuestionResult>? PerQuestion,
+    IReadOnlyList<CompetencyResultRow>? CompetencyLevels = null);
 
 /// <summary>A learner's question to the in-lesson AI Assistant (<see cref="Platform.Api.AI.Skills.LessonAssistantSkill"/>).</summary>
 public record AskLessonAssistantRequest(string Question);
@@ -98,8 +134,18 @@ public record AskLessonAssistantResponse(string Answer);
 /// </summary>
 public record GenerateLessonQuizRequest(int QuestionCount, string? Difficulty, string? Topic);
 
-/// <summary>One self-check question — MultipleChoice only, ungraded, never persisted.</summary>
-public record PracticeQuizQuestion(string Prompt, IReadOnlyList<string> Options, int CorrectOptionIndex, string? Explanation);
+/// <summary>
+/// One self-check question — MultipleChoice only, ungraded, never persisted.
+///
+/// AssessedObjective carries the same Competency-Based Learning tag the
+/// authoring-side skills add to real Questions, for display parity — but
+/// since this quiz is generated on demand and never saved (this record's own
+/// summary above), there is no persisted Question for it to "thread through
+/// to": nothing downstream reads this field today, it exists so the field
+/// exists on every AI-generated question shape in this codebase, not because
+/// it currently drives behavior.
+/// </summary>
+public record PracticeQuizQuestion(string Prompt, IReadOnlyList<string> Options, int CorrectOptionIndex, string? Explanation, string? AssessedObjective = null);
 
 public record GenerateLessonQuizResponse(IReadOnlyList<PracticeQuizQuestion> Questions);
 

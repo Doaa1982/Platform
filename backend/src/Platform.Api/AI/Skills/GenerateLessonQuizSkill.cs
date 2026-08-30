@@ -103,6 +103,14 @@ public class GenerateLessonQuizSkill(AiOrchestrator orchestrator)
         - Do not introduce new information in the explanation that wasn't
           part of the question or the lesson.
 
+        ASSESSED OBJECTIVE
+
+        - If learning objectives were given and this question clearly tests
+          one of them, set assessedObjective to that objective's exact text.
+        - Otherwise, or if no learning objectives were given, set
+          assessedObjective to null.
+        - Never invent an objective that isn't one of the given ones.
+
         QUESTION COUNT
 
         - Produce exactly the requested number of questions when the
@@ -130,7 +138,8 @@ public class GenerateLessonQuizSkill(AiOrchestrator orchestrator)
             "prompt": "string",
             "options": ["string", "string", "string", "string"],
             "correctOptionIndex": number,
-            "explanation": "string"
+            "explanation": "string",
+            "assessedObjective": "string" | null
           }
         ]
         """;

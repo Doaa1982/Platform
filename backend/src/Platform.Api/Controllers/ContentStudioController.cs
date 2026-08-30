@@ -181,6 +181,27 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
         string slug, Guid lessonId, Guid resourceId, [FromBody] SetResourceVisibilityRequest request, CancellationToken ct)
         => Run(await studio.SetResourceVisibilityAsync(slug, Caller(), lessonId, resourceId, request.VisibleToLearners, ct));
 
+    /// <summary>Adds a Learning Activity to the lesson's open draft. Draft-only — see LessonRevision.AddLearningActivity.</summary>
+    [HttpPost("activities")]
+    public async Task<ActionResult<LessonDetailResponse>> AddLearningActivity(
+        string slug, Guid lessonId, [FromBody] SaveLearningActivityRequest request, CancellationToken ct)
+        => Run(await studio.AddLearningActivityAsync(slug, Caller(), lessonId, request, ct));
+
+    [HttpPut("activities/{activityId:guid}")]
+    public async Task<ActionResult<LessonDetailResponse>> UpdateLearningActivity(
+        string slug, Guid lessonId, Guid activityId, [FromBody] SaveLearningActivityRequest request, CancellationToken ct)
+        => Run(await studio.UpdateLearningActivityAsync(slug, Caller(), lessonId, activityId, request, ct));
+
+    [HttpDelete("activities/{activityId:guid}")]
+    public async Task<ActionResult<LessonDetailResponse>> RemoveLearningActivity(
+        string slug, Guid lessonId, Guid activityId, CancellationToken ct)
+        => Run(await studio.RemoveLearningActivityAsync(slug, Caller(), lessonId, activityId, ct));
+
+    [HttpPut("activities/reorder")]
+    public async Task<ActionResult<LessonDetailResponse>> ReorderLearningActivities(
+        string slug, Guid lessonId, [FromBody] ReorderLearningActivitiesRequest request, CancellationToken ct)
+        => Run(await studio.ReorderLearningActivitiesAsync(slug, Caller(), lessonId, request, ct));
+
     /// <summary>Reads a PDF/image resource with AI and drafts title/body/what-you'll-learn/learning-objectives/glossary from its content. Nothing is saved — the tutor still hits Save themselves, same as every draft/ai-suggest-* endpoint.</summary>
     [HttpPost("resources/{resourceId:guid}/extract")]
     public async Task<ActionResult<ExtractResourceContentResponse>> ExtractResourceContent(

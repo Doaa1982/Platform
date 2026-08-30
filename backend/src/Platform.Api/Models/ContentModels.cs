@@ -71,13 +71,28 @@ public record LessonRevisionRow(
     /// <summary>Supplementary files (slides, worksheets, handouts) attached to this revision — any number, unlike the single video slot.</summary>
     IReadOnlyList<LessonResourceRow> Resources,
     /// <summary>When true, a video-less lesson only completes once the learner passes its Standalone Quiz, instead of on open. Default false.</summary>
-    bool RequireQuizToComplete);
+    bool RequireQuizToComplete,
+    /// <summary>The work this revision assigns to learners (LearningActivity) — see LearningActivityRow.</summary>
+    IReadOnlyList<LearningActivityRow> LearningActivities);
 
 /// <summary>One supplementary file attached to a Lesson Revision (LessonResource), with its Learning Asset's details inlined for display.</summary>
 public record LessonResourceRow(
     Guid Id, LearningAssetResponse Asset,
     /// <summary>Whether learners see this as a download, as opposed to being attached purely as AI-extraction source material.</summary>
     bool VisibleToLearners);
+
+/// <summary>
+/// One Learning Activity on a Lesson Revision (LearningActivityType — 14
+/// values, e.g. "Quiz", "Homework", "Reading", "ExternalLearningTool").
+/// AssessmentId is meaningful only for Type Quiz/QuestionSet; ExternalUrl
+/// only for Type ExternalLearningTool. HasAssignment/AssignmentStatus let
+/// the studio show, at a glance, whether this activity has already been
+/// turned into a scheduled Assignment (INV-002: at most one).
+/// </summary>
+public record LearningActivityRow(
+    Guid Id, string Type, string Title, string? Instructions, int Position,
+    Guid? AssessmentId, string? ExternalUrl,
+    bool HasAssignment, Guid? AssignmentId, string? AssignmentStatus);
 
 public record SaveCurriculumRequest(string Title);
 public record SaveUnitRequest(string Title);
@@ -94,6 +109,11 @@ public record AttachResourceRequest(Guid LearningAssetId, bool VisibleToLearners
 public record SetResourceVisibilityRequest(bool VisibleToLearners);
 public record SetRequireQuizToCompleteRequest(bool RequireQuizToComplete);
 public record SetVideoUrlRequest(string Url);
+
+/// <summary>Type is one of LearningActivityType's 14 names. AssessmentId only applies for Quiz/QuestionSet; ExternalUrl only for ExternalLearningTool — both ignored otherwise.</summary>
+public record SaveLearningActivityRequest(string Type, string Title, string? Instructions, Guid? AssessmentId = null, string? ExternalUrl = null);
+/// <summary>Every learning activity id currently on the revision, once each, in the desired order.</summary>
+public record ReorderLearningActivitiesRequest(IReadOnlyList<Guid> ActivityIds);
 
 /// <summary>
 /// Whatever the tutor currently has typed into the content form — not

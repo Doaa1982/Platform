@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Platform.Domain;
 
@@ -28,6 +29,8 @@ public class PlatformDbContext : DbContext
     public DbSet<LearningAsset> LearningAssets => Set<LearningAsset>();
     public DbSet<LessonResource> LessonResources => Set<LessonResource>();
     public DbSet<Assessment> Assessments => Set<Assessment>();
+    public DbSet<LearningActivity> LearningActivities => Set<LearningActivity>();
+    public DbSet<Assignment> Assignments => Set<Assignment>();
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<Submission> Submissions => Set<Submission>();
     public DbSet<LessonProgress> LessonProgresses => Set<LessonProgress>();
@@ -453,6 +456,55 @@ public class PlatformDbContext : DbContext
             entity.HasMany(e => e.Resources).WithOne()
                   .HasForeignKey(r => r.LessonRevisionId).OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(e => e.Resources).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            entity.HasMany(e => e.LearningActivities).WithOne()
+                  .HasForeignKey(a => a.LessonRevisionId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.LearningActivities).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<LearningActivity>(entity =>
+        {
+            entity.ToTable("learning_activities");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.LessonRevisionId).IsRequired();
+            entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Instructions).HasMaxLength(4000);
+
+            // Meaningful only for Type == Quiz/QuestionSet — reference by
+            // identifier only, same convention as LessonRevision.VideoAssetId.
+            entity.Property(e => e.AssessmentId);
+            entity.Property(e => e.ExternalUrl).HasMaxLength(2048);
+
+            entity.HasIndex(e => e.LessonRevisionId);
+        });
+
+        modelBuilder.Entity<Assignment>(entity =>
+        {
+            entity.ToTable("assignments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            // Denormalized cross-aggregate references, no real FK — same
+            // convention as Assessment.LessonId/LessonRevisionId above.
+            entity.Property(e => e.LearningActivityId).IsRequired();
+            entity.Property(e => e.LearningProductId).IsRequired();
+            entity.Property(e => e.CreatorMembershipId).IsRequired();
+
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AvailabilityMode).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.DueDateMode).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AttemptMode).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.EvaluationMethod).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Configured).IsRequired().HasDefaultValue(false);
+
+            // INV-002: 1:1 Learning Activity ↔ Assignment in V1.
+            entity.HasIndex(e => e.LearningActivityId).IsUnique();
+            // Tutor dashboard / recipient-resolution queries.
+            entity.HasIndex(e => e.LearningProductId);
         });
 
         modelBuilder.Entity<LessonResource>(entity =>
@@ -518,6 +570,17 @@ public class PlatformDbContext : DbContext
             entity.HasMany(e => e.Questions).WithOne()
                   .HasForeignKey(q => q.AssessmentId).OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(e => e.Questions).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // Adaptive Assessment — Design Proposal §4a.3: a typed record, not
+            // a raw JSON string like LessonRevision's TranscriptChaptersJson —
+            // this one drives real domain logic (SelectNextAdaptiveQuestion,
+            // RecordAdaptiveAnswer, PublicationBlocker), so it stays a real
+            // property on Assessment and is only serialized at this boundary.
+            entity.Property(e => e.AdaptiveConfiguration)
+                  .HasConversion(
+                      v => v == null ? null : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                      v => v == null ? null : JsonSerializer.Deserialize<AdaptiveConfiguration>(v, (JsonSerializerOptions?)null))
+                  .HasColumnType("text");
         });
 
         modelBuilder.Entity<Question>(entity =>
@@ -529,6 +592,8 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Prompt).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.Explanation).HasMaxLength(2000);
             entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.AssessedObjective).HasMaxLength(1000);
+            entity.Property(e => e.DifficultyTier).HasConversion<string>().HasMaxLength(32);
 
             // Small ordered lists owned entirely by this entity — same
             // reasoning as LearningProduct.Tags above, a join table buys nothing.
@@ -577,18 +642,46 @@ public class PlatformDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedNever();
 
-            entity.Property(e => e.AssessmentId).IsRequired();
+            // Nullable as of v1.1 — a Submission references exactly one of
+            // AssessmentId or AssignmentId, enforced by the check constraint
+            // below (INV-001) and by Start()/StartForAssignment() at the
+            // domain layer.
+            entity.Property(e => e.AssessmentId);
+            entity.Property(e => e.AssignmentId);
             entity.Property(e => e.MembershipId).IsRequired();
             entity.Property(e => e.EnrollmentId).IsRequired();
 
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
 
+            entity.Property(e => e.AttemptNumber).IsRequired().HasDefaultValue(1);
+            entity.Property(e => e.ExcludedFromAttemptCount).IsRequired().HasDefaultValue(false);
+            entity.Property(e => e.ResponseText).HasMaxLength(4000);
+            entity.Property(e => e.ResponseLearningAssetId);
+            entity.Property(e => e.EvaluatorMembershipId);
+            entity.Property(e => e.EvaluationMethod).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Feedback).HasMaxLength(4000);
+
             // A learner's attempts at one assessment are read together for "latest attempt"
             entity.HasIndex(e => new { e.AssessmentId, e.MembershipId });
+            // Same, for the Assignment-target path (v1.1) — also how
+            // AssignmentService counts prior attempts for INV-003.
+            entity.HasIndex(e => new { e.AssignmentId, e.MembershipId });
+
+            // INV-001: exactly one Target, never both, never neither.
+            // Column names are the default EF-generated PascalCase ones
+            // (this DbContext doesn't apply a snake_case naming convention),
+            // hence the quoted identifiers here.
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_submissions_exactly_one_target",
+                "((\"AssessmentId\" IS NOT NULL)::int + (\"AssignmentId\" IS NOT NULL)::int) = 1"));
 
             entity.HasMany(e => e.Answers).WithOne()
                   .HasForeignKey(a => a.SubmissionId).OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(e => e.Answers).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            entity.HasMany(e => e.CompetencyLevels).WithOne()
+                  .HasForeignKey(c => c.SubmissionId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(e => e.CompetencyLevels).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         modelBuilder.Entity<SubmissionAnswer>(entity =>
@@ -598,6 +691,15 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.QuestionId).IsRequired();
             entity.Property(e => e.TextAnswer).HasMaxLength(2000);
+        });
+
+        modelBuilder.Entity<SubmissionCompetencyLevel>(entity =>
+        {
+            entity.ToTable("submission_competency_levels");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Objective).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Level).HasConversion<string>().HasMaxLength(32);
         });
 
         modelBuilder.Entity<LessonProgress>(entity =>
@@ -625,6 +727,7 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.WorkspaceId).IsRequired();
             entity.Property(e => e.MembershipId).IsRequired();
             entity.Property(e => e.LessonId).IsRequired();
+            entity.Property(e => e.AssignmentId);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Message).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.Kind).HasConversion<string>().HasMaxLength(64);

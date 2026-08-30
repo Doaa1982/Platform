@@ -52,6 +52,12 @@ public class StandaloneAssessmentsController(AssessmentService assessments) : Co
         string slug, Guid lessonId, Guid questionId, CancellationToken ct)
         => Run(await assessments.RemoveQuestionAsync(slug, Caller(), lessonId, questionId, ct, Kind));
 
+    /// <summary>Opts this quiz into (or out of, or reconfigures) adaptive delivery. See AssessmentService.ConfigureAdaptiveAsync.</summary>
+    [HttpPut("adaptive")]
+    public async Task<ActionResult<AssessmentResponse>> ConfigureAdaptive(
+        string slug, Guid lessonId, [FromBody] AdaptiveConfigurationRequest request, CancellationToken ct)
+        => Run(await assessments.ConfigureAdaptiveAsync(slug, Caller(), lessonId, request, ct, Kind));
+
     [HttpPost("publish")]
     public async Task<ActionResult<AssessmentResponse>> Publish(string slug, Guid lessonId, CancellationToken ct)
         => Run(await assessments.PublishAsync(slug, Caller(), lessonId, ct, Kind));

@@ -228,6 +228,17 @@ public class AdminController(
     public async Task<IActionResult> SweepOverdueInvoices(CancellationToken ct)
         => Ok(new { subscriptionsAffected = await commercialOps.SweepOverdueInvoicesAsync(ct) });
 
+    /// <summary>
+    /// POST /api/admin/subscriptions/sweep-renewals — same "no scheduler yet"
+    /// reasoning as sweep-overdue: rolls forward every Active subscription
+    /// whose current period has elapsed (applying a scheduled downgrade if
+    /// one is due, otherwise a plain renewal), which is also what lets that
+    /// period's AI credits actually get granted.
+    /// </summary>
+    [HttpPost("subscriptions/sweep-renewals")]
+    public async Task<IActionResult> SweepDueRenewals(CancellationToken ct)
+        => Ok(new { subscriptionsAffected = await commercialOps.SweepDueRenewalsAsync(ct) });
+
     /// <summary>Re-derives entitlements from the current Configuration Snapshot without changing subscription state — for when resolution logic gains a new key after a License was already materialized.</summary>
     [HttpPost("subscriptions/{id:guid}/recompute-entitlements")]
     public async Task<ActionResult<SubscriptionSummary>> RecomputeEntitlements(Guid id, CancellationToken ct)

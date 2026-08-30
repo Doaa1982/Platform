@@ -60,6 +60,24 @@ public class CreditPurchaseService(PlatformDbContext db, EntitlementResolutionSe
         return ProvisioningResult<CreditPurchaseOrderRow>.Success(Describe(order, tier));
     }
 
+    /// <summary>Withdraws a request still awaiting a Platform Operator — the tutor-facing counterpart to VoidAsync, same as CommercialSubscriptionService.CancelRequestedChangeAsync's relationship to the admin Void.</summary>
+    public async Task<ProvisioningResult<CreditPurchaseOrderRow>> CancelAsync(
+        string slug, Guid callerIdentityId, Guid orderId, CancellationToken ct = default)
+    {
+        var workspace = await ResolveWorkspaceAsync(slug, callerIdentityId, requireBillingRole: true, ct);
+        if (workspace.Error is not null) return Fail<CreditPurchaseOrderRow>(workspace.Error.Value);
+
+        var order = await db.CreditPurchaseOrders
+            .FirstOrDefaultAsync(o => o.Id == orderId && o.WorkspaceId == workspace.Workspace!.Id, ct);
+        if (order is null) return Fail<CreditPurchaseOrderRow>((ProvisioningError.NotFound, "No such credit purchase order."));
+
+        try { order.Cancel(callerIdentityId); }
+        catch (InvalidOperationException ex) { return Fail<CreditPurchaseOrderRow>((ProvisioningError.Conflict, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+        return ProvisioningResult<CreditPurchaseOrderRow>.Success(Describe(order, CreditPackCatalog.Find(order.CreditPackCode)));
+    }
+
     public async Task<ProvisioningResult<IReadOnlyList<CreditPurchaseOrderRow>>> ListForWorkspaceAsync(
         string slug, Guid callerIdentityId, CancellationToken ct = default)
     {

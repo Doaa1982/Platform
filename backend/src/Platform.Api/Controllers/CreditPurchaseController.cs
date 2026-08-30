@@ -26,6 +26,10 @@ public class CreditPurchaseController(CreditPurchaseService purchases) : Control
         string slug, [FromBody] RequestCreditPurchaseRequest request, CancellationToken ct)
         => Run(await purchases.RequestPurchaseAsync(slug, Caller(), request.CreditPackCode, ct));
 
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<ActionResult<CreditPurchaseOrderRow>> Cancel(string slug, Guid id, CancellationToken ct)
+        => Run(await purchases.CancelAsync(slug, Caller(), id, ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> result) => result.Error switch
     {
         ProvisioningError.None      => Ok(result.Value),

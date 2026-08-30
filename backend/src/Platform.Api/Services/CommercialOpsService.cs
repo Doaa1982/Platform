@@ -119,6 +119,46 @@ public class CommercialOpsService(
     }
 
     /// <summary>
+    /// The renewal counterpart to <see cref="SweepOverdueInvoicesAsync"/>: an
+    /// Active Subscription whose current period has actually elapsed needs
+    /// either its already-scheduled Downgrade applied (if one is due) or a
+    /// plain <see cref="Subscription.Renew"/> (if not) — either way rolling
+    /// CurrentPeriodEnd forward, which is what lets
+    /// <see cref="LicensingService"/>'s chokepoint grant the new period's AI
+    /// credits. Same manual, operator-triggered pattern as every other
+    /// date-driven transition in this service, since no scheduler exists in
+    /// this codebase yet.
+    /// </summary>
+    public async Task<int> SweepDueRenewalsAsync(CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var due = await db.Subscriptions
+            .Where(s => s.Status == SubscriptionStatus.Active && s.CurrentPeriodEnd <= now)
+            .ToListAsync(ct);
+
+        foreach (var subscription in due)
+        {
+            if (subscription.PendingConfigurationSnapshotId is not null && subscription.PendingChangeEffectiveDate <= now)
+            {
+                subscription.ApplyPendingChange();
+                db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "PendingChangeApplied", triggeredByIdentityId: null, referenceNote: null));
+            }
+            else
+            {
+                subscription.Renew();
+                db.SubscriptionEvents.Add(SubscriptionEvent.Record(subscription.Id, "Renewed", triggeredByIdentityId: null, referenceNote: null));
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        foreach (var subscription in due)
+            await licensing.RecomputeLicenseAsync(subscription.Id, ct);
+
+        return due.Count;
+    }
+
+    /// <summary>
     /// Re-derives a Workspace's Entitlement Set from its current Configuration
     /// Snapshot without changing Subscription state. Needed because
     /// EntitlementResolutionService writes a materialized set rather than

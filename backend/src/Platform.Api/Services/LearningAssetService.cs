@@ -122,6 +122,66 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
         return ProvisioningResult<LearningAssetResponse>.Success(Describe(asset));
     }
 
+    /// <summary>
+    /// The learner-facing counterpart to <see cref="UploadAsync"/> — a
+    /// student attaching their completed work (e.g. a filled-out worksheet)
+    /// to an Assignment Submission's Response (Assessment and Submission
+    /// Aggregate Design v1.1 §8). Deliberately a separate method rather than
+    /// widening UploadAsync's own author check: authoring a Learning Asset
+    /// for lesson content and a learner attaching evidence to their own
+    /// Submission are different actions with different callers, and keeping
+    /// them apart means neither check has to reason about the other's
+    /// case. Always Resource category (a student's file is never a lesson
+    /// video or a cover image) — same content-type/size rules and the same
+    /// resource storage quota apply, since it is real storage either way.
+    /// </summary>
+    public async Task<ProvisioningResult<LearningAssetResponse>> UploadForSubmissionAsync(
+        string slug, Guid caller, string fileName, string contentType, long length, Stream content,
+        CancellationToken ct = default)
+    {
+        var ctx = await ResolveLearnerAsync(slug, caller, ct);
+        if (ctx.Error is not null) return Fail<LearningAssetResponse>(ctx.Error.Value);
+
+        if (length <= 0)
+            return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "The uploaded file is empty."));
+
+        if (!AllowedResourceContentTypes.Contains(contentType))
+        {
+            return Fail<LearningAssetResponse>((ProvisioningError.Invalid,
+                contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
+                || contentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)
+                    ? "Video and audio files can't be attached to a submission."
+                    : "That file type isn't supported. Allowed: PDF, Word, Excel, PowerPoint, plain text, CSV, RTF, or an image."));
+        }
+        if (length > MaxResourceBytes)
+            return Fail<LearningAssetResponse>((ProvisioningError.Invalid, "A file cannot be larger than 500MB."));
+
+        var storageError = await CheckResourceStorageCapacityAsync(ctx.Workspace!.Id, length, ct);
+        if (storageError is not null)
+            return Fail<LearningAssetResponse>((ProvisioningError.Conflict, storageError));
+
+        var objectKey = await storage.SaveAsync(ctx.Workspace!.Id, fileName, content, ct);
+
+        LearningAsset asset;
+        try
+        {
+            asset = LearningAsset.Upload(
+                ctx.Workspace!.Id, ctx.MembershipId, LearningAssetCategory.Resource,
+                title: fileName, originalFileName: fileName, contentType: contentType, fileSizeBytes: length,
+                storageProvider: storage.ProviderName, objectKey: objectKey);
+        }
+        catch (ArgumentException ex)
+        {
+            storage.Delete(objectKey);
+            return Fail<LearningAssetResponse>((ProvisioningError.Invalid, ex.Message));
+        }
+
+        db.LearningAssets.Add(asset);
+        await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<LearningAssetResponse>.Success(Describe(asset));
+    }
+
     public async Task<ProvisioningResult<(string PhysicalPath, string ContentType, string FileName)>> ResolveDownloadAsync(
         string slug, Guid caller, Guid assetId, CancellationToken ct = default)
     {
@@ -246,6 +306,24 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
 
         if (requireAuthor && !member.Roles.Any(r => AuthorRoles.Contains(r.Name)))
             return new Context(null, member.Id, (ProvisioningError.Forbidden, "Only an owner, administrator or teacher can author content."));
+
+        return new Context(workspace, member.Id, null);
+    }
+
+    /// <summary>Same resolution as <see cref="ResolveAsync"/>, gated to the Learner role instead of AuthorRoles — matches AssignmentService's own learner-context resolver.</summary>
+    private async Task<Context> ResolveLearnerAsync(string slug, Guid caller, CancellationToken ct)
+    {
+        var normalised = slug.ToLowerInvariant().Trim();
+
+        var workspace = await db.Workspaces.AsNoTracking().FirstOrDefaultAsync(w => w.Slug == normalised, ct);
+        if (workspace is null) return new Context(null, Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
+
+        var member = await db.Memberships.Include(m => m.Roles).AsNoTracking()
+            .FirstOrDefaultAsync(m => m.WorkspaceId == workspace.Id && m.IdentityId == caller && m.Status == MembershipStatus.Active, ct);
+        if (member is null) return new Context(null, Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
+
+        if (!member.Roles.Any(r => r.Name == WorkspaceRoleName.Learner))
+            return new Context(null, member.Id, (ProvisioningError.Forbidden, "Only a Learner in this workspace can access this."));
 
         return new Context(workspace, member.Id, null);
     }

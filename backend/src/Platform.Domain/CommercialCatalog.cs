@@ -251,6 +251,14 @@ public static class CommercialCatalog
         },
         new CapabilityPackDefinition
         {
+            Code = CapabilityPack.CollaborationPlus,
+            Name = "Collaboration+",
+            MonthlyPrice = 20m,
+            Currency = DefaultCurrency,
+            ExtraTutorCapacity = 5,
+        },
+        new CapabilityPackDefinition
+        {
             Code = CapabilityPack.ExtraStudents,
             Name = "Extra Students",
             MonthlyPrice = 10m,

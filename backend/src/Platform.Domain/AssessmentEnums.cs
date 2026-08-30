@@ -29,3 +29,24 @@ public enum AssessmentKind { Interactive, Standalone }
 ///                           auto-gradable (see Assessment.Grade).
 /// </summary>
 public enum QuestionType { MultipleChoice, TrueFalse, CompleteTheSentence, OpenAnswer }
+
+/// <summary>
+/// Mastery level for one AssessedObjective, computed by Assessment.Grade()
+/// (Competency-Based Learning — Design Proposal §3-4). The shipped
+/// determination rule (§4: ≥80% Mastered, 50-79% Developing, &lt;50% Not
+/// Yet) never actually assigns Proficient — it's kept here because §3's data
+/// model names it as one of the four levels, reserved for a future,
+/// tutor-configurable threshold pass (§4's own "not a hard commitment" note)
+/// rather than dropped now only to be re-added later.
+/// </summary>
+public enum CompetencyLevel { NotYet, Developing, Proficient, Mastered }
+
+/// <summary>
+/// A Question's difficulty within an adaptive pool (Adaptive Assessment —
+/// Design Proposal §3, §4a.3). Ordinal order matters: the staircase rule
+/// (§4a.5's StepTier) steps one member up on a correct answer and one member
+/// down on an incorrect one, clamped to an Assessment's configured
+/// Min/MaxDifficulty — so this enum's declaration order IS the difficulty
+/// order, not just a label set.
+/// </summary>
+public enum DifficultyTier { Easy, Medium, Hard }

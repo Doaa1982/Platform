@@ -165,6 +165,13 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
           address.
         - The explanation must be based only on the lesson.
 
+        ASSESSED OBJECTIVE
+
+        - If learning objectives are given and a checkpoint clearly tests one of them,
+          set assessedObjective to that objective's exact text; otherwise (or if none
+          are given) set it to null. Never invent an objective that isn't one of the
+          given ones.
+
         LANGUAGE
 
         - Write prompt, options, acceptedAnswers, and explanation in the same
@@ -217,7 +224,8 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
             "acceptedAnswers": ["string"] | null,
             "explanation": "string",
             "videoTimestampSeconds": number,
-            "points": number
+            "points": number,
+            "assessedObjective": "string" | null
           }
         ]
 
@@ -250,7 +258,8 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
 
     public async Task<IReadOnlyList<SuggestedQuestion>> SuggestAsync(
         string lessonTitle, string? lessonBody, string? transcript, IReadOnlyList<TranscriptSegment>? segments,
-        int videoDurationSeconds, int count, string? outputLanguage, Guid workspaceId, CancellationToken ct = default)
+        int videoDurationSeconds, int count, string? outputLanguage, Guid workspaceId, CancellationToken ct = default,
+        string? learningObjectives = null)
     {
         var hasSegments = segments is { Count: > 0 };
         var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
@@ -277,6 +286,9 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
 
             Lesson content:
             {(string.IsNullOrWhiteSpace(lessonBody) ? "(no written content provided — base questions on the title alone)" : lessonBody)}
+
+            Learning objectives:
+            {learningObjectives ?? "(none)"}
 
             {transcriptBlock}
 
@@ -364,6 +376,10 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
           language is requested — except TrueFalse's options, which must stay
           exactly ["True", "False"] in English regardless: the backend always
           overwrites this field to that literal pair when a question is saved.
+        - If learning objectives are given and this question clearly tests
+          one of them, set assessedObjective to that objective's exact text;
+          otherwise (or if none are given) set it to null. Never invent an
+          objective that isn't one of the given ones.
 
         Respond with JSON only — a single-element array, no prose, no
         markdown code fences — matching exactly this shape:
@@ -377,14 +393,15 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
             "acceptedAnswers": ["string", ...],
             "explanation": "string",
             "videoTimestampSeconds": 0,
-            "points": number
+            "points": number,
+            "assessedObjective": "string" | null
           }
         ]
         """;
 
     public async Task<SuggestedQuestion> SuggestForChapterAsync(
         string lessonTitle, string chapterTitle, string? chapterSummary, string questionType,
-        string? outputLanguage, Guid workspaceId, CancellationToken ct = default)
+        string? outputLanguage, Guid workspaceId, CancellationToken ct = default, string? learningObjectives = null)
     {
         var languageDirective = string.IsNullOrWhiteSpace(outputLanguage)
             ? ""
@@ -395,6 +412,9 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
 
             Chapter title: {chapterTitle}
             Chapter summary: {(string.IsNullOrWhiteSpace(chapterSummary) ? "(none given — base the question on the chapter title alone)" : chapterSummary)}
+
+            Learning objectives:
+            {learningObjectives ?? "(none)"}
 
             Required question type: {questionType}
             """;

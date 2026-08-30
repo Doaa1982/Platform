@@ -123,9 +123,16 @@ public class ContentStudioService(
         var ctx = await ResolveAsync(slug, caller, requireAuthor: false, ct);
         if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
 
-        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.Resources).AsNoTracking()
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.Resources)
+            .Include(l => l.Revisions).ThenInclude(r => r.LearningActivities).AsNoTracking()
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
         if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var activityIds = lesson.Revisions.SelectMany(r => r.LearningActivities).Select(a => a.Id).ToList();
+        var assignmentByActivity = activityIds.Count == 0
+            ? new Dictionary<Guid, Assignment>()
+            : await db.Assignments.AsNoTracking()
+                .Where(a => activityIds.Contains(a.LearningActivityId)).ToDictionaryAsync(a => a.LearningActivityId, ct);
 
         var assetIds = lesson.Revisions.Where(r => r.VideoAssetId is not null)
             .Select(r => r.VideoAssetId!.Value)
@@ -148,12 +155,24 @@ public class ContentStudioService(
             .Where(a => revisionIds.Contains(a.LessonRevisionId) && a.Kind == AssessmentKind.Interactive)
             .ToDictionaryAsync(a => a.LessonRevisionId, ct);
 
+        // A Quiz/QuestionSet Learning Activity delivers this revision's own
+        // Standalone Assessment — resolved live here rather than trusting
+        // whatever LearningActivity.AssessmentId happens to hold, since
+        // there is no UI for a tutor to hand-pick/relink it and the two are
+        // authored on different tabs at different times (Assessment and
+        // Submission Aggregate Design's Response/Assessment target split
+        // has no manual-linking step for this codebase's 1:1 revision
+        // shape — INV-002 already guarantees at most one).
+        var standaloneAssessmentIdByRevision = await db.Assessments.AsNoTracking()
+            .Where(a => revisionIds.Contains(a.LessonRevisionId) && a.Kind == AssessmentKind.Standalone)
+            .ToDictionaryAsync(a => a.LessonRevisionId, a => a.Id, ct);
+
         var assessmentIds = assessmentsByRevision.Values.Select(a => a.Id).ToList();
         var submissionCounts = assessmentIds.Count == 0
             ? new Dictionary<Guid, int>()
             : await db.Submissions.AsNoTracking()
-                .Where(s => assessmentIds.Contains(s.AssessmentId))
-                .GroupBy(s => s.AssessmentId)
+                .Where(s => s.AssessmentId != null && assessmentIds.Contains(s.AssessmentId.Value))
+                .GroupBy(s => s.AssessmentId!.Value)
                 .Select(g => new { g.Key, Count = g.Count() })
                 .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
 
@@ -170,7 +189,17 @@ public class ContentStudioService(
                 r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptSource.ToString(), r.TranscriptError, r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework,
                 r.Resources.OrderBy(res => res.Position).Where(res => assets.ContainsKey(res.LearningAssetId))
                     .Select(res => new LessonResourceRow(res.Id, LearningAssetService.Describe(assets[res.LearningAssetId]), res.VisibleToLearners)).ToList(),
-                r.RequireQuizToComplete);
+                r.RequireQuizToComplete,
+                r.LearningActivities.OrderBy(la => la.Position).Select(la =>
+                {
+                    assignmentByActivity.TryGetValue(la.Id, out var assignment);
+                    var effectiveAssessmentId = la.Type is LearningActivityType.Quiz or LearningActivityType.QuestionSet
+                        ? standaloneAssessmentIdByRevision.GetValueOrDefault(r.Id)
+                        : (Guid?)null;
+                    return new LearningActivityRow(
+                        la.Id, la.Type.ToString(), la.Title, la.Instructions, la.Position, effectiveAssessmentId, la.ExternalUrl,
+                        assignment is not null, assignment?.Id, assignment?.Status.ToString());
+                }).ToList());
         }
 
         return ProvisioningResult<LessonDetailResponse>.Success(new LessonDetailResponse(
@@ -298,7 +327,10 @@ public class ContentStudioService(
         // against it — is left exactly as it was, referenced only by the
         // now-superseded revision's id.
         if (previousRevision is not null)
+        {
             await CloneAssessmentAsync(ctx.Workspace!.Id, lessonId, previousRevision.Id, draft.Id, ct);
+            await CloneLearningActivitiesAsync(previousRevision.Id, draft, ct);
+        }
 
         await db.SaveChangesAsync(ct);
         return await GetLessonAsync(slug, caller, lessonId, ct);
@@ -337,6 +369,7 @@ public class ContentStudioService(
         clone.DraftRevision!.Edit(clone.DraftRevision!.Title, sourceRevision.Body, sourceRevision.EstimatedMinutes, sourceRevision.DeliveryMode, sourceRevision.WhatYoullLearn, sourceRevision.LearningObjectives, sourceRevision.Glossary, sourceRevision.Homework);
 
         await CloneAssessmentAsync(ctx.Workspace!.Id, clone.Id, sourceRevision.Id, clone.DraftRevision!.Id, ct);
+        await CloneLearningActivitiesAsync(sourceRevision.Id, clone.DraftRevision!, ct);
 
         await db.SaveChangesAsync(ct);
         return await GetLessonAsync(slug, caller, clone.Id, ct);
@@ -363,6 +396,24 @@ public class ContentStudioService(
                 clone.AddQuestion(q.Type, q.Prompt, q.Options, q.CorrectOptionIndex, q.AcceptedAnswers, q.Explanation, q.VideoTimestampSeconds, q.Points);
             db.Assessments.Add(clone);
         }
+    }
+
+    /// <summary>
+    /// Copies a revision's Learning Activities onto a newly-started draft —
+    /// used by both StartRevisionAsync and DuplicateLessonAsync, same
+    /// reasoning as <see cref="CloneAssessmentAsync"/>. Not the Assignment
+    /// that may deliver each one, though — a new revision's activities start
+    /// with no Assignment of their own (INV-002's 1:1 still holds against
+    /// the *new* activity id, which is a fresh Guid); a tutor re-schedules
+    /// delivery for the new revision explicitly.
+    /// </summary>
+    private async Task CloneLearningActivitiesAsync(Guid sourceRevisionId, LessonRevision targetRevision, CancellationToken ct)
+    {
+        var sources = await db.LearningActivities.AsNoTracking()
+            .Where(a => a.LessonRevisionId == sourceRevisionId).OrderBy(a => a.Position).ToListAsync(ct);
+
+        foreach (var source in sources)
+            targetRevision.AddLearningActivity(source.Type, source.Title, source.Instructions, source.AssessmentId, source.ExternalUrl);
     }
 
     /// <summary>
@@ -498,6 +549,112 @@ public class ContentStudioService(
         if (revision is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such resource."));
 
         revision.RemoveResource(resourceId);
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    // ── Learning Activities ──────────────────────────────────────────────────
+    //
+    // Draft-only to add/edit/remove/reorder (LessonRevision.RequireDraft, per
+    // Learning Activity Assignment BA §8) — unlike Resources, a Learning
+    // Activity is instructional design, not safe metadata. Written as
+    // standalone methods rather than through MutateLessonAsync because that
+    // helper's query doesn't load the LearningActivities navigation (only
+    // Add needs no prior state; Update/Remove/Reorder do), same reasoning
+    // AddResourceAsync/RemoveResourceAsync already follow for Resources.
+
+    private static LearningActivityType ParseActivityType(string type) =>
+        Enum.TryParse<LearningActivityType>(type, ignoreCase: true, out var parsed)
+            ? parsed
+            : throw new ArgumentException($"\"{type}\" is not a recognized learning activity type.", nameof(type));
+
+    public async Task<ProvisioningResult<LessonDetailResponse>> AddLearningActivityAsync(
+        string slug, Guid caller, Guid lessonId, SaveLearningActivityRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.LearningActivities)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        try
+        {
+            var draft = lesson.DraftRevision
+                ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
+            draft.AddLearningActivity(ParseActivityType(request.Type), request.Title, request.Instructions, request.AssessmentId, request.ExternalUrl);
+        }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+        catch (ArgumentException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Invalid, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    public async Task<ProvisioningResult<LessonDetailResponse>> UpdateLearningActivityAsync(
+        string slug, Guid caller, Guid lessonId, Guid activityId, SaveLearningActivityRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.LearningActivities)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        try
+        {
+            var draft = lesson.DraftRevision
+                ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
+            draft.UpdateLearningActivity(activityId, ParseActivityType(request.Type), request.Title, request.Instructions, request.AssessmentId, request.ExternalUrl);
+        }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+        catch (ArgumentException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Invalid, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    public async Task<ProvisioningResult<LessonDetailResponse>> RemoveLearningActivityAsync(
+        string slug, Guid caller, Guid lessonId, Guid activityId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.LearningActivities)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        try
+        {
+            var draft = lesson.DraftRevision
+                ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
+            draft.RemoveLearningActivity(activityId);
+        }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    public async Task<ProvisioningResult<LessonDetailResponse>> ReorderLearningActivitiesAsync(
+        string slug, Guid caller, Guid lessonId, ReorderLearningActivitiesRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).ThenInclude(r => r.LearningActivities)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        try
+        {
+            var draft = lesson.DraftRevision
+                ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
+            draft.ReorderLearningActivities(request.ActivityIds);
+        }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+        catch (ArgumentException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Invalid, ex.Message)); }
 
         await db.SaveChangesAsync(ct);
         return await GetLessonAsync(slug, caller, lessonId, ct);

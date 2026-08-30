@@ -74,7 +74,7 @@ public class AssessmentService(
 
         var assessmentIds = current.Select(a => a.Id).ToList();
         var submissions = assessmentIds.Count == 0 ? [] : await db.Submissions.AsNoTracking()
-            .Where(s => assessmentIds.Contains(s.AssessmentId) && s.Status == SubmissionStatus.Graded)
+            .Where(s => s.AssessmentId != null && assessmentIds.Contains(s.AssessmentId.Value) && s.Status == SubmissionStatus.Graded)
             .ToListAsync(ct);
         var byAssessment = submissions.ToLookup(s => s.AssessmentId);
 
@@ -216,17 +216,21 @@ public class AssessmentService(
         string slug, Guid caller, Guid lessonId, SaveQuestionRequest request, CancellationToken ct = default, AssessmentKind kind = AssessmentKind.Interactive)
         => MutateAsync(slug, caller, lessonId, kind, (a, _) =>
             a.AddQuestion(ParseType(request.Type), request.Prompt, request.Options, request.CorrectOptionIndex, request.AcceptedAnswers,
-                           request.Explanation, request.VideoTimestampSeconds, request.Points),
+                           request.Explanation, request.VideoTimestampSeconds, request.Points, request.AssessedObjective, ParseTierOrNull(request.DifficultyTier)),
             ct, createIfMissing: true, defaultTitle: true, notifyOnLiveEdit: true);
 
     public Task<ProvisioningResult<AssessmentResponse>> UpdateQuestionAsync(
         string slug, Guid caller, Guid lessonId, Guid questionId, SaveQuestionRequest request, CancellationToken ct = default, AssessmentKind kind = AssessmentKind.Interactive)
         => MutateAsync(slug, caller, lessonId, kind, (a, _) =>
             a.UpdateQuestion(questionId, ParseType(request.Type), request.Prompt, request.Options, request.CorrectOptionIndex, request.AcceptedAnswers,
-                              request.Explanation, request.VideoTimestampSeconds, request.Points), ct, notifyOnLiveEdit: true);
+                              request.Explanation, request.VideoTimestampSeconds, request.Points, request.AssessedObjective, ParseTierOrNull(request.DifficultyTier)),
+            ct, notifyOnLiveEdit: true);
 
     private static QuestionType ParseType(string type) =>
         Enum.TryParse<QuestionType>(type, out var parsed) ? parsed : QuestionType.MultipleChoice;
+
+    private static DifficultyTier? ParseTierOrNull(string? tier) =>
+        tier is not null && Enum.TryParse<DifficultyTier>(tier, out var parsed) ? parsed : null;
 
     public Task<ProvisioningResult<AssessmentResponse>> RemoveQuestionAsync(
         string slug, Guid caller, Guid lessonId, Guid questionId, CancellationToken ct = default, AssessmentKind kind = AssessmentKind.Interactive)
@@ -239,6 +243,27 @@ public class AssessmentService(
     public Task<ProvisioningResult<AssessmentResponse>> UnpublishAsync(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default, AssessmentKind kind = AssessmentKind.Interactive)
         => MutateAsync(slug, caller, lessonId, kind, (a, _) => a.Unpublish(), ct);
+
+    /// <summary>
+    /// Opts a lesson's Standalone quiz into (or out of, or reconfigures)
+    /// adaptive delivery (Adaptive Assessment — Design Proposal §3). Scoped
+    /// to Standalone by its default kind, matching every other Standalone-
+    /// only endpoint on this service — Assessment.ConfigureAdaptive itself
+    /// also rejects Interactive, so this is defense in depth, not the only gate.
+    /// </summary>
+    public Task<ProvisioningResult<AssessmentResponse>> ConfigureAdaptiveAsync(
+        string slug, Guid caller, Guid lessonId, AdaptiveConfigurationRequest request, CancellationToken ct = default, AssessmentKind kind = AssessmentKind.Standalone)
+        => MutateAsync(slug, caller, lessonId, kind, (a, _) => a.ConfigureAdaptive(ParseAdaptiveConfiguration(request)),
+            ct, createIfMissing: true, defaultTitle: true);
+
+    private static AdaptiveConfiguration ParseAdaptiveConfiguration(AdaptiveConfigurationRequest r) => new(
+        r.Enabled, r.QuestionsPerAttempt, ParseTier(r.StartingDifficulty), ParseTier(r.MinDifficulty), ParseTier(r.MaxDifficulty),
+        (r.DifficultyPoints ?? new Dictionary<string, int>())
+            .Where(kv => Enum.TryParse<DifficultyTier>(kv.Key, out _))
+            .ToDictionary(kv => ParseTier(kv.Key), kv => kv.Value));
+
+    private static DifficultyTier ParseTier(string tier) =>
+        Enum.TryParse<DifficultyTier>(tier, out var parsed) ? parsed : DifficultyTier.Medium;
 
     // ── AI ────────────────────────────────────────────────────────────────────
 
@@ -269,11 +294,11 @@ public class AssessmentService(
         try
         {
             suggestions = chapters is { Count: > 0 }
-                ? await SuggestFromChaptersAsync(ctx.LessonTitle ?? "Untitled lesson", chapters, request.VideoDurationSeconds, outputLanguage, ctx.Workspace!.Id, ct)
+                ? await SuggestFromChaptersAsync(ctx.LessonTitle ?? "Untitled lesson", chapters, request.VideoDurationSeconds, outputLanguage, ctx.Workspace!.Id, ct, revision?.LearningObjectives)
                 : await generateQuestions.SuggestAsync(
                     ctx.LessonTitle ?? "Untitled lesson", revision?.Body, revision?.Transcript, ParseSegments(revision),
                     request.VideoDurationSeconds, Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions),
-                    outputLanguage, ctx.Workspace!.Id, ct);
+                    outputLanguage, ctx.Workspace!.Id, ct, revision?.LearningObjectives);
         }
         catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
         {
@@ -297,7 +322,7 @@ public class AssessmentService(
     /// </summary>
     private async Task<IReadOnlyList<SuggestedQuestion>> SuggestFromChaptersAsync(
         string lessonTitle, IReadOnlyList<TranscriptChapter> chapters, int videoDurationSeconds,
-        string? outputLanguage, Guid workspaceId, CancellationToken ct)
+        string? outputLanguage, Guid workspaceId, CancellationToken ct, string? learningObjectives = null)
     {
         var results = new List<SuggestedQuestion>();
         var picked = chapters.Take(MaxSuggestedQuestions).ToList();
@@ -307,7 +332,7 @@ public class AssessmentService(
             var chapter = picked[i];
             var questionType = QuestionTypeRotation[i % QuestionTypeRotation.Length];
             var suggestion = await generateQuestions.SuggestForChapterAsync(
-                lessonTitle, chapter.Title, chapter.Summary, questionType, outputLanguage, workspaceId, ct);
+                lessonTitle, chapter.Title, chapter.Summary, questionType, outputLanguage, workspaceId, ct, learningObjectives);
 
             var timestamp = Math.Clamp((int)chapter.StartSeconds, 0, Math.Max(videoDurationSeconds - 1, 0));
             results.Add(suggestion with { VideoTimestampSeconds = timestamp });
@@ -426,7 +451,7 @@ public class AssessmentService(
 
         var byQuestion = request.Answers.ToDictionary(a => a.QuestionId, a => new SubmittedAnswer(a.SelectedOptionIndex, a.TextAnswer));
 
-        (int ScorePercent, bool Passed, IReadOnlyList<QuestionGradeResult> PerQuestion) graded;
+        (int ScorePercent, bool Passed, IReadOnlyList<QuestionGradeResult> PerQuestion, IReadOnlyList<CompetencyResult> CompetencyLevels) graded;
         try { graded = assessment.Grade(byQuestion); }
         catch (InvalidOperationException ex) { return Fail<PreviewResult>((ProvisioningError.Conflict, ex.Message)); }
 
@@ -463,7 +488,8 @@ public class AssessmentService(
 
         return ProvisioningResult<PreviewResult>.Success(new PreviewResult(
             graded.ScorePercent, graded.Passed, assessment.PassingThresholdPercent, feedback,
-            graded.PerQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList()));
+            graded.PerQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList(),
+            graded.CompetencyLevels.Select(c => new CompetencyResultRow(c.Objective, c.Level.ToString())).ToList()));
     }
 
     /// <summary>Both simulated-AI surfaces are the Assessment domain's AI-assist tier — gated the same way (LIC-008).</summary>
@@ -494,8 +520,12 @@ public class AssessmentService(
                 : "This lesson has no interactive questions yet — add one to start.")
             : a.PublicationBlocker(),
         Questions: a is null ? [] : a.Questions.OrderBy(q => q.Position)
-            .Select(q => new QuestionRow(q.Id, q.Type.ToString(), q.Prompt, q.Options, q.CorrectOptionIndex, q.AcceptedAnswers, q.Explanation, q.VideoTimestampSeconds, q.Points, q.Position))
-            .ToList());
+            .Select(q => new QuestionRow(q.Id, q.Type.ToString(), q.Prompt, q.Options, q.CorrectOptionIndex, q.AcceptedAnswers, q.Explanation, q.VideoTimestampSeconds, q.Points, q.Position, q.AssessedObjective, q.DifficultyTier?.ToString()))
+            .ToList(),
+        AdaptiveConfiguration: a?.AdaptiveConfiguration is null ? null : new AdaptiveConfigurationResponse(
+            a.AdaptiveConfiguration.Enabled, a.AdaptiveConfiguration.QuestionsPerAttempt,
+            a.AdaptiveConfiguration.StartingDifficulty.ToString(), a.AdaptiveConfiguration.MinDifficulty.ToString(), a.AdaptiveConfiguration.MaxDifficulty.ToString(),
+            a.AdaptiveConfiguration.DifficultyPoints.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value)));
 
     private async Task<ProvisioningResult<AssessmentResponse>> MutateAsync(
         string slug, Guid caller, Guid lessonId, AssessmentKind kind, Action<Assessment, Guid> mutate, CancellationToken ct,

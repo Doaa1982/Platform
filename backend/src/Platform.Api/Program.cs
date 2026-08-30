@@ -102,6 +102,7 @@ builder.Services.AddScoped<ContentStudioService>();
 builder.Services.AddSingleton<ILearningAssetStorage, LocalLearningAssetStorage>();
 builder.Services.AddScoped<LearningAssetService>();
 builder.Services.AddScoped<AssessmentService>();
+builder.Services.AddScoped<AssignmentService>();
 builder.Services.AddScoped<LearningDeliveryService>();
 builder.Services.AddScoped<CourseJoinRequestService>();
 builder.Services.AddScoped<NotificationService>();

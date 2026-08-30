@@ -86,6 +86,17 @@ public class LearnerLessonsController(LearningDeliveryService delivery) : Contro
         string slug, Guid lessonId, [FromBody] SubmitAnswersRequest request, CancellationToken ct)
         => Run(await delivery.SubmitStandaloneAssessmentAsync(slug, Caller(), lessonId, request, ct));
 
+    /// <summary>Starts a new adaptive attempt and returns Question #1 — see LearningDeliveryService.StartAdaptiveAssessmentAsync.</summary>
+    [HttpPost("standalone-assessment/adaptive/start")]
+    public async Task<ActionResult<AdaptiveStartResponse>> StartAdaptive(string slug, Guid lessonId, CancellationToken ct)
+        => Run(await delivery.StartAdaptiveAssessmentAsync(slug, Caller(), lessonId, ct));
+
+    /// <summary>Records one adaptive answer and returns the next question or the finished result — see LearningDeliveryService.RecordAdaptiveAnswerAsync.</summary>
+    [HttpPost("standalone-assessment/adaptive/answer")]
+    public async Task<ActionResult<AdaptiveAnswerResponse>> RecordAdaptiveAnswer(
+        string slug, Guid lessonId, [FromBody] RecordAdaptiveAnswerRequest request, CancellationToken ct)
+        => Run(await delivery.RecordAdaptiveAnswerAsync(slug, Caller(), lessonId, request, ct));
+
     /// <summary>The in-lesson AI Assistant — answers grounded in this lesson's own material only. See LearningDeliveryService.AskAssistantAsync.</summary>
     [HttpPost("ask")]
     public async Task<ActionResult<AskLessonAssistantResponse>> Ask(

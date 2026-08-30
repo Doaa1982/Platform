@@ -21,6 +21,10 @@ public class Notification
     public Guid MembershipId { get; private set; }
     public NotificationKind Kind { get; private set; }
     public Guid LessonId { get; private set; }
+
+    /// <summary>Set for AssignmentPublished/AssignmentFeedbackPublished notifications — deep-links to the Assignment, alongside the always-set LessonId. Null for every other Kind.</summary>
+    public Guid? AssignmentId { get; private set; }
+
     public string Title { get; private set; } = string.Empty;
     public string Message { get; private set; } = string.Empty;
     public DateTime CreatedAt { get; private set; }
@@ -29,7 +33,7 @@ public class Notification
     private Notification() { }
 
     public static Notification Create(
-        Guid workspaceId, Guid membershipId, NotificationKind kind, Guid lessonId, string title, string message)
+        Guid workspaceId, Guid membershipId, NotificationKind kind, Guid lessonId, string title, string message, Guid? assignmentId = null)
     {
         if (workspaceId == Guid.Empty)
             throw new ArgumentException("A Notification belongs to exactly one Workspace.", nameof(workspaceId));
@@ -45,6 +49,7 @@ public class Notification
             MembershipId = membershipId,
             Kind = kind,
             LessonId = lessonId,
+            AssignmentId = assignmentId,
             Title = title.Trim(),
             Message = message.Trim(),
             CreatedAt = DateTime.UtcNow

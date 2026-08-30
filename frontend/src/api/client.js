@@ -454,6 +454,30 @@ export function uploadLearningAsset(token, slug, file, title, onProgress, catego
   });
 }
 
+/** POST /api/workspaces/{slug}/learning-assets/submission — a learner attaching their own completed work (e.g. a filled-out worksheet) to an Assignment submission's response. Always Resource category. */
+export function uploadSubmissionAsset(token, slug, file, onProgress) {
+  const form = new FormData();
+  form.append("file", file);
+
+  if (!onProgress) {
+    return requestForm(`/workspaces/${encodeURIComponent(slug)}/learning-assets/submission`, { form, token });
+  }
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/workspaces/${encodeURIComponent(slug)}/learning-assets/submission`);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      const payload = xhr.responseText ? safeJson(xhr.responseText) : null;
+      if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
+      else reject(new ApiError(xhr.status, payload?.message ?? `Upload failed (${xhr.status}).`));
+    };
+    xhr.onerror = () => reject(new ApiError(0, "Could not reach the server. Is the API running?"));
+    xhr.send(form);
+  });
+}
+
 /** GET /api/workspaces/{slug}/learning-assets/{assetId}/download — the URL a <video> element points at */
 export function learningAssetDownloadUrl(token, slug, assetId) {
   return `/api/workspaces/${encodeURIComponent(slug)}/learning-assets/${assetId}/download?access_token=${encodeURIComponent(token)}`;
@@ -513,6 +537,97 @@ export function removeLessonResource(token, slug, lessonId, resourceId) {
 export function setLessonResourceVisibility(token, slug, lessonId, resourceId, visibleToLearners) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/resources/${resourceId}/visibility`, {
     method: "PUT", body: { visibleToLearners }, token,
+  });
+}
+
+/* ── Learning Activities (the work a lesson revision assigns to learners) ──
+   Draft-only to add/edit/remove/reorder — see LessonRevision.AddLearningActivity.
+   ------------------------------------------------------------------------ */
+
+/** POST .../lessons/{lessonId}/activities */
+export function addLearningActivity(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities`, {
+    method: "POST", body, token,
+  });
+}
+
+/** PUT .../lessons/{lessonId}/activities/{activityId} */
+export function updateLearningActivity(token, slug, lessonId, activityId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}`, {
+    method: "PUT", body, token,
+  });
+}
+
+/** DELETE .../lessons/{lessonId}/activities/{activityId} */
+export function removeLearningActivity(token, slug, lessonId, activityId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}`, {
+    method: "DELETE", token,
+  });
+}
+
+/** PUT .../lessons/{lessonId}/activities/reorder — every activity id currently on the revision, once each, in the desired order */
+export function reorderLearningActivities(token, slug, lessonId, activityIds) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/reorder`, {
+    method: "PUT", body: { activityIds }, token,
+  });
+}
+
+/* ── Assignment (delivering one Learning Activity — scheduling, attempts, evaluation policy) ──
+   Tutor-facing. Recipients are never chosen here — every active Enrollment
+   in the Learning Product gets it, resolved server-side.
+   ------------------------------------------------------------------------ */
+
+/** GET .../lessons/{lessonId}/activities/{activityId}/assignment */
+export function getAssignment(token, slug, lessonId, activityId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}/assignment`, { token });
+}
+
+/** POST .../assignment — creates a Draft assignment for this activity (INV-002: at most one) */
+export function createAssignment(token, slug, lessonId, activityId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}/assignment`, {
+    method: "POST", token,
+  });
+}
+
+/** PUT .../assignment — availability/due date/window/attempts/evaluation method/notifications */
+export function configureAssignment(token, slug, lessonId, activityId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}/assignment`, {
+    method: "PUT", body, token,
+  });
+}
+
+/** POST .../assignment/{transition} — publish | close | archive */
+export function assignmentTransition(token, slug, lessonId, activityId, transition) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}/assignment/${transition}`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../assignment/due-date — a due date may only move later (Assignment BA-007) */
+export function extendAssignmentDueDate(token, slug, lessonId, activityId, newDueAt) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}/assignment/due-date`, {
+    method: "POST", body: { newDueAt }, token,
+  });
+}
+
+/** POST .../assignment/attempt-limit — may be raised freely; refused below the most attempts any one learner has already used */
+export function changeAssignmentAttemptLimit(token, slug, lessonId, activityId, newMaxAttempts) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}/assignment/attempt-limit`, {
+    method: "POST", body: { newMaxAttempts }, token,
+  });
+}
+
+/** POST .../assignment/attempts/{membershipId}/reset — that learner's prior attempts are kept as history, just excluded from the limit */
+export function resetAssignmentAttempts(token, slug, lessonId, activityId, membershipId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}/assignment/attempts/${membershipId}/reset`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../assignment/visibility */
+export function changeAssignmentVisibility(token, slug, lessonId, activityId, visible) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/activities/${activityId}/assignment/visibility`, {
+    method: "POST", body: { visible }, token,
   });
 }
 
@@ -740,6 +855,13 @@ export function previewStandaloneAssessment(token, slug, lessonId, answers) {
   });
 }
 
+/** PUT .../standalone-assessment/adaptive — opts this quiz into (or out of, or reconfigures) adaptive delivery */
+export function configureAdaptiveAssessment(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/standalone-assessment/adaptive`, {
+    method: "PUT", body, token,
+  });
+}
+
 /* ── Assessments overview (tutor gradebook) ──────────────────────────────
    Workspace-wide and read-only — distinct from the per-lesson editor above.
    ------------------------------------------------------------------------ */
@@ -765,6 +887,34 @@ export function suggestQuestions(token, slug, lessonId, videoDurationSeconds) {
 export function previewAssessment(token, slug, lessonId, answers) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/preview`, {
     method: "POST", body: { answers }, token,
+  });
+}
+
+/* ── Assignments overview (tutor dashboard + grading queue) ──────────────
+   Workspace-wide — distinct from the per-activity editor above.
+   ------------------------------------------------------------------------ */
+
+/** GET .../assignments — every assignment across every product, with recipient/submitted counts */
+export function getAssignmentsOverview(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/assignments`, { token });
+}
+
+/** GET .../assignments/lessons/{lessonId}/activities/{activityId}/submissions — every recipient × their submission (or "NotStarted") */
+export function getAssignmentSubmissions(token, slug, lessonId, activityId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/assignments/lessons/${lessonId}/activities/${activityId}/submissions`, { token });
+}
+
+/** POST .../submissions/{submissionId}/begin-review — marks a submitted response as being looked at; purely informational */
+export function beginAssignmentReview(token, slug, lessonId, activityId, submissionId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/assignments/lessons/${lessonId}/activities/${activityId}/submissions/${submissionId}/begin-review`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../submissions/{submissionId}/evaluate — Pass/Fail + feedback; once evaluated it cannot be evaluated again */
+export function evaluateAssignmentSubmission(token, slug, lessonId, activityId, submissionId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/assignments/lessons/${lessonId}/activities/${activityId}/submissions/${submissionId}/evaluate`, {
+    method: "POST", body, token,
   });
 }
 
@@ -820,6 +970,46 @@ export function submitLearnerAssessment(token, slug, lessonId, answers) {
 export function submitStandaloneAssessment(token, slug, lessonId, answers) {
   return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/standalone-assessment/submit`, {
     method: "POST", body: { answers }, token,
+  });
+}
+
+/** POST .../learn/lessons/{lessonId}/standalone-assessment/adaptive/start — begins a new adaptive attempt, returns Question #1 */
+export function startAdaptiveAssessment(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/standalone-assessment/adaptive/start`, {
+    method: "POST", token,
+  });
+}
+
+/* ── Learner assignments (the work assigned to this learner, across every enrolled product) ── */
+
+/** GET .../learn/assignments — every Assignment targeting this learner, with their own submission status */
+export function getMyAssignments(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/assignments`, { token });
+}
+
+/** GET .../learn/lessons/{lessonId}/activities/{activityId}/assignment — the policy, the activity content, and every attempt of this learner's own so far */
+export function getMyAssignment(token, slug, lessonId, activityId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/activities/${activityId}/assignment`, { token });
+}
+
+/** POST .../assignment/start — starts a new attempt, or resumes an already-in-progress one */
+export function startAssignmentSubmission(token, slug, lessonId, activityId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/activities/${activityId}/assignment/start`, {
+    method: "POST", token,
+  });
+}
+
+/** POST .../assignment/submissions/{submissionId}/respond — records Text and/or an attached file, moves the attempt to Submitted */
+export function recordAssignmentResponse(token, slug, lessonId, activityId, submissionId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/activities/${activityId}/assignment/submissions/${submissionId}/respond`, {
+    method: "POST", body, token,
+  });
+}
+
+/** POST .../learn/lessons/{lessonId}/standalone-assessment/adaptive/answer — records one answer, returns the next question or the finished result */
+export function recordAdaptiveAnswer(token, slug, lessonId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learn/lessons/${lessonId}/standalone-assessment/adaptive/answer`, {
+    method: "POST", body, token,
   });
 }
 
@@ -1067,6 +1257,11 @@ export function requestCreditPurchase(token, slug, creditPackCode) {
     { method: "POST", body: { creditPackCode }, token });
 }
 
+export function cancelCreditPurchase(token, slug, orderId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/credit-purchases/${encodeURIComponent(orderId)}/cancel`,
+    { method: "POST", token });
+}
+
 /* ── Platform admin: subscriptions & invoices ────────────────────────────
    Manual Commercial Activation — a Platform Operator recording that
    commercial terms were satisfied outside this platform, in place of a
@@ -1091,6 +1286,11 @@ export function voidInvoice(token, invoiceId, referenceNote) {
 /** POST /api/admin/invoices/sweep-overdue — marks every past-due Invoice Overdue and its Subscription PastDue */
 export function sweepOverdueInvoices(token) {
   return request("/admin/invoices/sweep-overdue", { method: "POST", token });
+}
+
+/** POST /api/admin/subscriptions/sweep-renewals — rolls forward every Active subscription whose period has elapsed (applying a due downgrade, or a plain renewal) and grants that period's AI credits */
+export function sweepDueRenewals(token) {
+  return request("/admin/subscriptions/sweep-renewals", { method: "POST", token });
 }
 
 /** POST /api/admin/subscriptions/{id}/{action} — advance-to-grace | suspend | expire | apply-pending-change */

@@ -27,6 +27,10 @@ import Notice from "../components/Notice";
    than present-and-failing.
    ========================================================================= */
 
+// Temporarily restricted for invitations only — Administrator, AssistantTeacher,
+// Parent and FinanceManager are grantable via RoleAdder but not invitable yet.
+const INVITE_GRANTABLE = ["Teacher", "Learner"];
+
 /** Roles a workspace manager may grant. Owner is absent on purpose — ownership
     transfers, it is not assigned (BA-006). */
 const GRANTABLE = ["Administrator", "Teacher", "AssistantTeacher", "Learner", "Parent", "FinanceManager"];
@@ -751,7 +755,7 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
           // clears it rather than silently carrying a course nobody will act on.
           if (next !== "Learner") { setEnrollMode("workspace"); setCourseId(""); }
         }} disabled={busy}>
-          {GRANTABLE.map((r) => <option key={r} value={r}>{humanise(t, r)}</option>)}
+          {INVITE_GRANTABLE.map((r) => <option key={r} value={r}>{humanise(t, r)}</option>)}
         </select>
       </label>
 

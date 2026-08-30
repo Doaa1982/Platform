@@ -44,6 +44,10 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
           AcceptedAnswers — it is reviewed for participation, not graded.
         - Write a short Explanation for each question: why the correct answer
           is correct, referencing the lesson's material.
+        - If learning objectives are given and a question clearly tests one
+          of them, set assessedObjective to that objective's exact text;
+          otherwise (or if none are given) set it to null. Never invent an
+          objective that isn't one of the given ones.
         - Produce exactly the requested number of questions.
         - Write Prompt, Options, AcceptedAnswers, and Explanation in the same
           language as the lesson material (prefer the transcript when
@@ -63,7 +67,8 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
             "correctOptionIndex": number | null,
             "acceptedAnswers": ["string", ...],
             "explanation": "string",
-            "points": number
+            "points": number,
+            "assessedObjective": "string" | null
           }
         ]
         """;

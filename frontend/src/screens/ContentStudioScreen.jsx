@@ -3,7 +3,8 @@ import {
   LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2, Eye,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
   UploadCloud, Sparkles, Bot, PlayCircle, Link as LinkIcon, ChevronUp, ChevronDown,
-  ClipboardCheck, Paperclip, Download, ClipboardList,
+  ClipboardCheck, Paperclip, Download, ClipboardList, SlidersHorizontal, Target,
+  ListChecks, Send, CalendarClock, RotateCcw,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -244,8 +245,6 @@ function CurriculumBuilder({ productId, onBack }) {
         <h1>{data.title ?? t("studio.curriculumFallback")}</h1>
         <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(t, data.status)}</span>
       </div>
-      <p className="lw-sub">{t("studio.lead", { product: data.productTitle })}</p>
-
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
 
@@ -1153,6 +1152,9 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
               <button type="button" className={activeTab === "resources" ? "active" : ""} onClick={() => setActiveTab("resources")}>
                 <Paperclip size={13} /> {t("studio.tabResources")}
               </button>
+              <button type="button" className={activeTab === "activities" ? "active" : ""} onClick={() => setActiveTab("activities")}>
+                <ListChecks size={13} /> {t("studio.tabActivities")}
+              </button>
             </div>
 
             {activeTab === "content" && (lesson.draftRevision ? (
@@ -1514,6 +1516,14 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
                 </>
               ) : (
                 <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForResources")}</p>
+              )
+            )}
+
+            {activeTab === "activities" && (
+              (lesson.currentRevision || lesson.draftRevision) ? (
+                <LearningActivitiesSection lesson={lesson} editable={editable} onChanged={load} />
+              ) : (
+                <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForActivities")}</p>
               )
             )}
 
@@ -2184,6 +2194,479 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
   );
 }
 
+/* ── Learning Activities (the work this revision assigns to learners) ────
+   Draft-only to add/edit/remove/reorder (LessonRevision.AddLearningActivity)
+   — a Learning Activity is instructional design, not safe metadata like
+   Resources. Each row's "Assign" button opens AssignmentModal, where a
+   tutor turns it into a scheduled, policy-governed Assignment.
+   ========================================================================= */
+
+const LEARNING_ACTIVITY_TYPES = [
+  "QuestionSet", "Quiz", "Homework", "Reading", "VideoActivity", "InteractiveLesson",
+  "Essay", "FileUpload", "Project", "Discussion", "CodingExercise", "ReflectionJournal",
+  "AiPracticeSession", "ExternalLearningTool",
+];
+
+function LearningActivitiesSection({ lesson, editable, onChanged }) {
+  const { session, workspace } = useAuth();
+  const { t } = useLanguage();
+  const slug = workspace?.slug;
+
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [formMode, setFormMode] = useState(null); // null | "new" | activity being edited
+  const [assigningActivity, setAssigningActivity] = useState(null);
+
+  const hasDraft = !!lesson.draftRevision;
+  const revision = lesson.draftRevision ?? lesson.currentRevision;
+  const activities = [...(revision?.learningActivities ?? [])].sort((a, b) => a.position - b.position);
+  // Editing Learning Activities requires an open draft, unlike Resources —
+  // Learning Activity Assignment BA §8: "Editing Learning Activities after
+  // publication requires creating a new Lesson Revision." Surfaced here
+  // proactively (a button, not just an error after the fact) so a tutor on
+  // a published lesson isn't told this only after filling out a form.
+  const canEditActivities = editable && hasDraft;
+
+  async function run(fn, successMessage) {
+    setBusy(true); setError(null); setSuccess(null);
+    try { const r = await fn(); if (successMessage) setSuccess(successMessage); return r; }
+    catch (e) { setError(e.message); return null; }
+    finally { setBusy(false); }
+  }
+
+  async function handleStartRevision() {
+    const result = await run(() => api.startLessonRevision(session.token, slug, lesson.id), t("studio.toastNewVersionStarted"));
+    if (result) onChanged();
+  }
+
+  async function saveActivity(body) {
+    const result = formMode === "new"
+      ? await run(() => api.addLearningActivity(session.token, slug, lesson.id, body), t("studio.toastActivityAdded"))
+      : await run(() => api.updateLearningActivity(session.token, slug, lesson.id, formMode.id, body), t("studio.toastActivityUpdated"));
+    if (result) { setFormMode(null); onChanged(); }
+  }
+
+  async function removeActivity(activityId) {
+    const result = await run(() => api.removeLearningActivity(session.token, slug, lesson.id, activityId), t("studio.toastActivityRemoved"));
+    if (result) onChanged();
+  }
+
+  async function move(activityId, direction) {
+    const idx = activities.findIndex((a) => a.id === activityId);
+    const swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= activities.length) return;
+    const reordered = [...activities];
+    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+    const result = await run(() => api.reorderLearningActivities(session.token, slug, lesson.id, reordered.map((a) => a.id)));
+    if (result) onChanged();
+  }
+
+  return (
+    <div className="lw-studio__section">
+      <h2 className="lw-sectiontitle">{t("studio.activitiesTitle")}</h2>
+      <p className="muted" style={{ marginTop: -8, marginBottom: 14 }}>{t("studio.activitiesHint")}</p>
+
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
+
+      {editable && !hasDraft && (
+        <div className="lw-studio__blocker">
+          <AlertCircle size={14} /> {t("studio.activitiesNeedDraft")}
+          <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handleStartRevision} style={{ marginInlineStart: 10 }}>
+            <Plus size={13} /> {t("studio.startNewRevision")}
+          </button>
+        </div>
+      )}
+
+      {canEditActivities && (
+        <div className="lw-studio__bar">
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setFormMode("new")}>
+            <Plus size={13} /> {t("studio.addActivity")}
+          </button>
+        </div>
+      )}
+
+      {activities.length === 0 && (
+        <div className="lw-empty">{editable ? t("studio.noActivitiesEditable") : t("studio.noActivitiesReadonly")}</div>
+      )}
+
+      {activities.length > 0 && (
+        <div className="lw-studio__units" style={{ marginTop: 14 }}>
+          {activities.map((activity, i) => (
+            <div key={activity.id} className="lw-studio__unitrow">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1, flexWrap: "wrap" }}>
+                <span className="lw-tag lw-tag--source">{t(`studio.activityType.${activity.type}`)}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activity.title}</span>
+                {activity.hasAssignment && (
+                  <span className={`lw-studio__pill is-${activity.assignmentStatus.toLowerCase()}`}>{human(t, activity.assignmentStatus)}</span>
+                )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+                {canEditActivities && (
+                  <>
+                    <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy || i === 0} onClick={() => move(activity.id, -1)} title={t("studio.moveUp")}>
+                      <ChevronUp size={13} />
+                    </button>
+                    <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy || i === activities.length - 1} onClick={() => move(activity.id, 1)} title={t("studio.moveDown")}>
+                      <ChevronDown size={13} />
+                    </button>
+                  </>
+                )}
+                <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setAssigningActivity(activity)}>
+                  <Send size={13} /> {t("studio.assign")}
+                </button>
+                {canEditActivities && (
+                  <>
+                    <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setFormMode(activity)}>
+                      <Pencil size={13} /> {t("studio.edit")}
+                    </button>
+                    <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => removeActivity(activity.id)}>
+                      <Trash2 size={13} /> {t("studio.remove")}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {formMode && (
+        <Modal onClose={() => setFormMode(null)} closeLabel={t("studio.close")}>
+          <h2 className="lw-modal__title">{formMode === "new" ? t("studio.addActivity") : t("studio.editActivity")}</h2>
+          <LearningActivityForm initial={formMode === "new" ? null : formMode} busy={busy} onSave={saveActivity} onCancel={() => setFormMode(null)} />
+        </Modal>
+      )}
+
+      {assigningActivity && (
+        <AssignmentModal
+          lessonId={lesson.id} activity={assigningActivity}
+          onClose={() => setAssigningActivity(null)}
+          onChanged={onChanged}
+        />
+      )}
+    </div>
+  );
+}
+
+function LearningActivityForm({ initial, busy, onSave, onCancel }) {
+  const { t } = useLanguage();
+  const [type, setType] = useState(initial?.type ?? "Homework");
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [instructions, setInstructions] = useState(initial?.instructions ?? "");
+  const [externalUrl, setExternalUrl] = useState(initial?.externalUrl ?? "");
+  const [attempted, setAttempted] = useState(false);
+
+  function submit(e) {
+    e.preventDefault();
+    setAttempted(true);
+    if (!title.trim()) return;
+    if (type === "ExternalLearningTool" && !externalUrl.trim()) return;
+    onSave({
+      type, title: title.trim(), instructions: instructions.trim() || null,
+      assessmentId: initial?.assessmentId ?? null,
+      externalUrl: type === "ExternalLearningTool" ? externalUrl.trim() : null,
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="lw-studio__draftform">
+      <label>
+        <span>{t("studio.activityTypeLabel")}<RequiredMark /></span>
+        <select value={type} onChange={(e) => setType(e.target.value)} disabled={busy}>
+          {LEARNING_ACTIVITY_TYPES.map((v) => <option key={v} value={v}>{t(`studio.activityType.${v}`)}</option>)}
+        </select>
+      </label>
+      <label>
+        <span>{t("studio.activityTitleLabel")}<RequiredMark /></span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy}
+               style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
+      </label>
+      <label>
+        <span>{t("studio.activityInstructionsLabel")}</span>
+        <textarea rows={5} value={instructions} onChange={(e) => setInstructions(e.target.value)} disabled={busy}
+                  placeholder={t("studio.activityInstructionsPlaceholder")} />
+      </label>
+      {type === "ExternalLearningTool" && (
+        <label>
+          <span>{t("studio.activityExternalUrlLabel")}<RequiredMark /></span>
+          <input value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} disabled={busy}
+                 placeholder="https://…" style={attempted && !externalUrl.trim() ? invalidFieldStyle : undefined} />
+        </label>
+      )}
+      {(type === "Quiz" || type === "QuestionSet") && (
+        <p className="muted" style={{ fontSize: 12 }}>{t("studio.activityQuizNote")}</p>
+      )}
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <button type="submit" className="lw-btn lw-btn--primary lw-btn--sm" disabled={busy}>{t("studio.save")}</button>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancel}>{t("studio.cancel")}</button>
+      </div>
+    </form>
+  );
+}
+
+/* ── Assignment (delivering one Learning Activity — scheduling, attempts,
+   evaluation policy). Opened per-activity from LearningActivitiesSection.
+   Recipients are never chosen here — every active Enrollment in the
+   Learning Product gets it automatically (Assignment Aggregate Design
+   INV-004), resolved server-side.
+   ========================================================================= */
+
+const ASSIGNMENT_AVAILABILITY_MODES = ["Immediate", "Scheduled", "Hidden"];
+const ASSIGNMENT_DUE_DATE_MODES = ["None", "Fixed"];
+const ASSIGNMENT_ATTEMPT_MODES = ["Single", "Multiple", "Unlimited"];
+const ASSIGNMENT_EVALUATION_METHODS = ["Manual", "Automatic", "AiAssisted", "Hybrid"];
+
+function toLocalInputValue(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fromLocalInputValue(v) {
+  return v ? new Date(v).toISOString() : null;
+}
+
+function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
+  const { session, workspace } = useAuth();
+  const { t } = useLanguage();
+  const slug = workspace?.slug;
+
+  const [assignment, setAssignment] = useState(undefined); // undefined = loading, null = not created yet
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const [availabilityMode, setAvailabilityMode] = useState("Immediate");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [dueDateMode, setDueDateMode] = useState("None");
+  const [dueAt, setDueAt] = useState("");
+  const [windowStart, setWindowStart] = useState("");
+  const [windowEnd, setWindowEnd] = useState("");
+  const [attemptMode, setAttemptMode] = useState("Single");
+  const [maxAttempts, setMaxAttempts] = useState("2");
+  const [evaluationMethod, setEvaluationMethod] = useState("Manual");
+  const [notifyOnPublish, setNotifyOnPublish] = useState(true);
+  const [notifyOnFeedbackPublished, setNotifyOnFeedbackPublished] = useState(true);
+
+  function applyToForm(a) {
+    setAvailabilityMode(a.availabilityMode);
+    setScheduledAt(toLocalInputValue(a.scheduledAvailabilityAt));
+    setDueDateMode(a.dueDateMode);
+    setDueAt(toLocalInputValue(a.dueAt));
+    setWindowStart(toLocalInputValue(a.submissionWindowStartAt));
+    setWindowEnd(toLocalInputValue(a.submissionWindowEndAt));
+    setAttemptMode(a.attemptMode);
+    setMaxAttempts(a.maxAttempts != null ? String(a.maxAttempts) : "2");
+    setEvaluationMethod(a.evaluationMethod);
+    setNotifyOnPublish(a.notifyOnPublish);
+    setNotifyOnFeedbackPublished(a.notifyOnFeedbackPublished);
+  }
+
+  const load = useCallback(() => (
+    api.getAssignment(session.token, slug, lessonId, activity.id)
+      .then((a) => { applyToForm(a); setAssignment(a); setError(null); return a; })
+      .catch((e) => {
+        if (e.status === 404) { setAssignment(null); setError(null); return null; }
+        setError(e.message); return null;
+      })
+  ), [session.token, slug, lessonId, activity.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function run(fn, successMessage) {
+    setBusy(true); setError(null); setSuccess(null);
+    try { const r = await fn(); if (successMessage) setSuccess(successMessage); return r; }
+    catch (e) { setError(e.message); return null; }
+    finally { setBusy(false); }
+  }
+
+  async function handleCreate() {
+    const result = await run(() => api.createAssignment(session.token, slug, lessonId, activity.id), t("studio.toastAssignmentCreated"));
+    if (result) { applyToForm(result); setAssignment(result); onChanged(); }
+  }
+
+  async function handleConfigure() {
+    const body = {
+      availabilityMode, scheduledAvailabilityAt: availabilityMode === "Scheduled" ? fromLocalInputValue(scheduledAt) : null,
+      dueDateMode, dueAt: dueDateMode === "Fixed" ? fromLocalInputValue(dueAt) : null,
+      submissionWindowStartAt: fromLocalInputValue(windowStart), submissionWindowEndAt: fromLocalInputValue(windowEnd),
+      attemptMode, maxAttempts: attemptMode === "Multiple" ? (Number(maxAttempts) || 1) : null,
+      evaluationMethod, notifyOnPublish, notifyOnFeedbackPublished,
+    };
+    const result = await run(() => api.configureAssignment(session.token, slug, lessonId, activity.id, body), t("studio.toastAssignmentConfigured"));
+    if (result) { applyToForm(result); setAssignment(result); onChanged(); }
+  }
+
+  async function handleTransition(transition, successKey) {
+    const result = await run(() => api.assignmentTransition(session.token, slug, lessonId, activity.id, transition), t(successKey));
+    if (result) { applyToForm(result); setAssignment(result); onChanged(); }
+  }
+
+  async function handleExtendDueDate() {
+    const iso = fromLocalInputValue(dueAt);
+    if (!iso) return;
+    const result = await run(() => api.extendAssignmentDueDate(session.token, slug, lessonId, activity.id, iso), t("studio.toastDueDateExtended"));
+    if (result) { applyToForm(result); setAssignment(result); onChanged(); }
+  }
+
+  async function handleChangeAttemptLimit() {
+    const n = Number(maxAttempts);
+    if (!n || n <= 0) return;
+    const result = await run(() => api.changeAssignmentAttemptLimit(session.token, slug, lessonId, activity.id, n), t("studio.toastAttemptLimitChanged"));
+    if (result) { applyToForm(result); setAssignment(result); onChanged(); }
+  }
+
+  async function handleToggleVisibility() {
+    const result = await run(() => api.changeAssignmentVisibility(session.token, slug, lessonId, activity.id, !assignment.visible), t("studio.toastVisibilityChanged"));
+    if (result) { applyToForm(result); setAssignment(result); onChanged(); }
+  }
+
+  return (
+    <Modal onClose={onClose} closeLabel={t("studio.close")}>
+      <h2 className="lw-modal__title">{t("studio.assignActivity", { title: activity.title })}</h2>
+
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
+
+      {assignment === undefined && (
+        <div className="lw-studio__loading"><LoaderCircle size={16} className="lw-studio__spin" /> {t("studio.loading")}</div>
+      )}
+
+      {assignment === null && (
+        <div>
+          <p className="muted">{t("studio.noAssignmentYet")}</p>
+          <button className="lw-btn lw-btn--primary lw-btn--sm" disabled={busy} onClick={handleCreate}>
+            <Plus size={13} /> {t("studio.createAssignment")}
+          </button>
+        </div>
+      )}
+
+      {assignment && (
+        <>
+          <div className="lw-studio__heading" style={{ marginBottom: 8 }}>
+            <span className={`lw-studio__pill is-${assignment.status.toLowerCase()}`}>{human(t, assignment.status)}</span>
+            {assignment.publicationBlocker && (
+              <span className="muted" style={{ fontSize: 12 }}>{assignment.publicationBlocker}</span>
+            )}
+          </div>
+
+          <div className="lw-studio__draftform">
+            <label>
+              <span>{t("studio.availabilityLabel")}</span>
+              <select value={availabilityMode} onChange={(e) => setAvailabilityMode(e.target.value)} disabled={busy}>
+                {ASSIGNMENT_AVAILABILITY_MODES.map((v) => <option key={v} value={v}>{t(`studio.availabilityMode.${v}`)}</option>)}
+              </select>
+            </label>
+            {availabilityMode === "Scheduled" && (
+              <label>
+                <span>{t("studio.scheduledAtLabel")}</span>
+                <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} disabled={busy} />
+              </label>
+            )}
+
+            <label>
+              <span>{t("studio.dueDateModeLabel")}</span>
+              <select value={dueDateMode} onChange={(e) => setDueDateMode(e.target.value)} disabled={busy}>
+                {ASSIGNMENT_DUE_DATE_MODES.map((v) => <option key={v} value={v}>{t(`studio.dueDateMode.${v}`)}</option>)}
+              </select>
+            </label>
+            {dueDateMode === "Fixed" && (
+              <label>
+                <span>{t("studio.dueAtLabel")}</span>
+                <input type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} disabled={busy} />
+              </label>
+            )}
+
+            <label>
+              <span>{t("studio.submissionWindowLabel")}</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input type="datetime-local" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} disabled={busy} />
+                <input type="datetime-local" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} disabled={busy} />
+              </div>
+            </label>
+
+            <label>
+              <span>{t("studio.attemptModeLabel")}</span>
+              <select value={attemptMode} onChange={(e) => setAttemptMode(e.target.value)} disabled={busy}>
+                {ASSIGNMENT_ATTEMPT_MODES.map((v) => <option key={v} value={v}>{t(`studio.attemptMode.${v}`)}</option>)}
+              </select>
+            </label>
+            {attemptMode === "Multiple" && (
+              <label>
+                <span>{t("studio.maxAttemptsLabel")}</span>
+                <input type="number" min="1" value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} disabled={busy} />
+              </label>
+            )}
+
+            <label>
+              <span>{t("studio.evaluationMethodLabel")}</span>
+              <select value={evaluationMethod} onChange={(e) => setEvaluationMethod(e.target.value)} disabled={busy}>
+                {ASSIGNMENT_EVALUATION_METHODS.map((v) => <option key={v} value={v}>{t(`studio.evaluationMethod.${v}`)}</option>)}
+              </select>
+            </label>
+
+            <div className="lw-studio__checkboxrow">
+              <label>
+                <input type="checkbox" checked={notifyOnPublish} onChange={(e) => setNotifyOnPublish(e.target.checked)} disabled={busy} />
+                <span>{t("studio.notifyOnPublishLabel")}</span>
+              </label>
+            </div>
+            <div className="lw-studio__checkboxrow">
+              <label>
+                <input type="checkbox" checked={notifyOnFeedbackPublished} onChange={(e) => setNotifyOnFeedbackPublished(e.target.checked)} disabled={busy} />
+                <span>{t("studio.notifyOnFeedbackLabel")}</span>
+              </label>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="lw-btn lw-btn--primary lw-btn--sm" disabled={busy} onClick={handleConfigure}>
+                <Check size={13} /> {t("studio.saveConfiguration")}
+              </button>
+
+              {assignment.status === "Draft" && (
+                <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!assignment.publicationBlocker}
+                        onClick={() => handleTransition("publish", "studio.toastAssignmentPublished")}>
+                  <Send size={13} /> {t("studio.publishAssignment")}
+                </button>
+              )}
+              {["Scheduled", "Published", "Active"].includes(assignment.status) && (
+                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
+                        onClick={() => handleTransition("close", "studio.toastAssignmentClosed")}>
+                  <Archive size={13} /> {t("studio.closeAssignment")}
+                </button>
+              )}
+              {assignment.status === "Closed" && (
+                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
+                        onClick={() => handleTransition("archive", "studio.toastAssignmentArchived")}>
+                  <Archive size={13} /> {t("studio.archiveAssignment")}
+                </button>
+              )}
+              {assignment.status !== "Archived" && (
+                <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleToggleVisibility}>
+                  <Eye size={13} /> {assignment.visible ? t("studio.hideAssignment") : t("studio.showAssignment")}
+                </button>
+              )}
+            </div>
+
+            {assignment.dueDateMode === "Fixed" && !["Draft", "Archived"].includes(assignment.status) && (
+              <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy} onClick={handleExtendDueDate} style={{ alignSelf: "flex-start" }}>
+                <CalendarClock size={13} /> {t("studio.extendDueDate")}
+              </button>
+            )}
+            {assignment.attemptMode !== "Unlimited" && !["Draft", "Archived"].includes(assignment.status) && (
+              <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy} onClick={handleChangeAttemptLimit} style={{ alignSelf: "flex-start" }}>
+                <RotateCcw size={13} /> {t("studio.applyAttemptLimit")}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 /* ── Interactive assessment ────────────────────────────────────────────
    AI Interactive Video Lesson Generator: AI proposes timestamped checkpoints
    (simulated — templated, per App.jsx's PSEUDO-AI HELPERS remark) for the
@@ -2256,6 +2739,7 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
       type: s.type, prompt: s.prompt, options: s.options, correctOptionIndex: s.correctOptionIndex,
       acceptedAnswers: s.acceptedAnswers, explanation: s.explanation,
       videoTimestampSeconds: s.videoTimestampSeconds, points: s.points,
+      assessedObjective: s.assessedObjective ?? null,
     }), t("studio.toastQuestionAdded"));
     if (result) {
       setData(result);
@@ -2435,6 +2919,7 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
   const [formMode, setFormMode] = useState(null); // null | "new" | Question being edited
   const [viewingQuestion, setViewingQuestion] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [adaptiveOpen, setAdaptiveOpen] = useState(false);
 
   const load = useCallback(
     () => api.getStandaloneAssessment(session.token, slug, lessonId)
@@ -2479,6 +2964,7 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
       type: s.type, prompt: s.prompt, options: s.options, correctOptionIndex: s.correctOptionIndex,
       acceptedAnswers: s.acceptedAnswers, explanation: s.explanation,
       videoTimestampSeconds: null, points: s.points,
+      assessedObjective: s.assessedObjective ?? null,
     }), t("studio.toastQuestionAdded"));
     if (result) {
       setData(result);
@@ -2502,6 +2988,11 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
     if (result) setData(result);
   }
 
+  async function saveAdaptive(body) {
+    const result = await run(() => api.configureAdaptiveAssessment(session.token, slug, lessonId, body), t("studio.toastAdaptiveSaved"));
+    if (result) { setData(result); setAdaptiveOpen(false); }
+  }
+
   if (!data) {
     return (
       <div className="lw-studio__section">
@@ -2516,6 +3007,11 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
       <div className="lw-studio__heading">
         <h2 className="lw-sectiontitle" style={{ margin: 0 }}>{t("studio.standaloneQuiz")}</h2>
         <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(t, data.status)}</span>
+        {data.adaptiveConfiguration?.enabled && (
+          <span className="lw-tag" title={t("studio.adaptiveEnabledHint", { count: data.adaptiveConfiguration.questionsPerAttempt })}>
+            <SlidersHorizontal size={11} /> {t("studio.adaptiveEnabledBadge")}
+          </span>
+        )}
       </div>
       <p className="muted" style={{ margin: "-6px 0 10px" }}>{t("studio.standaloneQuizHint")}</p>
       <Notice tone="warning" style={{ marginBottom: 14 }}>{t("studio.standaloneQuizSaveWarning")}</Notice>
@@ -2532,6 +3028,9 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
           </button>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setFormMode("new")}>
             <Plus size={13} /> {t("studio.addQuestion")}
+          </button>
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setAdaptiveOpen(true)}>
+            <SlidersHorizontal size={13} /> {t("studio.adaptiveSettings")}
           </button>
           {data.questions.length > 0 && (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setPreviewOpen(true)}>
@@ -2621,6 +3120,13 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
           onSubmit={(answers) => api.previewStandaloneAssessment(session.token, slug, lessonId, answers)}
         />
       )}
+
+      {adaptiveOpen && (
+        <AdaptiveConfigModal
+          config={data.adaptiveConfiguration} busy={busy}
+          onSave={saveAdaptive} onClose={() => setAdaptiveOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2645,6 +3151,9 @@ function useQuestionTypes() {
 }
 
 const typeLabel = (types, value) => types.find((t) => t.value === value)?.label ?? value;
+
+/** "Easy" | "Medium" | "Hard" (backend/src/Platform.Domain/AssessmentEnums.cs's DifficultyTier) — a fixed three-value enum, so unlike QuestionType there's no reference endpoint to fetch labels from. */
+const difficultyLabel = (t, tier) => t(`studio.difficulty${tier}`);
 
 /** Renders a question's answer key the way its type calls for — options, accepted phrasings, or nothing at all. */
 function AnswerKeyDisplay({ type, options, correctOptionIndex, acceptedAnswers }) {
@@ -2684,6 +3193,11 @@ function SuggestionRow({ s, onAccept, onReject, busy }) {
       <p className="lw-questioncard__prompt" style={{ fontSize: "0.92rem", margin: "0 0 10px" }}>{s.prompt}</p>
       <AnswerKeyDisplay type={s.type} options={s.options} correctOptionIndex={s.correctOptionIndex} acceptedAnswers={s.acceptedAnswers} />
       {s.explanation && <p className="lw-rationale"><Sparkles size={12} /> {s.explanation}</p>}
+      {s.assessedObjective && (
+        <p className="muted" style={{ margin: "6px 0 0", display: "flex", alignItems: "center", gap: 4 }}>
+          <Target size={12} /> {t("studio.learningObjective")}: {s.assessedObjective}
+        </p>
+      )}
       <div className="lw-rowactions" style={{ marginTop: 12 }}>
         <button className="active" disabled={busy} aria-label={t("studio.accept")} onClick={() => onAccept(s)}><Check size={13} /></button>
         <button className="active danger" disabled={busy} aria-label={t("studio.removeSuggestion")} onClick={() => onReject(s.key)}><X size={13} /></button>
@@ -2714,7 +3228,10 @@ function QuestionsTable({ questions, editable, showTimestamp, onEdit, onView }) 
           {showTimestamp && (
             <span className="lw-qtable__time">{q.videoTimestampSeconds != null ? formatTime(q.videoTimestampSeconds) : "—"}</span>
           )}
-          <span><span className="lw-tag">{typeLabel(types, q.type)}</span></span>
+          <span>
+            <span className="lw-tag">{typeLabel(types, q.type)}</span>
+            {q.difficultyTier && <span className="lw-tag" style={{ marginLeft: 4 }}>{difficultyLabel(t, q.difficultyTier)}</span>}
+          </span>
           <span className="lw-qtable__prompt">{q.prompt}</span>
           <span className="lw-qtable__points">{q.points}</span>
           <span className="lw-qtable__actions">
@@ -2739,11 +3256,17 @@ function QuestionInfoModal({ question, editable, onEdit, onRemove, onClose }) {
       <h2 className="lw-modal__title">{t("studio.questionDetails")}</h2>
       <div style={{ marginBottom: 8 }}>
         <span className="lw-tag" style={{ marginRight: 8 }}>{typeLabel(types, question.type)}</span>
+        {question.difficultyTier && <span className="lw-tag" style={{ marginRight: 8 }}>{difficultyLabel(t, question.difficultyTier)}</span>}
         {question.videoTimestampSeconds != null && <span className="lw-timestamp lw-tag">{formatTime(question.videoTimestampSeconds)}</span>}
       </div>
       <p className="lw-questioncard__prompt" style={{ fontSize: "0.95rem", margin: "0 0 10px" }}>{question.prompt}</p>
       <AnswerKeyDisplay type={question.type} options={question.options} correctOptionIndex={question.correctOptionIndex} acceptedAnswers={question.acceptedAnswers} />
       {question.explanation && <p className="lw-rationale"><Sparkles size={12} /> {question.explanation}</p>}
+      {question.assessedObjective && (
+        <p className="muted" style={{ margin: "8px 0 0", display: "flex", alignItems: "center", gap: 4 }}>
+          <Target size={12} /> {t("studio.learningObjective")}: {question.assessedObjective}
+        </p>
+      )}
       <p className="muted" style={{ margin: "12px 0 0" }}>{t("studio.points")}: {question.points}</p>
       {editable && (
         <div className="lw-modal__actions" style={{ marginTop: 22 }}>
@@ -2771,7 +3294,16 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
   const [explanation, setExplanation] = useState(initial?.explanation ?? "");
   const [timestamp, setTimestamp] = useState(initial?.videoTimestampSeconds ?? "");
   const [points, setPoints] = useState(initial?.points ?? 1);
+  const [assessedObjective, setAssessedObjective] = useState(initial?.assessedObjective ?? "");
+  const [difficultyTier, setDifficultyTier] = useState(initial?.difficultyTier ?? "");
   const [attempted, setAttempted] = useState(false);
+
+  // Difficulty tier only makes sense for a Standalone question (adaptive
+  // pools are Standalone-only, Adaptive Assessment — Design Proposal §3) and
+  // only for an auto-gradable type — OpenAnswer has no synchronous
+  // correctness signal for the staircase rule (§6), and the backend rejects
+  // the combination outright.
+  const allowDifficultyTier = !requireTimestamp && type !== "OpenAnswer";
 
   /** Switching type populates whatever that type requires, rather than leaving the previous type's data sitting unused underneath. */
   function selectType(next) {
@@ -2784,6 +3316,8 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
       if (correctOptionIndex !== 0 && correctOptionIndex !== 1) setCorrectOptionIndex(0);
     } else if (next === "CompleteTheSentence") {
       if (acceptedAnswers.filter((a) => a.trim()).length === 0) setAcceptedAnswers([""]);
+    } else if (next === "OpenAnswer") {
+      setDifficultyTier("");
     }
   }
 
@@ -2830,6 +3364,8 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
           explanation: explanation.trim() || null,
           videoTimestampSeconds: !requireTimestamp || timestamp === "" ? null : Number(timestamp),
           points: Number(points) || 1,
+          assessedObjective: assessedObjective.trim() || null,
+          difficultyTier: allowDifficultyTier && difficultyTier ? difficultyTier : null,
         });
       }}
     >
@@ -2928,6 +3464,24 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
         <textarea rows={2} value={explanation} onChange={(e) => setExplanation(e.target.value)} disabled={busy} />
       </label>
 
+      <label>
+        <span>{t("studio.learningObjective")} <em>{t("studio.optional")}</em></span>
+        <input type="text" value={assessedObjective} onChange={(e) => setAssessedObjective(e.target.value)} disabled={busy}
+               placeholder={t("studio.learningObjectivePlaceholder")} />
+      </label>
+
+      {allowDifficultyTier && (
+        <label>
+          <span>{t("studio.difficultyTier")} <em>{t("studio.optional")}</em></span>
+          <select value={difficultyTier} onChange={(e) => setDifficultyTier(e.target.value)} disabled={busy}>
+            <option value="">{t("studio.difficultyTierNone")}</option>
+            <option value="Easy">{t("studio.difficultyEasy")}</option>
+            <option value="Medium">{t("studio.difficultyMedium")}</option>
+            <option value="Hard">{t("studio.difficultyHard")}</option>
+          </select>
+        </label>
+      )}
+
       {requireTimestamp && (
         <div className="lw-studio__minsfield">
           <span>{t("studio.questionTime")} <em>{t("studio.seconds")}</em><RequiredMark /></span>
@@ -2945,6 +3499,9 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
         <span>{t("studio.points")}</span>
         <input type="number" min="1" value={points} onChange={(e) => setPoints(e.target.value)} disabled={busy} />
       </div>
+      {allowDifficultyTier && difficultyTier && (
+        <p className="muted" style={{ gridColumn: "2", margin: "-8px 0 0", fontSize: "0.82rem" }}>{t("studio.pointsOverriddenByDifficultyNote")}</p>
+      )}
 
       <div className="lw-studio__panelactions">
         <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>{t("studio.cancel")}</button>
@@ -2953,6 +3510,134 @@ function QuestionForm({ initial, busy, onSave, onCancel, existingQuestions, vide
         </button>
       </div>
     </form>
+  );
+}
+
+const DIFFICULTY_TIERS = ["Easy", "Medium", "Hard"];
+
+/**
+ * Adaptive delivery settings for the Standalone quiz (Adaptive Assessment —
+ * Design Proposal §3, §4a.3) — off by default, opted into per Assessment via
+ * PUT .../standalone-assessment/adaptive. Once enabled, publishing is
+ * blocked (data.publicationBlocker, same mechanism as "needs a question")
+ * until the pool has enough tier-tagged Questions for the worst realistic
+ * path — this form doesn't duplicate that check, the backend already
+ * computes and surfaces it after Save.
+ */
+function AdaptiveConfigModal({ config, busy, onSave, onClose }) {
+  const { t } = useLanguage();
+  const [enabled, setEnabled] = useState(config?.enabled ?? false);
+  const [questionsPerAttempt, setQuestionsPerAttempt] = useState(config?.questionsPerAttempt ?? 10);
+  const [startingDifficulty, setStartingDifficulty] = useState(config?.startingDifficulty ?? "Medium");
+  const [minDifficulty, setMinDifficulty] = useState(config?.minDifficulty ?? "Easy");
+  const [maxDifficulty, setMaxDifficulty] = useState(config?.maxDifficulty ?? "Hard");
+  const [difficultyPoints, setDifficultyPoints] = useState({
+    Easy: config?.difficultyPoints?.Easy ?? 1,
+    Medium: config?.difficultyPoints?.Medium ?? 2,
+    Hard: config?.difficultyPoints?.Hard ?? 3,
+  });
+  const [attempted, setAttempted] = useState(false);
+
+  const tierIndex = (tier) => DIFFICULTY_TIERS.indexOf(tier);
+  const validationMessages = [
+    enabled && (Number(questionsPerAttempt) || 0) <= 0 && t("studio.adaptiveEnterQuestionsPerAttempt"),
+    enabled && tierIndex(minDifficulty) > tierIndex(maxDifficulty) && t("studio.adaptiveMinAboveMax"),
+    enabled && (tierIndex(startingDifficulty) < tierIndex(minDifficulty) || tierIndex(startingDifficulty) > tierIndex(maxDifficulty))
+      && t("studio.adaptiveStartOutOfRange"),
+  ].filter(Boolean);
+  const valid = validationMessages.length === 0;
+
+  return (
+    <Modal onClose={onClose} closeLabel={t("studio.close")}>
+      <h2 className="lw-modal__title">{t("studio.adaptiveSettings")}</h2>
+      <p className="muted" style={{ margin: "0 0 14px" }}>{t("studio.adaptiveSettingsHint")}</p>
+
+      <form
+        className="lw-studio__draftform" noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!valid) { setAttempted(true); return; }
+          onSave({
+            enabled,
+            questionsPerAttempt: Number(questionsPerAttempt) || 1,
+            startingDifficulty, minDifficulty, maxDifficulty,
+            difficultyPoints: {
+              Easy: Number(difficultyPoints.Easy) || 1,
+              Medium: Number(difficultyPoints.Medium) || 1,
+              Hard: Number(difficultyPoints.Hard) || 1,
+            },
+          });
+        }}
+      >
+        {attempted && validationMessages.length > 0 && (
+          <Message type="error">
+            {validationMessages.length === 1 ? validationMessages[0] : (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {validationMessages.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            )}
+          </Message>
+        )}
+
+        <label>
+          <span>{t("studio.adaptiveEnabled")}</span>
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={busy}
+                 style={{ width: "auto", justifySelf: "start" }} />
+        </label>
+
+        {enabled && (
+          <>
+            <label>
+              <span>{t("studio.adaptiveQuestionsPerAttempt")}<RequiredMark /></span>
+              <input type="number" min="1" value={questionsPerAttempt} onChange={(e) => setQuestionsPerAttempt(e.target.value)} disabled={busy}
+                     style={attempted && (Number(questionsPerAttempt) || 0) <= 0 ? invalidFieldStyle : undefined} />
+            </label>
+
+            <label>
+              <span>{t("studio.adaptiveStartingDifficulty")}</span>
+              <select value={startingDifficulty} onChange={(e) => setStartingDifficulty(e.target.value)} disabled={busy}>
+                {DIFFICULTY_TIERS.map((tier) => <option key={tier} value={tier}>{difficultyLabel(t, tier)}</option>)}
+              </select>
+            </label>
+
+            <label>
+              <span>{t("studio.adaptiveMinDifficulty")}</span>
+              <select value={minDifficulty} onChange={(e) => setMinDifficulty(e.target.value)} disabled={busy}>
+                {DIFFICULTY_TIERS.map((tier) => <option key={tier} value={tier}>{difficultyLabel(t, tier)}</option>)}
+              </select>
+            </label>
+
+            <label>
+              <span>{t("studio.adaptiveMaxDifficulty")}</span>
+              <select value={maxDifficulty} onChange={(e) => setMaxDifficulty(e.target.value)} disabled={busy}>
+                {DIFFICULTY_TIERS.map((tier) => <option key={tier} value={tier}>{difficultyLabel(t, tier)}</option>)}
+              </select>
+            </label>
+
+            <label>
+              <span>{t("studio.adaptiveDifficultyPoints")}</span>
+              <div style={{ display: "flex", gap: 10 }}>
+                {DIFFICULTY_TIERS.map((tier) => (
+                  <div key={tier} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <em style={{ fontSize: "0.75rem" }}>{difficultyLabel(t, tier)}</em>
+                    <input type="number" min="1" value={difficultyPoints[tier]}
+                           onChange={(e) => setDifficultyPoints((prev) => ({ ...prev, [tier]: e.target.value }))}
+                           disabled={busy} style={{ width: 64 }} />
+                  </div>
+                ))}
+              </div>
+            </label>
+          </>
+        )}
+
+        <div className="lw-studio__panelactions">
+          <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onClose} disabled={busy}>{t("studio.cancel")}</button>
+          <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}>
+            <Check size={13} /> {t("studio.save")}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -3162,6 +3847,11 @@ const CSS = `
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 12px 14px;
   }
+  .lw-studio__unitrow {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 10px 14px;
+  }
   .lw-studio__unit {
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius); padding: 16px 18px;
@@ -3290,6 +3980,17 @@ const CSS = `
   .lw-studio__draftform > .lw-studio__panelactions {
     grid-column: 1 / -1;
   }
+  /* A checkbox + its own label read as one unit, not a label/value pair.
+     Deliberately a <div>, not a <label>, as the grid's direct child — the
+     grid's own "> label { display: contents }" rule (targeting the *tag*,
+     for the ordinary span/input field pairs) would otherwise catch this too
+     and split the checkbox from its text across the two grid columns. Using
+     a div sidesteps that rule instead of trying to out-rank it with a more
+     specific override, which proved inconsistent across browser engines. */
+  .lw-studio__draftform > .lw-studio__checkboxrow { grid-column: 1 / -1; }
+  .lw-studio__checkboxrow label { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 8px; cursor: pointer; }
+  .lw-studio__checkboxrow input[type="checkbox"] { flex-shrink: 0; }
+  .lw-studio__checkboxrow span { font-size: 0.85rem; font-weight: 400; padding-top: 0; white-space: normal; }
   .lw-studio__minsfield input { max-width: 120px; }
   .lw-studio__panelactions { display: flex; justify-content: flex-end; gap: 8px; }
   .lw-studio__fielderror { display: block; color: var(--danger); font-size: 0.78rem; margin-top: 4px; }

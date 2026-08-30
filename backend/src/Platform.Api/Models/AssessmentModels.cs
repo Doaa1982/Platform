@@ -16,7 +16,9 @@ public record AssessmentResponse(
     int PassingThresholdPercent,
     /// <summary>Why publication is refused right now, or null when it is allowed.</summary>
     string? PublicationBlocker,
-    IReadOnlyList<QuestionRow> Questions);
+    IReadOnlyList<QuestionRow> Questions,
+    /// <summary>Null unless a tutor has opted this (Standalone-only) assessment into adaptive delivery — see AdaptiveConfigurationResponse.</summary>
+    AdaptiveConfigurationResponse? AdaptiveConfiguration = null);
 
 /// <summary>
 /// Type is one of "MultipleChoice" | "TrueFalse" | "CompleteTheSentence" |
@@ -26,14 +28,34 @@ public record AssessmentResponse(
 public record QuestionRow(
     Guid Id, string Type, string Prompt,
     IReadOnlyList<string> Options, int? CorrectOptionIndex, IReadOnlyList<string> AcceptedAnswers,
-    string? Explanation, int? VideoTimestampSeconds, int Points, int Position);
+    string? Explanation, int? VideoTimestampSeconds, int Points, int Position,
+    /// <summary>Which of the source lesson's Learning Objectives this question tests (Competency-Based Learning), or null if untagged.</summary>
+    string? AssessedObjective = null,
+    /// <summary>"Easy" | "Medium" | "Hard", or null for a Question that isn't part of an adaptive pool (Adaptive Assessment).</summary>
+    string? DifficultyTier = null);
 
 public record SaveAssessmentRequest(string Title, int? PassingThresholdPercent);
 
 public record SaveQuestionRequest(
     string Type, string Prompt,
     IReadOnlyList<string>? Options, int? CorrectOptionIndex, IReadOnlyList<string>? AcceptedAnswers,
-    string? Explanation, int? VideoTimestampSeconds, int Points);
+    string? Explanation, int? VideoTimestampSeconds, int Points, string? AssessedObjective = null,
+    /// <summary>"Easy" | "Medium" | "Hard" — only meaningful for an auto-gradable Question on a Standalone assessment's adaptive pool; null otherwise.</summary>
+    string? DifficultyTier = null);
+
+/// <summary>
+/// Adaptive delivery settings for a Standalone assessment (Adaptive
+/// Assessment — Design Proposal §3, §4a.3). DifficultyPoints keys are
+/// "Easy"/"Medium"/"Hard"; a tier omitted from it leaves a Question authored
+/// at that tier with whatever Points the tutor (or AI) gave it.
+/// </summary>
+public record AdaptiveConfigurationRequest(
+    bool Enabled, int QuestionsPerAttempt, string StartingDifficulty, string MinDifficulty, string MaxDifficulty,
+    IReadOnlyDictionary<string, int>? DifficultyPoints);
+
+public record AdaptiveConfigurationResponse(
+    bool Enabled, int QuestionsPerAttempt, string StartingDifficulty, string MinDifficulty, string MaxDifficulty,
+    IReadOnlyDictionary<string, int> DifficultyPoints);
 
 /// <summary>What the client already knows about the video before asking the AI to place checkpoints in it.</summary>
 public record AiSuggestQuestionsRequest(int VideoDurationSeconds);
@@ -46,7 +68,9 @@ public record AiSuggestQuestionsRequest(int VideoDurationSeconds);
 public record SuggestedQuestion(
     string Type, string Prompt,
     IReadOnlyList<string> Options, int? CorrectOptionIndex, IReadOnlyList<string> AcceptedAnswers,
-    string? Explanation, int VideoTimestampSeconds, int Points);
+    string? Explanation, int VideoTimestampSeconds, int Points,
+    /// <summary>The model's proposed AssessedObjective tag (Competency-Based Learning), or null — the tutor can also set/correct it on review.</summary>
+    string? AssessedObjective = null);
 
 /// <summary>How many draft questions to propose for the lesson's Standalone quiz (see AssessmentKind) — clamped server-side (1–10).</summary>
 public record AiSuggestStandaloneQuestionsRequest(int QuestionCount);
@@ -61,7 +85,9 @@ public record AiSuggestStandaloneQuestionsRequest(int QuestionCount);
 public record SuggestedStandaloneQuestion(
     string Type, string Prompt,
     IReadOnlyList<string> Options, int? CorrectOptionIndex, IReadOnlyList<string> AcceptedAnswers,
-    string? Explanation, int Points);
+    string? Explanation, int Points,
+    /// <summary>The model's proposed AssessedObjective tag (Competency-Based Learning), or null — the tutor can also set/correct it on review.</summary>
+    string? AssessedObjective = null);
 
 /// <summary>SelectedOptionIndex for MultipleChoice/TrueFalse; TextAnswer for CompleteTheSentence/OpenAnswer.</summary>
 public record PreviewAnswer(Guid QuestionId, int? SelectedOptionIndex, string? TextAnswer);
@@ -75,7 +101,12 @@ public record PreviewSubmitRequest(IReadOnlyList<PreviewAnswer> Answers);
 /// </summary>
 public record PreviewResult(
     int ScorePercent, bool Passed, int PassingThresholdPercent,
-    string AiFeedback, IReadOnlyList<PreviewQuestionResult> PerQuestion);
+    string AiFeedback, IReadOnlyList<PreviewQuestionResult> PerQuestion,
+    /// <summary>Per-AssessedObjective mastery (Competency-Based Learning) — empty if no answered Question was tagged.</summary>
+    IReadOnlyList<CompetencyResultRow>? CompetencyLevels = null);
+
+/// <summary>One AssessedObjective's mastery Level ("NotYet" | "Developing" | "Proficient" | "Mastered") — mirrors the domain's CompetencyResult.</summary>
+public record CompetencyResultRow(string Objective, string Level);
 
 /// <summary>Correct is null for a Question that isn't auto-gradable (OpenAnswer) — reviewed, not scored.</summary>
 public record PreviewQuestionResult(Guid QuestionId, bool? Correct, string? CorrectAnswerDisplay);

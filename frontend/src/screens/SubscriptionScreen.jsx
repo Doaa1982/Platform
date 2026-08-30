@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle, ArrowLeft, Check } from "lucide-react";
+import { LoaderCircle, ArrowLeft, Zap } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
@@ -37,10 +37,11 @@ const statusLabel = (t, v) => t(STATUS_KEY[v] ?? "") || v;
 const PURCHASE_STATUS_KEY = { Pending: "subscription.purchasePending", Paid: "subscription.purchasePaid", Voided: "subscription.purchaseVoided" };
 const purchaseStatusLabel = (t, v) => t(PURCHASE_STATUS_KEY[v] ?? "") || v;
 
-/* Optional, skippable — a churn signal for Product Advisory (Product Advisory
-   Architecture §72-73), never required to complete cancellation. Stable codes
-   are sent to the API (not localized text) so reporting isn't split by language. */
-const CANCEL_REASONS = ["TooExpensive", "NotUsingEnough", "MissingFeature", "SwitchingTools", "TakingBreak", "Other"];
+/** Solo Free enforces a hard capacity ceiling (ConfigurationService.ResolveAsync)
+ * that a capacity-adding pack carried over from a paid plan will almost always
+ * blow past — so a downgrade that lands on Free drops every pack rather than
+ * resubmitting ones the target plan structurally can't support. */
+const packsForDowngrade = (planCode, selectedPackCodes) => (planCode === FREE_PLAN_CODE ? [] : selectedPackCodes);
 
 /** Shared by SubscriptionScreen (Billing overview) and PlansScreen (add-ons +
  * upgrade) — both are separate nav destinations now, not one screen with an
@@ -154,9 +155,8 @@ export default function SubscriptionScreen() {
             () => setResubscribing(false))} />
       ) : (
         <BillingOverview subscription={subscription} plans={plans} packs={packs} busy={busy}
-          onCancel={(reason) => run(() => api.cancelSubscription(session.token, slug, reason), t("subscription.toastCancelled"))}
           onResubscribe={subscription.status === "Cancelled" ? () => setResubscribing(true) : undefined}
-          onDowngrade={(planCode) => run(() => api.downgradeSubscription(session.token, slug, planCode, subscription.selectedPackCodes),
+          onDowngrade={(planCode) => run(() => api.downgradeSubscription(session.token, slug, planCode, packsForDowngrade(planCode, subscription.selectedPackCodes)),
             t("subscription.toastDowngradeScheduled", { plan: plans.find((p) => p.code === planCode)?.name ?? planCode }))}
           onCancelPendingChange={() => run(() => api.cancelPendingSubscriptionChange(session.token, slug), t("subscription.toastPendingChangeCancelled"))}
           onCancelRequestedChange={() => run(() => api.cancelRequestedSubscriptionChange(session.token, slug), t("subscription.toastRequestedChangeCancelled"))}
@@ -166,18 +166,20 @@ export default function SubscriptionScreen() {
   );
 }
 
-/** The other Billing nav destination — add-ons, AI credits, and plan
- * upgrade, all "get more" actions kept off the read-only overview above. */
+/** The other Billing nav destination — add-ons and plan upgrade, both "get
+ * more" actions kept off the read-only overview above. AI credits are a
+ * separate one-time top-up rather than a recurring plan/pack change, so they
+ * have their own nav item (AiCreditsScreen) rather than living in this tab set. */
 export function PlansScreen() {
   const { t } = useLanguage();
   const {
-    session, workspace, slug, plans, packs, subscription, creditTiers, creditPurchases, error, success, setSuccess, busy, run,
+    session, workspace, slug, plans, packs, subscription, error, success, setSuccess, busy, run,
   } = useSubscriptionData();
 
   if (error && !plans) {
     return <div className="lw-page"><Message type="error">{error}</Message></div>;
   }
-  if (!plans || !packs || subscription === undefined || !creditTiers || !creditPurchases) {
+  if (!plans || !packs || subscription === undefined) {
     return (
       <div className="lw-page">
         <style>{CSS}</style>
@@ -216,7 +218,7 @@ export function PlansScreen() {
               }
               return r;
             })}
-          onDowngrade={(planCode) => run(() => api.downgradeSubscription(session.token, slug, planCode, subscription.selectedPackCodes),
+          onDowngrade={(planCode) => run(() => api.downgradeSubscription(session.token, slug, planCode, packsForDowngrade(planCode, subscription.selectedPackCodes)),
             t("subscription.toastDowngradeScheduled", { plan: plans.find((p) => p.code === planCode)?.name ?? planCode }))}
           onManagePacks={(packCodes) => {
             const isAnnual = subscription.billingCycle === "Annual";
@@ -229,12 +231,145 @@ export function PlansScreen() {
                 ? api.upgradeSubscription(session.token, slug, subscription.planCode, packCodes)
                 : api.downgradeSubscription(session.token, slug, subscription.planCode, packCodes)),
               t(isUpgrade ? "subscription.toastAddOnsRequested" : "subscription.toastAddOnsUpdatedScheduled"));
-          }}
-          creditTiers={creditTiers} creditPurchases={creditPurchases}
-          onRequestCreditPurchase={(creditPackCode) => run(
-            () => api.requestCreditPurchase(session.token, slug, creditPackCode), t("subscription.toastPurchaseRequested"))} />
+          }} />
       )}
     </div>
+  );
+}
+
+/** AI credits' own nav destination — a credit top-up isn't the same kind of
+ * purchase as a Capability Pack: it's a one-time consumable balance, not a
+ * recurring plan/pack change, so it gets its own sidebar item and its own
+ * history rather than living inside Add-ons or Add-on history (HistoryModal
+ * stays config-change-only; this page's own purchase list is the credits
+ * equivalent). */
+export function AiCreditsScreen() {
+  const { t } = useLanguage();
+  const {
+    session, slug, subscription, creditTiers, creditPurchases, error, success, busy, run,
+  } = useSubscriptionData();
+  const [buyingCredits, setBuyingCredits] = useState(null); // the CreditPackTier being confirmed
+  const [showHistory, setShowHistory] = useState(false);
+
+  if (error && subscription === undefined) {
+    return <div className="lw-page"><Message type="error">{error}</Message></div>;
+  }
+  if (subscription === undefined || !creditTiers || !creditPurchases) {
+    return (
+      <div className="lw-page">
+        <style>{CSS}</style>
+        <div className="lw-bill__loading"><LoaderCircle size={18} className="lw-bill__spin" /> {t("subscription.loading")}</div>
+      </div>
+    );
+  }
+
+  const hasAiDomain = subscription ? hasAnyAiDomain(subscription) : false;
+  // Mirrors Add-ons' hasPendingRequest gate — one outstanding request at a
+  // time, withdrawable before a Platform Operator acts on it, same mental
+  // model as a plan/pack change request even though the underlying object
+  // (a CreditPurchaseOrder, not a Subscription snapshot) is unrelated.
+  const pendingOrder = creditPurchases.find((p) => p.status === "Pending");
+  const onRequestCreditPurchase = (creditPackCode) => run(
+    () => api.requestCreditPurchase(session.token, slug, creditPackCode), t("subscription.toastPurchaseRequested"));
+  const onCancelPurchase = () => run(
+    () => api.cancelCreditPurchase(session.token, slug, pendingOrder.id), t("subscription.toastRequestedChangeCancelled"));
+
+  return (
+    <div className="lw-page">
+      <style>{CSS}</style>
+
+      <div className="lw-bill__tabsrow">
+        <div>
+          <div className="lw-eyebrow">{t("subscription.aiCreditsPageEyebrow")}</div>
+          <h1>{t("subscription.aiCreditsPageTitle")}</h1>
+        </div>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setShowHistory(true)}>
+          {t("subscription.viewHistory")}
+        </button>
+      </div>
+      {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
+
+      {pendingOrder && (
+        <div className="lw-bill__notice lw-bill__cancellednotice">
+          <p>{t("subscription.creditsRequestedNotice", { amount: Number(pendingOrder.creditAmount).toLocaleString() })}</p>
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancelPurchase}>
+            {t("subscription.withdrawRequestAction")}
+          </button>
+        </div>
+      )}
+
+      {/* Only shown when actually blocking the list below — otherwise the
+          catalog needs no preamble, same as Add-ons' pack list. */}
+      {!hasAiDomain && (
+        <p className="lw-bill__changenote">{t("subscription.buyCreditsBlockedNote")}</p>
+      )}
+
+      {/* Same lw-bill__pack row styling Add-ons uses for its catalog list —
+          the buying mechanism is a one-shot request+confirm, not a persistent
+          multi-select like packs, but the catalog should read the same way. */}
+      <div className="lw-bill__packlist">
+        {creditTiers.map((tier) => (
+          <button key={tier.code} type="button"
+                  className={`lw-bill__pack lw-bill__pack--credit ${(!hasAiDomain || pendingOrder) ? "is-disabled" : ""}`}
+                  disabled={busy || !hasAiDomain || !!pendingOrder} onClick={() => setBuyingCredits(tier)}>
+            <Zap size={15} aria-hidden="true" />
+            <span className="lw-bill__packname">{Number(tier.creditAmount).toLocaleString()} {t("subscription.aiCreditsUnit")}</span>
+            <span className="lw-bill__packprice">{tier.price} {tier.currency}</span>
+          </button>
+        ))}
+      </div>
+
+      {buyingCredits && (
+        <BuyCreditsConfirmModal tier={buyingCredits} busy={busy}
+          onClose={() => setBuyingCredits(null)}
+          onConfirm={() => onRequestCreditPurchase(buyingCredits.code).then((r) => { if (r) setBuyingCredits(null); })} />
+      )}
+
+      {showHistory && (
+        <CreditHistoryModal purchases={creditPurchases} onClose={() => setShowHistory(false)} />
+      )}
+    </div>
+  );
+}
+
+/** Same lw-bill__historytable structure as Add-on history (HistoryModal) —
+ * request date included per row, alongside amount/price/status, so this
+ * reads the same way as the config-change history table it sits next to. */
+function CreditHistoryModal({ purchases, onClose }) {
+  const { t } = useLanguage();
+  return (
+    <Modal onClose={onClose} closeLabel={t("subscription.close")}>
+      <div className="lw-eyebrow">{t("subscription.creditsHistoryTitle")}</div>
+      <h2 className="lw-modal__title">{t("subscription.creditsHistoryTitle")}</h2>
+
+      {purchases.length === 0 ? (
+        <p className="lw-bill__changenote">{t("subscription.creditsHistoryEmpty")}</p>
+      ) : (
+        <div className="lw-bill__historywrap">
+          <table className="lw-bill__historytable">
+            <thead>
+              <tr>
+                <th>{t("subscription.creditsColAmount")}</th>
+                <th>{t("subscription.creditsColPrice")}</th>
+                <th>{t("subscription.creditsColDate")}</th>
+                <th>{t("subscription.creditsColStatus")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {purchases.map((p) => (
+                <tr key={p.id}>
+                  <td>{Number(p.creditAmount).toLocaleString()} {t("subscription.aiCreditsUnit")}</td>
+                  <td>{p.priceAmount} {p.priceCurrency}</td>
+                  <td>{fmtDate(p.createdAt)}</td>
+                  <td><span className={`lw-bill__pill is-${p.status.toLowerCase()}`}>{purchaseStatusLabel(t, p.status)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -372,28 +507,31 @@ function packBenefits(t, pack) {
 }
 
 function BillingOverview({
-  subscription, plans, packs, busy, onCancel, onResubscribe, onDowngrade, onCancelPendingChange, onCancelRequestedChange, onReactivate,
+  subscription, plans, packs, busy, onResubscribe, onDowngrade, onCancelPendingChange, onCancelRequestedChange, onReactivate,
 }) {
   const { t } = useLanguage();
-  const [cancelStep, setCancelStep] = useState(0); // 0 = closed, 1-4 = wizard step
-  const [cancelReason, setCancelReason] = useState("");
-  const [cancelReasonNote, setCancelReasonNote] = useState("");
   const [downgradeTarget, setDowngradeTarget] = useState(null);
 
   const plan = plans.find((p) => p.code === subscription.planCode);
+  const freePlan = plans.find((p) => p.code === FREE_PLAN_CODE);
+
+  // A pending request always carries a plan code, even one add-ons-only —
+  // the config snapshot it points to has to name some plan. Falling back to
+  // pendingPacksNote when that plan hasn't actually changed keeps this from
+  // reading "You've requested Solo Essential" for a request that only adds
+  // a pack on the plan already in place.
+  const requestedPlanName = subscription.requestedPlanCode && subscription.requestedPlanCode !== subscription.planCode
+    ? (plans.find((p) => p.code === subscription.requestedPlanCode)?.name ?? subscription.requestedPlanCode)
+    : null;
+  const requestedPackNames = (subscription.requestedPackCodes ?? [])
+    .map((code) => packs.find((p) => p.code === code)?.name).filter(Boolean);
 
   // SUB-004: a Cancelled subscription keeps its License Active until
   // cancellationEffectiveDate — Licensing's licenseStatus is the
   // authoritative "is access still live right now", not the raw status.
   const isLive = subscription.licenseStatus !== "Expired";
 
-  // Downgrade sits inside the cancel wizard's first step, a deliberate
-  // retention off-ramp right where cancelling is being considered — it
-  // doesn't change billing cycle (see DowngradeRequest).
   const isAnnual = subscription.billingCycle === "Annual";
-  const currentPrice = isAnnual ? plan?.annualPrice : plan?.monthlyPrice;
-  const cheaperPlans = plans
-    .filter((p) => p.code !== subscription.planCode && (isAnnual ? p.annualPrice : p.monthlyPrice) < (currentPrice ?? Infinity));
 
   const entitlement = (key, domain) => subscriptionEntitlement(subscription, key, domain);
   const hasAiDomain = hasAnyAiDomain(subscription);
@@ -405,12 +543,6 @@ function BillingOverview({
   const aiCredits = entitlement("credits:ai")?.value;
 
   const invoiceNeedsConfirmation = subscription.currentInvoiceStatus === "Issued" || subscription.currentInvoiceStatus === "Overdue";
-
-  const closeCancelWizard = () => { setCancelStep(0); setCancelReason(""); setCancelReasonNote(""); };
-
-  const partingWithDomains = plan ? ENTITLEMENT_DOMAINS.filter((d) => planProfileForDomain(plan, d) !== "Foundation") : [];
-  const ownedPackNames = (subscription.selectedPackCodes ?? [])
-    .map((code) => packs.find((p) => p.code === code)?.name).filter(Boolean);
 
   return (
     <div>
@@ -462,12 +594,12 @@ function BillingOverview({
       {subscription.requestedPlanCode && (
         <div className="lw-bill__notice lw-bill__cancellednotice">
           <p>
-            {t("subscription.requestedChangeNotice", {
-              plan: plans.find((p) => p.code === subscription.requestedPlanCode)?.name ?? subscription.requestedPlanCode,
-            })}
+            {requestedPlanName
+              ? t("subscription.requestedChangeNotice", { plan: requestedPlanName })
+              : t("subscription.pendingPacksNote", { packs: requestedPackNames.join(", ") })}
           </p>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancelRequestedChange}>
-            {t("subscription.withdrawRequest")}
+            {t("subscription.withdrawRequestAction")}
           </button>
         </div>
       )}
@@ -537,30 +669,20 @@ function BillingOverview({
         </table>
       </div>
 
-      {subscription.status === "Active" && subscription.planCode !== FREE_PLAN_CODE && (
+      {/* The platform has no separate "cancel" concept anymore — every workspace
+          always has a subscription, Solo Free at minimum. Backing out of a paid
+          plan is just a downgrade to Free, using the exact same scheduled-change
+          mechanism (and "never mind" undo) as switching to any other cheaper plan. */}
+      {subscription.status === "Active" && subscription.planCode !== FREE_PLAN_CODE && freePlan && (
         <div className="lw-bill__actions">
-          <p className="lw-bill__changenote">{t("subscription.changeNote")}</p>
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setCancelStep(1)}>
-            {t("subscription.cancelSubscription")}
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setDowngradeTarget(freePlan)}>
+            {t("subscription.downgradeToFreeAction")}
           </button>
         </div>
       )}
 
-      {cancelStep > 0 && plan && (
-        <CancelWizard
-          step={cancelStep} setStep={setCancelStep} onClose={closeCancelWizard}
-          plan={plan} subscription={subscription} busy={busy}
-          partingWithDomains={partingWithDomains} ownedPackNames={ownedPackNames}
-          cheaperPlans={cheaperPlans} isAnnual={isAnnual}
-          cancelReason={cancelReason} setCancelReason={setCancelReason}
-          cancelReasonNote={cancelReasonNote} setCancelReasonNote={setCancelReasonNote}
-          onDowngradeInstead={(p) => { closeCancelWizard(); setDowngradeTarget(p); }}
-          onCancel={onCancel}
-        />
-      )}
-
       {downgradeTarget && (
-        <DowngradeConfirmModal plan={downgradeTarget} currentPlan={plan} subscription={subscription} busy={busy} isAnnual={isAnnual}
+        <DowngradeConfirmModal plan={downgradeTarget} currentPlan={plan} subscription={subscription} packs={packs} busy={busy} isAnnual={isAnnual}
           onClose={() => setDowngradeTarget(null)}
           onConfirm={() => onDowngrade(downgradeTarget.code).then((r) => { if (r) setDowngradeTarget(null); })} />
       )}
@@ -570,13 +692,11 @@ function BillingOverview({
 
 function PlansAndAddOns({
   subscription, plan, plans, packs, busy, token, slug, onCancelRequestedChange, onUpgrade, onDowngrade, onManagePacks,
-  creditTiers, creditPurchases, onRequestCreditPurchase,
 }) {
   const { t } = useLanguage();
   const [tab, setTab] = useState("addons"); // "addons" | "plans"
   const [upgradeTarget, setUpgradeTarget] = useState(null);
   const [downgradeTarget, setDowngradeTarget] = useState(null);
-  const [buyingCredits, setBuyingCredits] = useState(null); // the CreditPackTier being confirmed
   const [showHistory, setShowHistory] = useState(false);
 
   const isAnnual = subscription.billingCycle === "Annual";
@@ -619,7 +739,7 @@ function PlansAndAddOns({
             {" "}{t("subscription.pendingBlocksNewRequest")}
           </p>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancelRequestedChange}>
-            {t("subscription.withdrawRequest")}
+            {t("subscription.withdrawRequestAction")}
           </button>
         </div>
       )}
@@ -627,10 +747,7 @@ function PlansAndAddOns({
       {tab === "addons" && (
         <AddOnsTab plan={plan} packs={packs} billingCycle={subscription.billingCycle}
           currentPackCodes={subscription.selectedPackCodes ?? []} busy={busy} disabled={hasPendingRequest}
-          onSave={onManagePacks}
-          hasAiDomain={hasAnyAiDomain(subscription)}
-          creditTiers={creditTiers} creditPurchases={creditPurchases}
-          onBuyCredits={setBuyingCredits} />
+          onSave={onManagePacks} />
       )}
 
       {tab === "plans" && (
@@ -646,15 +763,9 @@ function PlansAndAddOns({
       )}
 
       {downgradeTarget && (
-        <DowngradeConfirmModal plan={downgradeTarget} currentPlan={plan} subscription={subscription} busy={busy} isAnnual={isAnnual}
+        <DowngradeConfirmModal plan={downgradeTarget} currentPlan={plan} subscription={subscription} packs={packs} busy={busy} isAnnual={isAnnual}
           onClose={() => setDowngradeTarget(null)}
           onConfirm={() => onDowngrade(downgradeTarget.code).then((r) => { if (r) setDowngradeTarget(null); })} />
-      )}
-
-      {buyingCredits && (
-        <BuyCreditsConfirmModal tier={buyingCredits} busy={busy}
-          onClose={() => setBuyingCredits(null)}
-          onConfirm={() => onRequestCreditPurchase(buyingCredits.code).then((r) => { if (r) setBuyingCredits(null); })} />
       )}
 
       {showHistory && (
@@ -664,7 +775,7 @@ function PlansAndAddOns({
   );
 }
 
-function AddOnsTab({ plan, packs, billingCycle, currentPackCodes, busy, disabled, onSave, hasAiDomain, creditTiers, creditPurchases, onBuyCredits }) {
+function AddOnsTab({ plan, packs, billingCycle, currentPackCodes, busy, disabled, onSave }) {
   const { t } = useLanguage();
   const [selected, setSelected] = useState(currentPackCodes);
 
@@ -672,7 +783,9 @@ function AddOnsTab({ plan, packs, billingCycle, currentPackCodes, busy, disabled
   const packPrice = (pack) => (billingCycle === "Annual" ? pack.monthlyPrice * 10 : pack.monthlyPrice);
 
   const basePrice = billingCycle === "Annual" ? plan.annualPrice : plan.monthlyPrice;
-  const priceFor = (codes) => basePrice + packs.filter((p) => codes.includes(p.code)).reduce((sum, p) => sum + packPrice(p), 0);
+  const addOnsPriceFor = (codes) => packs.filter((p) => codes.includes(p.code)).reduce((sum, p) => sum + packPrice(p), 0);
+  const priceFor = (codes) => basePrice + addOnsPriceFor(codes);
+  const addOnsPrice = addOnsPriceFor(selected);
   const total = priceFor(selected);
   const changed = selected.length !== currentPackCodes.length || selected.some((c) => !currentPackCodes.includes(c));
   const isUpgrade = total > priceFor(currentPackCodes);
@@ -705,13 +818,26 @@ function AddOnsTab({ plan, packs, billingCycle, currentPackCodes, busy, disabled
         })}
       </div>
 
-      <div className="lw-bill__total">
-        <span>{t("subscription.totalPrice")}</span>
-        <strong>
-          {total === 0
-            ? t("subscription.free")
-            : <>{total} {plan.currency} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}
-        </strong>
+      {/* Broken into plan + add-ons rather than one bare "Total" — a tutor
+          landing here with no add-ons selected was seeing their plan's own
+          price under "Total" and reasonably reading it as an add-ons charge. */}
+      <div className="lw-bill__totalbreakdown">
+        <div className="lw-bill__total lw-bill__total--line">
+          <span>{t("subscription.planLabel")}</span>
+          <span>{basePrice === 0 ? t("subscription.free") : <>{basePrice} {plan.currency} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}</span>
+        </div>
+        <div className="lw-bill__total lw-bill__total--line">
+          <span>{t("subscription.addOns")}</span>
+          <span>{addOnsPrice === 0 ? t("subscription.addOnsNone") : <>+{addOnsPrice} {plan.currency}</>}</span>
+        </div>
+        <div className="lw-bill__total">
+          <span>{t("subscription.totalPrice")}</span>
+          <strong>
+            {total === 0
+              ? t("subscription.free")
+              : <>{total} {plan.currency} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}
+          </strong>
+        </div>
       </div>
 
       {changed && (
@@ -722,35 +848,10 @@ function AddOnsTab({ plan, packs, billingCycle, currentPackCodes, busy, disabled
 
       <div className="lw-bill__tabpanelactions">
         <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || disabled || !changed} onClick={() => onSave(selected)}>
-          {busy ? <LoaderCircle size={14} className="lw-bill__spin" /> : t("subscription.saveAddOns")}
+          {busy ? <LoaderCircle size={14} className="lw-bill__spin" /> : t(isUpgrade ? "subscription.saveAddOnsRequest" : "subscription.saveAddOnsConfirm")}
         </button>
       </div>
 
-      <div className="lw-bill__creditsblock">
-        <h2 className="lw-bill__sectiontitle">{t("subscription.buyCreditsTitle")}</h2>
-        <p className="lw-bill__changenote">{t(hasAiDomain ? "subscription.buyCreditsNote" : "subscription.buyCreditsBlockedNote")}</p>
-        <div className="lw-bill__creditgrid">
-          {creditTiers.map((tier) => (
-            <button key={tier.code} type="button" className="lw-bill__credittier" disabled={busy || !hasAiDomain}
-                    onClick={() => onBuyCredits(tier)}>
-              <strong>{Number(tier.creditAmount).toLocaleString()}</strong>
-              <span>{t("subscription.aiCreditsUnit")}</span>
-              <span className="lw-bill__creditprice">{tier.price} {tier.currency}</span>
-            </button>
-          ))}
-        </div>
-
-        {creditPurchases.length > 0 && (
-          <ul className="lw-bill__purchaselist">
-            {creditPurchases.map((p) => (
-              <li key={p.id}>
-                <span>{Number(p.creditAmount).toLocaleString()} {t("subscription.aiCreditsUnit")} — {p.priceAmount} {p.priceCurrency}</span>
-                <span className={`lw-bill__pill is-${p.status.toLowerCase()}`}>{purchaseStatusLabel(t, p.status)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }
@@ -873,127 +974,6 @@ function BuyCreditsConfirmModal({ tier, busy, onClose, onConfirm }) {
   );
 }
 
-function CancelWizard({
-  step, setStep, onClose, plan, subscription, busy,
-  partingWithDomains, ownedPackNames, cheaperPlans, isAnnual,
-  cancelReason, setCancelReason, cancelReasonNote, setCancelReasonNote,
-  onDowngradeInstead, onCancel,
-}) {
-  const { t } = useLanguage();
-
-  if (step === 1) {
-    return (
-      <SplitStepModal eyebrow={t("subscription.cancelWizardEyebrow")} onClose={onClose} closeLabel={t("subscription.close")}
-        headline={t("subscription.cancelStep1Headline")} description={t("subscription.cancelStep1Sub")}>
-        <p className="lw-bill__wizardlabel">{t("subscription.cancelStep1PartingWith")}</p>
-        <ul className="lw-bill__partinglist">
-          {partingWithDomains.map((d) => (
-            <li key={d}>{domainLabel(t, d)}: {levelLabel(t, planProfileForDomain(plan, d))}</li>
-          ))}
-          {ownedPackNames.map((name) => <li key={name}>{name}</li>)}
-          <li>{t("subscription.tutorCapacity")}</li>
-          <li>{t("subscription.learnerCapacity")}</li>
-          <li>{t("subscription.videoStorage")}</li>
-          <li>{t("subscription.resourceStorage")}</li>
-          <li>{t("subscription.aiCredits")}</li>
-        </ul>
-
-        {cheaperPlans.length > 0 && (
-          <div className="lw-bill__downgradeoffer">
-            <p className="lw-bill__downgradelabel">{t("subscription.downgradeInsteadLabel")}</p>
-            <div className="lw-bill__downgradelist">
-              {cheaperPlans.map((p) => (
-                <button key={p.code} type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                        onClick={() => onDowngradeInstead(p)}>
-                  {t("subscription.downgradeToPlan", { plan: p.name, price: isAnnual ? p.annualPrice : p.monthlyPrice, currency: p.currency })}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="lw-bill__wizardactions lw-bill__wizardactions--col">
-          <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={onClose}>
-            {t("subscription.keepCurrentPlan")}
-          </button>
-          <button type="button" className="lw-bill__textlink" disabled={busy} onClick={() => setStep(2)}>
-            {t("subscription.continueToCancel")}
-          </button>
-        </div>
-      </SplitStepModal>
-    );
-  }
-
-  if (step === 2) {
-    return (
-      <SplitStepModal eyebrow={t("subscription.cancelWizardEyebrow")} onClose={onClose} closeLabel={t("subscription.close")}
-        headline={t("subscription.cancelStep2Headline")} description={t("subscription.cancelStep2Sub")}>
-        <p className="lw-bill__wizardlabel">{t("subscription.cancelStep2Overview")}</p>
-        <ul className="lw-bill__reflectlist">
-          <li>{t("subscription.cancelStep2ValidUntil", { date: fmtDate(subscription.currentPeriodEnd) })}</li>
-          <li>
-            {t("subscription.cancelStep2AccessEnds", { date: fmtDate(subscription.currentPeriodEnd) })}{" "}
-            {t("subscription.cancelStep2ExportNote")}
-          </li>
-          <li>{t("subscription.cancelStep2ReactivationNote")}</li>
-        </ul>
-        <div className="lw-bill__wizardactions">
-          <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={() => setStep(3)}>
-            {t("subscription.continueToCancel")}
-          </button>
-        </div>
-      </SplitStepModal>
-    );
-  }
-
-  if (step === 3) {
-    return (
-      <SplitStepModal eyebrow={t("subscription.cancelWizardEyebrow")} onClose={onClose} closeLabel={t("subscription.close")}
-        headline={t("subscription.cancelStep3Headline")} description={t("subscription.cancelStep3Sub", { plan: plan.name })}>
-        <p className="lw-bill__wizardlabel">{t("subscription.cancelStep3Note")}</p>
-        <div className="lw-bill__reasonoptions">
-          {CANCEL_REASONS.map((code) => (
-            <label key={code} className="lw-bill__reasonoption">
-              <input type="radio" name="cancel-reason" checked={cancelReason === code} disabled={busy}
-                     onChange={() => setCancelReason(code)} />
-              {t(`subscription.cancelReason${code}`)}
-            </label>
-          ))}
-        </div>
-        {cancelReason === "Other" && (
-          <textarea className="lw-bill__reasonnote" disabled={busy} rows={3}
-                    value={cancelReasonNote} onChange={(e) => setCancelReasonNote(e.target.value)}
-                    placeholder={t("subscription.cancelReasonOtherPlaceholder")} />
-        )}
-        <div className="lw-bill__wizardactions">
-          <button className="lw-btn lw-btn--sm lw-bill__dangerbtn" disabled={busy}
-                  onClick={() => {
-                    const reason = cancelReason === "Other" && cancelReasonNote.trim() ? cancelReasonNote.trim() : (cancelReason || null);
-                    onCancel(reason).then((r) => { if (r) setStep(4); });
-                  }}>
-            {busy ? <LoaderCircle size={14} className="lw-bill__spin" /> : t("subscription.confirmToCancel")}
-          </button>
-        </div>
-      </SplitStepModal>
-    );
-  }
-
-  return (
-    <SplitStepModal eyebrow={t("subscription.cancelWizardEyebrow")} onClose={onClose} closeLabel={t("subscription.close")}
-      headline={t("subscription.cancelStep4Headline")} description={t("subscription.cancelStep4Sub")}>
-      <div className="lw-bill__successmark"><Check size={20} /></div>
-      <p className="lw-bill__successlabel">{t("subscription.cancelStep4Confirmed")}</p>
-      <ul className="lw-bill__reflectlist">
-        <li>{t("subscription.cancelStep4Note1", { date: fmtDate(subscription.cancellationEffectiveDate ?? subscription.currentPeriodEnd) })}</li>
-        <li>{t("subscription.cancelStep4Note2")}</li>
-      </ul>
-      <div className="lw-bill__wizardactions">
-        <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={onClose}>{t("subscription.goToBilling")}</button>
-      </div>
-    </SplitStepModal>
-  );
-}
-
 function UpgradeConfirmModal({ plan, currentPlan, busy, isAnnual, onClose, onConfirm }) {
   const { t } = useLanguage();
   const price = isAnnual ? plan.annualPrice : plan.monthlyPrice;
@@ -1026,11 +1006,17 @@ function UpgradeConfirmModal({ plan, currentPlan, busy, isAnnual, onClose, onCon
   );
 }
 
-function DowngradeConfirmModal({ plan, currentPlan, subscription, busy, isAnnual, onClose, onConfirm }) {
+function DowngradeConfirmModal({ plan, currentPlan, subscription, packs, busy, isAnnual, onClose, onConfirm }) {
   const { t } = useLanguage();
   const price = isAnnual ? plan.annualPrice : plan.monthlyPrice;
   const lost = currentPlan
     ? ENTITLEMENT_DOMAINS.filter((d) => LEVEL_ORDER[planProfileForDomain(currentPlan, d)] > LEVEL_ORDER[planProfileForDomain(plan, d)])
+    : [];
+  // Solo Free enforces a hard capacity ceiling that a carried-over pack would
+  // almost always exceed, so packsForDowngrade() drops every pack once the
+  // target is Free — surfaced here so that isn't a silent surprise.
+  const droppedPackNames = plan.code === FREE_PLAN_CODE
+    ? (subscription.selectedPackCodes ?? []).map((code) => packs?.find((p) => p.code === code)?.name).filter(Boolean)
     : [];
 
   return (
@@ -1045,6 +1031,9 @@ function DowngradeConfirmModal({ plan, currentPlan, subscription, busy, isAnnual
             ))}
           </ul>
         </>
+      )}
+      {droppedPackNames.length > 0 && (
+        <p className="lw-bill__changenote">{t("subscription.downgradeDropsAddOns", { packs: droppedPackNames.join(", ") })}</p>
       )}
       <p className="lw-bill__changenote">{t("subscription.downgradeEffective", { date: fmtDate(subscription.currentPeriodEnd) })}</p>
       <div className="lw-bill__total">
@@ -1114,6 +1103,9 @@ const CSS = `
     display: flex; justify-content: space-between; align-items: baseline;
     border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 6px; font-size: 0.9rem;
   }
+  .lw-bill__totalbreakdown { border-top: 1px solid var(--line); padding-top: 4px; margin-bottom: 6px; }
+  .lw-bill__totalbreakdown .lw-bill__total { border-top: none; padding-top: 8px; margin-bottom: 0; }
+  .lw-bill__total--line { font-size: 0.78rem; color: var(--ink-soft); }
 
   .lw-bill__pill {
     font-family: var(--font-mono); font-size: 11px; border-radius: 20px; padding: 4px 11px;
@@ -1127,25 +1119,11 @@ const CSS = `
   .lw-bill__pill.is-voided { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
   .lw-bill__pill--warn { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); margin-inline-start: 8px; }
 
-  .lw-bill__creditsblock { margin-top: 22px; }
   .lw-bill__creditsunusable { font-size: 0.76rem; color: var(--ink-soft); }
-  .lw-bill__creditgrid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
-  .lw-bill__credittier {
-    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-    font-family: inherit; text-align: start; cursor: pointer;
-    border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 14px;
-    background: var(--surface); color: var(--ink);
+  .lw-bill__pack--credit {
+    width: 100%; background: var(--surface); color: var(--ink); font-family: inherit;
   }
-  .lw-bill__credittier:disabled { opacity: 0.5; cursor: not-allowed; }
-  .lw-bill__credittier strong { font-size: 1.05rem; }
-  .lw-bill__credittier span { font-size: 0.78rem; color: var(--ink-soft); }
-  .lw-bill__creditprice { color: var(--accent) !important; }
-  .lw-bill__purchaselist { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 8px; }
-  .lw-bill__purchaselist li {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    font-size: 0.82rem; color: var(--ink-soft);
-  }
-  .lw-bill__purchaselist .lw-bill__pill { margin-bottom: 0; }
+  .lw-bill__pack--credit .lw-bill__packprice { color: var(--accent); font-weight: 600; }
 
   .lw-bill__reactivatebanner {
     display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
@@ -1222,6 +1200,7 @@ const CSS = `
   .lw-bill__historytable thead th { color: var(--ink-soft); font-weight: 600; border-bottom: 1px solid var(--line); white-space: nowrap; }
   .lw-bill__historytable tbody tr { border-top: 1px solid var(--line); }
   .lw-bill__historytable tbody td:first-child { white-space: nowrap; }
+  .lw-bill__historytable .lw-bill__pill { margin-bottom: 0; }
 
   .lw-bill__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
   .lw-bill__spin { animation: lwBillSpin 0.9s linear infinite; }

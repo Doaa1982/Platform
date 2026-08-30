@@ -91,6 +91,26 @@ public class CreditPurchaseOrder
         ResolvedAt = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// The workspace's own "never mind" before a Platform Operator has acted on
+    /// this request — same self-service withdrawal as
+    /// Subscription.CancelRequestedChange, and reuses the same Voided outcome
+    /// as <see cref="Void"/> (no credits are granted either way); not
+    /// restricted to the original requester, same as that method — this is
+    /// the workspace's pending request, not a personal one.
+    /// </summary>
+    public void Cancel(Guid cancelledByIdentityId)
+    {
+        if (Status != CreditPurchaseOrderStatus.Pending)
+            throw new InvalidOperationException($"A Credit Purchase Order that is {Status} cannot be cancelled.");
+        if (cancelledByIdentityId == Guid.Empty)
+            throw new ArgumentException("Cancelling a purchase must record who did it.", nameof(cancelledByIdentityId));
+
+        Status = CreditPurchaseOrderStatus.Voided;
+        ResolvedByIdentityId = cancelledByIdentityId;
+        ResolvedAt = DateTime.UtcNow;
+    }
+
     public void AttachLedgerEntry(Guid ledgerEntryId)
     {
         if (ledgerEntryId == Guid.Empty)

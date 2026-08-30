@@ -40,40 +40,65 @@ public class Question
     public int Points { get; private set; }
     public int Position { get; private set; }
 
+    /// <summary>
+    /// One of the source Lesson Revision's own Learning Objectives, copied at
+    /// question-authoring time (Competency-Based Learning — Design Proposal
+    /// §2 D1, §3) — free text, not a reference to a structured taxonomy
+    /// entity (none exists in this domain). Null for a Question nobody has
+    /// tagged; Assessment.Grade() excludes untagged Questions from its
+    /// competency breakdown entirely rather than treating null as its own
+    /// category.
+    /// </summary>
+    public string? AssessedObjective { get; private set; }
+
+    /// <summary>
+    /// This Question's tier within an adaptive pool (Adaptive Assessment —
+    /// Design Proposal §3, §4a.3) — null for a Question that isn't part of
+    /// one. Restricted to auto-gradable Types (§6/§4a's corrected invariant):
+    /// OpenAnswer has no synchronous correctness signal for the staircase
+    /// rule to act on, so it can never carry a tier.
+    /// </summary>
+    public DifficultyTier? DifficultyTier { get; private set; }
+
     private Question() { }
 
     internal static Question Create(
         Guid assessmentId, QuestionType type, string prompt,
         IReadOnlyList<string>? options, int? correctOptionIndex, IReadOnlyList<string>? acceptedAnswers,
-        string? explanation, int? videoTimestampSeconds, int points, int position)
+        string? explanation, int? videoTimestampSeconds, int points, int position,
+        string? assessedObjective = null, DifficultyTier? difficultyTier = null)
     {
         var q = new Question { Id = Guid.NewGuid(), AssessmentId = assessmentId, Position = position };
-        q.Apply(type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds, points);
+        q.Apply(type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds, points, assessedObjective, difficultyTier);
         return q;
     }
 
     internal void Edit(
         QuestionType type, string prompt,
         IReadOnlyList<string>? options, int? correctOptionIndex, IReadOnlyList<string>? acceptedAnswers,
-        string? explanation, int? videoTimestampSeconds, int points)
-        => Apply(type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds, points);
+        string? explanation, int? videoTimestampSeconds, int points, string? assessedObjective = null, DifficultyTier? difficultyTier = null)
+        => Apply(type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds, points, assessedObjective, difficultyTier);
 
     private void Apply(
         QuestionType type, string prompt,
         IReadOnlyList<string>? options, int? correctOptionIndex, IReadOnlyList<string>? acceptedAnswers,
-        string? explanation, int? videoTimestampSeconds, int points)
+        string? explanation, int? videoTimestampSeconds, int points, string? assessedObjective = null, DifficultyTier? difficultyTier = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
         if (points <= 0)
             throw new ArgumentException("A question must be worth at least one point.", nameof(points));
         if (videoTimestampSeconds is < 0)
             throw new ArgumentException("A video timestamp cannot be negative.", nameof(videoTimestampSeconds));
+        if (difficultyTier is not null && type == QuestionType.OpenAnswer)
+            throw new ArgumentException("An OpenAnswer question has no synchronous correctness signal, so it cannot belong to an adaptive pool.", nameof(difficultyTier));
 
         Type = type;
         Prompt = prompt.Trim();
         Explanation = string.IsNullOrWhiteSpace(explanation) ? null : explanation.Trim();
         VideoTimestampSeconds = videoTimestampSeconds;
         Points = points;
+        AssessedObjective = string.IsNullOrWhiteSpace(assessedObjective) ? null : assessedObjective.Trim();
+        DifficultyTier = difficultyTier;
 
         _options.Clear();
         _acceptedAnswers.Clear();
@@ -123,6 +148,30 @@ public readonly record struct SubmittedAnswer(int? SelectedOptionIndex, string? 
 /// from the score entirely rather than counted against the learner.
 /// </summary>
 public readonly record struct QuestionGradeResult(Guid QuestionId, bool? Correct, string? CorrectAnswerDisplay);
+
+/// <summary>
+/// One AssessedObjective's mastery level for one grading pass (Competency-
+/// Based Learning — Design Proposal §3-4) — only objectives at least one
+/// graded Question in this pass was tagged with appear at all.
+/// </summary>
+public readonly record struct CompetencyResult(string Objective, CompetencyLevel Level);
+
+/// <summary>
+/// Adaptive delivery settings for a Standalone Assessment (Adaptive
+/// Assessment — Design Proposal §3, §4a.3) — Enabled defaults false so every
+/// existing Assessment is unaffected until a tutor opts in.
+/// DifficultyPoints maps a tier to the Points value a Question at that tier
+/// is authored with (D3) — Easy/Medium/Hard need not all be present; a tier
+/// missing from the map simply leaves a Question's own given Points
+/// unmodified when authored at that tier.
+/// </summary>
+public sealed record AdaptiveConfiguration(
+    bool Enabled,
+    int QuestionsPerAttempt,
+    DifficultyTier StartingDifficulty,
+    DifficultyTier MinDifficulty,
+    DifficultyTier MaxDifficulty,
+    IReadOnlyDictionary<DifficultyTier, int> DifficultyPoints);
 
 /// <summary>
 /// Assessment Aggregate Root (Assessment and Submission Aggregate Design).
@@ -185,6 +234,9 @@ public class Assessment
 
     public IReadOnlyCollection<Question> Questions => _questions.AsReadOnly();
 
+    /// <summary>Null for every Assessment that hasn't opted in — see ConfigureAdaptive. Adaptive Assessment — Design Proposal §3's v1.1 scope correction: only ever meaningful for Kind == Standalone.</summary>
+    public AdaptiveConfiguration? AdaptiveConfiguration { get; private set; }
+
     private Assessment() { }
 
     public static Assessment Create(Guid workspaceId, Guid lessonId, Guid lessonRevisionId, string title, AssessmentKind kind)
@@ -241,9 +293,11 @@ public class Assessment
     public Question AddQuestion(
         QuestionType type, string prompt,
         IReadOnlyList<string>? options, int? correctOptionIndex, IReadOnlyList<string>? acceptedAnswers,
-        string? explanation = null, int? videoTimestampSeconds = null, int points = 1)
+        string? explanation = null, int? videoTimestampSeconds = null, int points = 1, string? assessedObjective = null,
+        DifficultyTier? difficultyTier = null)
     {
-        var question = Question.Create(Id, type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds, points, _questions.Count);
+        var question = Question.Create(Id, type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds,
+            EffectivePoints(points, difficultyTier), _questions.Count, assessedObjective, difficultyTier);
         _questions.Add(question);
         Touch();
         return question;
@@ -252,9 +306,41 @@ public class Assessment
     public void UpdateQuestion(
         Guid questionId, QuestionType type, string prompt,
         IReadOnlyList<string>? options, int? correctOptionIndex, IReadOnlyList<string>? acceptedAnswers,
-        string? explanation, int? videoTimestampSeconds, int points)
+        string? explanation, int? videoTimestampSeconds, int points, string? assessedObjective = null, DifficultyTier? difficultyTier = null)
     {
-        FindQuestion(questionId).Edit(type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds, points);
+        FindQuestion(questionId).Edit(type, prompt, options, correctOptionIndex, acceptedAnswers, explanation, videoTimestampSeconds,
+            EffectivePoints(points, difficultyTier), assessedObjective, difficultyTier);
+        Touch();
+    }
+
+    /// <summary>D3: a tier-tagged Question's Points comes from this adaptive pool's own DifficultyPoints map, not whatever the caller passed — unless that tier isn't in the map, in which case the caller's own value stands.</summary>
+    private int EffectivePoints(int requestedPoints, DifficultyTier? difficultyTier) =>
+        difficultyTier is { } tier && AdaptiveConfiguration?.DifficultyPoints.TryGetValue(tier, out var tierPoints) is true
+            ? tierPoints
+            : requestedPoints;
+
+    /// <summary>
+    /// Opts this Assessment into (or updates, or turns off) adaptive
+    /// delivery (Adaptive Assessment — Design Proposal §3, §4a.3). Scoped to
+    /// Standalone only (v1.1's scope correction): Interactive checkpoints are
+    /// pinned to fixed video timestamps and can't be reordered or swapped
+    /// without breaking the video sync they exist for.
+    /// </summary>
+    public void ConfigureAdaptive(AdaptiveConfiguration config)
+    {
+        if (config.Enabled)
+        {
+            if (Kind != AssessmentKind.Standalone)
+                throw new InvalidOperationException("Adaptive delivery only applies to a Standalone assessment — Interactive checkpoints are pinned to fixed video timestamps.");
+            if (config.QuestionsPerAttempt <= 0)
+                throw new ArgumentException("Questions per attempt must be positive.", nameof(config));
+            if (config.MinDifficulty > config.MaxDifficulty)
+                throw new ArgumentException("MinDifficulty cannot be harder than MaxDifficulty.", nameof(config));
+            if (config.StartingDifficulty < config.MinDifficulty || config.StartingDifficulty > config.MaxDifficulty)
+                throw new ArgumentException("StartingDifficulty must fall within MinDifficulty..MaxDifficulty.", nameof(config));
+        }
+
+        AdaptiveConfiguration = config;
         Touch();
     }
 
@@ -268,7 +354,70 @@ public class Assessment
 
     /// <summary>Why publication is refused right now, or null when it is allowed — returned rather than thrown, matching Curriculum.PublicationBlocker.</summary>
     public string? PublicationBlocker()
-        => _questions.Count == 0 ? "An assessment needs at least one question before it can be published." : null;
+    {
+        if (_questions.Count == 0)
+            return "An assessment needs at least one question before it can be published.";
+
+        return AdaptiveConfiguration is { Enabled: true } config ? AdaptivePoolBlocker(config) : null;
+    }
+
+    /// <summary>
+    /// Adaptive Assessment — Design Proposal §3: the pool must survive the
+    /// worst realistic path through it. That is NOT just "always correct"
+    /// (climbs straight to MaxDifficulty) or "always incorrect" (drops
+    /// straight to MinDifficulty) — a learner whose answers oscillate (right,
+    /// wrong, right, wrong, …) bounces between two adjacent tiers and can
+    /// revisit a middle tier roughly half the attempt's length, far more than
+    /// either monotonic extreme ever touches it. This checks, per tier, the
+    /// true worst case over every possible right/wrong sequence — not just
+    /// the two monotonic ones.
+    /// </summary>
+    private string? AdaptivePoolBlocker(AdaptiveConfiguration config)
+    {
+        var poolCounts = _questions
+            .Where(q => q.DifficultyTier is not null)
+            .GroupBy(q => q.DifficultyTier!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var targetTier in Enum.GetValues<DifficultyTier>())
+        {
+            var neededCount = MaxPossibleVisits(config, targetTier);
+            var available = poolCounts.GetValueOrDefault(targetTier);
+            if (available < neededCount)
+                return $"This adaptive assessment needs at least {neededCount} {targetTier} question(s) to cover a learner whose " +
+                       $"answers keep landing back on that difficulty, but the pool only has {available}.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The most times a single attempt could land on <paramref name="targetTier"/>,
+    /// over every possible sequence of right/wrong answers (not just the two
+    /// monotonic extremes) — via a small backward dynamic program: from the
+    /// last question back to the first, the worst case at each tier is that
+    /// tier's own contribution plus whichever next step (right or wrong)
+    /// leads to more future visits.
+    /// </summary>
+    private static int MaxPossibleVisits(AdaptiveConfiguration config, DifficultyTier targetTier)
+    {
+        var tiers = Enum.GetValues<DifficultyTier>();
+        var bestFromHere = tiers.ToDictionary(t => t, t => t == targetTier ? 1 : 0);
+
+        for (var step = config.QuestionsPerAttempt - 2; step >= 0; step--)
+        {
+            var next = new Dictionary<DifficultyTier, int>();
+            foreach (var t in tiers)
+            {
+                var steppedUp = (DifficultyTier)Math.Clamp((int)t + 1, (int)config.MinDifficulty, (int)config.MaxDifficulty);
+                var steppedDown = (DifficultyTier)Math.Clamp((int)t - 1, (int)config.MinDifficulty, (int)config.MaxDifficulty);
+                next[t] = (t == targetTier ? 1 : 0) + Math.Max(bestFromHere[steppedUp], bestFromHere[steppedDown]);
+            }
+            bestFromHere = next;
+        }
+
+        return bestFromHere[config.StartingDifficulty];
+    }
 
     public void Publish()
     {
@@ -298,18 +447,39 @@ public class Assessment
     /// OpenAnswer questions are never auto-graded (Correct is null on their
     /// result) and are excluded from the score entirely — reviewed for
     /// participation, not held against the learner one way or the other.
+    ///
+    /// Also computes a per-AssessedObjective competency breakdown
+    /// (Competency-Based Learning — Design Proposal §3-4), over the exact
+    /// same set of graded Questions the score itself is computed from — an
+    /// untagged Question never contributes, and a Question excluded from
+    /// scoring (OpenAnswer, or omitted via <paramref name="questionIdsToGrade"/>)
+    /// is excluded from the breakdown for the same reason it's excluded from
+    /// the score: no correct/incorrect signal exists for it.
+    ///
+    /// <paramref name="questionIdsToGrade"/> — Adaptive Assessment — Design
+    /// Proposal §4a.1-4a.2: defaults to null, meaning "every Question on this
+    /// Assessment," exactly today's behavior for every existing caller. An
+    /// adaptive Submission passes the subset it actually presented, so a
+    /// pool larger than one attempt's QuestionsPerAttempt doesn't silently
+    /// count every unpresented Question as wrong (§4a.1's bug this parameter
+    /// exists to close).
     /// </summary>
-    public (int ScorePercent, bool Passed, IReadOnlyList<QuestionGradeResult> PerQuestion) Grade(
-        IReadOnlyDictionary<Guid, SubmittedAnswer> answersByQuestionId)
+    public (int ScorePercent, bool Passed, IReadOnlyList<QuestionGradeResult> PerQuestion, IReadOnlyList<CompetencyResult> CompetencyLevels) Grade(
+        IReadOnlyDictionary<Guid, SubmittedAnswer> answersByQuestionId, IReadOnlyCollection<Guid>? questionIdsToGrade = null)
     {
         if (_questions.Count == 0)
             throw new InvalidOperationException("This assessment has no questions to grade against.");
 
+        var questionsToGrade = questionIdsToGrade is null
+            ? _questions
+            : _questions.Where(q => questionIdsToGrade.Contains(q.Id));
+
         var earned = 0;
         var possible = 0;
         var results = new List<QuestionGradeResult>();
+        var competencyTally = new Dictionary<string, (int Correct, int Total)>();
 
-        foreach (var q in _questions.OrderBy(q => q.Position))
+        foreach (var q in questionsToGrade.OrderBy(q => q.Position))
         {
             answersByQuestionId.TryGetValue(q.Id, out var answer);
 
@@ -340,6 +510,12 @@ public class Assessment
             {
                 possible += q.Points;
                 if (correct == true) earned += q.Points;
+
+                if (q.AssessedObjective is { } objective)
+                {
+                    var (priorCorrect, priorTotal) = competencyTally.GetValueOrDefault(objective);
+                    competencyTally[objective] = (priorCorrect + (correct == true ? 1 : 0), priorTotal + 1);
+                }
             }
 
             results.Add(new QuestionGradeResult(q.Id, correct, correctAnswerDisplay));
@@ -347,8 +523,39 @@ public class Assessment
 
         // No auto-gradable questions (an all-OpenAnswer quiz): nothing to fail, so a vacuous pass.
         var scorePercent = possible == 0 ? 100 : (int)Math.Round(earned * 100.0 / possible);
-        return (scorePercent, scorePercent >= PassingThresholdPercent, results);
+        var competencyLevels = competencyTally
+            .Select(kvp => new CompetencyResult(kvp.Key, DetermineCompetencyLevel(kvp.Value.Correct, kvp.Value.Total)))
+            .ToList();
+        return (scorePercent, scorePercent >= PassingThresholdPercent, results, competencyLevels);
     }
+
+    /// <summary>Competency-Based Learning — Design Proposal §4's exact thresholds. See CompetencyLevel's remarks for why Proficient never comes out of this rule.</summary>
+    private static CompetencyLevel DetermineCompetencyLevel(int correct, int total)
+    {
+        var percent = correct * 100.0 / total;
+        return percent >= 80 ? CompetencyLevel.Mastered
+             : percent >= 50 ? CompetencyLevel.Developing
+             : CompetencyLevel.NotYet;
+    }
+
+    /// <summary>
+    /// Picks an unused Question at the given tier for an adaptive attempt
+    /// (Adaptive Assessment — Design Proposal §4a.4) — random within the
+    /// tier, so every attempt doesn't walk the same fixed order. Null means
+    /// the pool ran out of that tier before QuestionsPerAttempt was reached —
+    /// exactly what PublicationBlocker's adaptive check exists to prevent
+    /// against a properly published Assessment, so a caller sees this as an
+    /// invariant violation, not a normal outcome.
+    /// </summary>
+    public Guid? SelectNextAdaptiveQuestion(DifficultyTier tier, IReadOnlySet<Guid> excludeQuestionIds) =>
+        _questions
+            .Where(q => q.DifficultyTier == tier && !excludeQuestionIds.Contains(q.Id))
+            .OrderBy(_ => Guid.NewGuid())
+            .Select(q => (Guid?)q.Id)
+            .FirstOrDefault();
+
+    /// <summary>The tier a pool Question was authored at — used by Submission.RecordAdaptiveAnswer to run the staircase rule. Null for a Question that was never tagged (not part of any adaptive pool).</summary>
+    public DifficultyTier? FindQuestionTier(Guid questionId) => FindQuestion(questionId).DifficultyTier;
 
     private Question FindQuestion(Guid questionId) =>
         _questions.FirstOrDefault(q => q.Id == questionId)

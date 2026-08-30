@@ -324,7 +324,7 @@ public class LearningDeliveryService(
 
         var assessmentIds = assessmentsByLesson.SelectMany(g => g).Select(a => a.Id).ToList();
         var mySubmissions = assessmentIds.Count == 0 ? [] : await db.Submissions.AsNoTracking()
-            .Where(s => assessmentIds.Contains(s.AssessmentId) && s.MembershipId == ctx.MembershipId && s.Status == SubmissionStatus.Graded)
+            .Where(s => s.AssessmentId != null && assessmentIds.Contains(s.AssessmentId.Value) && s.MembershipId == ctx.MembershipId && s.Status == SubmissionStatus.Graded)
             .OrderByDescending(s => s.GradedAt)
             .ToListAsync(ct);
         // This learner's most recent Graded attempt per Assessment — a retake
@@ -490,13 +490,19 @@ public class LearningDeliveryService(
             .OrderByDescending(s => s.GradedAt)
             .FirstOrDefaultAsync(ct);
 
-        var questions = assessment.Questions.OrderBy(q => q.Position)
+        var isAdaptive = assessment.AdaptiveConfiguration is { Enabled: true };
+
+        // Adaptive: the pool stays server-side (§6's invariant) — the client
+        // only ever sees the one Question /adaptive/start or /adaptive/answer
+        // just handed it, never the full pool up front.
+        var questions = isAdaptive ? [] : assessment.Questions.OrderBy(q => q.Position)
             .Select(q => new LearnerQuestionRow(q.Id, q.Type.ToString(), q.Prompt, q.Options, q.VideoTimestampSeconds, q.Points))
             .ToList();
 
         return new LearnerStandaloneAssessmentSummary(
             assessment.Id, assessment.Title, assessment.PassingThresholdPercent, questions,
-            Attempted: latest is not null, latest?.ScorePercent, latest?.Passed);
+            Attempted: latest is not null, latest?.ScorePercent, latest?.Passed, isAdaptive,
+            assessment.AdaptiveConfiguration?.QuestionsPerAttempt);
     }
 
     /// <summary>
@@ -727,7 +733,8 @@ public class LearningDeliveryService(
 
         return ProvisioningResult<PreviewResult>.Success(new PreviewResult(
             submission.ScorePercent, submission.Passed, assessment.PassingThresholdPercent, feedback,
-            perQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList()));
+            perQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList(),
+            submission.CompetencyLevels.Select(c => new CompetencyResultRow(c.Objective, c.Level.ToString())).ToList()));
     }
 
     /// <summary>
@@ -808,12 +815,140 @@ public class LearningDeliveryService(
 
         return ProvisioningResult<PreviewResult>.Success(new PreviewResult(
             submission.ScorePercent, submission.Passed, assessment.PassingThresholdPercent, feedback,
-            perQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList()));
+            perQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList(),
+            submission.CompetencyLevels.Select(c => new CompetencyResultRow(c.Objective, c.Level.ToString())).ToList()));
     }
 
     private async Task<bool> HasPassingSubmissionAsync(Guid assessmentId, Guid membershipId, CancellationToken ct)
         => await db.Submissions.AsNoTracking()
             .AnyAsync(s => s.AssessmentId == assessmentId && s.MembershipId == membershipId && s.Passed, ct);
+
+    /// <summary>
+    /// Starts a new adaptive attempt at the lesson's Standalone quiz (Adaptive
+    /// Assessment — Design Proposal §4a.5) and returns Question #1 — the
+    /// "first question bootstrap" the design calls for right after
+    /// Submission.Start(): Start() itself needs no change, this caller picks
+    /// the opening Question via SelectNextAdaptiveQuestion immediately after.
+    /// </summary>
+    public async Task<ProvisioningResult<AdaptiveStartResponse>> StartAdaptiveAssessmentAsync(
+        string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, ct);
+        if (ctx.Error is not null) return Fail<AdaptiveStartResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id
+                                    && l.Status == LessonStatus.Published, ct);
+        if (lesson is null) return Fail<AdaptiveStartResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var enrollment = await EnsureEnrolledAsync(ctx.Workspace!.Id, lesson.LearningProductId, ctx.MembershipId, ct);
+        if (enrollment is null)
+            return Fail<AdaptiveStartResponse>((ProvisioningError.Forbidden, NotEnrolledMessage));
+
+        if (await IsLessonLockedAsync(lesson.LearningProductId, lessonId, enrollment.Id, ct))
+            return Fail<AdaptiveStartResponse>((ProvisioningError.Forbidden, "Complete the previous lesson first."));
+
+        var progress = await EnsureProgressAsync(enrollment.Id, lessonId, lesson.CurrentRevisionId!.Value, ct);
+
+        // Same revision-pinning rule SubmitStandaloneAssessmentAsync uses.
+        var assessment = await db.Assessments.Include(a => a.Questions)
+            .FirstOrDefaultAsync(a => a.LessonRevisionId == progress.LessonRevisionId
+                                    && a.Kind == AssessmentKind.Standalone && a.Status == AssessmentStatus.Published, ct);
+        if (assessment is null || assessment.Questions.Count == 0)
+            return Fail<AdaptiveStartResponse>((ProvisioningError.Conflict, "This lesson has no standalone quiz to answer."));
+        if (assessment.AdaptiveConfiguration is not { Enabled: true } config)
+            return Fail<AdaptiveStartResponse>((ProvisioningError.Conflict, "This lesson's standalone quiz is not adaptive."));
+
+        var submission = Submission.Start(assessment.Id, ctx.MembershipId, enrollment.Id);
+        db.Submissions.Add(submission);
+
+        var firstQuestionId = assessment.SelectNextAdaptiveQuestion(config.StartingDifficulty, excludeQuestionIds: new HashSet<Guid>())
+            ?? throw new InvalidOperationException("Adaptive pool exhausted at the starting difficulty — publish-time validation should have prevented this.");
+        var firstQuestion = assessment.Questions.First(q => q.Id == firstQuestionId);
+
+        await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<AdaptiveStartResponse>.Success(new AdaptiveStartResponse(
+            submission.Id,
+            new LearnerQuestionRow(firstQuestion.Id, firstQuestion.Type.ToString(), firstQuestion.Prompt, firstQuestion.Options, null, firstQuestion.Points),
+            config.StartingDifficulty.ToString(), AnswerSequence: 0));
+    }
+
+    /// <summary>
+    /// Records one answer of an adaptive attempt and either hands back the
+    /// next Question or the finished attempt's result (Submission.
+    /// RecordAdaptiveAnswer, §4a.5). Completion updates LessonProgress the
+    /// same way SubmitStandaloneAssessmentAsync's batch path does.
+    /// </summary>
+    public async Task<ProvisioningResult<AdaptiveAnswerResponse>> RecordAdaptiveAnswerAsync(
+        string slug, Guid caller, Guid lessonId, RecordAdaptiveAnswerRequest request, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, ct);
+        if (ctx.Error is not null) return Fail<AdaptiveAnswerResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id
+                                    && l.Status == LessonStatus.Published, ct);
+        if (lesson is null) return Fail<AdaptiveAnswerResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var submission = await db.Submissions.Include(s => s.Answers)
+            .FirstOrDefaultAsync(s => s.Id == request.SubmissionId && s.MembershipId == ctx.MembershipId, ct);
+        if (submission is null) return Fail<AdaptiveAnswerResponse>((ProvisioningError.NotFound, "No such submission."));
+
+        var assessment = await db.Assessments.Include(a => a.Questions)
+            .FirstOrDefaultAsync(a => a.Id == submission.AssessmentId && a.LessonId == lessonId && a.Kind == AssessmentKind.Standalone, ct);
+        if (assessment is null) return Fail<AdaptiveAnswerResponse>((ProvisioningError.NotFound, "No such assessment."));
+
+        AdaptiveAnswerOutcome outcome;
+        try
+        {
+            outcome = submission.RecordAdaptiveAnswer(
+                assessment, request.AnswerSequence, request.QuestionId,
+                new SubmittedAnswer(request.SelectedOptionIndex, request.TextAnswer));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Fail<AdaptiveAnswerResponse>((ProvisioningError.Conflict, ex.Message));
+        }
+
+        if (outcome is AdaptiveAnswerOutcome.Complete complete)
+        {
+            var enrollment = await db.Enrollments.FirstAsync(e => e.Id == submission.EnrollmentId, ct);
+            var progress = await EnsureProgressAsync(enrollment.Id, lessonId, assessment.LessonRevisionId, ct);
+            var pinnedRevision = lesson.Revisions.First(r => r.Id == assessment.LessonRevisionId);
+
+            if (pinnedRevision.RequireQuizToComplete)
+            {
+                var hasVideo = pinnedRevision.VideoAssetId is not null || pinnedRevision.VideoUrl is not null;
+
+                var interactive = await db.Assessments.Include(a => a.Questions).AsNoTracking()
+                    .FirstOrDefaultAsync(a => a.LessonRevisionId == progress.LessonRevisionId
+                                            && a.Kind == AssessmentKind.Interactive && a.Status == AssessmentStatus.Published, ct);
+                var hasGradableAssessment = interactive is not null && interactive.Questions.Count > 0;
+                var hasPassingInteractive = hasGradableAssessment && await HasPassingSubmissionAsync(interactive!.Id, ctx.MembershipId, ct);
+
+                progress.RecomputeCompletion(hasVideo, hasGradableAssessment, hasPassingInteractive, requiresQuiz: true, quizPassed: complete.Passed);
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            return ProvisioningResult<AdaptiveAnswerResponse>.Success(new AdaptiveAnswerResponse(
+                Complete: true, NextQuestion: null, NextDifficultyTier: null, NextAnswerSequence: null,
+                ScorePercent: complete.ScorePercent, Passed: complete.Passed,
+                PerQuestion: complete.PerQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList(),
+                CompetencyLevels: submission.CompetencyLevels.Select(c => new CompetencyResultRow(c.Objective, c.Level.ToString())).ToList()));
+        }
+
+        var next = (AdaptiveAnswerOutcome.NextQuestion)outcome;
+        var nextQuestion = assessment.Questions.First(q => q.Id == next.QuestionId);
+        await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<AdaptiveAnswerResponse>.Success(new AdaptiveAnswerResponse(
+            Complete: false,
+            NextQuestion: new LearnerQuestionRow(nextQuestion.Id, nextQuestion.Type.ToString(), nextQuestion.Prompt, nextQuestion.Options, null, nextQuestion.Points),
+            NextDifficultyTier: next.Tier.ToString(), NextAnswerSequence: request.AnswerSequence + 1,
+            ScorePercent: null, Passed: null, PerQuestion: null));
+    }
 
     /// <summary>
     /// Whether this lesson is locked under the curriculum's sequential-unlock

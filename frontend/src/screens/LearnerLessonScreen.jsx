@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio, HelpCircle, FileText, ClipboardList, Paperclip,
+  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio, HelpCircle, FileText, ClipboardList, Paperclip, ListChecks,
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -8,6 +8,7 @@ import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
 import VideoPlayer from "../components/VideoPlayer";
 import MarkdownText from "../components/MarkdownText";
+import CompetencyBreakdown from "../components/CompetencyBreakdown";
 
 /* =========================================================================
    LESSON — watch the video, answer its questions, get graded for real.
@@ -26,7 +27,7 @@ const INLINE_RESOURCE_TYPES = new Set([
   "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
 ]);
 
-export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOpenAssistant, onOpenQuiz, onOpenContent, onOpenHomework, onOpenResources }) {
+export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOpenAssistant, onOpenQuiz, onOpenContent, onOpenHomework, onOpenResources, onOpenAssignments }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -192,6 +193,11 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
               <HelpCircle size={13} /> {t("learnerStudio.quiz")}
             </button>
           )}
+          {onOpenAssignments && (
+            <button type="button" className="lw-learn__askai" onClick={onOpenAssignments}>
+              <ListChecks size={13} /> {t("learnerAssignments.eyebrow")}
+            </button>
+          )}
           {onOpenAssistant && (
             <button type="button" className="lw-learn__askai" onClick={onOpenAssistant}>
               <Bot size={13} /> {t("aiAssistant.eyebrow")}
@@ -285,6 +291,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
                 );
               })}
             </div>
+            <CompetencyBreakdown levels={result.competencyLevels} />
           </div>
         )}
 

@@ -27,6 +27,9 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AdaptiveConfiguration")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -66,6 +69,102 @@ namespace Platform.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("assessments", (string)null);
+                });
+
+            modelBuilder.Entity("Platform.Domain.Assignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AttemptMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("AvailabilityMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Configured")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatorMembershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DueDateMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("EvaluationMethod")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("LearningActivityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("LearningProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("MaxAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("NotifyOnFeedbackPublished")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NotifyOnPublish")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ScheduledAvailabilityAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("SubmissionWindowEndAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SubmissionWindowStartAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Visible")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LearningActivityId")
+                        .IsUnique();
+
+                    b.HasIndex("LearningProductId");
+
+                    b.ToTable("assignments", (string)null);
                 });
 
             modelBuilder.Entity("Platform.Domain.BillingAccount", b =>
@@ -1035,6 +1134,51 @@ namespace Platform.Infrastructure.Migrations
                     b.ToTable("join_requests", (string)null);
                 });
 
+            modelBuilder.Entity("Platform.Domain.LearningActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AssessmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("Instructions")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid>("LessonRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonRevisionId");
+
+                    b.ToTable("learning_activities", (string)null);
+                });
+
             modelBuilder.Entity("Platform.Domain.LearningAsset", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1402,6 +1546,9 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("AssignmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1540,11 +1687,19 @@ namespace Platform.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
+                    b.Property<string>("AssessedObjective")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<Guid>("AssessmentId")
                         .HasColumnType("uuid");
 
                     b.Property<int?>("CorrectOptionIndex")
                         .HasColumnType("integer");
+
+                    b.Property<string>("DifficultyTier")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Explanation")
                         .HasMaxLength(2000)
@@ -1673,11 +1828,41 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("AssessmentId")
+                    b.Property<Guid?>("AssessmentId")
                         .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AssignmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool?>("AssignmentPassed")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("AttemptNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.Property<Guid>("EnrollmentId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("EvaluatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EvaluationMethod")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("EvaluatorMembershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("ExcludedFromAttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Feedback")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<DateTime?>("GradedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1687,6 +1872,13 @@ namespace Platform.Infrastructure.Migrations
 
                     b.Property<bool>("Passed")
                         .HasColumnType("boolean");
+
+                    b.Property<Guid?>("ResponseLearningAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResponseText")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<int>("ScorePercent")
                         .HasColumnType("integer");
@@ -1703,7 +1895,12 @@ namespace Platform.Infrastructure.Migrations
 
                     b.HasIndex("AssessmentId", "MembershipId");
 
-                    b.ToTable("submissions", (string)null);
+                    b.HasIndex("AssignmentId", "MembershipId");
+
+                    b.ToTable("submissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_submissions_exactly_one_target", "((\"AssessmentId\" IS NOT NULL)::int + (\"AssignmentId\" IS NOT NULL)::int) = 1");
+                        });
                 });
 
             modelBuilder.Entity("Platform.Domain.SubmissionAnswer", b =>
@@ -1731,6 +1928,31 @@ namespace Platform.Infrastructure.Migrations
                     b.ToTable("submission_answers", (string)null);
                 });
 
+            modelBuilder.Entity("Platform.Domain.SubmissionCompetencyLevel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Objective")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.ToTable("submission_competency_levels", (string)null);
+                });
+
             modelBuilder.Entity("Platform.Domain.Subscription", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1748,6 +1970,9 @@ namespace Platform.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CreditsGrantedThroughUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("CurrentConfigurationSnapshotId")
@@ -1985,6 +2210,15 @@ namespace Platform.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Platform.Domain.LearningActivity", b =>
+                {
+                    b.HasOne("Platform.Domain.LessonRevision", null)
+                        .WithMany("LearningActivities")
+                        .HasForeignKey("LessonRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Platform.Domain.LessonResource", b =>
                 {
                     b.HasOne("Platform.Domain.LessonRevision", null)
@@ -2016,6 +2250,15 @@ namespace Platform.Infrastructure.Migrations
                 {
                     b.HasOne("Platform.Domain.Submission", null)
                         .WithMany("Answers")
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Platform.Domain.SubmissionCompetencyLevel", b =>
+                {
+                    b.HasOne("Platform.Domain.Submission", null)
+                        .WithMany("CompetencyLevels")
                         .HasForeignKey("SubmissionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2057,6 +2300,8 @@ namespace Platform.Infrastructure.Migrations
 
             modelBuilder.Entity("Platform.Domain.LessonRevision", b =>
                 {
+                    b.Navigation("LearningActivities");
+
                     b.Navigation("Resources");
                 });
 
@@ -2068,6 +2313,8 @@ namespace Platform.Infrastructure.Migrations
             modelBuilder.Entity("Platform.Domain.Submission", b =>
                 {
                     b.Navigation("Answers");
+
+                    b.Navigation("CompetencyLevels");
                 });
 
             modelBuilder.Entity("Platform.Domain.WorkspaceLicense", b =>

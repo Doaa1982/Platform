@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+import CompetencyBreakdown from "../components/CompetencyBreakdown";
 
 /* =========================================================================
    QUIZ — one subscreen, two possible quizzes, decided by what the lesson
@@ -86,10 +87,12 @@ function LessonQuiz({ lessonId, slug, token, onBackToLesson }) {
 
       {lesson && (
         lesson.standaloneAssessment
-          ? <RealQuiz
-              assessment={lesson.standaloneAssessment}
-              onSubmit={(answers) => api.submitStandaloneAssessment(token, slug, lessonId, answers)}
-            />
+          ? (lesson.standaloneAssessment.isAdaptive
+              ? <AdaptiveQuiz assessment={lesson.standaloneAssessment} slug={slug} token={token} lessonId={lessonId} />
+              : <RealQuiz
+                  assessment={lesson.standaloneAssessment}
+                  onSubmit={(answers) => api.submitStandaloneAssessment(token, slug, lessonId, answers)}
+                />)
           : <PracticeQuiz lesson={lesson} slug={slug} token={token} lessonId={lessonId} />
       )}
     </div>
@@ -178,6 +181,7 @@ function RealQuiz({ assessment, onSubmit }) {
               })}
             </div>
           )}
+          {result && <CompetencyBreakdown levels={result.competencyLevels} />}
           <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" style={{ marginTop: 14, width: "fit-content" }}
                   onClick={() => { setRetaking(true); setResult(null); setAnswers({}); }}>
             {t("learnerLesson.retakeQuiz")}
@@ -227,6 +231,132 @@ function StandaloneQuestionField({ question, value, onChange }) {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The tutor's real, graded quiz when Adaptive Assessment is enabled
+ * (Adaptive Assessment — Design Proposal §4a.5) — one question at a time
+ * instead of RealQuiz's "answer everything, then submit" batch: the pool
+ * stays server-side (§6), so this only ever holds the one Question it was
+ * just given, plus the running answer sequence RecordAdaptiveAnswer's
+ * concurrency guard needs (§4a.6).
+ */
+function AdaptiveQuiz({ assessment, slug, token, lessonId }) {
+  const { t } = useLanguage();
+  const [state, setState] = useState(assessment.attempted ? "summary" : "idle"); // idle | in-progress | complete | summary
+  const [submissionId, setSubmissionId] = useState(null);
+  const [question, setQuestion] = useState(null);
+  const [difficultyTier, setDifficultyTier] = useState(null);
+  const [answerSequence, setAnswerSequence] = useState(0);
+  const [askedCount, setAskedCount] = useState(0);
+  const [answer, setAnswer] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+
+  async function start() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.startAdaptiveAssessment(token, slug, lessonId);
+      setSubmissionId(r.submissionId);
+      setQuestion(r.question);
+      setDifficultyTier(r.difficultyTier);
+      setAnswerSequence(r.answerSequence);
+      setAskedCount(1);
+      setAnswer(null);
+      setResult(null);
+      setState("in-progress");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitAnswer() {
+    if (!answer) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.recordAdaptiveAnswer(token, slug, lessonId, {
+        submissionId, answerSequence, questionId: question.id,
+        selectedOptionIndex: answer.selectedOptionIndex ?? null,
+        textAnswer: answer.textAnswer ?? null,
+      });
+      if (r.complete) {
+        setResult(r);
+        setState("complete");
+      } else {
+        setQuestion(r.nextQuestion);
+        setDifficultyTier(r.nextDifficultyTier);
+        setAnswerSequence(r.nextAnswerSequence);
+        setAskedCount((n) => n + 1);
+        setAnswer(null);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const priorSummary = state === "summary" ? { scorePercent: assessment.scorePercent, passed: assessment.passed } : null;
+
+  return (
+    <>
+      <div className="lw-eyebrow">{t("learnerLesson.standaloneEyebrow")}</div>
+      <h1>{assessment.title}</h1>
+      <p className="lw-ai__askingabout">{t("learnerLesson.adaptiveQuizNote")}</p>
+
+      {error && <Message type="error">{error}</Message>}
+
+      {(state === "idle" || state === "summary") && (
+        <div className="lw-studio__configcard">
+          {priorSummary && (
+            <p style={{ margin: "0 0 16px" }}>
+              <strong>{priorSummary.passed ? t("studio.passed") : t("studio.notYetPassing")} — {priorSummary.scorePercent}%</strong>
+            </p>
+          )}
+          <button type="button" className="lw-btn lw-btn--accent" disabled={busy} onClick={start}>
+            {busy ? <LoaderCircle size={14} className="lw-learn__spin" /> : <Sparkles size={14} />}
+            {priorSummary ? t("learnerLesson.retakeQuiz") : t("learnerLesson.startAdaptiveQuiz")}
+          </button>
+        </div>
+      )}
+
+      {state === "in-progress" && question && (
+        <div className="lw-learn__standaloneqform">
+          <p className="muted" style={{ margin: "0 0 4px", fontSize: "0.82rem" }}>
+            {assessment.adaptiveQuestionsPerAttempt
+              ? t("learnerLesson.adaptiveQuestionCountOf", { n: askedCount, total: assessment.adaptiveQuestionsPerAttempt })
+              : t("learnerLesson.adaptiveQuestionCount", { n: askedCount })}
+            {" · "}{t(`learnerStudio.difficulty${difficultyTier}`)}
+          </p>
+          <StandaloneQuestionField question={question} value={answer} onChange={setAnswer} />
+          <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={!answer || busy}
+                  style={{ width: "fit-content" }} onClick={submitAnswer}>
+            {busy ? <LoaderCircle size={13} className="lw-learn__spin" /> : <Check size={13} />} {t("learnerLesson.submitAnswer")}
+          </button>
+        </div>
+      )}
+
+      {state === "complete" && result && (
+        <div className="lw-aicard" style={{ marginTop: 14, flexDirection: "column", alignItems: "stretch" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <Bot size={16} />
+            <div className="lw-aicard__body">
+              <strong>{result.passed ? t("studio.passed") : t("studio.notYetPassing")} — {result.scorePercent}%</strong>
+            </div>
+          </div>
+          <CompetencyBreakdown levels={result.competencyLevels} />
+          <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" style={{ marginTop: 14, width: "fit-content" }} onClick={start}>
+            {t("learnerLesson.retakeQuiz")}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 

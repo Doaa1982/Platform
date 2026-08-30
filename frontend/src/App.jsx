@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMediaQuery } from "usehooks-ts";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, Lock, LogOut, Menu, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, X
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, ListChecks, Lock, LogOut, Menu, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, X, Zap
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -16,7 +16,7 @@ import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
 import WorkspaceHomeScreen from "./screens/WorkspaceHomeScreen";
 import NotBuiltYet from "./screens/NotBuiltYet";
 import ProductsScreen from "./screens/ProductsScreen";
-import SubscriptionScreen, { PlansScreen } from "./screens/SubscriptionScreen";
+import SubscriptionScreen, { PlansScreen, AiCreditsScreen } from "./screens/SubscriptionScreen";
 import ContentStudioScreen, { LessonEditorScreen } from "./screens/ContentStudioScreen";
 import LearnerHomeScreen from "./screens/LearnerHomeScreen";
 import LearnerCoursesScreen from "./screens/LearnerCoursesScreen";
@@ -28,6 +28,9 @@ import HomeworkScreen from "./screens/HomeworkScreen";
 import ResourcesScreen from "./screens/ResourcesScreen";
 import AssessmentsOverviewScreen from "./screens/AssessmentsOverviewScreen";
 import LearnerAssessmentsScreen from "./screens/LearnerAssessmentsScreen";
+import AssignmentsOverviewScreen from "./screens/AssignmentsOverviewScreen";
+import LearnerAssignmentsScreen from "./screens/LearnerAssignmentsScreen";
+import AssignmentSubmissionScreen from "./screens/AssignmentSubmissionScreen";
 import * as api from "./api/client";
 
 /* Single breakpoint the app shell collapses at — shared between the JS
@@ -543,6 +546,7 @@ const LEARNER_NAV = [
   { id: "dashboard", labelKey: "learnerNav.dashboard", icon: LayoutDashboard },
   { id: "courses", labelKey: "learnerNav.courses", icon: BookOpen },
   { id: "assessments", labelKey: "learnerNav.assessments", icon: ClipboardCheck, capability: "assessments" },
+  { id: "assignments", labelKey: "learnerNav.assignments", icon: ListChecks },
   { id: "certificates", labelKey: "learnerNav.certificates", icon: Award, capability: "certificates" },
   { id: "schedule", labelKey: "learnerNav.schedule", icon: Calendar, capability: "schedule" },
   { id: "messages", labelKey: "learnerNav.messages", icon: MessageSquare, capability: "messages" },
@@ -570,6 +574,7 @@ const OWNER_NAV = [
   // { id: "communication", labelKey: "nav.communication", icon: Megaphone },
   { dividerKey: "nav.prove" },
   { id: "assessment", labelKey: "nav.assessmentCertificates", icon: Award },
+  { id: "assignments", labelKey: "nav.assignments", icon: ListChecks },
   { dividerKey: "nav.configure" },
   // The real Workspace lifecycle, above the prototype's settings panel
   { id: "setup", labelKey: "nav.workspaceSetup", icon: Rocket },
@@ -577,10 +582,14 @@ const OWNER_NAV = [
   // still-unbuilt "commerce" item above, which is what this tutor charges
   // *their* students, not what they pay the platform.
   { id: "billing", labelKey: "nav.billing", icon: Receipt },
-  // Buying add-ons, AI credits, or upgrading plan — kept as its own nav
-  // destination rather than a button off Billing, so it stays reachable
-  // regardless of the subscription's status (e.g. a Pending first checkout).
+  // Buying add-ons or upgrading plan — kept as its own nav destination
+  // rather than a button off Billing, so it stays reachable regardless of
+  // the subscription's status (e.g. a Pending first checkout).
   { id: "plans", labelKey: "nav.plans", icon: Sparkles },
+  // A one-time consumable top-up, not a recurring plan/pack change — its
+  // own nav item rather than a button tucked inside Add-ons, same reasoning
+  // as Plans getting its own item instead of living inside Billing.
+  { id: "aiCredits", labelKey: "nav.aiCredits", icon: Zap },
   { id: "settings", labelKey: "nav.workspaceSettings", icon: Settings },
 ];
 
@@ -812,6 +821,7 @@ export default function App() {
   // which lesson is currently open.
   const [learnerProductId, setLearnerProductId] = useState(null);
   const [learnerLessonId, setLearnerLessonId] = useState(null);
+  const [learnerAssignment, setLearnerAssignment] = useState(null); // { lessonId, activityId }
   // Bumped whenever the open lesson's completion status changes, so
   // LessonSidebar (a sibling, not a child, of LearnerLessonScreen) knows to
   // re-fetch and reflect it — see LearnerLessonScreen's onProgress prop.
@@ -947,6 +957,7 @@ export default function App() {
                   onOpenContent={() => setLearnerScreen("content")}
                   onOpenHomework={() => setLearnerScreen("homework")}
                   onOpenResources={() => setLearnerScreen("resources")}
+                  onOpenAssignments={() => setLearnerScreen("assignments")}
                 />
               : <NotBuiltYet area={t("notBuilt.lessonArea")} onNavigate={setLearnerScreen}
                   blurb={t("notBuilt.lessonBlurb")}
@@ -985,6 +996,17 @@ export default function App() {
               onOpenLesson={(id) => { setLearnerLessonId(id); setLearnerScreen("lesson"); }}
             />
           )}
+          {role === "learner" && learnerScreen === "assignments" && (
+            <LearnerAssignmentsScreen
+              onOpenAssignment={(lessonId, activityId) => { setLearnerAssignment({ lessonId, activityId }); setLearnerScreen("assignmentSubmission"); }}
+            />
+          )}
+          {role === "learner" && learnerScreen === "assignmentSubmission" && learnerAssignment && (
+            <AssignmentSubmissionScreen
+              lessonId={learnerAssignment.lessonId} activityId={learnerAssignment.activityId}
+              onBack={() => setLearnerScreen("assignments")}
+            />
+          )}
           {role === "learner" && learnerScreen === "certificates" && (
             <NotBuiltYet area={t("notBuilt.certificatesArea")} onNavigate={setLearnerScreen}
               blurb={t("notBuilt.certificatesBlurb")} />
@@ -1019,6 +1041,7 @@ export default function App() {
           {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
           {role === "owner" && ownerScreen === "billing" && <SubscriptionScreen />}
           {role === "owner" && ownerScreen === "plans" && <PlansScreen />}
+          {role === "owner" && ownerScreen === "aiCredits" && <AiCreditsScreen />}
 
           {role === "owner" && ownerScreen === "products" && (
             <ProductsScreen onOpenStudio={(id) => { setStudioProductId(id); setOwnerScreen("studio"); }} />
@@ -1042,6 +1065,9 @@ export default function App() {
           )}
           {role === "owner" && ownerScreen === "assessment" && (
             <AssessmentsOverviewScreen />
+          )}
+          {role === "owner" && ownerScreen === "assignments" && (
+            <AssignmentsOverviewScreen />
           )}
           {role === "owner" && ownerScreen === "settings" && (
             <NotBuiltYet area={t("notBuilt.settingsArea")} onNavigate={setOwnerScreen}
@@ -1179,7 +1205,14 @@ const CSS = `
     background: var(--danger); opacity: 0.45; pointer-events: none;
   }
   .lw-page { max-width: 880px; margin: 0 auto; animation: lwFade .3s ease; }
-  @keyframes lwFade { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
+  /* opacity-only, deliberately no transform: an ancestor with any transform
+     (even translateY(0) at animation end, since that isn't the same as
+     "none") creates a new containing block — in Safari specifically, this
+     breaks native select dropdown positioning for every select anywhere
+     inside it, rendering the option list off past the page edge. .lw-page
+     uses this animation and wraps almost every screen, so this one
+     keyframe change is the actual fix, not a per-select patch. */
+  @keyframes lwFade { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .lw-page { animation: none; } }
 
   /* UIC-004: a page or panel's own title (its eyebrow + h1, or a panel's h2)
@@ -1424,6 +1457,11 @@ const CSS = `
   .lw-listrow__meta { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
   .lw-tag { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; background: var(--surface-2); padding: 2px 7px; border-radius: 20px; color: var(--ink-soft); }
   .lw-tag--new { background: var(--accent); color: var(--on-accent, #fff); }
+  /* Competency-Based Learning — Design Proposal §4: Mastered/Proficient read as success, Developing as caution, NotYet as attention-needed. */
+  .lw-tag--competency-mastered { background: color-mix(in srgb, var(--accent-2) 18%, var(--surface-2)); color: var(--accent-2); }
+  .lw-tag--competency-proficient { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); color: var(--accent); }
+  .lw-tag--competency-developing { background: #F0C040; color: #4A3A00; }
+  .lw-tag--competency-notyet { background: color-mix(in srgb, var(--danger) 15%, var(--surface-2)); color: var(--danger); }
   .lw-timestamp { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); background: var(--surface-2); }
   .lw-scorepill { font-family: var(--font-mono); font-weight: 600; font-size: 0.85rem; background: var(--surface-2); padding: 6px 12px; border-radius: var(--radius-sm); color: var(--accent-2); }
 

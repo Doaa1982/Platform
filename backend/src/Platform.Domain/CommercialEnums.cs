@@ -33,9 +33,12 @@ public enum AiAssistanceLevel { Manual, Assist, CoPilot }
 /// The five Capability Packs confirmed to ship at V1 launch (Decision Brief
 /// #3), plus ExtraStudents/ExtraStorage — same additive-capacity shape as
 /// Collaboration (extra tutor seats), added for the learner-capacity and
-/// video-storage caps.
+/// video-storage caps. CollaborationPlus is a second, bigger tutor-capacity
+/// tier alongside Collaboration rather than a quantity on it — a tutor picks
+/// whichever tier fits instead of buying the same pack more than once, which
+/// the checkbox-based Add-ons UI has no way to express.
 /// </summary>
-public enum CapabilityPack { AiAuthor, AiAssessment, AiMentor, Branding, Collaboration, ExtraStudents, ExtraStorage }
+public enum CapabilityPack { AiAuthor, AiAssessment, AiMentor, Branding, Collaboration, CollaborationPlus, ExtraStudents, ExtraStorage }
 
 /// <summary>
 /// Subscription lifecycle (Commercial Domain V1 Scope §2.3's ratified 8-state

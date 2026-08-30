@@ -29,6 +29,19 @@ public class LearningAssetsController(LearningAssetService assets) : ControllerB
         return Run(await assets.UploadAsync(slug, Caller(), file.FileName, file.ContentType, file.Length, stream, title, parsedCategory, ct));
     }
 
+    /// <summary>A learner attaching their own completed work (e.g. a filled-out worksheet) to an Assignment Submission's Response — see LearningAssetService.UploadForSubmissionAsync.</summary>
+    [HttpPost("submission")]
+    [RequestSizeLimit(500_000_000)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 500_000_000)]
+    public async Task<ActionResult<LearningAssetResponse>> UploadForSubmission(
+        string slug, IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { message = "No file was uploaded." });
+
+        await using var stream = file.OpenReadStream();
+        return Run(await assets.UploadForSubmissionAsync(slug, Caller(), file.FileName, file.ContentType, file.Length, stream, ct));
+    }
+
     /// <summary>Streams the file back with range support, so a browser &lt;video&gt; element can seek.</summary>
     [HttpGet("{assetId:guid}/download")]
     public async Task<IActionResult> Download(string slug, Guid assetId, CancellationToken ct)

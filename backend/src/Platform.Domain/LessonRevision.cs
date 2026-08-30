@@ -14,6 +14,7 @@ namespace Platform.Domain;
 public class LessonRevision
 {
     private readonly List<LessonResource> _resources = [];
+    private readonly List<LearningActivity> _learningActivities = [];
 
     public Guid Id { get; private set; }
     public Guid LessonId { get; private set; }
@@ -128,6 +129,17 @@ public class LessonRevision
     /// revision cycle the way the video or delivery mode does.
     /// </summary>
     public IReadOnlyCollection<LessonResource> Resources => _resources.AsReadOnly();
+
+    /// <summary>
+    /// The work this revision assigns to learners — Learning Activity
+    /// Assignment Business Analysis BA-001/BA-003: owned and versioned
+    /// together with this revision, no independent publication lifecycle.
+    /// Unlike <see cref="Resources"/>, these are Draft-only to edit (BA §8:
+    /// "Editing Learning Activities after publication requires creating a
+    /// new Lesson Revision") — a Learning Activity is instructional design,
+    /// not safe metadata.
+    /// </summary>
+    public IReadOnlyCollection<LearningActivity> LearningActivities => _learningActivities.AsReadOnly();
 
     /// <summary>
     /// When true, the lesson only completes once the learner also passes its
@@ -268,6 +280,48 @@ public class LessonRevision
         RequireQuizToComplete = requireQuizToComplete;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    /// <summary>Adds a Learning Activity to this revision's instructional design. Draft-only — see <see cref="LearningActivities"/>.</summary>
+    public LearningActivity AddLearningActivity(
+        LearningActivityType type, string title, string? instructions, Guid? assessmentId = null, string? externalUrl = null)
+    {
+        RequireDraft();
+        var activity = LearningActivity.Create(Id, type, title, instructions, _learningActivities.Count, assessmentId, externalUrl);
+        _learningActivities.Add(activity);
+        UpdatedAt = DateTime.UtcNow;
+        return activity;
+    }
+
+    public void UpdateLearningActivity(Guid activityId, LearningActivityType type, string title, string? instructions, Guid? assessmentId, string? externalUrl)
+    {
+        RequireDraft();
+        FindLearningActivity(activityId).Edit(type, title, instructions, assessmentId, externalUrl);
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void RemoveLearningActivity(Guid activityId)
+    {
+        RequireDraft();
+        _learningActivities.RemoveAll(a => a.Id == activityId);
+        var ordered = _learningActivities.OrderBy(a => a.Position).ToList();
+        for (var i = 0; i < ordered.Count; i++) ordered[i].MoveTo(i);
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void ReorderLearningActivities(IReadOnlyList<Guid> orderedActivityIds)
+    {
+        RequireDraft();
+        if (orderedActivityIds.Count != _learningActivities.Count || orderedActivityIds.Distinct().Count() != _learningActivities.Count)
+            throw new ArgumentException("The given order must list every existing activity on this revision exactly once.", nameof(orderedActivityIds));
+
+        for (var i = 0; i < orderedActivityIds.Count; i++)
+            FindLearningActivity(orderedActivityIds[i]).MoveTo(i);
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    private LearningActivity FindLearningActivity(Guid activityId) =>
+        _learningActivities.FirstOrDefault(a => a.Id == activityId)
+        ?? throw new InvalidOperationException("This lesson revision has no learning activity with that id.");
 
     // ── Transcript (AI Capability Architecture §8, "Generate Transcript") ──────
     //
