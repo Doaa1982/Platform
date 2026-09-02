@@ -179,6 +179,30 @@ public class JoinRequestService(
     }
 
     /// <summary>
+    /// Cancels a Submitted Join Request via the same Status Link the
+    /// requester uses to check on it (§16, TD-018) — the domain method
+    /// (JoinRequest.Cancel) existed from the start but nothing ever called
+    /// it, leaving a requester with no way to actually cancel their own
+    /// request, only to see its status.
+    /// </summary>
+    public async Task<ProvisioningResult<string>> CancelAsync(string rawToken, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken))
+            return Fail<string>("This link isn't valid.", ProvisioningError.NotFound);
+
+        var hash = SecureToken.Hash(rawToken);
+        var joinRequest = await db.JoinRequests.FirstOrDefaultAsync(r => r.TokenHash == hash, ct);
+        if (joinRequest is null || !joinRequest.StatusLinkIsValid())
+            return Fail<string>("This link isn't valid.", ProvisioningError.NotFound);
+
+        try { joinRequest.Cancel(); }
+        catch (InvalidOperationException ex) { return Fail<string>(ex.Message, ProvisioningError.Conflict); }
+
+        await db.SaveChangesAsync(ct);
+        return ProvisioningResult<string>.Success(joinRequest.Status.ToString());
+    }
+
+    /// <summary>
     /// Resolves a status link, treating an expired one as no match at all. A
     /// refusal that still confirmed the request existed would leak the very
     /// thing the expiry is there to stop leaking (same reasoning as
@@ -213,8 +237,8 @@ public class JoinRequestService(
             ("Your request wasn't approved",
              "This workspace decided not to approve your request at this time."),
 
-        JoinRequestStatus.Withdrawn =>
-            ("You withdrew this request",
+        JoinRequestStatus.Cancelled =>
+            ("You cancelled this request",
              "No decision was made. You're welcome to ask again."),
 
         _ => ("Join request", string.Empty),

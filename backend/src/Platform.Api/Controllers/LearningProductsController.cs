@@ -73,6 +73,8 @@ public class LearningProductsController(LearningProductService products, Workspa
         ProvisioningError.NotFound  => NotFound(new { message = result.Message }),
         ProvisioningError.Conflict  => Conflict(new { message = result.Message }),
         ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = result.Message }),
+        ProvisioningError.CreditsExhausted => StatusCode(StatusCodes.Status402PaymentRequired,
+            new { message = result.Message, code = "credits_exhausted", requiredCredits = result.RequiredCredits, remainingCredits = result.RemainingCredits }),
         _                           => BadRequest(new { message = result.Message }),
     };
 
@@ -82,6 +84,8 @@ public class LearningProductsController(LearningProductService products, Workspa
         ProvisioningError.NotFound  => NotFound(new { message = result.Message }),
         ProvisioningError.Conflict  => Conflict(new { message = result.Message }),
         ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = result.Message }),
+        ProvisioningError.CreditsExhausted => StatusCode(StatusCodes.Status402PaymentRequired,
+            new { message = result.Message, code = "credits_exhausted", requiredCredits = result.RequiredCredits, remainingCredits = result.RemainingCredits }),
         _                           => BadRequest(new { message = result.Message }),
     };
 

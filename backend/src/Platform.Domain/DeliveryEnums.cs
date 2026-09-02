@@ -4,7 +4,8 @@ namespace Platform.Domain;
 /// Whether a Learner's access to a Learning Product is ongoing or done
 /// (Enrollment Aggregate Design §15 — simplified here, see Enrollment.cs).
 /// </summary>
-public enum EnrollmentStatus { Active, Completed }
+/// <summary>Cancelled added so WorkspaceMemberService.UnenrollMemberAsync can end an Enrollment without hard-deleting it (and the LessonProgress history keyed to it) — see Enrollment.Cancel/Reactivate.</summary>
+public enum EnrollmentStatus { Active, Completed, Cancelled }
 
 /// <summary>
 /// A Submission's lifecycle. <see cref="InProgress"/>/<see cref="Graded"/>

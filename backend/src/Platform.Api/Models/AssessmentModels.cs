@@ -17,6 +17,8 @@ public record AssessmentResponse(
     /// <summary>Why publication is refused right now, or null when it is allowed.</summary>
     string? PublicationBlocker,
     IReadOnlyList<QuestionRow> Questions,
+    /// <summary>Null means unlimited retakes.</summary>
+    int? AttemptLimit = null,
     /// <summary>Null unless a tutor has opted this (Standalone-only) assessment into adaptive delivery — see AdaptiveConfigurationResponse.</summary>
     AdaptiveConfigurationResponse? AdaptiveConfiguration = null);
 
@@ -34,7 +36,7 @@ public record QuestionRow(
     /// <summary>"Easy" | "Medium" | "Hard", or null for a Question that isn't part of an adaptive pool (Adaptive Assessment).</summary>
     string? DifficultyTier = null);
 
-public record SaveAssessmentRequest(string Title, int? PassingThresholdPercent);
+public record SaveAssessmentRequest(string Title, int? PassingThresholdPercent, int? AttemptLimit = null);
 
 public record SaveQuestionRequest(
     string Type, string Prompt,
@@ -155,8 +157,13 @@ public record QuestionStatsRow(
     int TotalAnswered, int? CorrectCount, IReadOnlyList<int>? OptionCounts);
 
 public record AssessmentSubmissionRow(
-    Guid MembershipId, string LearnerName, string LearnerEmail,
-    int ScorePercent, bool Passed, DateTime SubmittedAt);
+    Guid SubmissionId, Guid MembershipId, string LearnerName, string LearnerEmail,
+    /// <summary>Effective values — the override if one exists, otherwise the original automatic grade.</summary>
+    int ScorePercent, bool Passed, DateTime SubmittedAt,
+    bool IsOverridden = false, string? OverrideNote = null);
+
+/// <summary>A tutor's manual correction of an already-graded Assessment-target Submission — see Submission.OverrideGrade.</summary>
+public record OverrideGradeRequest(bool Passed, int? ScorePercent, string? Note);
 
 public record AssessmentDetailResponse(
     Guid AssessmentId, string Title, string Status, int PassingThresholdPercent,

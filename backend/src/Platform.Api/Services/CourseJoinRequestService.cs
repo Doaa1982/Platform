@@ -35,7 +35,8 @@ public class CourseJoinRequestService(PlatformDbContext db)
             return Fail<string>("This course isn't accepting requests.", ProvisioningError.Conflict);
 
         var alreadyEnrolled = await db.Enrollments.AnyAsync(
-            e => e.LearningProductId == learningProductId && e.MembershipId == membershipId, ct);
+            e => e.LearningProductId == learningProductId && e.MembershipId == membershipId
+              && e.Status != EnrollmentStatus.Cancelled, ct);
         if (alreadyEnrolled)
             return Fail<string>("You're already enrolled in this course.", ProvisioningError.Conflict);
 
@@ -96,13 +97,30 @@ public class CourseJoinRequestService(PlatformDbContext db)
             .FirstOrDefaultAsync(r => r.Id == requestId && r.WorkspaceId == workspace!.Id, ct);
         if (courseJoinRequest is null) return Fail<string>("No such request.", ProvisioningError.NotFound);
 
-        var alreadyEnrolled = await db.Enrollments.AnyAsync(
+        // Only checked at submission time (ResolveLearnerAsync) until now —
+        // if the requester was suspended or removed while this request sat
+        // Submitted, approving it would create an Enrollment for a no-longer-
+        // Active Membership (Enrollment Aggregate Design INV-002). Every real
+        // access check re-verifies Active Membership independently, so that
+        // dangling Enrollment never actually granted anything — but it's an
+        // unreachable-by-design state a stricter check catches instead of
+        // silently producing.
+        var requesterMembershipStatus = await db.Memberships.AsNoTracking()
+            .Where(m => m.Id == courseJoinRequest.MembershipId)
+            .Select(m => m.Status).FirstOrDefaultAsync(ct);
+        if (requesterMembershipStatus != MembershipStatus.Active)
+            return Fail<string>("This member is no longer active in the workspace.", ProvisioningError.Conflict);
+
+        var existingEnrollment = await db.Enrollments.FirstOrDefaultAsync(
             e => e.LearningProductId == courseJoinRequest.LearningProductId && e.MembershipId == courseJoinRequest.MembershipId, ct);
-        if (!alreadyEnrolled)
-        {
-            var enrollment = Enrollment.Create(workspace!.Id, courseJoinRequest.LearningProductId, courseJoinRequest.MembershipId);
-            db.Enrollments.Add(enrollment);
-        }
+        // A previously Cancelled Enrollment is reactivated rather than
+        // replaced — same reasoning as WorkspaceMemberService.EnrollMemberAsync:
+        // the unique index has no status filter, and reactivating preserves
+        // this learner's prior LessonProgress instead of discarding it.
+        if (existingEnrollment is { Status: EnrollmentStatus.Cancelled })
+            existingEnrollment.Reactivate();
+        else if (existingEnrollment is null)
+            db.Enrollments.Add(Enrollment.Create(workspace!.Id, courseJoinRequest.LearningProductId, courseJoinRequest.MembershipId));
 
         try { courseJoinRequest.Approve(callerIdentityId); }
         catch (InvalidOperationException ex) { return Fail<string>(ex.Message, ProvisioningError.Conflict); }

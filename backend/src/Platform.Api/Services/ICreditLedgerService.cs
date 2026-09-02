@@ -24,8 +24,15 @@ public interface ICreditLedgerService
     /// for a flat-priced skill. Returns <c>Success: false</c> rather than
     /// throwing when the balance is insufficient; the caller (AiOrchestrator)
     /// decides what that means for its own callers.
+    ///
+    /// <paramref name="idempotencyFingerprint"/> (optional): if a Consumption
+    /// entry with the same fingerprint for this workspace was recorded within
+    /// the last few minutes, this call succeeds without writing a second
+    /// debit — protects a client that never received the original response
+    /// (a timeout, a dropped connection) and retries the identical logical
+    /// request from paying twice for it.
     /// </summary>
-    Task<CreditDebitResult> TryDebitAsync(Guid workspaceId, string skillKey, int? band, CancellationToken ct = default);
+    Task<CreditDebitResult> TryDebitAsync(Guid workspaceId, string skillKey, int? band, CancellationToken ct = default, string? idempotencyFingerprint = null);
 
     /// <summary>Writes a compensating Refund entry for a prior Consumption entry — used when the provider call after a successful debit still fails.</summary>
     Task RefundAsync(Guid ledgerEntryId, CancellationToken ct = default);

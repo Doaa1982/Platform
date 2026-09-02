@@ -196,7 +196,17 @@ public class PlatformDbContext : DbContext
             // The admin's provisioning view lists invitations per Workspace, and
             // the single-active-invitation check queries by (email, workspace)
             entity.HasIndex(e => e.WorkspaceId);
-            entity.HasIndex(e => new { e.Email, e.WorkspaceId });
+
+            // §8: at most one open (Sent) Invitation per (email, workspace) —
+            // previously enforced only in WorkspaceMemberService.InviteAsync's
+            // application-level check, a plain check-then-act race under
+            // concurrent invite requests for the same email. WorkspaceMemberService
+            // now promotes a time-expired Sent row to Expired status before this
+            // check runs, which is what lets this filter see only genuinely open
+            // invitations — the filter itself can only see Status, not the clock.
+            entity.HasIndex(e => new { e.Email, e.WorkspaceId })
+                  .IsUnique()
+                  .HasFilter("\"Status\" = 'Sent'");
 
             entity.Property(e => e.IntendedRole)
                   .HasConversion<string>()
@@ -302,9 +312,14 @@ public class PlatformDbContext : DbContext
                   .HasMaxLength(32);
 
             // The reviewer's queue reads by Workspace; the single-open-request
-            // check reads by (email, workspace)
+            // check reads by (email, workspace). §10: at most one Submitted
+            // request per (email, workspace) — previously enforced only in
+            // JoinRequestService.SubmitAsync's application-level check, a
+            // plain check-then-act race under concurrent submissions.
             entity.HasIndex(e => e.WorkspaceId);
-            entity.HasIndex(e => new { e.Email, e.WorkspaceId });
+            entity.HasIndex(e => new { e.Email, e.WorkspaceId })
+                  .IsUnique()
+                  .HasFilter("\"Status\" = 'Submitted'");
         });
 
         modelBuilder.Entity<SignupRequest>(entity =>
@@ -631,9 +646,13 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Message).HasMaxLength(2000);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
 
-            // Not unique: a prior Declined request must not block a fresh one —
-            // "at most one open request" is enforced at the service layer.
-            entity.HasIndex(e => new { e.LearningProductId, e.MembershipId });
+            // A prior Declined request must not block a fresh one, so the
+            // filter (not the index shape) is what changed: at most one
+            // Submitted request per (product, membership) is now enforced
+            // here too, not just at the service layer's check-then-act.
+            entity.HasIndex(e => new { e.LearningProductId, e.MembershipId })
+                  .IsUnique()
+                  .HasFilter("\"Status\" = 'Submitted'");
         });
 
         modelBuilder.Entity<Submission>(entity =>
@@ -660,6 +679,7 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.EvaluatorMembershipId);
             entity.Property(e => e.EvaluationMethod).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.Feedback).HasMaxLength(4000);
+            entity.Property(e => e.OverrideNote).HasMaxLength(4000);
 
             // A learner's attempts at one assessment are read together for "latest attempt"
             entity.HasIndex(e => new { e.AssessmentId, e.MembershipId });
@@ -1030,10 +1050,16 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.WorkspaceId).IsRequired();
             entity.Property(e => e.EntryType).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.SkillKey).HasMaxLength(128);
+            entity.Property(e => e.IdempotencyFingerprint).HasMaxLength(64); // hex-encoded SHA-256
 
             // GetBalanceAsync sums every non-expired row for a workspace on
             // (effectively) every AI-assist call — the hot path this ledger exists for.
             entity.HasIndex(e => new { e.WorkspaceId, e.ExpiresAtUtc });
+
+            // CreditLedgerService.TryDebitAsync's retry-dedup lookup — not
+            // unique, since the same fingerprint legitimately recurs once the
+            // dedup time window has passed (see IdempotencyFingerprint's doc).
+            entity.HasIndex(e => new { e.WorkspaceId, e.IdempotencyFingerprint });
         });
 
         modelBuilder.Entity<SkillCreditCost>(entity =>

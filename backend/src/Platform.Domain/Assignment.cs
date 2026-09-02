@@ -118,6 +118,17 @@ public class Assignment
             throw new ArgumentException("The submission window cannot end before it starts.", nameof(submissionWindowEndAt));
         if (attemptMode == AssignmentAttemptMode.Multiple && maxAttempts is not > 0)
             throw new ArgumentException("Multiple-attempt mode needs a positive attempt limit.", nameof(maxAttempts));
+        // Automatic/AiAssisted/Hybrid are real values in the enum (Assignment
+        // Business Analysis §8) but no automatic-evaluation engine exists yet
+        // for an Assignment-target Submission — EvaluateSubmissionAsync only
+        // ever records a human tutor's Pass/Fail regardless of this setting.
+        // Letting a tutor select one of them was a configuration knob that
+        // silently did nothing at runtime; rejecting it here is more honest
+        // than accepting a promise this codebase can't keep.
+        if (evaluationMethod != AssignmentEvaluationMethod.Manual)
+            throw new ArgumentException(
+                "Automatic, AI-Assisted, and Hybrid evaluation are not implemented yet — every submission requires manual evaluation for now.",
+                nameof(evaluationMethod));
 
         AvailabilityMode = availabilityMode;
         ScheduledAvailabilityAt = availabilityMode == AssignmentAvailabilityMode.Scheduled ? scheduledAvailabilityAt : null;

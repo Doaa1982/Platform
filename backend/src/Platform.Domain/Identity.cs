@@ -29,6 +29,20 @@ public class Identity
     public IdentityStatus Status { get; private set; }
     public DateTime CreatedAt { get; private set; }
 
+    /// <summary>
+    /// Bumped whenever every previously issued access token for this Identity
+    /// should stop working — an explicit logout, or a password reset/change
+    /// (someone who just proved they know the new password, or redeemed a
+    /// reset link, should not leave an old, possibly-compromised session
+    /// still valid). TokenService embeds the current value in every token it
+    /// issues; the JWT bearer handler's OnTokenValidated rejects a token
+    /// whose value no longer matches. A stateless JWT can't be revoked
+    /// individually without a per-token blacklist this codebase has no
+    /// infrastructure for — bumping this is the "sign out everywhere"
+    /// granularity that's actually achievable here.
+    /// </summary>
+    public int TokenVersion { get; private set; }
+
     // Required by EF Core — not for application use
     private Identity() { }
 
@@ -68,6 +82,9 @@ public class Identity
         ArgumentException.ThrowIfNullOrWhiteSpace(newPasswordHash);
         PasswordHash = newPasswordHash;
     }
+
+    /// <summary>Ends every currently valid access token for this Identity — see <see cref="TokenVersion"/>.</summary>
+    public void InvalidateSessions() => TokenVersion++;
 
     /// <summary>
     /// Suspends the Identity. IdentityStatus → Suspended.

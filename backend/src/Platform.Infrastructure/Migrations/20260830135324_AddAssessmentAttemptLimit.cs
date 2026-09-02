@@ -1,20 +1,19 @@
-﻿using System;
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Platform.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class GrantSubscriptionPeriodCredits : Migration
+    public partial class AddAssessmentAttemptLimit : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<DateTime>(
-                name: "CreditsGrantedThroughUtc",
-                table: "subscriptions",
-                type: "timestamp with time zone",
+            migrationBuilder.AddColumn<int>(
+                name: "AttemptLimit",
+                table: "assessments",
+                type: "integer",
                 nullable: true);
         }
 
@@ -22,8 +21,8 @@ namespace Platform.Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "CreditsGrantedThroughUtc",
-                table: "subscriptions");
+                name: "AttemptLimit",
+                table: "assessments");
         }
     }
 }

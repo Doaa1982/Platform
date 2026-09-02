@@ -73,6 +73,21 @@ public class AssignmentService(PlatformDbContext db)
         var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
         if (assignment is null) return Fail<AssignmentResponse>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
+        // Learning Activity BA §8 / Assignment Aggregate Design §8: a
+        // Learning Activity has no independent publication lifecycle — it is
+        // published only as part of its owning Lesson Revision. Without this
+        // check, an Assignment could be published and delivered to every
+        // enrolled learner against an activity whose Lesson Revision was
+        // never published at all (still sitting in an unfinished Draft the
+        // tutor hasn't shared with anyone). Superseded is fine — that
+        // revision genuinely was published once; only Draft is blocked.
+        var revisionStatus = await db.Set<LessonRevision>().AsNoTracking()
+            .Where(r => r.Id == ctx.Activity!.LessonRevisionId)
+            .Select(r => r.Status).FirstOrDefaultAsync(ct);
+        if (revisionStatus == LessonRevisionStatus.Draft)
+            return Fail<AssignmentResponse>((ProvisioningError.Conflict,
+                "This activity's lesson has not been published yet. Publish the lesson revision before assigning it."));
+
         var now = DateTime.UtcNow;
         assignment.PromoteIfDue(now);
         try { assignment.Publish(now); }
@@ -322,7 +337,14 @@ public class AssignmentService(PlatformDbContext db)
         var ctx = await ResolveLearnerAsync(slug, caller, ct);
         if (ctx.Error is not null) return Fail<LearnerAssignmentDetailResponse>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        // WorkspaceId checked directly as defense-in-depth — safe without it
+        // too (a Membership from Workspace A can never hold an Enrollment
+        // against a Workspace B product, so IsActivelyEnrolledAsync below
+        // already rejects a cross-workspace guess), but every other service
+        // in this codebase scopes by WorkspaceId explicitly rather than
+        // relying solely on that invariant holding elsewhere.
+        var assignment = await db.Assignments
+            .FirstOrDefaultAsync(a => a.LearningActivityId == activityId && a.WorkspaceId == ctx.WorkspaceId, ct);
         if (assignment is null) return Fail<LearnerAssignmentDetailResponse>((ProvisioningError.NotFound, "No such assignment."));
 
         if (!await IsActivelyEnrolledAsync(assignment.LearningProductId, ctx.MembershipId, ct))
@@ -358,7 +380,9 @@ public class AssignmentService(PlatformDbContext db)
         var ctx = await ResolveLearnerAsync(slug, caller, ct);
         if (ctx.Error is not null) return Fail<LearnerSubmissionRow>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        // Same defense-in-depth WorkspaceId check as GetMyAssignmentAsync.
+        var assignment = await db.Assignments
+            .FirstOrDefaultAsync(a => a.LearningActivityId == activityId && a.WorkspaceId == ctx.WorkspaceId, ct);
         if (assignment is null) return Fail<LearnerSubmissionRow>((ProvisioningError.NotFound, "No such assignment."));
 
         var enrollment = await db.Enrollments
@@ -596,23 +620,23 @@ public class AssignmentService(PlatformDbContext db)
         return new ActivityContext(wctx.Workspace, wctx.MembershipId, activity, lesson.LearningProductId, null);
     }
 
-    private record LearnerContext(Guid MembershipId, (ProvisioningError Error, string Message)? Error);
+    private record LearnerContext(Guid WorkspaceId, Guid MembershipId, (ProvisioningError Error, string Message)? Error);
 
     private async Task<LearnerContext> ResolveLearnerAsync(string slug, Guid caller, CancellationToken ct)
     {
         var normalised = slug.ToLowerInvariant().Trim();
 
         var workspace = await db.Workspaces.AsNoTracking().FirstOrDefaultAsync(w => w.Slug == normalised, ct);
-        if (workspace is null) return new LearnerContext(Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
+        if (workspace is null) return new LearnerContext(Guid.Empty, Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
 
         var member = await db.Memberships.Include(m => m.Roles).AsNoTracking()
             .FirstOrDefaultAsync(m => m.WorkspaceId == workspace.Id && m.IdentityId == caller && m.Status == MembershipStatus.Active, ct);
-        if (member is null) return new LearnerContext(Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
+        if (member is null) return new LearnerContext(Guid.Empty, Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
 
         if (!member.Roles.Any(r => r.Name == WorkspaceRoleName.Learner))
-            return new LearnerContext(member.Id, (ProvisioningError.Forbidden, "Only a Learner in this workspace can access this."));
+            return new LearnerContext(workspace.Id, member.Id, (ProvisioningError.Forbidden, "Only a Learner in this workspace can access this."));
 
-        return new LearnerContext(member.Id, null);
+        return new LearnerContext(workspace.Id, member.Id, null);
     }
 
     private static ProvisioningResult<T> Fail<T>((ProvisioningError Error, string Message) e)

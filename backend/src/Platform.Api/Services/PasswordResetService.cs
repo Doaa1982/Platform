@@ -148,6 +148,10 @@ public class PasswordResetService(
         }
 
         identity.SetPassword(BCrypt.Net.BCrypt.HashPassword(request.NewPassword));
+        // Whoever redeemed this reset is about to get a fresh token below —
+        // any other session (possibly the reason this reset happened at all)
+        // should not keep working past this point.
+        identity.InvalidateSessions();
         await db.SaveChangesAsync(ct);
 
         return ProvisioningResult<LoginResponse>.Success(tokens.Issue(identity));

@@ -70,4 +70,7 @@ public class Entitlement
             EffectiveUntil = effectiveUntil,
         };
     }
+
+    /// <summary>Ends this row's validity — called only by WorkspaceLicense.ReplaceEntitlements when a fresh resolution supersedes it (LIC-007: closed, never deleted).</summary>
+    internal void Close(DateTime effectiveUntil) => EffectiveUntil = effectiveUntil;
 }

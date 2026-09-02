@@ -118,7 +118,7 @@ public class EntitlementResolutionService(PlatformDbContext db, ICreditLedgerSer
         if (license is null || license.Status == LicenseStatus.Expired) return null;
 
         return await db.Set<Entitlement>().AsNoTracking()
-            .Where(e => e.LicenseId == license.Id && e.Key == key)
+            .Where(e => e.LicenseId == license.Id && e.Key == key && e.EffectiveUntil == null)
             .Select(e => e.Value)
             .FirstOrDefaultAsync(ct);
     }

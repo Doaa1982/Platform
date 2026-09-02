@@ -23,6 +23,9 @@ public class TokenService(IConfiguration config)
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromHours(8);
 
+    /// <summary>Custom claim type carrying Identity.TokenVersion — shared with Program.cs's OnTokenValidated check.</summary>
+    public const string TokenVersionClaimType = "tv";
+
     public LoginResponse Issue(Identity identity)
     {
         var jwtKey = config["Jwt:Key"]
@@ -37,7 +40,11 @@ public class TokenService(IConfiguration config)
             new Claim(JwtRegisteredClaimNames.Sub,   identity.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, identity.Email),
             new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
-            new Claim(ClaimTypes.Name,               identity.FullName)
+            new Claim(ClaimTypes.Name,               identity.FullName),
+            // Checked against the live Identity.TokenVersion on every request
+            // (Program.cs's OnTokenValidated) — lets a logout or password
+            // reset end this token before its natural 8-hour expiry.
+            new Claim(TokenVersionClaimType,         identity.TokenVersion.ToString())
         };
 
         var token = new JwtSecurityToken(

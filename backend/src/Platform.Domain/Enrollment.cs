@@ -50,4 +50,23 @@ public class Enrollment
             CreatedAt = DateTime.UtcNow
         };
     }
+
+    /// <summary>
+    /// Ends this Enrollment without deleting it — WorkspaceMemberService.
+    /// UnenrollMemberAsync used to hard-delete the row (and every LessonProgress
+    /// keyed to it), permanently destroying a learner's completion history for
+    /// one accidental or deliberate tutor click. Every LessonProgress row is
+    /// left exactly as it is; access-gating call sites already check for
+    /// Status == Active explicitly, so a Cancelled Enrollment simply stops
+    /// granting access without anything needing to query LessonProgress.
+    /// </summary>
+    public void Cancel() => Status = EnrollmentStatus.Cancelled;
+
+    /// <summary>Re-enrolls a previously Cancelled learner onto the same row — see Cancel's remarks on why the row is reused rather than replaced.</summary>
+    public void Reactivate()
+    {
+        if (Status != EnrollmentStatus.Cancelled)
+            throw new InvalidOperationException($"An Enrollment that is {Status} cannot be reactivated. Only a Cancelled one can.");
+        Status = EnrollmentStatus.Active;
+    }
 }

@@ -127,8 +127,9 @@ public class AssessmentService(
         {
             var identity = identityByMembership.GetValueOrDefault(s.MembershipId);
             return new AssessmentSubmissionRow(
-                s.MembershipId, identity?.FullName ?? "(unknown)", identity?.Email ?? "(unknown)",
-                s.ScorePercent, s.Passed, s.GradedAt ?? s.StartedAt);
+                s.Id, s.MembershipId, identity?.FullName ?? "(unknown)", identity?.Email ?? "(unknown)",
+                s.EffectiveScorePercent, s.EffectivePassed, s.GradedAt ?? s.StartedAt,
+                s.OverriddenAt is not null, s.OverrideNote);
         }).ToList();
 
         var questionRows = assessment.Questions.OrderBy(q => q.Position).Select(q =>
@@ -162,6 +163,41 @@ public class AssessmentService(
             assessment.LessonId, lesson?.Title ?? "(unknown lesson)",
             lesson?.LearningProductId ?? Guid.Empty, product?.Title ?? "(unknown product)",
             questionRows, submissionRows));
+    }
+
+    /// <summary>
+    /// A tutor's manual correction of an already-graded Assessment-target
+    /// Submission — e.g. the auto-grader marked a legitimate synonym answer
+    /// wrong. Workspace-scoped by joining through the owning Assessment,
+    /// since Submission itself carries no WorkspaceId of its own.
+    /// </summary>
+    public async Task<ProvisioningResult<AssessmentSubmissionRow>> OverrideGradeAsync(
+        string slug, Guid caller, Guid submissionId, OverrideGradeRequest request, CancellationToken ct = default)
+    {
+        var wctx = await ResolveWorkspaceAsync(slug, caller, ct);
+        if (wctx.Error is not null) return Fail<AssessmentSubmissionRow>(wctx.Error.Value);
+
+        var submission = await db.Submissions.FirstOrDefaultAsync(s => s.Id == submissionId, ct);
+        if (submission is null || submission.AssessmentId is null)
+            return Fail<AssessmentSubmissionRow>((ProvisioningError.NotFound, "No such submission."));
+
+        var belongsToWorkspace = await db.Assessments.AsNoTracking()
+            .AnyAsync(a => a.Id == submission.AssessmentId && a.WorkspaceId == wctx.Workspace!.Id, ct);
+        if (!belongsToWorkspace)
+            return Fail<AssessmentSubmissionRow>((ProvisioningError.NotFound, "No such submission."));
+
+        try { submission.OverrideGrade(wctx.MembershipId, request.Passed, request.ScorePercent, request.Note); }
+        catch (InvalidOperationException ex) { return Fail<AssessmentSubmissionRow>((ProvisioningError.Conflict, ex.Message)); }
+        catch (ArgumentException ex) { return Fail<AssessmentSubmissionRow>((ProvisioningError.Invalid, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+
+        var membership = await db.Memberships.AsNoTracking().FirstOrDefaultAsync(m => m.Id == submission.MembershipId, ct);
+        var identity = membership is null ? null : await db.Identities.AsNoTracking().FirstOrDefaultAsync(i => i.Id == membership.IdentityId, ct);
+        return ProvisioningResult<AssessmentSubmissionRow>.Success(new AssessmentSubmissionRow(
+            submission.Id, submission.MembershipId, identity?.FullName ?? "(unknown)", identity?.Email ?? "(unknown)",
+            submission.EffectiveScorePercent, submission.EffectivePassed, submission.GradedAt ?? submission.StartedAt,
+            submission.OverriddenAt is not null, submission.OverrideNote));
     }
 
     private record WorkspaceContext(Workspace? Workspace, Guid MembershipId, (ProvisioningError Error, string Message)? Error);
@@ -210,6 +246,7 @@ public class AssessmentService(
         {
             a.Rename(request.Title);
             if (request.PassingThresholdPercent is { } threshold) a.SetPassingThreshold(threshold);
+            a.SetAttemptLimit(request.AttemptLimit);
         }, ct, createIfMissing: true);
 
     public Task<ProvisioningResult<AssessmentResponse>> AddQuestionAsync(
@@ -300,12 +337,15 @@ public class AssessmentService(
                     request.VideoDurationSeconds, Math.Clamp(request.VideoDurationSeconds / 180, 1, MaxSuggestedQuestions),
                     outputLanguage, ctx.Workspace!.Id, ct, revision?.LearningObjectives);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        catch (CreditsExhaustedException ex)
         {
-            // Model unavailable, misconfigured key, unparseable output, or
-            // (CreditsExhaustedException) this workspace's AI credit balance
-            // can't cover it — all surfaced as a normal failure rather than a
-            // 500, so the tutor sees a clear message instead of a crash.
+            return ProvisioningResult<IReadOnlyList<SuggestedQuestion>>.FailCreditsExhausted(ex.Message, ex.Cost, ex.RemainingBalance);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Model unavailable, misconfigured key, or unparseable output —
+            // surfaced as a normal failure rather than a 500, so the tutor
+            // sees a clear message instead of a crash.
             return Fail<IReadOnlyList<SuggestedQuestion>>((ProvisioningError.Conflict, $"AI question generation failed: {ex.Message}"));
         }
 
@@ -367,11 +407,15 @@ public class AssessmentService(
                 revision?.WhatYoullLearn, revision?.LearningObjectives, revision?.Glossary,
                 count, outputLanguage, ctx.Workspace!.Id, ct);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        catch (CreditsExhaustedException ex)
         {
-            // Model unavailable, misconfigured key, unparseable output, or
-            // out of AI credits — surfaced as a normal failure rather than a
-            // 500, same as SuggestQuestionsAsync's identical handling.
+            return ProvisioningResult<IReadOnlyList<SuggestedStandaloneQuestion>>.FailCreditsExhausted(ex.Message, ex.Cost, ex.RemainingBalance);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Model unavailable, misconfigured key, or unparseable output —
+            // surfaced as a normal failure rather than a 500, same as
+            // SuggestQuestionsAsync's identical handling.
             return Fail<IReadOnlyList<SuggestedStandaloneQuestion>>((ProvisioningError.Conflict, $"AI question generation failed: {ex.Message}"));
         }
 
@@ -514,6 +558,7 @@ public class AssessmentService(
         Status: a?.Status.ToString() ?? "None",
         Kind: kind.ToString(),
         PassingThresholdPercent: a?.PassingThresholdPercent ?? 70,
+        AttemptLimit: a?.AttemptLimit,
         PublicationBlocker: a is null
             ? (kind == AssessmentKind.Standalone
                 ? "This lesson has no standalone quiz yet — add a question to start."

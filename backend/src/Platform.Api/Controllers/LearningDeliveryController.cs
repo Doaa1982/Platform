@@ -41,6 +41,8 @@ public class LearningDeliveryController(LearningDeliveryService delivery, Course
         ProvisioningError.NotFound  => NotFound(new { message = r.Message }),
         ProvisioningError.Conflict  => Conflict(new { message = r.Message }),
         ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = r.Message }),
+        ProvisioningError.CreditsExhausted => StatusCode(StatusCodes.Status402PaymentRequired,
+            new { message = r.Message, code = "credits_exhausted", requiredCredits = r.RequiredCredits, remainingCredits = r.RemainingCredits }),
         _                           => BadRequest(new { message = r.Message }),
     };
 
@@ -50,6 +52,8 @@ public class LearningDeliveryController(LearningDeliveryService delivery, Course
         ProvisioningError.NotFound  => NotFound(new { message = r.Message }),
         ProvisioningError.Conflict  => Conflict(new { message = r.Message }),
         ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = r.Message }),
+        ProvisioningError.CreditsExhausted => StatusCode(StatusCodes.Status402PaymentRequired,
+            new { message = r.Message, code = "credits_exhausted", requiredCredits = r.RequiredCredits, remainingCredits = r.RemainingCredits }),
         _                           => BadRequest(new { message = r.Message }),
     };
 
@@ -115,6 +119,8 @@ public class LearnerLessonsController(LearningDeliveryService delivery) : Contro
         ProvisioningError.NotFound  => NotFound(new { message = r.Message }),
         ProvisioningError.Conflict  => Conflict(new { message = r.Message }),
         ProvisioningError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = r.Message }),
+        ProvisioningError.CreditsExhausted => StatusCode(StatusCodes.Status402PaymentRequired,
+            new { message = r.Message, code = "credits_exhausted", requiredCredits = r.RequiredCredits, remainingCredits = r.RemainingCredits }),
         _                           => BadRequest(new { message = r.Message }),
     };
 

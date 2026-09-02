@@ -29,7 +29,16 @@ public class CreditLedgerService(PlatformDbContext db) : ICreditLedgerService
             .SumAsync(e => (int?)e.Amount, ct) ?? 0;
     }
 
-    public async Task<CreditDebitResult> TryDebitAsync(Guid workspaceId, string skillKey, int? band, CancellationToken ct = default)
+    /// <summary>
+    /// How long a repeated <paramref name="idempotencyFingerprint"/> is still
+    /// treated as "the same request, retried" rather than a genuine new
+    /// charge. Long enough to cover a realistic client timeout-and-retry;
+    /// short enough that a tutor deliberately re-running the same generation
+    /// on unchanged content a few minutes later is charged normally.
+    /// </summary>
+    private static readonly TimeSpan IdempotencyWindow = TimeSpan.FromMinutes(3);
+
+    public async Task<CreditDebitResult> TryDebitAsync(Guid workspaceId, string skillKey, int? band, CancellationToken ct = default, string? idempotencyFingerprint = null)
     {
         var cost = await ResolveCostAsync(skillKey, band, ct)
             ?? throw new InvalidOperationException($"No SkillCreditCost is priced for \"{skillKey}\" (band: {band?.ToString() ?? "flat"}).");
@@ -45,11 +54,42 @@ public class CreditLedgerService(PlatformDbContext db) : ICreditLedgerService
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
 
+            // Serializes concurrent debits for the same workspace — without
+            // this, two near-simultaneous requests (a workspace with just
+            // enough balance for one call firing two AI requests in parallel)
+            // can both read the same pre-commit balance, both pass the check
+            // below, and both debit — driving the ledger negative (V1
+            // Production Readiness Report, P1). Held only for this
+            // transaction's lifetime and released automatically on commit or
+            // rollback; hashtext() folds the workspace's Guid into the bigint
+            // key pg_advisory_xact_lock requires. A different workspace hashes
+            // to a different key (for all practical purposes) and is not
+            // blocked by this one.
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtext({workspaceId.ToString()}))", ct);
+
+            if (idempotencyFingerprint is not null)
+            {
+                var since = DateTime.UtcNow - IdempotencyWindow;
+                var duplicate = await db.CreditLedgerEntries.AsNoTracking().FirstOrDefaultAsync(e =>
+                    e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.Consumption
+                    && e.IdempotencyFingerprint == idempotencyFingerprint && e.OccurredAtUtc >= since, ct);
+                if (duplicate is not null)
+                {
+                    // Same logical request, already charged inside the retry
+                    // window — the caller (AiOrchestrator) still runs the AI
+                    // call so the client gets a real result, it just isn't
+                    // charged for it a second time.
+                    var currentBalance = await GetBalanceAsync(workspaceId, ct);
+                    return new CreditDebitResult(Success: true, Cost: cost, RemainingBalance: currentBalance, LedgerEntryId: duplicate.Id);
+                }
+            }
+
             var balance = await GetBalanceAsync(workspaceId, ct);
             if (balance < cost)
                 return new CreditDebitResult(Success: false, Cost: cost, RemainingBalance: balance, LedgerEntryId: null);
 
-            var entry = CreditLedgerEntry.Debit(workspaceId, skillKey, cost);
+            var entry = CreditLedgerEntry.Debit(workspaceId, skillKey, cost, idempotencyFingerprint);
             db.CreditLedgerEntries.Add(entry);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);

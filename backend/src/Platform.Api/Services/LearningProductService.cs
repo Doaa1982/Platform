@@ -212,7 +212,11 @@ public class LearningProductService(
             var description = await generateDescription.SuggestAsync(request.Title, request.Category, request.Tags, ctx.Workspace!.Id, ct);
             return ProvisioningResult<AiSuggestDescriptionResponse>.Success(new AiSuggestDescriptionResponse(description));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        catch (CreditsExhaustedException ex)
+        {
+            return ProvisioningResult<AiSuggestDescriptionResponse>.FailCreditsExhausted(ex.Message, ex.Cost, ex.RemainingBalance);
+        }
+        catch (InvalidOperationException ex)
         {
             return ProvisioningResult<AiSuggestDescriptionResponse>.Fail(
                 ProvisioningError.Conflict, $"AI description generation failed: {ex.Message}");

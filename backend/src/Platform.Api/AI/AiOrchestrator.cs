@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Platform.Api.Services;
 
@@ -18,10 +20,34 @@ namespace Platform.Api.AI;
 /// balance for <paramref name="skillKey"/> before the model is ever called
 /// (§A6 — atomic check-then-debit, no reservation state machine), and
 /// refunds that debit if the call ultimately fails.
+///
+/// Every call also derives an idempotency fingerprint (<see cref="ComputeFingerprint"/>)
+/// from exactly the inputs that determine "is this the same logical AI call"
+/// — skill, band, and the two prompts — and passes it to
+/// <see cref="ICreditLedgerService.TryDebitAsync"/>. A client that never saw
+/// the original response (a timeout, a dropped connection) and retries the
+/// identical request within the ledger's dedup window gets a real answer
+/// without paying for it twice (V1 Launch Readiness Report, retry/idempotency)
+/// — no client-generated key or new API contract needed, since the retried
+/// request's content is by definition identical to the original's.
 /// </summary>
 public class AiOrchestrator(IAiModelProvider provider, ICreditLedgerService credits)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static string ComputeFingerprint(
+        Guid workspaceId, string skillKey, int? band, string systemPrompt, string userPrompt, IReadOnlyList<AiAttachment>? attachments)
+    {
+        var sb = new StringBuilder()
+            .Append(workspaceId).Append('|').Append(skillKey).Append('|').Append(band).Append('|')
+            .Append(systemPrompt).Append('|').Append(userPrompt);
+        if (attachments is { Count: > 0 })
+            foreach (var a in attachments)
+                sb.Append('|').Append(a.MediaType).Append(':').Append(a.Data.Length);
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
+        return Convert.ToHexString(hash);
+    }
 
     /// <summary>
     /// Runs one AI Skill end to end. The skill supplies its system prompt
@@ -58,7 +84,8 @@ public class AiOrchestrator(IAiModelProvider provider, ICreditLedgerService cred
         IReadOnlyList<AiAttachment>? attachments = null, int? band = null,
         Func<T, bool>? isValid = null, CancellationToken ct = default)
     {
-        var debit = await credits.TryDebitAsync(workspaceId, skillKey, band, ct);
+        var fingerprint = ComputeFingerprint(workspaceId, skillKey, band, systemPrompt, userPrompt, attachments);
+        var debit = await credits.TryDebitAsync(workspaceId, skillKey, band, ct, fingerprint);
         if (!debit.Success)
             throw new CreditsExhaustedException(skillKey, debit.Cost, debit.RemainingBalance);
 
@@ -98,7 +125,8 @@ public class AiOrchestrator(IAiModelProvider provider, ICreditLedgerService cred
         string systemPrompt, string userPrompt, Guid workspaceId, string skillKey,
         int? band = null, CancellationToken ct = default)
     {
-        var debit = await credits.TryDebitAsync(workspaceId, skillKey, band, ct);
+        var fingerprint = ComputeFingerprint(workspaceId, skillKey, band, systemPrompt, userPrompt, attachments: null);
+        var debit = await credits.TryDebitAsync(workspaceId, skillKey, band, ct, fingerprint);
         if (!debit.Success)
             throw new CreditsExhaustedException(skillKey, debit.Cost, debit.RemainingBalance);
 

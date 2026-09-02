@@ -60,16 +60,21 @@ public class Subscription
     public Guid? RequestedInvoiceId { get; private set; }
 
     /// <summary>
-    /// The <see cref="CurrentPeriodEnd"/> value for which this period's
-    /// AI credits (Configuration Snapshot's AiCreditsIncluded) have already
-    /// been granted to the ledger — LicensingService's chokepoint compares
-    /// this against the live CurrentPeriodEnd to decide whether a grant is
-    /// still due, so first activation, a Grace/PastDue recovery, and a period
-    /// rollover (<see cref="Renew"/>/<see cref="ApplyPendingChange"/>) each
-    /// grant exactly once and never double-grant the same period. Null means
+    /// The <see cref="CurrentPeriodEnd"/> value this period's AI credits were
+    /// last touched for — LicensingService's chokepoint compares this against
+    /// the live CurrentPeriodEnd: a mismatch means a fresh period (grant the
+    /// full amount from zero), a match means the same period is being
+    /// recomputed again (e.g. a mid-period Upgrade), in which case only the
+    /// difference against <see cref="CreditsGrantedThisPeriodAmount"/> is
+    /// topped up — so first activation, a Grace/PastDue recovery, a period
+    /// rollover (<see cref="Renew"/>/<see cref="ApplyPendingChange"/>), and a
+    /// mid-period Upgrade each grant exactly the right amount once. Null means
     /// no period has ever been credited yet.
     /// </summary>
     public DateTime? CreditsGrantedThroughUtc { get; private set; }
+
+    /// <summary>Total AI credits granted for the period identified by <see cref="CreditsGrantedThroughUtc"/> so far — lets an Upgrade's top-up grant only the delta against a plan already credited this period, never the whole amount again.</summary>
+    public int CreditsGrantedThisPeriodAmount { get; private set; }
 
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
@@ -298,14 +303,18 @@ public class Subscription
     }
 
     /// <summary>
-    /// Marks this period's AI credits as funded — called only by
-    /// LicensingService's chokepoint right after it grants them, so a later
-    /// recompute for the same period (a re-activation, an unrelated status
-    /// change) never grants them a second time.
+    /// Records how many AI credits have now been granted in total for the
+    /// current billing period — called only by LicensingService's chokepoint,
+    /// right after either a fresh period's full grant or a mid-period
+    /// Upgrade's top-up delta, so the next recompute (a re-activation, an
+    /// unrelated status change, another Upgrade) knows exactly how much of
+    /// this period's allotment has already been issued and never re-grants
+    /// or claws back the difference.
     /// </summary>
-    public void MarkCreditsGranted()
+    public void RecordCreditsGranted(int totalGrantedThisPeriod)
     {
         CreditsGrantedThroughUtc = CurrentPeriodEnd;
+        CreditsGrantedThisPeriodAmount = totalGrantedThisPeriod;
         Touch();
     }
 

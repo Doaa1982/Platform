@@ -9,9 +9,13 @@ namespace Platform.Api.Services;
 /// Platform-Operator-facing commercial back-office actions. Every method here
 /// exists because the 2026-08-09 correction ("this platform does not collect
 /// payment") replaced payment-provider automation with manual, audited,
-/// back-office action — and because no scheduler exists in this codebase yet
-/// (the same "lazy, on-demand" spirit as <c>ProvisioningService</c>'s
-/// invitation expiry, just explicit here instead of triggered by a read).
+/// back-office action. <see cref="SweepOverdueInvoicesAsync"/> and
+/// <see cref="SweepDueRenewalsAsync"/> are the two exceptions — they're pure
+/// date comparisons with no payment judgment involved, so
+/// <see cref="CommercialLifecycleSweepBackgroundService"/> now runs them on a
+/// timer; every other transition below still requires a Platform Operator to
+/// trigger it explicitly (the same "lazy, on-demand" spirit as
+/// <c>ProvisioningService</c>'s invitation expiry).
 ///
 /// Every mutation records a <see cref="SubscriptionEvent"/> — the Manual
 /// Commercial Activation audit trail (§27a) that stands in for a payment
@@ -87,7 +91,8 @@ public class CommercialOpsService(
     /// An issued Invoice whose due date has passed without being marked paid
     /// (§29, "Overdue Invoice") — the date-driven equivalent of a payment
     /// failure. Idempotent: a Subscription already past Active is left alone
-    /// rather than re-thrown at.
+    /// rather than re-thrown at. Called both by the admin console and, on a
+    /// timer, by <see cref="CommercialLifecycleSweepBackgroundService"/>.
     /// </summary>
     public async Task<int> SweepOverdueInvoicesAsync(CancellationToken ct = default)
     {
@@ -125,9 +130,10 @@ public class CommercialOpsService(
     /// plain <see cref="Subscription.Renew"/> (if not) — either way rolling
     /// CurrentPeriodEnd forward, which is what lets
     /// <see cref="LicensingService"/>'s chokepoint grant the new period's AI
-    /// credits. Same manual, operator-triggered pattern as every other
-    /// date-driven transition in this service, since no scheduler exists in
-    /// this codebase yet.
+    /// credits. Called both by the admin console and, on a timer, by
+    /// <see cref="CommercialLifecycleSweepBackgroundService"/> — unlike the
+    /// other transitions in this service, renewal needs no operator judgment,
+    /// only the current date.
     /// </summary>
     public async Task<int> SweepDueRenewalsAsync(CancellationToken ct = default)
     {

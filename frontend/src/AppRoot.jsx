@@ -8,6 +8,7 @@ import ApplyScreen from "./screens/ApplyScreen";
 import SignupStatusScreen from "./screens/SignupStatusScreen";
 import ForgotPasswordScreen from "./screens/ForgotPasswordScreen";
 import ResetPasswordScreen from "./screens/ResetPasswordScreen";
+import JoinRequestStatusScreen from "./screens/JoinRequestStatusScreen";
 import AuthGate from "./AuthGate";
 import AdminGate from "./AdminGate";
 
@@ -22,6 +23,7 @@ import AdminGate from "./AdminGate";
      /admin           platform operations (deliberately unlinked anywhere)
      /invite/{token}  accepting an invitation
      /join/{slug}     asking to join a workspace
+     /join-requests/status/{token}   a requester checking on (or cancelling) their own request
      /forgot-password/{side}   requesting a password reset link
      /reset-password/{token}   redeeming one
 
@@ -46,6 +48,16 @@ export default function AppRoot() {
     return (
       <AuthProvider side={null}>
         <InviteScreen token={inviteToken} onAccepted={() => navigate("/teach", { replace: true })} />
+      </AuthProvider>
+    );
+  }
+
+  // The Join Request Status Link (§16, "Checking back without an Identity" — TD-018).
+  const joinRequestToken = match(pathname, /^\/join-requests\/status\/([^/]+)\/?$/);
+  if (joinRequestToken) {
+    return (
+      <AuthProvider side={null}>
+        <JoinRequestStatusScreen token={joinRequestToken} />
       </AuthProvider>
     );
   }

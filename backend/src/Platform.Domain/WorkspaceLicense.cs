@@ -105,12 +105,34 @@ public class WorkspaceLicense
         return Status;
     }
 
+    /// <summary>
+    /// Re-derives the Workspace's current entitlement set — LIC-007: history
+    /// is append-only. A currently-active row (EffectiveUntil null) whose
+    /// (Type, Domain, Key, Value) no longer appears in the fresh resolution
+    /// is closed (EffectiveUntil = now), never deleted; a row the fresh
+    /// resolution still produces unchanged is left exactly as it is; only a
+    /// genuinely new or changed value gets a new row. A hygiene-only
+    /// recompute that resolves to exactly what was already current therefore
+    /// closes nothing and appends nothing — calling this repeatedly with an
+    /// unchanged result does not grow the history.
+    /// </summary>
     public void ReplaceEntitlements(IEnumerable<ResolvedEntitlement> resolved)
     {
-        _entitlements.Clear();
         var now = DateTime.UtcNow;
-        foreach (var e in resolved)
-            _entitlements.Add(Entitlement.Create(Id, e.Type, e.Domain, e.Key, e.Value, e.Source, e.SourceRefId, now, null));
+        var resolvedList = resolved as IReadOnlyCollection<ResolvedEntitlement> ?? resolved.ToList();
+        var current = _entitlements.Where(e => e.EffectiveUntil is null).ToList();
+
+        bool Matches(Entitlement e, ResolvedEntitlement r) =>
+            e.Type == r.Type && e.Domain == r.Domain && e.Key == r.Key && e.Value == r.Value;
+
+        foreach (var existing in current)
+            if (!resolvedList.Any(r => Matches(existing, r)))
+                existing.Close(now);
+
+        foreach (var r in resolvedList)
+            if (!current.Any(e => e.EffectiveUntil is null && Matches(e, r)))
+                _entitlements.Add(Entitlement.Create(Id, r.Type, r.Domain, r.Key, r.Value, r.Source, r.SourceRefId, now, null));
+
         Touch();
     }
 

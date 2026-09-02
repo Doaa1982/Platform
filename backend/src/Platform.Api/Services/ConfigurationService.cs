@@ -50,6 +50,19 @@ public class ConfigurationService(PlatformDbContext db, CatalogQueryService cata
             packs.Add(resolvedPack);
         }
 
+        // ── Resolve Conflicts (§42 step 3 / §10, documented as in-scope but
+        // never implemented until now) — Collaboration and CollaborationPlus
+        // are alternatives, not stackable add-ons: CollaborationPlus is a
+        // second, bigger tutor-capacity tier alongside Collaboration rather
+        // than a quantity on it (CapabilityPack's own remarks), and the
+        // checkbox-based Add-ons UI has no way to express "pick one." Without
+        // this, both could be selected and paid for at once with no error.
+        var selectedCodes = packs.Select(p => p.Pack.Code).ToHashSet();
+        if (selectedCodes.Contains(CapabilityPack.Collaboration) && selectedCodes.Contains(CapabilityPack.CollaborationPlus))
+            return ProvisioningResult<ConfigurationSnapshot>.Fail(
+                ProvisioningError.Invalid,
+                "Collaboration and Collaboration Plus are alternative tiers, not stackable add-ons — choose one.");
+
         // ── Resolve Dependencies (§42 step 4 / §21's worked example) ──
         foreach (var (pack, packVersion) in packs)
         {

@@ -106,13 +106,17 @@ export function AuthProvider({ side, children }) {
   }, [adoptSession]);
 
   const signOut = useCallback(() => {
+    // Best-effort, fire-and-forget: ends every session server-side (Identity.
+    // TokenVersion), but must never delay or block the local sign-out below —
+    // a network hiccup here is not a reason to leave someone stuck signed in.
+    if (session) api.logout(session.token).catch(() => {});
     api.clearSession();
     setSession(null);
     setMe(null);
     setChosenSlug(null);
     setError(null);
     setStatus("anonymous");
-  }, []);
+  }, [session]);
 
   const value = useMemo(() => {
     const workspaces = me?.workspaces ?? [];

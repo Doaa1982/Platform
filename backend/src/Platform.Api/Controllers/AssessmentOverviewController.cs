@@ -26,6 +26,12 @@ public class AssessmentOverviewController(AssessmentService assessments) : Contr
     public async Task<ActionResult<AssessmentDetailResponse>> GetDetail(string slug, Guid assessmentId, CancellationToken ct)
         => Run(await assessments.GetDetailAsync(slug, Caller(), assessmentId, ct));
 
+    /// <summary>A tutor's manual correction of an already-graded quiz Submission — see Submission.OverrideGrade.</summary>
+    [HttpPost("submissions/{submissionId:guid}/override")]
+    public async Task<ActionResult<AssessmentSubmissionRow>> OverrideGrade(
+        string slug, Guid submissionId, [FromBody] OverrideGradeRequest request, CancellationToken ct)
+        => Run(await assessments.OverrideGradeAsync(slug, Caller(), submissionId, request, ct));
+
     private ActionResult<T> Run<T>(ProvisioningResult<T> r) => r.Error switch
     {
         ProvisioningError.None      => Ok(r.Value),

@@ -22,7 +22,7 @@ namespace Platform.Domain;
 /// gets made, on acceptance.
 ///
 /// Rules enforced here:
-///   §9  — Submitted → { Approved | Declined | Withdrawn }, exactly one
+///   §9  — Submitted → { Approved | Declined | Cancelled }, exactly one
 ///   §10 — approval grants precisely the role recorded on the request
 ///
 /// Enforced outside this class (they span rows):
@@ -48,7 +48,7 @@ public class JoinRequest
     public JoinRequestStatus Status { get; private set; }
     public DateTime SubmittedAt { get; private set; }
 
-    /// <summary>IdentityId of the reviewer who decided. Null while Submitted or Withdrawn.</summary>
+    /// <summary>IdentityId of the reviewer who decided. Null while Submitted or Cancelled.</summary>
     public Guid? DecidedBy { get; private set; }
     public DateTime? DecidedAt { get; private set; }
 
@@ -142,12 +142,12 @@ public class JoinRequest
         Status = JoinRequestStatus.Declined;
     }
 
-    /// <summary>Withdrawn by the requester before any decision was made.</summary>
-    public void Withdraw()
+    /// <summary>Cancelled by the requester before any decision was made.</summary>
+    public void Cancel()
     {
-        Require(JoinRequestStatus.Withdrawn);
+        Require(JoinRequestStatus.Cancelled);
         DecidedAt = DateTime.UtcNow;   // when it left the queue; no reviewer decided
-        Status = JoinRequestStatus.Withdrawn;
+        Status = JoinRequestStatus.Cancelled;
     }
 
     /// <summary>

@@ -210,7 +210,11 @@ public class WorkspaceSetupService(
             var description = await generateProfile.SuggestDescriptionAsync(request.Name, request.CourseCategories, workspace!.Id, ct);
             return ProvisioningResult<AiSuggestTextResponse>.Success(new AiSuggestTextResponse(description));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        catch (CreditsExhaustedException ex)
+        {
+            return ProvisioningResult<AiSuggestTextResponse>.FailCreditsExhausted(ex.Message, ex.Cost, ex.RemainingBalance);
+        }
+        catch (InvalidOperationException ex)
         {
             return ProvisioningResult<AiSuggestTextResponse>.Fail(
                 ProvisioningError.Conflict, $"AI description generation failed: {ex.Message}");
@@ -240,7 +244,11 @@ public class WorkspaceSetupService(
                 request.Name, request.Description, request.CourseCategories, workspace!.Id, ct);
             return ProvisioningResult<AiSuggestTextResponse>.Success(new AiSuggestTextResponse(welcome));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        catch (CreditsExhaustedException ex)
+        {
+            return ProvisioningResult<AiSuggestTextResponse>.FailCreditsExhausted(ex.Message, ex.Cost, ex.RemainingBalance);
+        }
+        catch (InvalidOperationException ex)
         {
             return ProvisioningResult<AiSuggestTextResponse>.Fail(
                 ProvisioningError.Conflict, $"AI welcome message generation failed: {ex.Message}");

@@ -225,6 +225,19 @@ public class Assessment
     public Guid LessonRevisionId { get; private set; }
     public string Title { get; private set; } = string.Empty;
     public int PassingThresholdPercent { get; private set; } = 70;
+
+    /// <summary>
+    /// Null means unlimited retakes (the historical, still-default behavior).
+    /// Assessment and Submission Aggregate Design §8 lists this as an
+    /// optional Scoring Configuration field; it was never implemented until
+    /// now, which combined with Grade() always disclosing the correct answer
+    /// let a learner pass any quiz after one deliberately-wrong "scouting"
+    /// attempt. Enforced by LearningDeliveryService before starting a new
+    /// Assessment-target Submission — this aggregate has no visibility into
+    /// how many a learner has already used.
+    /// </summary>
+    public int? AttemptLimit { get; private set; }
+
     public AssessmentStatus Status { get; private set; }
 
     /// <summary>Interactive (in-video checkpoints) or Standalone (a separate lesson quiz) — see AssessmentKind. Immutable once created: converting one into the other would silently repoint every past Submission's meaning.</summary>
@@ -276,6 +289,15 @@ public class Assessment
         if (percent is < 0 or > 100)
             throw new ArgumentException("A passing threshold must be between 0 and 100.", nameof(percent));
         PassingThresholdPercent = percent;
+        Touch();
+    }
+
+    /// <summary>Null clears the limit back to unlimited retakes.</summary>
+    public void SetAttemptLimit(int? attemptLimit)
+    {
+        if (attemptLimit is <= 0)
+            throw new ArgumentException("An attempt limit must be positive, or null for unlimited.", nameof(attemptLimit));
+        AttemptLimit = attemptLimit;
         Touch();
     }
 

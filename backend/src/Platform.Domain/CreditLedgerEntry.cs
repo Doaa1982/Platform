@@ -54,6 +54,20 @@ public class CreditLedgerEntry
     /// <summary>Set only on a SubscriptionGrant entry — which billing period it was granted for (A4: no rollover between periods).</summary>
     public Guid? BillingPeriodId { get; private set; }
 
+    /// <summary>
+    /// Set only on a Consumption entry — a SHA-256 fingerprint of the exact AI
+    /// call this debit paid for (see <see cref="AiOrchestrator"/>'s remarks),
+    /// so a client that never received the original response (a timeout, a
+    /// dropped connection) and retries the identical logical request doesn't
+    /// pay twice for it (V1 Launch Readiness Report, retry/idempotency).
+    /// Deliberately not unique/DB-enforced: the same fingerprint recurring
+    /// long after the retry window (a tutor legitimately re-running the same
+    /// generation on unchanged content next week) must still be a normal,
+    /// separately-charged Consumption — <see cref="ICreditLedgerService"/>'s
+    /// dedup check is time-windowed, not permanent.
+    /// </summary>
+    public string? IdempotencyFingerprint { get; private set; }
+
     // Required by EF Core — not for application use
     private CreditLedgerEntry() { }
 
@@ -82,7 +96,7 @@ public class CreditLedgerEntry
     }
 
     /// <summary>A Consumption entry — one AI skill call's spend. Always a negative amount.</summary>
-    public static CreditLedgerEntry Debit(Guid workspaceId, string skillKey, int amount)
+    public static CreditLedgerEntry Debit(Guid workspaceId, string skillKey, int amount, string? idempotencyFingerprint = null)
     {
         if (workspaceId == Guid.Empty)
             throw new ArgumentException("A Credit Ledger Entry belongs to exactly one Workspace.", nameof(workspaceId));
@@ -98,6 +112,7 @@ public class CreditLedgerEntry
             Amount = -amount,
             SkillKey = skillKey,
             OccurredAtUtc = DateTime.UtcNow,
+            IdempotencyFingerprint = idempotencyFingerprint,
         };
     }
 }

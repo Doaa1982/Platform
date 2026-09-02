@@ -10,10 +10,20 @@ const TOKEN_KEY = "platform.session";
 
 /** Thrown for any non-2xx response, carrying the status so callers can branch. */
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, payload) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    // 402 Payment Required — a credits_exhausted body (message, code,
+    // requiredCredits, remainingCredits) from ProvisioningError.CreditsExhausted.
+    // Any existing `catch (e) { setError(e.message) }` keeps working unchanged;
+    // a screen that wants the "buy credits" case specifically can check
+    // e.creditsExhausted instead of parsing the message text.
+    this.creditsExhausted = status === 402 && payload?.code === "credits_exhausted";
+    if (this.creditsExhausted) {
+      this.requiredCredits = payload.requiredCredits;
+      this.remainingCredits = payload.remainingCredits;
+    }
   }
 }
 
@@ -74,7 +84,7 @@ async function request(path, { method = "GET", body, token } = {}) {
   const payload = text ? safeJson(text) : null;
 
   if (!response.ok) {
-    throw new ApiError(response.status, payload?.message ?? `Request failed (${response.status}).`);
+    throw new ApiError(response.status, payload?.message ?? `Request failed (${response.status}).`, payload);
   }
 
   return payload;
@@ -107,7 +117,7 @@ async function requestForm(path, { method = "POST", form, token } = {}) {
   const payload = text ? safeJson(text) : null;
 
   if (!response.ok) {
-    throw new ApiError(response.status, payload?.message ?? `Request failed (${response.status}).`);
+    throw new ApiError(response.status, payload?.message ?? `Request failed (${response.status}).`, payload);
   }
 
   return payload;
@@ -118,6 +128,11 @@ async function requestForm(path, { method = "POST", form, token } = {}) {
 /** POST /api/auth/login → { token, expiresAt, fullName } */
 export function login(email, password) {
   return request("/auth/login", { method: "POST", body: { email, password } });
+}
+
+/** POST /api/auth/logout — ends every session for this Identity, not just this token (see Identity.TokenVersion) */
+export function logout(token) {
+  return request("/auth/logout", { method: "POST", token });
 }
 
 /** GET /api/me → identity + every Workspace it belongs to, with roles in each */
@@ -167,6 +182,27 @@ export function getProvisioningView(token) {
 /** POST /api/admin/workspaces → creates the Workspace and invites its Owner */
 export function provisionWorkspace(token, body) {
   return request("/admin/workspaces", { method: "POST", body, token });
+}
+
+/* ── Entitlement Overrides (Licensing & Entitlements §16) ────────────────
+   Platform-Operator-only, per-workspace support exception on top of whatever
+   the Subscription/Configuration would otherwise resolve — see
+   EntitlementOverridesController's own remarks.
+   ------------------------------------------------------------------------ */
+
+/** GET /api/workspaces/{slug}/entitlement-overrides */
+export function getEntitlementOverrides(token, slug) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/entitlement-overrides`, { token });
+}
+
+/** POST /api/workspaces/{slug}/entitlement-overrides */
+export function createEntitlementOverride(token, slug, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/entitlement-overrides`, { method: "POST", body, token });
+}
+
+/** POST /api/workspaces/{slug}/entitlement-overrides/{id}/revoke */
+export function revokeEntitlementOverride(token, slug, id) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/entitlement-overrides/${id}/revoke`, { method: "POST", token });
 }
 
 /** POST /api/admin/invitations/{id}/resend → fresh token, same invitation */
@@ -876,6 +912,13 @@ export function getAssessmentDetail(token, slug, assessmentId) {
   return request(`/workspaces/${encodeURIComponent(slug)}/assessments/${assessmentId}`, { token });
 }
 
+/** POST .../assessments/submissions/{submissionId}/override — a tutor's manual correction of an already-graded quiz Submission */
+export function overrideAssessmentGrade(token, slug, submissionId, body) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/assessments/submissions/${submissionId}/override`, {
+    method: "POST", body, token,
+  });
+}
+
 /** POST .../assessment/ai-suggest — simulated AI: proposes timestamped checkpoints, nothing persisted */
 export function suggestQuestions(token, slug, lessonId, videoDurationSeconds) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/assessment/ai-suggest`, {
@@ -1138,6 +1181,16 @@ export function previewJoin(slug) {
 /** POST /api/workspaces/{slug}/join — anonymous; files a request, no account created */
 export function submitJoin(slug, body) {
   return request(`/workspaces/${encodeURIComponent(slug)}/join`, { method: "POST", body });
+}
+
+/** GET /api/join-requests/status/{token} — the Join Request Status Link */
+export function getJoinRequestStatus(token) {
+  return request(`/join-requests/status/${encodeURIComponent(token)}`);
+}
+
+/** POST /api/join-requests/status/{token}/cancel — the requester's own "never mind" */
+export function cancelJoinRequest(token) {
+  return request(`/join-requests/status/${encodeURIComponent(token)}/cancel`, { method: "POST" });
 }
 
 /** GET /api/workspaces/{slug}/join-requests — the reviewer's queue */

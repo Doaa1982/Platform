@@ -306,7 +306,10 @@ function CurriculumBuilder({ productId, onBack }) {
             unplacedLessons={data.unplacedLessons}
             onOpenLesson={setOpenLessonId}
             onRename={(title) => run(() => api.renameUnit(session.token, slug, productId, u.id, title), t("studio.toastUnitRenamed", { title })).then(load)}
-            onRemove={() => run(() => api.removeUnit(session.token, slug, productId, u.id), t("studio.toastUnitRemoved", { title: u.title })).then(load)}
+            onRemove={() => {
+              if (!window.confirm(t("studio.confirmRemoveUnit", { title: u.title }))) return;
+              run(() => api.removeUnit(session.token, slug, productId, u.id), t("studio.toastUnitRemoved", { title: u.title })).then(load);
+            }}
             onCreateLesson={(title) => run(() => api.createLesson(session.token, slug, productId, title, u.id), t("studio.toastLessonCreated", { title })).then(load)}
             onPlaceExisting={(lessonId) => run(() => api.placeLesson(session.token, slug, productId, u.id, lessonId), t("studio.toastLessonPlaced")).then(load)}
             onUnplace={(lessonId) => run(() => api.unplaceLesson(session.token, slug, productId, u.id, lessonId), t("studio.toastLessonUnplaced")).then(load)}
@@ -1743,6 +1746,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   }
 
   async function handleRemove() {
+    if (!window.confirm(t("studio.confirmRemoveVideo"))) return;
     setError(null);
     try {
       await api.removeLessonVideo(session.token, slug, lesson.id);
@@ -2036,6 +2040,7 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
   }
 
   async function handleRemove(resourceId) {
+    if (!window.confirm(t("studio.confirmRemoveResource"))) return;
     setError(null);
     try {
       await api.removeLessonResource(session.token, slug, lesson.id, resourceId);
@@ -2248,6 +2253,7 @@ function LearningActivitiesSection({ lesson, editable, onChanged }) {
   }
 
   async function removeActivity(activityId) {
+    if (!window.confirm(t("studio.confirmRemoveActivity"))) return;
     const result = await run(() => api.removeLearningActivity(session.token, slug, lesson.id, activityId), t("studio.toastActivityRemoved"));
     if (result) onChanged();
   }
@@ -2416,7 +2422,13 @@ function LearningActivityForm({ initial, busy, onSave, onCancel }) {
 const ASSIGNMENT_AVAILABILITY_MODES = ["Immediate", "Scheduled", "Hidden"];
 const ASSIGNMENT_DUE_DATE_MODES = ["None", "Fixed"];
 const ASSIGNMENT_ATTEMPT_MODES = ["Single", "Multiple", "Unlimited"];
-const ASSIGNMENT_EVALUATION_METHODS = ["Manual", "Automatic", "AiAssisted", "Hybrid"];
+// Automatic/AiAssisted/Hybrid exist in the domain enum (Assignment Business
+// Analysis §8) but no automatic-evaluation engine has been built yet — every
+// submission still requires a human tutor's Pass/Fail regardless of this
+// setting, and the backend now rejects configuring anything but Manual
+// (Assignment.Configure). Only offering Manual here keeps this selector from
+// promising something that silently did nothing.
+const ASSIGNMENT_EVALUATION_METHODS = ["Manual"];
 
 function toLocalInputValue(iso) {
   if (!iso) return "";
@@ -2802,6 +2814,14 @@ function AssessmentSection({ lessonId, editable, videoDurationSeconds }) {
               <Bot size={13} /> {t("studio.previewAiGrading")}
             </button>
           )}
+          {data.questions.length > 0 && (
+            <AttemptLimitControl
+              value={data.attemptLimit} busy={busy}
+              onSave={(next) => run(
+                () => api.saveAssessment(session.token, slug, lessonId, { title: data.title, passingThresholdPercent: data.passingThresholdPercent, attemptLimit: next }),
+                t("studio.toastAttemptLimitSaved")).then((r) => r && setData(r))}
+            />
+          )}
           {data.status === "Published" ? (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                     onClick={() => run(() => api.assessmentTransition(session.token, slug, lessonId, "unpublish"), t("studio.toastQuestionsUnpublished")).then((r) => r && setData(r))}>
@@ -3037,6 +3057,14 @@ function StandaloneAssessmentSection({ lessonId, editable }) {
               <Bot size={13} /> {t("studio.previewAiGrading")}
             </button>
           )}
+          {data.questions.length > 0 && (
+            <AttemptLimitControl
+              value={data.attemptLimit} busy={busy}
+              onSave={(next) => run(
+                () => api.saveStandaloneAssessment(session.token, slug, lessonId, { title: data.title, passingThresholdPercent: data.passingThresholdPercent, attemptLimit: next }),
+                t("studio.toastAttemptLimitSaved")).then((r) => r && setData(r))}
+            />
+          )}
           {data.status === "Published" ? (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
                     onClick={() => run(() => api.standaloneAssessmentTransition(session.token, slug, lessonId, "unpublish"), t("studio.toastQuestionsUnpublished")).then((r) => r && setData(r))}>
@@ -3206,6 +3234,38 @@ function SuggestionRow({ s, onAccept, onReject, busy }) {
   );
 }
 
+/** A learner's correct answer is always disclosed after grading (Assessment.
+    Grade), so without a cap they could pass any quiz after one deliberately-
+    wrong "scouting" attempt. Null/empty means unlimited (the historical
+    default) — commits on blur, only calling onSave when the value actually
+    changed, and shows nothing until at least one question exists. */
+function AttemptLimitControl({ value, busy, onSave }) {
+  const { t } = useLanguage();
+  const [draft, setDraft] = useState(value == null ? "" : String(value));
+
+  useEffect(() => { setDraft(value == null ? "" : String(value)); }, [value]);
+
+  function commit() {
+    const trimmed = draft.trim();
+    const next = trimmed === "" ? null : Math.max(1, parseInt(trimmed, 10) || 1);
+    if (next === value) { setDraft(next == null ? "" : String(next)); return; }
+    onSave(next);
+  }
+
+  return (
+    <label className="lw-studio__attemptlimit" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}>
+      {t("studio.attemptLimit")}
+      <input
+        type="number" min="1" placeholder={t("studio.attemptLimitUnlimited")}
+        value={draft} disabled={busy}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        style={{ width: 64 }}
+      />
+    </label>
+  );
+}
+
 /** One row per question: timestamp (when this list is video-timed), type,
     a truncated prompt, points, and exactly two actions — view full detail,
     or edit. Removing a question lives inside the view-detail modal instead
@@ -3270,7 +3330,10 @@ function QuestionInfoModal({ question, editable, onEdit, onRemove, onClose }) {
       <p className="muted" style={{ margin: "12px 0 0" }}>{t("studio.points")}: {question.points}</p>
       {editable && (
         <div className="lw-modal__actions" style={{ marginTop: 22 }}>
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => onRemove(question.id)}>
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => {
+            if (!window.confirm(t("studio.confirmRemoveQuestion"))) return;
+            onRemove(question.id);
+          }}>
             <Trash2 size={13} /> {t("studio.removeQuestion")}
           </button>
           <button className="lw-btn lw-btn--accent lw-btn--sm" onClick={() => onEdit(question)}>

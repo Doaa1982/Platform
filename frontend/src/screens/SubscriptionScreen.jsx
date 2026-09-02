@@ -271,8 +271,10 @@ export function AiCreditsScreen() {
   const pendingOrder = creditPurchases.find((p) => p.status === "Pending");
   const onRequestCreditPurchase = (creditPackCode) => run(
     () => api.requestCreditPurchase(session.token, slug, creditPackCode), t("subscription.toastPurchaseRequested"));
-  const onCancelPurchase = () => run(
-    () => api.cancelCreditPurchase(session.token, slug, pendingOrder.id), t("subscription.toastRequestedChangeCancelled"));
+  const onCancelPurchase = () => {
+    if (!window.confirm(t("subscription.confirmCancelPurchase"))) return;
+    run(() => api.cancelCreditPurchase(session.token, slug, pendingOrder.id), t("subscription.toastRequestedChangeCancelled"));
+  };
 
   return (
     <div className="lw-page">
@@ -294,7 +296,7 @@ export function AiCreditsScreen() {
         <div className="lw-bill__notice lw-bill__cancellednotice">
           <p>{t("subscription.creditsRequestedNotice", { amount: Number(pendingOrder.creditAmount).toLocaleString() })}</p>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancelPurchase}>
-            {t("subscription.withdrawRequestAction")}
+            {t("subscription.cancelRequestAction")}
           </button>
         </div>
       )}
@@ -599,7 +601,7 @@ function BillingOverview({
               : t("subscription.pendingPacksNote", { packs: requestedPackNames.join(", ") })}
           </p>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancelRequestedChange}>
-            {t("subscription.withdrawRequestAction")}
+            {t("subscription.cancelRequestAction")}
           </button>
         </div>
       )}
@@ -739,7 +741,7 @@ function PlansAndAddOns({
             {" "}{t("subscription.pendingBlocksNewRequest")}
           </p>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancelRequestedChange}>
-            {t("subscription.withdrawRequestAction")}
+            {t("subscription.cancelRequestAction")}
           </button>
         </div>
       )}

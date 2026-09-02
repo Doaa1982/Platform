@@ -9,6 +9,7 @@ import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 import AdminCatalogSection from "./AdminCatalogSection";
+import AdminEntitlementOverridesSection from "./AdminEntitlementOverridesSection";
 import Message from "../components/Message";
 import PaginationControls, { PAGINATION_CONTROLS_CSS } from "../components/PaginationControls";
 import { usePagination } from "../hooks/usePagination";
@@ -209,12 +210,17 @@ export default function AdminScreen() {
                 className={tab === "catalog" ? "is-active" : ""} onClick={() => setTab("catalog")}>
           {t("admin.tabCatalog")}
         </button>
+        <button type="button" role="tab" aria-selected={tab === "overrides"}
+                className={tab === "overrides" ? "is-active" : ""} onClick={() => setTab("overrides")}>
+          {t("admin.tabOverrides")}
+        </button>
       </div>
 
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
 
       {tab === "catalog" && <AdminCatalogSection />}
+      {tab === "overrides" && <AdminEntitlementOverridesSection />}
 
       {/* Both triggered from the always-visible header button/Applications-tab
           buttons, so rendered unconditionally rather than gated to one tab —
@@ -382,7 +388,10 @@ export default function AdminScreen() {
                       </button>
                     )}
                     {!["Archived", "Deleted"].includes(r.workspaceStatus) && (
-                      <button disabled={busy} onClick={() => run(() => api.workspaceAction(session.token, r.workspaceId, "archive"), t("admin.toastWorkspaceArchived", { name: r.name }))}>
+                      <button disabled={busy} onClick={() => {
+                        if (!window.confirm(t("admin.confirmArchiveWorkspace", { name: r.name }))) return;
+                        run(() => api.workspaceAction(session.token, r.workspaceId, "archive"), t("admin.toastWorkspaceArchived", { name: r.name }));
+                      }}>
                         <Archive size={12} aria-hidden="true" /> {t("admin.archive")}
                       </button>
                     )}
@@ -582,7 +591,10 @@ export default function AdminScreen() {
                         <Check size={12} aria-hidden="true" /> {t("admin.approvePurchase")}
                       </button>
                       <button disabled={busy}
-                              onClick={() => run(() => api.voidCreditPurchase(session.token, o.id, creditPurchaseNotes[o.id] || null), t("admin.toastPurchaseVoided", { name: o.workspaceName }))}>
+                              onClick={() => {
+                                if (!window.confirm(t("admin.confirmVoidPurchase", { name: o.workspaceName }))) return;
+                                run(() => api.voidCreditPurchase(session.token, o.id, creditPurchaseNotes[o.id] || null), t("admin.toastPurchaseVoided", { name: o.workspaceName }));
+                              }}>
                         <X size={12} aria-hidden="true" /> {t("admin.voidPurchase")}
                       </button>
                     </td>
@@ -806,6 +818,21 @@ const CSS = `
   .pl-admin__table td { padding: 13px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   .pl-admin__table tr:last-child td { border-bottom: none; }
   .pl-admin__table tr.is-attention { background: rgba(224,168,62,0.06); }
+
+  .pl-admin__overrideslead { color: var(--ink-soft); font-size: 0.85rem; line-height: 1.6; margin: 0 0 16px; max-width: 70ch; }
+  .pl-admin__overrideswspicker { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; color: var(--ink-soft); max-width: 360px; margin-bottom: 18px; }
+  .pl-admin__overrideswspicker select { font-family: var(--font-body, inherit); font-size: 0.88rem; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .pl-admin__overridesbar { margin-bottom: 14px; }
+  .pl-admin__overrideform {
+    display: flex; flex-wrap: wrap; align-items: end; gap: 12px;
+    padding: 14px; margin-bottom: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .pl-admin__overrideform label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--ink-soft); }
+  .pl-admin__overrideform input {
+    font-family: var(--font-body, inherit); font-size: 0.85rem; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px;
+  }
+  .pl-admin__overridereason { flex: 1; min-width: 180px; }
+  .pl-admin__overridesempty { color: var(--ink-soft); font-size: 0.85rem; }
 
   .pl-admin__wsname { display: block; font-weight: 600; }
   .pl-admin__slug { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-soft); margin-top: 2px; }

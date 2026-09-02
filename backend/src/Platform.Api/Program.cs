@@ -14,6 +14,8 @@ using Platform.Api.Services;
 using Platform.Domain;
 using Platform.Infrastructure;
 using Scalar.AspNetCore;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,12 +26,28 @@ builder.AddServiceDefaults();
 // ── Controllers + OpenAPI ──────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
 
-// ── CORS — open policy for local development (same as SMS reference) ──────────
+// ── CORS ────────────────────────────────────────────────────────────────────────
+// Wide open in Development only (matches the Vite dev server's arbitrary
+// local port). Everywhere else, an explicit allow-list is required —
+// Cors:AllowedOrigins (an array in config, e.g. ["https://app.example.com"]).
+// A bearer token isn't automatically attached cross-origin the way a cookie
+// would be, so this isn't the only thing standing between an attacker page
+// and the API, but AllowAnyOrigin + AllowAnyHeader + AllowAnyMethod in every
+// environment (including production) was needlessly broad — any origin that
+// obtained a token another way (XSS, a leaked value) could still call the API
+// from the browser with no restriction at all.
+var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+    {
+        if (builder.Environment.IsDevelopment() && corsAllowedOrigins.Length == 0)
+            policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+        else
+            policy.WithOrigins(corsAllowedOrigins).AllowAnyHeader().AllowAnyMethod();
+    });
 });
 
 // ── Database — connection string injected by Aspire ("PlatformDB" resource) ───
@@ -44,6 +62,17 @@ builder.Services.AddDbContext<PlatformDbContext>(options =>
 // ── JWT Authentication ─────────────────────────────────────────────────────────
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Jwt:Key must be configured in appsettings.");
+
+// The key committed in appsettings.Development.json is real, non-random, and
+// public (it's in source control) — fine for a local dev database nobody can
+// reach, a genuine problem the moment it signs a token anyone can forge
+// against a real deployment. Fail fast rather than silently accept it: an
+// operator who forgot to set Jwt:Key in a real environment's config/secrets
+// deserves a crash at startup, not a signing key an attacker can read on GitHub.
+const string DevOnlyJwtKey = "platform-dev-secret-key-minimum-32-chars!!";
+if (!builder.Environment.IsDevelopment() && jwtKey == DevOnlyJwtKey)
+    throw new InvalidOperationException(
+        "Jwt:Key is still set to the Development placeholder value. Configure a real, unique signing key for this environment.");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -73,6 +102,45 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     context.Token = token;
                 }
                 return Task.CompletedTask;
+            },
+
+            // Signature/expiry alone can't catch a suspended account or an
+            // explicit logout — both happen after the token was already
+            // issued, and this is stateless JWT (no server-side session to
+            // check by default). One extra DB read per authenticated request
+            // is the same cost every request already pays to re-resolve
+            // Workspace membership/roles live rather than trust the token —
+            // this just extends that same "never trust a stale claim"
+            // discipline to the Identity itself.
+            OnTokenValidated = async context =>
+            {
+                // ASP.NET Core's default inbound claim map rewrites "sub" to
+                // the legacy ClaimTypes.NameIdentifier URI before this handler
+                // ever sees the principal — every controller's own identity
+                // lookup already defends against this (see e.g.
+                // AdminController.TryGetIdentityId's identical fallback); this
+                // handler needs the same fallback or every token fails here
+                // with "missing required claims" before a single controller
+                // ever runs (V1 Launch Readiness Report — caught only by
+                // actually driving a live authenticated request end to end,
+                // never by the pure-domain TokenVersion test alone).
+                var subClaim = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub);
+                var tvClaim = context.Principal?.FindFirstValue(TokenService.TokenVersionClaimType);
+                if (!Guid.TryParse(subClaim, out var identityId) || !int.TryParse(tvClaim, out var tokenVersion))
+                {
+                    context.Fail("Token is missing required claims.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<PlatformDbContext>();
+                var identity = await db.Identities.AsNoTracking()
+                    .Where(i => i.Id == identityId)
+                    .Select(i => new { i.Status, i.TokenVersion })
+                    .FirstOrDefaultAsync();
+
+                if (identity is null || identity.Status != IdentityStatus.Active || identity.TokenVersion != tokenVersion)
+                    context.Fail("This session is no longer valid.");
             }
         };
     });
@@ -275,6 +343,7 @@ builder.Services.AddScoped<CommercialSubscriptionService>();
 builder.Services.AddScoped<CommercialOpsService>();
 builder.Services.AddScoped<CatalogAdminService>();
 builder.Services.AddScoped<CreditPurchaseService>();
+builder.Services.AddHostedService<CommercialLifecycleSweepBackgroundService>();
 
 // Guards the one endpoint a stranger can reach that creates an Identity, and
 // the forgot/reset-password endpoints (create nothing, but reachable by anyone)
@@ -307,11 +376,33 @@ else
 
 var app = builder.Build();
 
+if (!app.Environment.IsDevelopment() && corsAllowedOrigins.Length == 0)
+    app.Logger.LogWarning(
+        "Cors:AllowedOrigins is not configured in a non-Development environment — " +
+        "the default CORS policy currently allows no cross-origin browser requests at all. " +
+        "Set Cors:AllowedOrigins to the frontend's real origin(s) if it is served from a different origin than this API.");
+
+if (!app.Environment.IsDevelopment() && !emailOptions.Enabled)
+    app.Logger.LogWarning(
+        "Email:Enabled is false in a non-Development environment — invitation and password-reset " +
+        "emails will only be logged, never actually sent. Every raw link still appears in the API " +
+        "response for someone to paste and send manually, but nothing reaches a real inbox until " +
+        "Email:Enabled and the SMTP settings are configured for this environment.");
+
 // ── Map Aspire health & liveness endpoints ─────────────────────────────────────
 app.MapDefaultEndpoints();
 
-// ── Dev-only: auto-create schema + seed one test Tutor ────────────────────────
-if (app.Environment.IsDevelopment())
+// ── Schema + Commercial Catalog / AI Skill Pricing bootstrap — every environment ──
+// Deliberately NOT gated to Development: without this, a fresh production
+// database has no schema at all, and even with a schema, an empty Commercial
+// Catalog means CheckoutAsync has nothing to sell — every new Workspace would
+// get no Subscription/WorkspaceLicense/Entitlement rows at all, and every
+// AI-gated feature would 403 for every real signup (V1 Production Readiness
+// Report, P0-2). Safe to run on every startup: Migrate() no-ops once applied,
+// and each seed below only writes when its own table is still empty — a
+// Platform Operator publishing updated pricing through CatalogAdminController
+// afterwards takes over from here exactly as it would in a database seeded
+// by hand.
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
@@ -333,6 +424,150 @@ if (app.Environment.IsDevelopment())
     // the model it silently does nothing, so newly added tables never appear and
     // the first query against them fails with "relation does not exist".
     db.Database.Migrate();
+
+    // ── Commercial Catalog seed ─────────────────────────────────────────────
+    // Real business data, not a throwaway dev fixture — kept structurally
+    // separate from the Identity/Workspace demo data below, and no longer
+    // confined to Development the way it originally was (it used to only
+    // live here because db.Database.Migrate() above was itself Development-
+    // gated; now that both run everywhere, there is no reason to keep it
+    // dev-only too).
+    if (!db.CommercialProducts.Any())
+    {
+        var family = ProductFamily.Create("solo", "Solo");
+        db.ProductFamilies.Add(family);
+
+        foreach (var plan in CommercialCatalog.Plans)
+        {
+            var product = CommercialProduct.Create(family.Id, plan.Code, plan.Name);
+            var version = CommercialProductVersion.Create(
+                product.Id, versionNumber: 1,
+                plan.MonthlyPrice, plan.AnnualPrice, plan.Currency,
+                plan.TutorCapacityBase, plan.TutorCapacityMax,
+                plan.LearnerCapacityBase, plan.LearnerCapacityMax,
+                plan.VideoStorageGbBase, plan.VideoStorageGbMax,
+                plan.ResourceStorageGbBase, plan.ResourceStorageGbMax,
+                plan.AiCreditsIncluded,
+                plan.LearningProfile, plan.AssessmentProfile, plan.AnalyticsProfile, plan.BrandingProfile);
+            version.Publish();
+            product.Publish();
+            db.CommercialProducts.Add(product);
+            db.CommercialProductVersions.Add(version);
+        }
+
+        foreach (var packDef in CommercialCatalog.Packs)
+        {
+            var pack = CommercialPack.Create(packDef.Code, packDef.Name);
+            var version = CommercialPackVersion.Create(
+                pack.Id, versionNumber: 1, packDef.MonthlyPrice, packDef.Currency,
+                GrantFor(packDef, CapabilityDomain.Learning), GrantFor(packDef, CapabilityDomain.Assessment),
+                GrantFor(packDef, CapabilityDomain.Analytics), GrantFor(packDef, CapabilityDomain.Branding),
+                packDef.ExtraTutorCapacity, packDef.ExtraLearnerCapacity, packDef.ExtraVideoStorageGb, packDef.ExtraResourceStorageGb,
+                packDef.RequiresMinProfile?.Domain, packDef.RequiresMinProfile?.MinLevel);
+            version.Publish();
+            pack.Publish();
+            db.CommercialPacks.Add(pack);
+            db.CommercialPackVersions.Add(version);
+        }
+
+        db.SaveChanges();
+
+        static CapabilityProfileLevel? GrantFor(CapabilityPackDefinition pack, CapabilityDomain domain) =>
+            pack.DomainGrants.TryGetValue(domain, out var level) ? level : null;
+    }
+
+    // ── AI Skill Credit Cost seed ────────────────────────────────────────────
+    // Prices from Documents/AICreditsCommercialContractAndImplementationPlan.md
+    // §A2. Same "real business data, runs everywhere" reasoning as the
+    // Commercial Catalog seed just above. Banded skills' top tier uses
+    // CreditLedgerService.UnboundedBand instead of null, so "null Band" means
+    // exactly one thing everywhere in this service: a flat-priced skill.
+    if (!db.SkillCreditCosts.Any())
+    {
+        db.SkillCreditCosts.AddRange(
+            SkillCreditCost.Create(AiSkillKeys.LessonAssistant, null, 20),
+            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, 10, 8),
+            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, 30, 20),
+            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, CreditLedgerService.UnboundedBand, 35),
+            SkillCreditCost.Create(AiSkillKeys.GenerateQuestions, null, 15),
+            SkillCreditCost.Create(AiSkillKeys.GenerateStandaloneQuestions, 15, 15),
+            SkillCreditCost.Create(AiSkillKeys.GenerateStandaloneQuestions, CreditLedgerService.UnboundedBand, 30),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLessonQuiz, 10, 15),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLessonQuiz, CreditLedgerService.UnboundedBand, 30),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLessonTitle, null, 5),
+            SkillCreditCost.Create(AiSkillKeys.GenerateWorkspaceProfile, null, 10),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLearningObjectives, null, 10),
+            SkillCreditCost.Create(AiSkillKeys.GenerateWhatYoullLearn, null, 8),
+            SkillCreditCost.Create(AiSkillKeys.GenerateLessonBody, null, 30),
+            SkillCreditCost.Create(AiSkillKeys.GenerateHomework, null, 15),
+            SkillCreditCost.Create(AiSkillKeys.GenerateGlossary, null, 10),
+            SkillCreditCost.Create(AiSkillKeys.GenerateProductDescription, null, 8),
+            SkillCreditCost.Create(AiSkillKeys.ExtractLessonContentFromResource, 2, 25),
+            SkillCreditCost.Create(AiSkillKeys.ExtractLessonContentFromResource, CreditLedgerService.UnboundedBand, 60));
+
+        db.SaveChanges();
+    }
+
+    // ── Initial Platform Operator bootstrap ─────────────────────────────────
+    // Without this, a fresh production deployment has no PlatformOperator row
+    // at all and — since that grant is the sole authority AdminController's
+    // signup-request approval endpoints check — nobody could ever approve the
+    // very first tutor's signup request (V1 Launch Readiness Report). Runs
+    // everywhere, guarded the same idempotent way as the seeds above.
+    if (!db.PlatformOperators.Any())
+    {
+        var initialOperator = builder.Configuration.GetSection(InitialPlatformOperatorOptions.Section)
+            .Get<InitialPlatformOperatorOptions>() ?? new InitialPlatformOperatorOptions();
+
+        if (string.IsNullOrWhiteSpace(initialOperator.Email))
+        {
+            if (!app.Environment.IsDevelopment())
+                app.Logger.LogWarning(
+                    "InitialPlatformOperator:Email is not configured — no Platform Operator exists yet, " +
+                    "so nobody can approve a tutor signup request or reach any admin endpoint. Set " +
+                    "InitialPlatformOperator:Email (and :Password, unless that email already has an " +
+                    "Identity) and restart to bootstrap the first Platform Operator.");
+        }
+        else
+        {
+            var existing = db.Identities.FirstOrDefault(i => i.Email == initialOperator.Email);
+            if (existing is not null)
+            {
+                db.PlatformOperators.Add(PlatformOperator.Grant(existing.Id));
+                db.SaveChanges();
+                app.Logger.LogInformation(
+                    "Granted PlatformOperator to the existing Identity for {Email}.", initialOperator.Email);
+            }
+            else if (string.IsNullOrWhiteSpace(initialOperator.Password))
+            {
+                app.Logger.LogWarning(
+                    "InitialPlatformOperator:Email ({Email}) has no matching Identity yet, and " +
+                    "InitialPlatformOperator:Password is not configured to create one — no Platform " +
+                    "Operator was bootstrapped. Set :Password and restart.", initialOperator.Email);
+            }
+            else
+            {
+                var admin = Identity.Create(
+                    email: initialOperator.Email,
+                    passwordHash: BCrypt.Net.BCrypt.HashPassword(initialOperator.Password),
+                    fullName: "Platform Admin");
+                db.Identities.Add(admin);
+                db.PlatformOperators.Add(PlatformOperator.Grant(admin.Id));
+                db.SaveChanges();
+                app.Logger.LogInformation(
+                    "Bootstrapped the first Platform Operator ({Email}).", initialOperator.Email);
+            }
+        }
+    }
+}
+
+// ── Dev-only: seed demo Identities/Workspace/Membership + a demo subscription ──
+// Fake accounts and a throwaway workspace for local development only — unlike
+// the catalog/pricing seed above, this has no business being in production.
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
 
     if (!db.Identities.Any())
     {
@@ -421,90 +656,6 @@ if (app.Environment.IsDevelopment())
         db.SaveChanges();
     }
 
-    // ── Commercial Catalog seed ─────────────────────────────────────────────
-    // Deliberately its own check, not nested inside "no Identities yet" above:
-    // the Product/Pack catalog is real business data, not a throwaway dev
-    // fixture, so it's kept structurally separate. It only lives inside this
-    // IsDevelopment() block because db.Database.Migrate() above is itself
-    // gated the same way — there is no other startup path that touches the
-    // schema yet. Move this seed alongside a real migration step once one exists.
-    if (!db.CommercialProducts.Any())
-    {
-        var family = ProductFamily.Create("solo", "Solo");
-        db.ProductFamilies.Add(family);
-
-        foreach (var plan in CommercialCatalog.Plans)
-        {
-            var product = CommercialProduct.Create(family.Id, plan.Code, plan.Name);
-            var version = CommercialProductVersion.Create(
-                product.Id, versionNumber: 1,
-                plan.MonthlyPrice, plan.AnnualPrice, plan.Currency,
-                plan.TutorCapacityBase, plan.TutorCapacityMax,
-                plan.LearnerCapacityBase, plan.LearnerCapacityMax,
-                plan.VideoStorageGbBase, plan.VideoStorageGbMax,
-                plan.ResourceStorageGbBase, plan.ResourceStorageGbMax,
-                plan.AiCreditsIncluded,
-                plan.LearningProfile, plan.AssessmentProfile, plan.AnalyticsProfile, plan.BrandingProfile);
-            version.Publish();
-            product.Publish();
-            db.CommercialProducts.Add(product);
-            db.CommercialProductVersions.Add(version);
-        }
-
-        foreach (var packDef in CommercialCatalog.Packs)
-        {
-            var pack = CommercialPack.Create(packDef.Code, packDef.Name);
-            var version = CommercialPackVersion.Create(
-                pack.Id, versionNumber: 1, packDef.MonthlyPrice, packDef.Currency,
-                GrantFor(packDef, CapabilityDomain.Learning), GrantFor(packDef, CapabilityDomain.Assessment),
-                GrantFor(packDef, CapabilityDomain.Analytics), GrantFor(packDef, CapabilityDomain.Branding),
-                packDef.ExtraTutorCapacity, packDef.ExtraLearnerCapacity, packDef.ExtraVideoStorageGb, packDef.ExtraResourceStorageGb,
-                packDef.RequiresMinProfile?.Domain, packDef.RequiresMinProfile?.MinLevel);
-            version.Publish();
-            pack.Publish();
-            db.CommercialPacks.Add(pack);
-            db.CommercialPackVersions.Add(version);
-        }
-
-        db.SaveChanges();
-
-        static CapabilityProfileLevel? GrantFor(CapabilityPackDefinition pack, CapabilityDomain domain) =>
-            pack.DomainGrants.TryGetValue(domain, out var level) ? level : null;
-    }
-
-    // ── AI Skill Credit Cost seed ────────────────────────────────────────────
-    // Prices from Documents/AICreditsCommercialContractAndImplementationPlan.md
-    // §A2 — same "seed at startup, dev-only for now" caveat as the Commercial
-    // Catalog seed just above (move alongside a real migration step once one
-    // exists). Banded skills' top tier uses CreditLedgerService.UnboundedBand
-    // instead of null, so "null Band" means exactly one thing everywhere in
-    // this service: a flat-priced skill.
-    if (!db.SkillCreditCosts.Any())
-    {
-        db.SkillCreditCosts.AddRange(
-            SkillCreditCost.Create(AiSkillKeys.LessonAssistant, null, 20),
-            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, 10, 8),
-            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, 30, 20),
-            SkillCreditCost.Create(AiSkillKeys.GradeAssessment, CreditLedgerService.UnboundedBand, 35),
-            SkillCreditCost.Create(AiSkillKeys.GenerateQuestions, null, 15),
-            SkillCreditCost.Create(AiSkillKeys.GenerateStandaloneQuestions, 15, 15),
-            SkillCreditCost.Create(AiSkillKeys.GenerateStandaloneQuestions, CreditLedgerService.UnboundedBand, 30),
-            SkillCreditCost.Create(AiSkillKeys.GenerateLessonQuiz, 10, 15),
-            SkillCreditCost.Create(AiSkillKeys.GenerateLessonQuiz, CreditLedgerService.UnboundedBand, 30),
-            SkillCreditCost.Create(AiSkillKeys.GenerateLessonTitle, null, 5),
-            SkillCreditCost.Create(AiSkillKeys.GenerateWorkspaceProfile, null, 10),
-            SkillCreditCost.Create(AiSkillKeys.GenerateLearningObjectives, null, 10),
-            SkillCreditCost.Create(AiSkillKeys.GenerateWhatYoullLearn, null, 8),
-            SkillCreditCost.Create(AiSkillKeys.GenerateLessonBody, null, 30),
-            SkillCreditCost.Create(AiSkillKeys.GenerateHomework, null, 15),
-            SkillCreditCost.Create(AiSkillKeys.GenerateGlossary, null, 10),
-            SkillCreditCost.Create(AiSkillKeys.GenerateProductDescription, null, 8),
-            SkillCreditCost.Create(AiSkillKeys.ExtractLessonContentFromResource, 2, 25),
-            SkillCreditCost.Create(AiSkillKeys.ExtractLessonContentFromResource, CreditLedgerService.UnboundedBand, 60));
-
-        db.SaveChanges();
-    }
-
     // ── Demo subscription seed ──────────────────────────────────────────────
     // Without this, demo-academy exists with no Subscription/WorkspaceLicense/
     // Entitlement rows at all — CheckoutAsync is the only code path that ever
@@ -540,6 +691,19 @@ if (app.Environment.IsDevelopment())
                .WithTheme(ScalarTheme.Moon);
     });
 }
+
+// No global exception handler existed before this — an unhandled exception
+// fell through to Kestrel's own default behavior: no stack trace leak, but
+// no structured/consistent error body either, unlike every deliberate error
+// path in this API (ProvisioningResult → a typed { message } response).
+// UseDeveloperExceptionPage in Development keeps full detail for local
+// debugging; UseExceptionHandler (paired with AddProblemDetails above) gives
+// every other environment a generic ProblemDetails body instead of a bare
+// 500 with nothing in it.
+if (app.Environment.IsDevelopment())
+    app.UseDeveloperExceptionPage();
+else
+    app.UseExceptionHandler();
 
 app.UseCors();
 app.UseHttpsRedirection();
@@ -625,3 +789,6 @@ static async Task WaitForDatabaseAsync(DbContext db, ILogger logger)
         }
     }
 }
+
+/// <summary>Exposes the top-level-statement entry point to WebApplicationFactory&lt;Program&gt; for integration tests.</summary>
+public partial class Program;

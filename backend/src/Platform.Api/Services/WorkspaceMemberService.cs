@@ -88,7 +88,7 @@ public class WorkspaceMemberService(
             .ToListAsync(ct);
 
         var enrollments = await db.Enrollments.AsNoTracking()
-            .Where(e => e.WorkspaceId == workspace.Id)
+            .Where(e => e.WorkspaceId == workspace.Id && e.Status != EnrollmentStatus.Cancelled)
             .ToListAsync(ct);
         var enrollmentsByMembership = enrollments
             .GroupBy(e => e.MembershipId)
@@ -221,12 +221,27 @@ public class WorkspaceMemberService(
         if (existing)
             return Fail("That person is already an active member of this workspace.", ProvisioningError.Conflict);
 
-        // §8: at most one open Invitation per (email, Workspace)
-        var open = await db.Invitations
+        // §8: at most one open Invitation per (email, Workspace). Loaded
+        // tracked (not AsNoTracking) so a Sent row whose ExpiresAt has
+        // already passed is promoted to Expired here — the same lazy
+        // promotion this codebase already uses for Invitation acceptance —
+        // rather than left sitting at Status "Sent" in the database forever.
+        // That promotion is what keeps the (WorkspaceId, Email)-filtered
+        // unique index below from blocking a legitimate resend after natural
+        // time-based expiry: the index's predicate can only see Status, not
+        // the clock.
+        var existingInvitations = await db.Invitations
             .Where(i => i.WorkspaceId == workspace.Id && i.Email == inviteeEmail)
             .ToListAsync(ct);
 
-        if (open.Any(i => i.IsOpen()))
+        var stillOpen = false;
+        foreach (var candidate in existingInvitations)
+        {
+            if (candidate.Status != InvitationStatus.Sent) continue;
+            if (candidate.IsOpen()) stillOpen = true;
+            else candidate.Expire();
+        }
+        if (stillOpen)
             return Fail("There's already an open invitation for that email — resend it instead of creating another.",
                         ProvisioningError.Conflict);
 
@@ -703,12 +718,20 @@ public class WorkspaceMemberService(
         if (product.Status != LearningProductStatus.Published)
             return FailMember("Only a published learning product can be enrolled into.", ProvisioningError.Invalid);
 
-        var alreadyEnrolled = await db.Enrollments.AnyAsync(
+        var existingEnrollment = await db.Enrollments.FirstOrDefaultAsync(
             e => e.MembershipId == membership.Id && e.LearningProductId == learningProductId, ct);
-        if (alreadyEnrolled)
+        if (existingEnrollment is { Status: EnrollmentStatus.Active or EnrollmentStatus.Completed })
             return FailMember("This member is already enrolled in that course.", ProvisioningError.Conflict);
 
-        db.Enrollments.Add(Enrollment.Create(workspace.Id, learningProductId, membership.Id));
+        // A previously Cancelled Enrollment (this method's own UnenrollMemberAsync
+        // counterpart) is reactivated rather than replaced — the unique index is
+        // (LearningProductId, MembershipId) with no status filter, and reactivating
+        // is what actually preserves the point of not hard-deleting it: the
+        // member's prior LessonProgress picks back up instead of starting over.
+        if (existingEnrollment is { Status: EnrollmentStatus.Cancelled })
+            existingEnrollment.Reactivate();
+        else
+            db.Enrollments.Add(Enrollment.Create(workspace.Id, learningProductId, membership.Id));
         try
         {
             await db.SaveChangesAsync(ct);
@@ -722,7 +745,7 @@ public class WorkspaceMemberService(
 
         var identity = await db.Identities.AsNoTracking().FirstOrDefaultAsync(i => i.Id == membership.IdentityId, ct);
         var enrolledCourses = await db.Enrollments.AsNoTracking()
-            .Where(e => e.MembershipId == membership.Id)
+            .Where(e => e.MembershipId == membership.Id && e.Status != EnrollmentStatus.Cancelled)
             .Join(db.LearningProducts.AsNoTracking(), e => e.LearningProductId, p => p.Id,
                   (e, p) => new EnrolledCourseInfo(p.Id, p.Title))
             .ToListAsync(ct);
@@ -766,7 +789,8 @@ public class WorkspaceMemberService(
             return ProvisioningResult<ProductRosterResponse>.Fail(ProvisioningError.NotFound, "No such learning product in this workspace.");
 
         var enrollments = await db.Enrollments.AsNoTracking()
-            .Where(e => e.LearningProductId == productId && e.WorkspaceId == workspace.Id)
+            .Where(e => e.LearningProductId == productId && e.WorkspaceId == workspace.Id
+                     && e.Status != EnrollmentStatus.Cancelled)
             .OrderByDescending(e => e.CreatedAt)
             .ToListAsync(ct);
 
@@ -841,15 +865,15 @@ public class WorkspaceMemberService(
         var workspace = context.Workspace!;
 
         var enrollment = await db.Enrollments.FirstOrDefaultAsync(
-            e => e.WorkspaceId == workspace.Id && e.LearningProductId == productId && e.MembershipId == membershipId, ct);
+            e => e.WorkspaceId == workspace.Id && e.LearningProductId == productId && e.MembershipId == membershipId
+              && e.Status != EnrollmentStatus.Cancelled, ct);
         if (enrollment is null)
             return Fail<string>("This member isn't enrolled in that course.", ProvisioningError.NotFound);
 
-        var progress = await db.LessonProgresses
-            .Where(p => p.EnrollmentId == enrollment.Id)
-            .ToListAsync(ct);
-        db.LessonProgresses.RemoveRange(progress);
-        db.Enrollments.Remove(enrollment);
+        // Cancelled, not deleted — this used to hard-delete the Enrollment and
+        // every LessonProgress row keyed to it, permanently destroying a
+        // learner's completion history for one click. See Enrollment.Cancel.
+        enrollment.Cancel();
 
         await db.SaveChangesAsync(ct);
         return ProvisioningResult<string>.Success("Unenrolled");

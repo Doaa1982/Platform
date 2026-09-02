@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Platform.Api.Models;
 using Platform.Api.Services;
 using Platform.Infrastructure;
+using System.Security.Claims;
 
 namespace Platform.Api.Controllers;
 
@@ -16,9 +18,13 @@ public class AuthController(PlatformDbContext db, TokenService tokens, PasswordR
     /// Sign in.
     /// POST /api/auth/login
     /// Returns a signed JWT valid for 8 hours, carrying identity-level claims
-    /// only — roles are Workspace-scoped and resolved per request.
+    /// only — roles are Workspace-scoped and resolved per request. Rate
+    /// limited: unlike every other anonymous endpoint here, this one needs no
+    /// prior proof of anything, so it's the one an attacker could otherwise
+    /// hit indefinitely to brute-force or credential-stuff a known email.
     /// </summary>
     [HttpPost("login")]
+    [EnableRateLimiting(RateLimitPolicies.Login)]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
@@ -35,6 +41,39 @@ public class AuthController(PlatformDbContext db, TokenService tokens, PasswordR
             return Unauthorized(new { message = "This account is not active. Please contact support." });
 
         return Ok(tokens.Issue(identity));
+    }
+
+    /// <summary>
+    /// Sign out.
+    /// POST /api/auth/logout
+    /// Bumps Identity.TokenVersion (see its own remarks), which the JWT
+    /// bearer handler's OnTokenValidated checks on every request — this ends
+    /// not just the caller's current token but every other token issued to
+    /// this Identity before now, which is the only revocation granularity a
+    /// stateless JWT actually supports without a per-token blacklist.
+    /// </summary>
+    [HttpPost("logout")]
+    [Authorize]
+    public async Task<IActionResult> Logout()
+    {
+        // Same ClaimTypes.NameIdentifier fallback every other controller's
+        // identity lookup already uses — ASP.NET Core's default inbound claim
+        // map rewrites "sub" to that legacy URI before this ever runs (V1
+        // Launch Readiness Report: the same root cause as the OnTokenValidated
+        // bug in Program.cs, found here by the integration test that actually
+        // calls Logout and checks the token stops working afterward).
+        var subClaim = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
+        if (!Guid.TryParse(subClaim, out var identityId))
+            return Unauthorized(new { message = "Token does not carry a valid identity." });
+
+        var identity = await db.Identities.FirstOrDefaultAsync(i => i.Id == identityId);
+        if (identity is null) return NoContent();
+
+        identity.InvalidateSessions();
+        await db.SaveChangesAsync();
+
+        return NoContent();
     }
 
     /* ── Account recovery ─────────────────────────────────────────────────

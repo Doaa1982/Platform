@@ -288,7 +288,10 @@ export default function MembersScreen({ initialTab }) {
                           <button
                             aria-label={t("members.removeRole", { role: humanise(t, r) })}
                             disabled={busy}
-                            onClick={() => run(() => api.removeMemberRole(session.token, slug, m.membershipId, r), t("members.toastRoleRemoved", { role: humanise(t, r) }))}
+                            onClick={() => {
+                              if (!window.confirm(t("members.confirmRemoveRole", { role: humanise(t, r), name: m.fullName }))) return;
+                              run(() => api.removeMemberRole(session.token, slug, m.membershipId, r), t("members.toastRoleRemoved", { role: humanise(t, r) }));
+                            }}
                           ><X size={10} /></button>
                         )}
                       </span>

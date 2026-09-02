@@ -12,6 +12,8 @@
         <PackageReference Include="MailKit" Version="4.17.0" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+        <!-- Pins the transitive Microsoft.OpenApi 2.0.0 (high-severity GHSA-v5pm-xwqc-g5wc) up to the latest 2.x patch, without the breaking major-version jump to 3.x. -->
+        <PackageReference Include="Microsoft.OpenApi" Version="2.12.2" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
           <PrivateAssets>all</PrivateAssets>

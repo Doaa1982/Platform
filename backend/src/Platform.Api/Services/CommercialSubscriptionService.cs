@@ -161,12 +161,15 @@ public class CommercialSubscriptionService(
 
     /// <summary>
     /// §17-18: Downgrade is scheduled for period end, not immediate, and only
-    /// after Impact Analysis confirms current usage fits the target plan.
-    /// Only tutor-seat capacity is checked in this pass (§18's own worked
-    /// example) — the same active-seats-plus-open-invitations count
-    /// WorkspaceMemberService.CheckTutorCapacityAsync already enforces on
-    /// invite, mirrored here rather than shared to avoid coupling this
-    /// service to Workspace Access's internals for one query.
+    /// after Impact Analysis confirms current usage fits the target plan —
+    /// tutor-seat capacity (§18's own worked example, active seats plus open
+    /// invitations, the same count WorkspaceMemberService.CheckTutorCapacityAsync
+    /// already enforces on invite, mirrored here rather than shared to avoid
+    /// coupling this service to Workspace Access's internals for one query),
+    /// plus learner capacity, video storage, and resource storage — the other
+    /// three metered dimensions BuildSummaryAsync already aggregates for
+    /// display, checked here too so a downgrade can't be scheduled against a
+    /// plan the workspace is already over on any of them.
     /// </summary>
     public async Task<ProvisioningResult<SubscriptionSummary>> DowngradeAsync(
         string slug, Guid callerIdentityId, DowngradeRequest request, CancellationToken ct = default)
@@ -196,6 +199,38 @@ public class CommercialSubscriptionService(
                 $"This workspace currently has {tutorSeats + pendingTutorSeats} tutor seat(s) in use "
                 + $"(active or pending). The selected plan supports {snapshot.TutorCapacity}. "
                 + "Remove a member or let a pending invitation lapse before downgrading."));
+
+        var activeLearners = await db.Memberships
+            .Where(m => m.WorkspaceId == ctx.Workspace.Id && m.Status == MembershipStatus.Active)
+            .Where(m => m.Roles.Any(r => r.Name == WorkspaceRoleName.Learner))
+            .CountAsync(ct);
+        if (activeLearners > snapshot.LearnerCapacity)
+            return Fail((ProvisioningError.Conflict,
+                $"This workspace currently has {activeLearners} active learner(s). "
+                + $"The selected plan supports {snapshot.LearnerCapacity}. "
+                + "Remove a learner before downgrading."));
+
+        var videoBytesUsed = await db.LearningAssets
+            .Where(a => a.WorkspaceId == ctx.Workspace.Id && a.Category == LearningAssetCategory.Video && a.Status != LearningAssetStatus.Archived)
+            .SumAsync(a => a.FileSizeBytes, ct);
+        var videoGbUsed = videoBytesUsed / 1_000_000_000.0;
+        if (videoGbUsed > snapshot.VideoStorageGb)
+            return Fail((ProvisioningError.Conflict,
+                $"This workspace is currently using {videoGbUsed:0.#}GB of video storage. "
+                + $"The selected plan supports {snapshot.VideoStorageGb}GB. "
+                + "Remove some video before downgrading."));
+
+        var resourceBytesUsed = await db.LearningAssets
+            .Where(a => a.WorkspaceId == ctx.Workspace.Id
+                     && (a.Category == LearningAssetCategory.Resource || a.Category == LearningAssetCategory.Image)
+                     && a.Status != LearningAssetStatus.Archived)
+            .SumAsync(a => a.FileSizeBytes, ct);
+        var resourceGbUsed = resourceBytesUsed / 1_000_000_000.0;
+        if (resourceGbUsed > snapshot.ResourceStorageGb)
+            return Fail((ProvisioningError.Conflict,
+                $"This workspace is currently using {resourceGbUsed:0.#}GB of resource storage. "
+                + $"The selected plan supports {snapshot.ResourceStorageGb}GB. "
+                + "Remove some resources before downgrading."));
 
         // A decrease contradicts any outstanding request to pay more — void
         // that request's Invoice before scheduling the decrease.
@@ -463,8 +498,12 @@ public class CommercialSubscriptionService(
             .OrderByDescending(i => i.DueDate)
             .FirstOrDefaultAsync(ct);
 
+        // Current entitlements only (LIC-007: history is append-only, so a
+        // superseded row stays in the table with EffectiveUntil set rather
+        // than being deleted) — an unfiltered Include would surface stale,
+        // closed rows alongside the live ones here.
         var license = await db.WorkspaceLicenses.AsNoTracking()
-            .Include(l => l.Entitlements)
+            .Include(l => l.Entitlements.Where(e => e.EffectiveUntil == null))
             .FirstOrDefaultAsync(l => l.WorkspaceId == subscription.WorkspaceId, ct);
 
         string? pendingPlanCode = null;

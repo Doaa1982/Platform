@@ -275,8 +275,11 @@ export default function ProductsScreen({ onOpenStudio }) {
                     </button>
                   ))}
                   <button disabled={busy}
-                          onClick={() => run(() => api.productTransition(session.token, slug, p.id, "archive"),
-                            t("products.toastArchived", { title: p.title }))}>
+                          onClick={() => {
+                            if (!window.confirm(t("products.confirmArchive", { title: p.title }))) return;
+                            run(() => api.productTransition(session.token, slug, p.id, "archive"),
+                              t("products.toastArchived", { title: p.title }));
+                          }}>
                     <Archive size={12} /> {t("products.archive")}
                   </button>
                 </div>

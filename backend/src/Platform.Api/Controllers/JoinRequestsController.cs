@@ -53,6 +53,17 @@ public class JoinRequestsController(JoinRequestService joinRequests) : Controlle
     public async Task<ActionResult<JoinRequestStatusResponse>> Status(string token, CancellationToken ct)
         => Run(await joinRequests.GetStatusAsync(token, ct));
 
+    /// <summary>
+    /// POST /api/join-requests/status/{token}/cancel — the requester's own
+    /// "never mind", via the same Status Link. Anonymous by necessity, same
+    /// as Status itself: the requester has no Identity/credential to
+    /// authenticate with.
+    /// </summary>
+    [HttpPost("join-requests/status/{token}/cancel")]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
+    public async Task<IActionResult> Cancel(string token, CancellationToken ct)
+        => RunStatus(await joinRequests.CancelAsync(token, ct));
+
     /// <summary>GET /api/workspaces/{slug}/join-requests — the reviewer's queue.</summary>
     [HttpGet("workspaces/{slug}/join-requests")]
     [Authorize]

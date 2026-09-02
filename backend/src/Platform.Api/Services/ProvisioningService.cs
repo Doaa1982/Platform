@@ -5,14 +5,29 @@ using Platform.Infrastructure;
 
 namespace Platform.Api.Services;
 
-/// <summary>Why an operation was refused, so controllers can map it to a status code.</summary>
-public enum ProvisioningError { None, NotFound, Conflict, Invalid, Forbidden }
+/// <summary>
+/// Why an operation was refused, so controllers can map it to a status code.
+/// CreditsExhausted is distinct from Conflict so the API layer can return a
+/// structured signal (HTTP 402 + skillKey/cost/remainingBalance) instead of
+/// a plain error string — the "buy credits / upgrade" prompt Documents/
+/// AICreditsCommercialContractAndImplementationPlan.md Phase 5 called for,
+/// which every AI-call site previously folded into a generic Conflict with
+/// nothing for the frontend to act on but the message text.
+/// </summary>
+public enum ProvisioningError { None, NotFound, Conflict, Invalid, Forbidden, CreditsExhausted }
 
-public record ProvisioningResult<T>(T? Value, ProvisioningError Error = ProvisioningError.None, string? Message = null)
+public record ProvisioningResult<T>(
+    T? Value, ProvisioningError Error = ProvisioningError.None, string? Message = null,
+    /// <summary>Set only when Error is CreditsExhausted — the skill's price.</summary>
+    int? RequiredCredits = null,
+    /// <summary>Set only when Error is CreditsExhausted — the workspace's balance at the time of the call.</summary>
+    int? RemainingCredits = null)
 {
     public bool Ok => Error == ProvisioningError.None;
     public static ProvisioningResult<T> Success(T value) => new(value);
     public static ProvisioningResult<T> Fail(ProvisioningError error, string message) => new(default, error, message);
+    public static ProvisioningResult<T> FailCreditsExhausted(string message, int requiredCredits, int remainingCredits) =>
+        new(default, ProvisioningError.CreditsExhausted, message, requiredCredits, remainingCredits);
 }
 
 /// <summary>
@@ -286,6 +301,9 @@ public class ProvisioningService(
             if (string.IsNullOrWhiteSpace(request.FullName))
                 return ProvisioningResult<LoginResponse>.Fail(
                     ProvisioningError.Invalid, "Please tell us your name to finish setting up your account.");
+            if (request.Password.Length < 8)
+                return ProvisioningResult<LoginResponse>.Fail(
+                    ProvisioningError.Invalid, "Choose a password of at least 8 characters.");
 
             identity = Identity.Create(
                 email:        invitation!.Email,

@@ -30,6 +30,9 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<string>("AdaptiveConfiguration")
                         .HasColumnType("text");
 
+                    b.Property<int?>("AttemptLimit")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -542,7 +545,9 @@ namespace Platform.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LearningProductId", "MembershipId");
+                    b.HasIndex("LearningProductId", "MembershipId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Submitted'");
 
                     b.ToTable("course_join_requests", (string)null);
                 });
@@ -566,6 +571,10 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<DateTime?>("ExpiresAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("IdempotencyFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTime>("OccurredAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -579,6 +588,8 @@ namespace Platform.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("WorkspaceId", "ExpiresAtUtc");
+
+                    b.HasIndex("WorkspaceId", "IdempotencyFingerprint");
 
                     b.ToTable("credit_ledger_entries", (string)null);
                 });
@@ -878,6 +889,9 @@ namespace Platform.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<int>("TokenVersion")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
@@ -947,7 +961,9 @@ namespace Platform.Infrastructure.Migrations
 
                     b.HasIndex("WorkspaceId");
 
-                    b.HasIndex("Email", "WorkspaceId");
+                    b.HasIndex("Email", "WorkspaceId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Sent'");
 
                     b.ToTable("invitations", (string)null);
                 });
@@ -1129,7 +1145,9 @@ namespace Platform.Infrastructure.Migrations
 
                     b.HasIndex("WorkspaceId");
 
-                    b.HasIndex("Email", "WorkspaceId");
+                    b.HasIndex("Email", "WorkspaceId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Submitted'");
 
                     b.ToTable("join_requests", (string)null);
                 });
@@ -1870,6 +1888,22 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<Guid>("MembershipId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("OverriddenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("OverriddenByMembershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OverrideNote")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<bool?>("OverridePassed")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("OverrideScorePercent")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("Passed")
                         .HasColumnType("boolean");
 
@@ -1971,6 +2005,9 @@ namespace Platform.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreditsGrantedThisPeriodAmount")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("CreditsGrantedThroughUtc")
                         .HasColumnType("timestamp with time zone");

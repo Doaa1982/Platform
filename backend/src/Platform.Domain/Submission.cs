@@ -84,6 +84,22 @@ public class Submission
     public DateTime StartedAt { get; private set; }
     public DateTime? GradedAt { get; private set; }
 
+    // ── Manual grade override (Assessment-target only) ──────────────────────
+    // Layered on top of, not replacing, the automatic grade above: ScorePercent/
+    // Passed/GradedAt stay exactly what Grade() produced (the historical record
+    // of what the auto-grader actually decided), and a tutor's correction —
+    // e.g. an auto-grader marking a legitimate synonym answer wrong — is
+    // recorded separately, with who and why. EffectivePassed/EffectiveScorePercent
+    // are what every display/stats consumer should read.
+    public bool? OverridePassed { get; private set; }
+    public int? OverrideScorePercent { get; private set; }
+    public string? OverrideNote { get; private set; }
+    public Guid? OverriddenByMembershipId { get; private set; }
+    public DateTime? OverriddenAt { get; private set; }
+
+    public bool EffectivePassed => OverridePassed ?? Passed;
+    public int EffectiveScorePercent => OverrideScorePercent ?? ScorePercent;
+
     // ── Assignment-target fields (v1.1) — untouched by the Assessment-target path above ──
 
     /// <summary>Which attempt this is for this learner against this Assignment (Submission Metadata, §8) — 1-based. Always 1 for an Assessment-target Submission (no attempt policy exists there to count against).</summary>
@@ -241,6 +257,29 @@ public class Submission
         GradedAt = DateTime.UtcNow;
 
         return perQuestion;
+    }
+
+    /// <summary>
+    /// A tutor's manual correction of an already-graded Assessment-target
+    /// Submission — there was previously no way to correct a wrong auto-grade
+    /// short of telling the learner to retake the whole quiz. Repeatable
+    /// (unlike the original grade's INV-005 immutability): a tutor can revise
+    /// their own override, e.g. after further review, since this is already
+    /// an explicit human judgment call rather than the one-shot automatic
+    /// grading event INV-005 protects.
+    /// </summary>
+    public void OverrideGrade(Guid overriddenByMembershipId, bool passed, int? scorePercent, string? note)
+    {
+        if (Status != SubmissionStatus.Graded)
+            throw new InvalidOperationException("Only a graded submission can have its grade overridden.");
+        if (scorePercent is < 0 or > 100)
+            throw new ArgumentException("A score percent must be between 0 and 100.", nameof(scorePercent));
+
+        OverriddenByMembershipId = overriddenByMembershipId;
+        OverridePassed = passed;
+        OverrideScorePercent = scorePercent;
+        OverrideNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        OverriddenAt = DateTime.UtcNow;
     }
 
     /// <summary>

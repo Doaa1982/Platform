@@ -37,6 +37,7 @@ export default function JoinScreen({ slug, onSignIn }) {
   const [error, setError] = useState(null);
   const [attempted, setAttempted] = useState(false);
   const [done, setDone] = useState(false);
+  const [statusLink, setStatusLink] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,11 +60,12 @@ export default function JoinScreen({ slug, onSignIn }) {
     setSubmitting(true);
     setError(null);
     try {
-      await api.submitJoin(slug, {
+      const receipt = await api.submitJoin(slug, {
         fullName: fullName.trim(),
         email: email.trim(),
         message: message.trim() || null,
       });
+      setStatusLink(receipt.statusLink);
       setDone(true);
     } catch (e) {
       setError(e.message);
@@ -102,6 +104,11 @@ export default function JoinScreen({ slug, onSignIn }) {
           <CheckCircle2 size={26} aria-hidden="true" />
           <h1>{t("join.requestSentTitle")}</h1>
           <p>{t("join.requestSentBody", { workspace: preview.workspaceName, email: email.trim() })}</p>
+          {statusLink && (
+            <p className="pl-join__muted">
+              {t("join.checkStatusHint")} <a href={statusLink}>{t("join.checkStatusLink")}</a>
+            </p>
+          )}
           <button className="pl-join__ghost" onClick={onSignIn}>{t("join.signIn")}</button>
         </div>
       </Shell>

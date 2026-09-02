@@ -138,7 +138,29 @@ public class ExtractLessonContentFromResourceSkill(AiOrchestrator orchestrator)
 
         return orchestrator.RunAsync<ExtractResourceContentResponse>(
             SystemPrompt, userPrompt, workspaceId, AiSkillKeys.ExtractLessonContentFromResource,
-            attachments: [new AiAttachment(fileBytes, mediaType)], ct: ct);
+            attachments: [new AiAttachment(fileBytes, mediaType)], band: EstimatePageCount(fileBytes, mediaType), ct: ct);
+    }
+
+    /// <summary>
+    /// A page count for the credit-pricing band (SkillCreditCost's seeded
+    /// (2, 25) / (unbounded, 60) rows, §A2) — this was never passed to
+    /// RunAsync, so every extraction silently priced at the top (60-credit)
+    /// tier regardless of actual size. A single image is always one page. A
+    /// PDF's page count is estimated by counting "/Type/Page" object markers
+    /// in the raw bytes (excluding "/Type/Pages", the parent tree node) — a
+    /// common lightweight heuristic that avoids pulling in a full PDF-parsing
+    /// library for a credit-pricing estimate. It can undercount a PDF that
+    /// doesn't follow this convention, but that only ever falls toward the
+    /// cheaper band — never an overcharge, which is the direction this fix
+    /// cares about getting right.
+    /// </summary>
+    private static int EstimatePageCount(byte[] fileBytes, string mediaType)
+    {
+        if (!mediaType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase)) return 1;
+
+        var raw = System.Text.Encoding.Latin1.GetString(fileBytes);
+        var pageCount = System.Text.RegularExpressions.Regex.Matches(raw, @"/Type\s*/Page(?!s)\b").Count;
+        return Math.Max(pageCount, 1);
     }
 
     /// <summary>
@@ -164,7 +186,13 @@ public class ExtractLessonContentFromResourceSkill(AiOrchestrator orchestrator)
             ---
             """;
 
+        // Same pricing-band reasoning as ExtractAsync's EstimatePageCount —
+        // pasted text has no literal page count, so this approximates one at
+        // roughly 3,000 characters per page rather than always pricing at
+        // the top tier.
+        var band = Math.Max(1, (int)Math.Ceiling(pastedText.Length / 3000.0));
+
         return orchestrator.RunAsync<ExtractResourceContentResponse>(
-            TextSystemPrompt, userPrompt, workspaceId, AiSkillKeys.ExtractLessonContentFromResource, ct: ct);
+            TextSystemPrompt, userPrompt, workspaceId, AiSkillKeys.ExtractLessonContentFromResource, band: band, ct: ct);
     }
 }

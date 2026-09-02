@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { LoaderCircle, ArrowLeft, Award, ClipboardCheck } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -111,6 +111,9 @@ function AssessmentDetail({ assessmentId, slug, token, onBack }) {
   const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [overridingId, setOverridingId] = useState(null);
+  const [overrideDraft, setOverrideDraft] = useState({ passed: true, scorePercent: "", note: "" });
 
   useEffect(() => {
     let cancelled = false;
@@ -119,6 +122,28 @@ function AssessmentDetail({ assessmentId, slug, token, onBack }) {
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [token, slug, assessmentId]);
+
+  function startOverride(s) {
+    setOverridingId(s.submissionId);
+    setOverrideDraft({ passed: s.passed, scorePercent: String(s.scorePercent), note: "" });
+  }
+
+  async function saveOverride(submissionId) {
+    setBusy(true);
+    setError(null);
+    try {
+      const scorePercent = overrideDraft.scorePercent === "" ? null : Number(overrideDraft.scorePercent);
+      const updated = await api.overrideAssessmentGrade(token, slug, submissionId, {
+        passed: overrideDraft.passed, scorePercent, note: overrideDraft.note || null,
+      });
+      setData((d) => ({ ...d, submissions: d.submissions.map((s) => (s.submissionId === submissionId ? updated : s)) }));
+      setOverridingId(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="lw-page">
@@ -175,16 +200,61 @@ function AssessmentDetail({ assessmentId, slug, token, onBack }) {
                 <th>{t("assessOverview.colScore")}</th>
                 <th>{t("assessOverview.colResult")}</th>
                 <th>{t("assessOverview.colSubmittedAt")}</th>
+                <th>{t("assessOverview.colActions")}</th>
               </tr>
             </thead>
             <tbody>
               {data.submissions.map((s) => (
-                <tr key={s.membershipId}>
-                  <td>{s.learnerName}<div className="lw-assess__submeta">{s.learnerEmail}</div></td>
-                  <td>{s.scorePercent}%</td>
-                  <td><span className={`lw-assess__pill ${s.passed ? "is-published" : "is-failed"}`}>{s.passed ? t("assessOverview.passed") : t("assessOverview.notYetPassing")}</span></td>
-                  <td>{new Date(s.submittedAt).toLocaleDateString()}</td>
-                </tr>
+                <Fragment key={s.submissionId}>
+                  <tr>
+                    <td>{s.learnerName}<div className="lw-assess__submeta">{s.learnerEmail}</div></td>
+                    <td>{s.scorePercent}%</td>
+                    <td>
+                      <span className={`lw-assess__pill ${s.passed ? "is-published" : "is-failed"}`}>{s.passed ? t("assessOverview.passed") : t("assessOverview.notYetPassing")}</span>
+                      {s.isOverridden && <div className="lw-assess__submeta">{t("assessOverview.overridden")}{s.overrideNote ? `: ${s.overrideNote}` : ""}</div>}
+                    </td>
+                    <td>{new Date(s.submittedAt).toLocaleDateString()}</td>
+                    <td>
+                      {overridingId !== s.submissionId && (
+                        <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => startOverride(s)}>
+                          {t("assessOverview.overrideGrade")}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {overridingId === s.submissionId && (
+                    <tr>
+                      <td colSpan={5}>
+                        <div className="lw-assess__overrideform">
+                          <label>
+                            {t("assessOverview.colResult")}
+                            <select value={overrideDraft.passed ? "pass" : "fail"} disabled={busy}
+                                    onChange={(e) => setOverrideDraft((d) => ({ ...d, passed: e.target.value === "pass" }))}>
+                              <option value="pass">{t("assessOverview.passed")}</option>
+                              <option value="fail">{t("assessOverview.notYetPassing")}</option>
+                            </select>
+                          </label>
+                          <label>
+                            {t("assessOverview.colScore")}
+                            <input type="number" min="0" max="100" value={overrideDraft.scorePercent} disabled={busy}
+                                   onChange={(e) => setOverrideDraft((d) => ({ ...d, scorePercent: e.target.value }))} />
+                          </label>
+                          <label className="lw-assess__overridenote">
+                            {t("assessOverview.overrideNoteLabel")}
+                            <input type="text" value={overrideDraft.note} disabled={busy}
+                                   onChange={(e) => setOverrideDraft((d) => ({ ...d, note: e.target.value }))} />
+                          </label>
+                          <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={() => saveOverride(s.submissionId)}>
+                            {t("assessOverview.saveOverride")}
+                          </button>
+                          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setOverridingId(null)}>
+                            {t("studio.cancel")}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -225,6 +295,13 @@ const CSS = `
   }
   .lw-assess__pill.is-published { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
   .lw-assess__pill.is-failed { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+
+  .lw-assess__overrideform { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 10px 0; }
+  .lw-assess__overrideform label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--ink-soft); }
+  .lw-assess__overrideform input, .lw-assess__overrideform select {
+    font-family: var(--font-body); font-size: 0.85rem; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
+  }
+  .lw-assess__overridenote { flex: 1; min-width: 160px; }
 
   .lw-assess__meta { color: var(--ink-soft); font-size: 0.85rem; margin: -6px 0 20px; }
   .lw-assess__sectiontitle { font-size: 1rem; margin: 26px 0 12px; }

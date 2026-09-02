@@ -42,7 +42,8 @@ public class LearningDeliveryService(
         // opening one. Approval-required is the one exception: it shows even
         // unenrolled, so a Learner has something to request access to.
         var enrolledProductIds = (await db.Enrollments.AsNoTracking()
-            .Where(e => e.WorkspaceId == ctx.Workspace!.Id && e.MembershipId == ctx.MembershipId)
+            .Where(e => e.WorkspaceId == ctx.Workspace!.Id && e.MembershipId == ctx.MembershipId
+                     && e.Status != EnrollmentStatus.Cancelled)
             .Select(e => e.LearningProductId)
             .ToListAsync(ct)).ToHashSet();
 
@@ -282,7 +283,8 @@ public class LearningDeliveryService(
         if (ctx.Error is not null) return Fail<LearnerAssessmentsResponse>(ctx.Error.Value);
 
         var enrollments = await db.Enrollments.AsNoTracking()
-            .Where(e => e.WorkspaceId == ctx.Workspace!.Id && e.MembershipId == ctx.MembershipId)
+            .Where(e => e.WorkspaceId == ctx.Workspace!.Id && e.MembershipId == ctx.MembershipId
+                     && e.Status != EnrollmentStatus.Cancelled)
             .ToListAsync(ct);
         if (enrollments.Count == 0)
             return ProvisioningResult<LearnerAssessmentsResponse>.Success(new LearnerAssessmentsResponse([]));
@@ -561,11 +563,14 @@ public class LearningDeliveryService(
 
             return ProvisioningResult<AskLessonAssistantResponse>.Success(new AskLessonAssistantResponse(answer));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        catch (CreditsExhaustedException ex)
         {
-            // Model unavailable/misconfigured, or this workspace is out of AI
-            // credits — surfaced as a normal failure rather than a 500, same
-            // pattern as the tutor-side AI-suggest endpoints.
+            return ProvisioningResult<AskLessonAssistantResponse>.FailCreditsExhausted(ex.Message, ex.Cost, ex.RemainingBalance);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Model unavailable/misconfigured — surfaced as a normal failure
+            // rather than a 500, same pattern as the tutor-side AI-suggest endpoints.
             return Fail<AskLessonAssistantResponse>((ProvisioningError.Conflict, $"The assistant couldn't answer that: {ex.Message}"));
         }
     }
@@ -618,7 +623,11 @@ public class LearningDeliveryService(
 
             return ProvisioningResult<GenerateLessonQuizResponse>.Success(new GenerateLessonQuizResponse(questions));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or CreditsExhaustedException)
+        catch (CreditsExhaustedException ex)
+        {
+            return ProvisioningResult<GenerateLessonQuizResponse>.FailCreditsExhausted(ex.Message, ex.Cost, ex.RemainingBalance);
+        }
+        catch (InvalidOperationException ex)
         {
             return Fail<GenerateLessonQuizResponse>((ProvisioningError.Conflict, $"AI quiz generation failed: {ex.Message}"));
         }
@@ -705,6 +714,9 @@ public class LearningDeliveryService(
                                     && a.Kind == AssessmentKind.Interactive && a.Status == AssessmentStatus.Published, ct);
         if (assessment is null || assessment.Questions.Count == 0)
             return Fail<PreviewResult>((ProvisioningError.Conflict, "This lesson has no questions to answer."));
+        var priorAttempts = await CountPriorAttemptsAsync(assessment.Id, ctx.MembershipId, ct);
+        if (AttemptLimitBlocker(assessment, priorAttempts) is { } limitBlocker)
+            return Fail<PreviewResult>((ProvisioningError.Conflict, limitBlocker));
 
         var submission = Submission.Start(assessment.Id, ctx.MembershipId, enrollment.Id);
         db.Submissions.Add(submission);
@@ -731,9 +743,10 @@ public class LearningDeliveryService(
                 ? $"{correctCount} of {gradedCount} correct ({submission.ScorePercent}%) — at or above the {assessment.PassingThresholdPercent}% passing threshold.{openNote}"
                 : $"{correctCount} of {gradedCount} correct ({submission.ScorePercent}%) — below the {assessment.PassingThresholdPercent}% passing threshold.{openNote}");
 
+        var disclose = ShouldDiscloseAnswers(assessment, priorAttempts + 1);
         return ProvisioningResult<PreviewResult>.Success(new PreviewResult(
             submission.ScorePercent, submission.Passed, assessment.PassingThresholdPercent, feedback,
-            perQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList(),
+            perQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, disclose ? q.CorrectAnswerDisplay : null)).ToList(),
             submission.CompetencyLevels.Select(c => new CompetencyResultRow(c.Objective, c.Level.ToString())).ToList()));
     }
 
@@ -777,6 +790,9 @@ public class LearningDeliveryService(
                                     && a.Kind == AssessmentKind.Standalone && a.Status == AssessmentStatus.Published, ct);
         if (assessment is null || assessment.Questions.Count == 0)
             return Fail<PreviewResult>((ProvisioningError.Conflict, "This lesson has no standalone quiz to answer."));
+        var priorAttempts = await CountPriorAttemptsAsync(assessment.Id, ctx.MembershipId, ct);
+        if (AttemptLimitBlocker(assessment, priorAttempts) is { } limitBlocker)
+            return Fail<PreviewResult>((ProvisioningError.Conflict, limitBlocker));
 
         var submission = Submission.Start(assessment.Id, ctx.MembershipId, enrollment.Id);
         db.Submissions.Add(submission);
@@ -813,15 +829,51 @@ public class LearningDeliveryService(
                 ? $"{correctCount} of {gradedCount} correct ({submission.ScorePercent}%) — at or above the {assessment.PassingThresholdPercent}% passing threshold.{openNote}"
                 : $"{correctCount} of {gradedCount} correct ({submission.ScorePercent}%) — below the {assessment.PassingThresholdPercent}% passing threshold.{openNote}");
 
+        var disclose = ShouldDiscloseAnswers(assessment, priorAttempts + 1);
         return ProvisioningResult<PreviewResult>.Success(new PreviewResult(
             submission.ScorePercent, submission.Passed, assessment.PassingThresholdPercent, feedback,
-            perQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList(),
+            perQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, disclose ? q.CorrectAnswerDisplay : null)).ToList(),
             submission.CompetencyLevels.Select(c => new CompetencyResultRow(c.Objective, c.Level.ToString())).ToList()));
     }
 
     private async Task<bool> HasPassingSubmissionAsync(Guid assessmentId, Guid membershipId, CancellationToken ct)
         => await db.Submissions.AsNoTracking()
             .AnyAsync(s => s.AssessmentId == assessmentId && s.MembershipId == membershipId && s.Passed, ct);
+
+    /// <summary>
+    /// Every prior Submission against this Assessment by this learner —
+    /// Submission.Start has no attempt number of its own the way
+    /// StartForAssignment does, so counting rows is the only signal
+    /// available.
+    /// </summary>
+    private async Task<int> CountPriorAttemptsAsync(Guid assessmentId, Guid membershipId, CancellationToken ct)
+        => await db.Submissions.AsNoTracking()
+            .CountAsync(s => s.AssessmentId == assessmentId && s.MembershipId == membershipId, ct);
+
+    /// <summary>
+    /// Null if a new attempt is allowed, otherwise the message to fail with.
+    /// Assessment.AttemptLimit is optional (null = unlimited, the historical
+    /// default).
+    /// </summary>
+    private static string? AttemptLimitBlocker(Assessment assessment, int priorAttempts)
+    {
+        if (assessment.AttemptLimit is not { } limit) return null;
+        return priorAttempts >= limit
+            ? $"You've used all {limit} allowed attempt{(limit == 1 ? "" : "s")} for this quiz."
+            : null;
+    }
+
+    /// <summary>
+    /// Correct-answer disclosure follows the same policy as the attempt
+    /// limit (V1 Launch Readiness Report, P1.4 — "unlimited attempts +
+    /// disclosure defeats completion integrity"): an unlimited Assessment is
+    /// a tutor's explicit practice-mode choice, so answers stay visible
+    /// immediately as before; once a tutor sets a real limit, this becomes a
+    /// graded gate, so the answer key is withheld until the learner has no
+    /// attempts left to exploit it with.
+    /// </summary>
+    private static bool ShouldDiscloseAnswers(Assessment assessment, int attemptsUsedIncludingThisOne)
+        => assessment.AttemptLimit is not { } limit || attemptsUsedIncludingThisOne >= limit;
 
     /// <summary>
     /// Starts a new adaptive attempt at the lesson's Standalone quiz (Adaptive
@@ -858,6 +910,9 @@ public class LearningDeliveryService(
             return Fail<AdaptiveStartResponse>((ProvisioningError.Conflict, "This lesson has no standalone quiz to answer."));
         if (assessment.AdaptiveConfiguration is not { Enabled: true } config)
             return Fail<AdaptiveStartResponse>((ProvisioningError.Conflict, "This lesson's standalone quiz is not adaptive."));
+        var priorAttempts = await CountPriorAttemptsAsync(assessment.Id, ctx.MembershipId, ct);
+        if (AttemptLimitBlocker(assessment, priorAttempts) is { } limitBlocker)
+            return Fail<AdaptiveStartResponse>((ProvisioningError.Conflict, limitBlocker));
 
         var submission = Submission.Start(assessment.Id, ctx.MembershipId, enrollment.Id);
         db.Submissions.Add(submission);
@@ -932,10 +987,17 @@ public class LearningDeliveryService(
 
             await db.SaveChangesAsync(ct);
 
+            // This Submission was already counted by CountPriorAttemptsAsync
+            // at StartAdaptiveAssessmentAsync — it's "prior" no longer, it's
+            // the attempt that just finished, so the raw count here already
+            // is attemptsUsedIncludingThisOne.
+            var attemptsUsedIncludingThisOne = await CountPriorAttemptsAsync(assessment.Id, ctx.MembershipId, ct);
+            var disclose = ShouldDiscloseAnswers(assessment, attemptsUsedIncludingThisOne);
+
             return ProvisioningResult<AdaptiveAnswerResponse>.Success(new AdaptiveAnswerResponse(
                 Complete: true, NextQuestion: null, NextDifficultyTier: null, NextAnswerSequence: null,
                 ScorePercent: complete.ScorePercent, Passed: complete.Passed,
-                PerQuestion: complete.PerQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, q.CorrectAnswerDisplay)).ToList(),
+                PerQuestion: complete.PerQuestion.Select(q => new PreviewQuestionResult(q.QuestionId, q.Correct, disclose ? q.CorrectAnswerDisplay : null)).ToList(),
                 CompetencyLevels: submission.CompetencyLevels.Select(c => new CompetencyResultRow(c.Objective, c.Level.ToString())).ToList()));
         }
 
@@ -1012,7 +1074,7 @@ public class LearningDeliveryService(
     {
         var enrollment = await db.Enrollments
             .FirstOrDefaultAsync(e => e.LearningProductId == learningProductId && e.MembershipId == membershipId, ct);
-        if (enrollment is not null) return enrollment;
+        if (enrollment is { Status: EnrollmentStatus.Active or EnrollmentStatus.Completed }) return enrollment;
 
         var mode = await db.LearningProducts.AsNoTracking()
             .Where(p => p.Id == learningProductId)
@@ -1020,8 +1082,22 @@ public class LearningDeliveryService(
             .FirstOrDefaultAsync(ct);
         if (mode != EnrollmentMode.Open) return null;
 
-        enrollment = Enrollment.Create(workspaceId, learningProductId, membershipId);
-        db.Enrollments.Add(enrollment);
+        // A previously Cancelled Enrollment (WorkspaceMemberService.
+        // UnenrollMemberAsync) is reactivated rather than replaced with a
+        // fresh row — the unique index is (LearningProductId, MembershipId)
+        // with no status filter, and reactivating is what actually preserves
+        // the point of not hard-deleting it in the first place: the same
+        // Enrollment, and every LessonProgress row still keyed to it, picks
+        // back up rather than starting over.
+        if (enrollment is { Status: EnrollmentStatus.Cancelled })
+        {
+            enrollment.Reactivate();
+        }
+        else
+        {
+            enrollment = Enrollment.Create(workspaceId, learningProductId, membershipId);
+            db.Enrollments.Add(enrollment);
+        }
         try
         {
             await db.SaveChangesAsync(ct);

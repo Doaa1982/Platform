@@ -31,6 +31,7 @@ public static class RateLimitPolicies
     public const string JoinRequests   = "join-requests";
     public const string PublicRead     = "public-read";
     public const string PasswordReset  = "password-reset";
+    public const string Login          = "login";
 
     public static IServiceCollection AddPlatformRateLimiting(
         this IServiceCollection services, IConfiguration config)
@@ -44,6 +45,8 @@ public static class RateLimitPolicies
         var readWindow   = config.GetValue("RateLimits:PublicRead:WindowMinutes", 1);
         var resetLimit   = config.GetValue("RateLimits:PasswordReset:Permits", 5);
         var resetWindow  = config.GetValue("RateLimits:PasswordReset:WindowMinutes", 15);
+        var loginLimit   = config.GetValue("RateLimits:Login:Permits", 10);
+        var loginWindow  = config.GetValue("RateLimits:Login:WindowMinutes", 15);
 
         services.AddRateLimiter(options =>
         {
@@ -85,6 +88,21 @@ public static class RateLimitPolicies
                     {
                         PermitLimit = resetLimit,
                         Window = TimeSpan.FromMinutes(resetWindow),
+                        QueueLimit = 0,
+                    }));
+
+            // Login: creates nothing and needs no proof of anything before
+            // being called, unlike every other policy above — which makes it
+            // the one endpoint an attacker can hit indefinitely to brute-force
+            // or credential-stuff a known email with no other guard in front
+            // of it (BCrypt.Verify alone costs CPU time, not attempts).
+            options.AddPolicy(Login, context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: ClientKey(context),
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = loginLimit,
+                        Window = TimeSpan.FromMinutes(loginWindow),
                         QueueLimit = 0,
                     }));
 
