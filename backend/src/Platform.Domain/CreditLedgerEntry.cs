@@ -115,4 +115,38 @@ public class CreditLedgerEntry
             IdempotencyFingerprint = idempotencyFingerprint,
         };
     }
+
+    /// <summary>
+    /// A compensating negative entry that revokes a grant early — A4's "at
+    /// first paid conversion, whichever comes first" trial-credit expiry, as
+    /// opposed to <see cref="ExpiresAtUtc"/>'s own passive timer. Never a
+    /// mutation of the original grant (this class stays append-only, same
+    /// precedent as <see cref="Debit"/> being a new row rather than a
+    /// clawback of whatever funded it) — always a positive <paramref name="amount"/>, stored negated.
+    ///
+    /// <paramref name="expiresAtUtc"/> must be the revoked grant's own
+    /// <see cref="ExpiresAtUtc"/> (its natural 30-day timer), not null/never —
+    /// otherwise this entry would keep subtracting from the balance forever,
+    /// double-counting the removal once the original grant's own timer would
+    /// have zeroed it out anyway (both entries drop out of the non-expired
+    /// balance sum together at that point, netting back to the correct zero
+    /// contribution either way this revocation happened).
+    /// </summary>
+    public static CreditLedgerEntry Expire(Guid workspaceId, int amount, DateTime? expiresAtUtc)
+    {
+        if (workspaceId == Guid.Empty)
+            throw new ArgumentException("A Credit Ledger Entry belongs to exactly one Workspace.", nameof(workspaceId));
+        if (amount <= 0)
+            throw new ArgumentException("An expiration amount must be positive (the entry itself stores it negated).", nameof(amount));
+
+        return new CreditLedgerEntry
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = workspaceId,
+            EntryType = CreditLedgerEntryType.Expiration,
+            Amount = -amount,
+            OccurredAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = expiresAtUtc,
+        };
+    }
 }

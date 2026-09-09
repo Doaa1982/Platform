@@ -425,7 +425,10 @@ public class AssignmentService(PlatformDbContext db)
         var submission = await db.Submissions.FirstOrDefaultAsync(s => s.Id == submissionId && s.MembershipId == ctx.MembershipId, ct);
         if (submission is null) return Fail<LearnerSubmissionRow>((ProvisioningError.NotFound, "No such submission."));
 
-        try { submission.RecordResponse(request.Text, request.AttachedLearningAssetId); }
+        var activity = await db.LearningActivities.AsNoTracking().FirstOrDefaultAsync(a => a.Id == activityId, ct);
+        if (activity is null) return Fail<LearnerSubmissionRow>((ProvisioningError.NotFound, "No such learning activity."));
+
+        try { submission.RecordResponse(request.Text, request.AttachedLearningAssetId, activity.SubmissionMode); }
         catch (InvalidOperationException ex) { return Fail<LearnerSubmissionRow>((ProvisioningError.Conflict, ex.Message)); }
         catch (ArgumentException ex) { return Fail<LearnerSubmissionRow>((ProvisioningError.Invalid, ex.Message)); }
 
@@ -492,7 +495,7 @@ public class AssignmentService(PlatformDbContext db)
         a.PublicationBlocker());
 
     private static LearningActivityForLearnerResponse DescribeActivityForLearner(LearningActivity a, Guid? effectiveAssessmentId) =>
-        new(a.Id, a.Type.ToString(), a.Title, a.Instructions, effectiveAssessmentId, a.ExternalUrl);
+        new(a.Id, a.Type.ToString(), a.Title, a.Instructions, effectiveAssessmentId, a.ExternalUrl, a.ActivityFileAssetId, a.SubmissionMode.ToString());
 
     /// <summary>
     /// A Quiz/QuestionSet Learning Activity delivers its own Lesson

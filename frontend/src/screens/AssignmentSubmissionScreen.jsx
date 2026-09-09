@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 import QuizScreen from "./QuizScreen";
 
 /* =========================================================================
@@ -29,6 +30,7 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
   const [attachedAsset, setAttachedAsset] = useState(null); // { id, title } — this attempt's uploaded file, if any
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [attempted, setAttempted] = useState(false); // UIC-002: set only once Submit is actually pressed with a missing requirement
   const fileInputRef = useRef(null);
 
   const load = useCallback(() => (
@@ -49,7 +51,7 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
   }
 
   async function handleStart() {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setAttempted(false); setResponseText(""); setAttachedAsset(null);
     try { await api.startAssignmentSubmission(session.token, slug, lessonId, activityId); await load(); }
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -66,8 +68,23 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
     finally { setUploading(false); }
   }
 
+  const submissionMode = data?.activity.submissionMode ?? "TextOrFile";
+  const allowsText = submissionMode !== "FileOnly";
+  const allowsFile = submissionMode !== "TextOnly";
+  const canSubmitResponse = submissionMode === "TextOnly" ? !!responseText.trim()
+    : submissionMode === "FileOnly" ? !!attachedAsset
+    : !!responseText.trim() || !!attachedAsset;
+  // UIC-002 part 3 — named, not a generic "invalid form" message; mirrors
+  // Submission.RecordResponse's own per-mode wording server-side.
+  const requirementMessage = submissionMode === "TextOnly" ? t("learnerAssignments.responseRequiredText")
+    : submissionMode === "FileOnly" ? t("learnerAssignments.responseRequiredFile")
+    : t("learnerAssignments.responseRequiredEither");
+
   async function handleSubmitResponse() {
-    if (!latest || (!responseText.trim() && !attachedAsset)) return;
+    if (!latest) return;
+    // UIC-002 part 2 — the button itself stays enabled; a press with a
+    // missing requirement surfaces what's wrong instead of doing nothing.
+    if (!canSubmitResponse) { setAttempted(true); return; }
     setBusy(true); setError(null);
     try {
       await api.recordAssignmentResponse(session.token, slug, lessonId, activityId, latest.id, {
@@ -83,7 +100,7 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
     return (
       <div className="lw-page">
         <style>{CSS}</style>
-        <button className="lw-assign__back" onClick={onBack}><ArrowLeft size={13} /> {t("learnerAssignments.backToAssignments")}</button>
+        <button className="lw-learn__back" onClick={onBack}><ArrowLeft size={13} /> {t("learnerAssignments.backToAssignments")}</button>
         <Message type="error">{error}</Message>
       </div>
     );
@@ -92,7 +109,7 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
     return (
       <div className="lw-page">
         <style>{CSS}</style>
-        <div className="lw-assign__loading"><LoaderCircle size={18} className="lw-assign__spin" /> {t("learnerAssignments.loading")}</div>
+        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> {t("learnerAssignments.loading")}</div>
       </div>
     );
   }
@@ -103,11 +120,11 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
   return (
     <div className="lw-page">
       <style>{CSS}</style>
-      <button className="lw-assign__back" onClick={onBack}><ArrowLeft size={13} /> {t("learnerAssignments.backToAssignments")}</button>
+      <button className="lw-learn__back" onClick={onBack}><ArrowLeft size={13} /> {t("learnerAssignments.backToAssignments")}</button>
 
       <div className="lw-eyebrow">{t(`studio.activityType.${activity.type}`)}</div>
       <h1>{activity.title}</h1>
-      <p className="lw-assign__duemeta">
+      <p className="lw-sub">
         {assignment.dueAt ? t("learnerAssignments.dueLabel", { date: new Date(assignment.dueAt).toLocaleString() }) : t("learnerAssignments.noDueDate")}
       </p>
 
@@ -115,9 +132,15 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
 
       {activity.instructions && (
         <>
-          <h2 className="lw-assign__sectiontitle">{t("learnerAssignments.instructionsTitle")}</h2>
+          <h2 className="lw-sectiontitle">{t("learnerAssignments.instructionsTitle")}</h2>
           <p className="lw-assign__instructions">{activity.instructions}</p>
         </>
+      )}
+
+      {activity.activityFileAssetId && (
+        <a className="lw-assign__downloadlink" href={api.learningAssetDownloadUrl(session.token, slug, activity.activityFileAssetId)} target="_blank" rel="noreferrer">
+          <Paperclip size={13} /> {t("learnerAssignments.downloadActivityFile")}
+        </a>
       )}
 
       {!latest && (
@@ -128,35 +151,49 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
 
       {latest?.status === "InProgress" && (
         <div className="lw-assign__responsearea">
-          <label>
-            <span>{t("learnerAssignments.yourResponseLabel")}</span>
-            <textarea rows={8} value={responseText} onChange={(e) => setResponseText(e.target.value)}
-                      placeholder={t("learnerAssignments.responsePlaceholder")} disabled={busy} />
-          </label>
+          {attempted && !canSubmitResponse && <Message type="error">{requirementMessage}</Message>}
 
-          {attachedAsset ? (
-            <div className="lw-assign__attachedfile">
-              <Paperclip size={13} />
-              <span>{attachedAsset.title}</span>
-              <button type="button" className="lw-assign__removefile" onClick={() => setAttachedAsset(null)} disabled={busy} title={t("learnerAssignments.removeFile")}>
-                <X size={13} />
-              </button>
-            </div>
-          ) : uploading ? (
-            <div className="lw-assign__uploadingfile">
-              <LoaderCircle size={14} className="lw-assign__spin" /> {t("learnerAssignments.uploadingPct", { pct: Math.round(uploadProgress * 100) })}
-            </div>
-          ) : (
-            <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => fileInputRef.current?.click()}>
-              <UploadCloud size={13} /> {t("learnerAssignments.attachFile")}
-            </button>
+          {submissionMode === "TextOrFile" && (
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>{requirementMessage}</p>
           )}
-          <input
-            ref={fileInputRef} type="file" style={{ display: "none" }}
-            onChange={(e) => { handleUploadFile(e.target.files); e.target.value = ""; }}
-          />
 
-          <button className="lw-btn lw-btn--primary lw-btn--sm" disabled={busy || uploading || (!responseText.trim() && !attachedAsset)} onClick={handleSubmitResponse}>
+          {allowsText && (
+            <label>
+              <span>{t("learnerAssignments.yourResponseLabel")}{submissionMode === "TextOnly" && <RequiredMark />}</span>
+              <textarea rows={8} value={responseText} onChange={(e) => setResponseText(e.target.value)}
+                        placeholder={t("learnerAssignments.responsePlaceholder")} disabled={busy}
+                        style={attempted && submissionMode === "TextOnly" && !responseText.trim() ? invalidFieldStyle : undefined} />
+            </label>
+          )}
+
+          {allowsFile && (
+            <div className="lw-assign__filefield">
+              <span className="lw-assign__filelabel">{t("learnerAssignments.yourFileLabel")}{submissionMode === "FileOnly" && <RequiredMark />}</span>
+              {attachedAsset ? (
+                <div className="lw-assign__attachedfile">
+                  <Paperclip size={13} />
+                  <span>{attachedAsset.title}</span>
+                  <button type="button" className="lw-assign__removefile" onClick={() => setAttachedAsset(null)} disabled={busy} title={t("learnerAssignments.removeFile")}>
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : uploading ? (
+                <div className="lw-assign__uploadingfile">
+                  <LoaderCircle size={14} className="lw-learn__spin" /> {t("learnerAssignments.uploadingPct", { pct: Math.round(uploadProgress * 100) })}
+                </div>
+              ) : (
+                <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => fileInputRef.current?.click()}>
+                  <UploadCloud size={13} /> {t("learnerAssignments.attachFile")}
+                </button>
+              )}
+              <input
+                ref={fileInputRef} type="file" style={{ display: "none" }}
+                onChange={(e) => { handleUploadFile(e.target.files); e.target.value = ""; }}
+              />
+            </div>
+          )}
+
+          <button className="lw-btn lw-btn--primary lw-btn--sm" disabled={busy || uploading} onClick={handleSubmitResponse}>
             {t("learnerAssignments.submitResponse")}
           </button>
         </div>
@@ -176,7 +213,7 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
 
       {latest?.status === "Evaluated" && (
         <div className="lw-assign__feedbackbox">
-          <h2 className="lw-assign__sectiontitle">{t("learnerAssignments.feedbackTitle")}</h2>
+          <h2 className="lw-sectiontitle">{t("learnerAssignments.feedbackTitle")}</h2>
           <span className={`lw-assign__pill ${latest.passed === true ? "is-passed" : latest.passed === false ? "is-failed" : ""}`}>
             {latest.passed == null ? <>{t("learnerAssignments.resultReviewed")}</>
               : latest.passed ? <><CheckCircle2 size={11} /> {t("learnerAssignments.resultPassed")}</>
@@ -206,20 +243,18 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
 }
 
 const CSS = `
-  .lw-assign__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-assign__spin { animation: lwAssignSubSpin 0.9s linear infinite; }
-  @keyframes lwAssignSubSpin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .lw-assign__spin { animation: none; } }
-  .lw-assign__back {
+  .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
+  .lw-learn__spin { animation: lwLearnSpin 0.9s linear infinite; }
+  @keyframes lwLearnSpin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .lw-learn__spin { animation: none; } }
+  .lw-learn__back {
     display: inline-flex; align-items: center; gap: 6px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 20px; color: var(--ink-soft);
     font-family: var(--font-body); font-size: 0.82rem; font-weight: 500; cursor: pointer; padding: 6px 14px; margin-bottom: 18px;
     transition: all 0.15s ease;
   }
-  .lw-assign__back:hover { color: var(--ink); border-color: var(--accent); transform: translateX(-2px); }
+  .lw-learn__back:hover { color: var(--ink); border-color: var(--accent); transform: translateX(-2px); }
 
-  .lw-assign__duemeta { color: var(--ink-soft); font-size: 0.88rem; margin: -6px 0 24px; }
-  .lw-assign__sectiontitle { font-size: 1.05rem; font-weight: 600; margin: 24px 0 12px; }
   .lw-assign__instructions {
     white-space: pre-wrap; font-size: 0.94rem; line-height: 1.65; max-width: 72ch;
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
@@ -228,6 +263,8 @@ const CSS = `
 
   .lw-assign__responsearea { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 72ch; margin-top: 14px; }
   .lw-assign__responsearea label { display: flex; flex-direction: column; gap: 8px; width: 100%; font-weight: 600; font-size: 0.88rem; }
+  .lw-assign__filefield { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; }
+  .lw-assign__filelabel { font-weight: 600; font-size: 0.88rem; }
   .lw-assign__responsearea textarea {
     width: 100%; font-family: inherit; font-size: 0.92rem;
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);

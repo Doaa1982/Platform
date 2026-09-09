@@ -678,6 +678,8 @@ A Major-classified field may only be changed by creating a new Lesson Version (D
 
 A new Lesson Version's Draft is pre-filled from the Lesson Version it was started from — every field except the video. A tutor starting a new version because the video needs replacing is not asked to re-author content that didn't change.
 
+**Amended 2026-09-09 — the video exception is removed.** In practice a tutor starts a new revision for reasons that have nothing to do with the video (adding a Learning Activity, fixing a typo) far more often than to replace it, and the original exception meant every such revision started with a missing video and attached resources — blocking publication until the tutor manually re-attached them. The Draft is now pre-filled from every field of the revision it was started from, with no exception: video (`VideoAssetId`/`VideoUrl`), its transcript, attached Resources, and the `RequireQuizToComplete` toggle are all carried over, in addition to the fields already covered. A tutor who does want to replace the video still does so explicitly within the new Draft — doing so still clears the carried-over transcript, exactly as replacing a video always has.
+
 ## Rule 14
 
 Editing Interactive Learning Events on a Published Lesson Version produces a Notification for every learner whose Learning Progress on that lesson is Started or Completed. A learner who has Not Started the lesson is not notified — there is nothing for them to reconsider yet.

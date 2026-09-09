@@ -523,7 +523,7 @@ public class CommercialSubscriptionService(
             requestedPackCodes = requestedSnapshot?.SelectedPackCodes.ToList();
         }
 
-        var aiCreditsRemaining = await credits.GetBalanceAsync(subscription.WorkspaceId, ct);
+        var creditsBreakdown = await credits.GetBalanceBreakdownAsync(subscription.WorkspaceId, ct);
 
         // Actual consumption against the four metered capacity entitlements —
         // mirrors the sum queries WorkspaceMemberService/LearningAssetService
@@ -552,8 +552,8 @@ public class CommercialSubscriptionService(
 
             usedByKey[EntitlementResolutionService.TutorCapacityKey] = activeTutors.ToString();
             usedByKey[EntitlementResolutionService.LearnerCapacityKey] = activeLearners.ToString();
-            usedByKey[EntitlementResolutionService.VideoStorageGbKey] = (videoBytesUsed / 1_000_000_000.0).ToString("0.#");
-            usedByKey[EntitlementResolutionService.ResourceStorageGbKey] = (resourceBytesUsed / 1_000_000_000.0).ToString("0.#");
+            usedByKey[EntitlementResolutionService.VideoStorageGbKey] = FormatStorageUsed(videoBytesUsed);
+            usedByKey[EntitlementResolutionService.ResourceStorageGbKey] = FormatStorageUsed(resourceBytesUsed);
         }
 
         return new SubscriptionSummary(
@@ -580,8 +580,20 @@ public class CommercialSubscriptionService(
                 .Select(e => new EntitlementRow(e.Type.ToString(), e.Domain?.ToString(), e.Key, e.Value, e.Source.ToString(),
                     usedByKey.GetValueOrDefault(e.Key)))
                 .ToList() ?? [],
-            AiCreditsRemaining: aiCreditsRemaining);
+            AiCreditsRemaining: creditsBreakdown.Total,
+            AiCreditsTrialRemaining: creditsBreakdown.TrialRemaining);
     }
+
+    /// <summary>
+    /// Video/resource storage used, for <see cref="EntitlementRow.UsedAmount"/>.
+    /// Always GB, same unit as the plan total it's paired with (SubscriptionScreen's
+    /// capacityCell renders "{usedAmount}/{value} GB") — fixed at two decimal
+    /// places so a real, successfully uploaded small file (a 6 MB video, a 200 KB
+    /// worksheet) still reads as a nonzero amount ("0.01 GB") instead of rounding
+    /// away to "0", which previously made it indistinguishable from nothing
+    /// having uploaded at all.
+    /// </summary>
+    private static string FormatStorageUsed(long bytes) => (bytes / 1_000_000_000.0).ToString("0.00");
 
     private record Context(Workspace? Workspace, Guid MembershipId, bool CanManageBilling,
                            (ProvisioningError Error, string Message)? Error);

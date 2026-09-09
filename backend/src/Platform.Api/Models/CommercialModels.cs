@@ -108,7 +108,9 @@ public record SubscriptionSummary(
     string LicenseStatus,
     IReadOnlyList<EntitlementRow> Entitlements,
     /// <summary>Live ledger balance (ICreditLedgerService.GetBalanceAsync) — distinct from the "credits:ai" entitlement, which is the plan's static monthly grant, not what's actually left.</summary>
-    int AiCreditsRemaining);
+    int AiCreditsRemaining,
+    /// <summary>How much of <see cref="AiCreditsRemaining"/> is still attributable to the one-time trial grant (§A7) — see ICreditLedgerService.GetBalanceBreakdownAsync. 0 once spent, expired (30 days, or an earlier free→paid conversion per §A4), or never granted (not this workspace's first-ever subscription).</summary>
+    int AiCreditsTrialRemaining);
 
 /// <summary>
 /// One confirmed plan/pack change with a real before/after diff — read from

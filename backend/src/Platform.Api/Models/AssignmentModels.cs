@@ -55,8 +55,10 @@ public record LearnerAssignmentRow(
 
 public record LearnerAssignmentListResponse(IReadOnlyList<LearnerAssignmentRow> Rows);
 
-/// <summary>A Learning Activity's learner-facing content — no answer key/instructor-only fields.</summary>
-public record LearningActivityForLearnerResponse(Guid Id, string Type, string Title, string? Instructions, Guid? AssessmentId, string? ExternalUrl);
+/// <summary>A Learning Activity's learner-facing content — no answer key/instructor-only fields. SubmissionMode tells the learner which of ResponseText/AttachedLearningAssetId their submission needs to include.</summary>
+public record LearningActivityForLearnerResponse(
+    Guid Id, string Type, string Title, string? Instructions, Guid? AssessmentId, string? ExternalUrl,
+    Guid? ActivityFileAssetId, string SubmissionMode);
 
 public record LearnerSubmissionRow(
     Guid Id, int AttemptNumber, string Status, string? ResponseText, Guid? ResponseLearningAssetId,

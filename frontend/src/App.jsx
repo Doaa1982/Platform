@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMediaQuery } from "usehooks-ts";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, ListChecks, Lock, LogOut, Menu, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, X, Zap
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, ListChecks, Lock, LogOut, Menu, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, Zap
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -10,6 +10,9 @@ import { useLanguage } from "./i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "./i18n/LanguageToggle";
 import { useTheme } from "./theme/useTheme";
 import ThemeToggle, { THEME_TOGGLE_CSS } from "./theme/ThemeToggle";
+import { MODAL_CSS } from "./components/Modal";
+import TrialGiftModal from "./components/TrialGiftModal";
+import { useDismissedTip } from "./hooks/useDismissedTip";
 import MembersScreen from "./screens/MembersScreen";
 import CourseEnrollmentScreen from "./screens/CourseEnrollmentScreen";
 import WorkspaceSetupScreen from "./screens/WorkspaceSetupScreen";
@@ -377,7 +380,7 @@ function NotificationBell() {
   );
 }
 
-function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile, onToggleNav }) {
+function AccountBar({ role, screen, onNavigate, aiLabel, onToggleNav }) {
   const { me, side, workspace, workspaces, eligibleWorkspaces, leaveWorkspace, signOut } = useAuth();
   const { t } = useLanguage();
   // Below this, full labels (workspace roles, account name, "Sign out" text)
@@ -431,9 +434,9 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onOpenProfile, onToggle
       <LanguageToggle compact={compact} />
       <ThemeToggle />
       <NotificationBell />
-      <button className="lw-accountbar__who" onClick={onOpenProfile} aria-label={me?.fullName}>
+      <span className="lw-accountbar__who">
         {compact ? <span className="lw-accountbar__avatar">{(me?.fullName || "?").trim()[0]}</span> : me?.fullName}
-      </button>
+      </span>
       {canSwitchSide && (
         <button onClick={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}
                 aria-label={t(`sides.${otherKey}.label`)}>
@@ -626,7 +629,7 @@ function Nav({ c, screen, setScreen, personName, personRole, open }) {
           )
         )}
       </div>
-      {/* Hidden for now — not ready to surface yet. onOpenProfile/ProfessionalProfile stay wired up for when it comes back. */}
+      {/* Hidden for now — not ready to surface yet. */}
       <div className="lw-nav__person">
         <div className="lw-nav__avatar">{(personName || "?").trim()[0]}</div>
         <div>
@@ -858,7 +861,6 @@ export default function App() {
   // to the same value doesn't remount on its own, and initialTab is only
   // honored on mount.
   const [membersKey, setMembersKey] = useState(0);
-  const [profileOpen, setProfileOpen] = useState(false);
   // Which product Content Studio has open. Lives here, not inside the
   // screen, so a tutor can jump straight to a product's curriculum from its
   // row in Learning Products instead of picking it again from scratch.
@@ -892,6 +894,27 @@ export default function App() {
       .catch(() => { if (!cancelled) { setDescription(""); setLogoAssetId(null); } });
     return () => { cancelled = true; };
   }, [session.token, workspace.slug]);
+
+  /* Welcome-gift trial credits (Documents/AICreditsCommercialContractAndImplementationPlan.md
+     §A7): a one-time 200-credit grant every workspace gets on its first
+     subscription, invisible until now — folded into one flat "remaining"
+     number. Announced once via TrialGiftModal, gated the same shown-once
+     way TutorTip already is (useDismissedTip) rather than a new backend
+     "first login" flag: the trial balance is already self-limiting (30 days,
+     or an earlier free→paid conversion, §A4), so there's nothing left to
+     show past that point even if this were somehow never dismissed. Skips
+     the fetch entirely once dismissed — no need to ask the API again. Owner
+     side only: AI credits are a tutor/workspace billing concept. */
+  const [dismissedTrialGift, dismissTrialGift] = useDismissedTip(`trialGift:${workspace.slug}`);
+  const [trialCreditsRemaining, setTrialCreditsRemaining] = useState(0);
+  useEffect(() => {
+    if (role !== "owner" || dismissedTrialGift) return;
+    let cancelled = false;
+    api.getSubscription(session.token, workspace.slug)
+      .then((s) => { if (!cancelled) setTrialCreditsRemaining(s?.aiCreditsTrialRemaining ?? 0); })
+      .catch(() => { if (!cancelled) setTrialCreditsRemaining(0); });
+    return () => { cancelled = true; };
+  }, [role, dismissedTrialGift, session.token, workspace.slug]);
 
   /* The chrome, built from the real workspace and the real person signed in.
      This used to come from CONTENT — two fictional academies with invented
@@ -948,8 +971,10 @@ export default function App() {
   return (
     <div className={`lw-root lw-root--${role}`} style={theme}>
       <style>{CSS}</style>
+      {!dismissedTrialGift && trialCreditsRemaining > 0 && (
+        <TrialGiftModal trialRemaining={trialCreditsRemaining} onDismiss={dismissTrialGift} />
+      )}
       <AccountBar role={role} screen={learnerScreen} onNavigate={goToLearnerScreen} aiLabel={c.aiName || t("learnerNav.ai")}
-        onOpenProfile={() => setProfileOpen(true)}
         onToggleNav={role === "owner" ? () => setNavOpen((v) => !v) : null} />
       {/* The academy switcher and workspace wizard are gone: they moved between
           two fictional academies, which cannot coexist with a real signed-in
@@ -1122,7 +1147,6 @@ export default function App() {
           )}
         </div>
       </div>
-      {profileOpen && <ProfessionalProfile onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }
@@ -1163,7 +1187,6 @@ const CSS = `
   .lw-accountbar .lw-accountbar__who {
     background: var(--surface); border: 1px solid var(--line); color: var(--ink); padding: 5px 12px; font-weight: 600;
   }
-  .lw-accountbar .lw-accountbar__who:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
   .lw-accountbar__avatar {
     display: flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; border-radius: 50%;
@@ -1713,39 +1736,6 @@ const CSS = `
 
   ${LANGUAGE_TOGGLE_CSS}
   ${THEME_TOGGLE_CSS}
+  ${MODAL_CSS}
 `;
 
-/* The person behind the membership, across the platform rather than inside one
-   workspace. Identity Aggregate Design gives this a Professional Profile,
-   Reputation and Professional History; none of that is built, so this shows the
-   Identity that genuinely exists and says the rest is missing rather than
-   inventing a portfolio. */
-function ProfessionalProfile({ onClose }) {
-  const { me, workspaces } = useAuth();
-  const { t } = useLanguage();
-  const active = workspaces.filter((w) => w.membershipStatus === "Active");
-
-  return (
-    <div className="lw-modal" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="lw-modal__panel" onClick={(e) => e.stopPropagation()}>
-        <button className="lw-modal__close" onClick={onClose} aria-label="Close"><X size={16} /></button>
-        <div className="lw-eyebrow">{t("profile.yourAccount")}</div>
-        <h2>{me?.fullName}</h2>
-        <p className="lw-modal__sub">{me?.email}</p>
-
-        <h3 className="lw-modal__h3">{t("profile.workspacesTitle")}</h3>
-        <div className="lw-modal__list">
-          {active.length === 0 && <p className="lw-modal__muted">{t("profile.none")}</p>}
-          {active.map((w) => (
-            <div className="lw-modal__row" key={w.workspaceId}>
-              <strong>{w.name}</strong>
-              <span>{w.roles.map((r) => r.replace(/([a-z])([A-Z])/g, "$1 $2")).join(", ")}</span>
-            </div>
-          ))}
-        </div>
-
-        <p className="lw-modal__muted">{t("profile.footer")}</p>
-      </div>
-    </div>
-  );
-}

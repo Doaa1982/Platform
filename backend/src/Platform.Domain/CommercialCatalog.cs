@@ -117,7 +117,14 @@ public static class CommercialCatalog
             // subscription (§A7) still applies regardless of plan, so a Free
             // signup isn't left with literally nothing to try AI features with.
             AiCreditsIncluded = 0,
-            LearningProfile = CapabilityProfileLevel.Foundation,
+            // Professional, not Foundation: Foundation maps to AiAssistanceLevel.Manual
+            // (EntitlementResolutionService.AiLevelFor) — AI would stay disabled even
+            // with a nonzero trial balance, contradicting this comment's own promise.
+            // Safe to leave at Professional permanently rather than only during the
+            // trial: §A5's zero-balance rule (same file, RecomputeAsync) already forces
+            // Manual back on the instant the ledger balance hits zero, so this only
+            // ever grants what the 200-credit trial (or a later purchase) can actually pay for.
+            LearningProfile = CapabilityProfileLevel.Professional,
             AssessmentProfile = CapabilityProfileLevel.Foundation,
             AnalyticsProfile = CapabilityProfileLevel.Foundation,
             BrandingProfile = CapabilityProfileLevel.Foundation,

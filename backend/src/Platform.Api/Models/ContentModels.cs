@@ -91,7 +91,7 @@ public record LessonResourceRow(
 /// </summary>
 public record LearningActivityRow(
     Guid Id, string Type, string Title, string? Instructions, int Position,
-    Guid? AssessmentId, string? ExternalUrl,
+    Guid? AssessmentId, string? ExternalUrl, Guid? ActivityFileAssetId, string SubmissionMode,
     bool HasAssignment, Guid? AssignmentId, string? AssignmentStatus);
 
 public record SaveCurriculumRequest(string Title);
@@ -111,7 +111,9 @@ public record SetRequireQuizToCompleteRequest(bool RequireQuizToComplete);
 public record SetVideoUrlRequest(string Url);
 
 /// <summary>Type is one of LearningActivityType's 14 names. AssessmentId only applies for Quiz/QuestionSet; ExternalUrl only for ExternalLearningTool — both ignored otherwise.</summary>
-public record SaveLearningActivityRequest(string Type, string Title, string? Instructions, Guid? AssessmentId = null, string? ExternalUrl = null);
+public record SaveLearningActivityRequest(
+    string Type, string Title, string? Instructions, Guid? AssessmentId = null, string? ExternalUrl = null,
+    Guid? ActivityFileAssetId = null, string SubmissionMode = "TextOrFile");
 /// <summary>Every learning activity id currently on the revision, once each, in the desired order.</summary>
 public record ReorderLearningActivitiesRequest(IReadOnlyList<Guid> ActivityIds);
 

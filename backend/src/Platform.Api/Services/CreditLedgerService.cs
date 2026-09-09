@@ -29,6 +29,50 @@ public class CreditLedgerService(PlatformDbContext db) : ICreditLedgerService
             .SumAsync(e => (int?)e.Amount, ct) ?? 0;
     }
 
+    public async Task<CreditBalanceBreakdown> GetBalanceBreakdownAsync(Guid workspaceId, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var entries = await db.CreditLedgerEntries.AsNoTracking()
+            .Where(e => e.WorkspaceId == workspaceId && (e.ExpiresAtUtc == null || e.ExpiresAtUtc > now))
+            .Select(e => new { e.EntryType, e.Amount })
+            .ToListAsync(ct);
+
+        var total = entries.Sum(e => e.Amount);
+        var trialGranted = entries.Where(e => e.EntryType == CreditLedgerEntryType.TrialGrant).Sum(e => e.Amount);
+        var consumedTotal = -entries.Where(e => e.EntryType == CreditLedgerEntryType.Consumption).Sum(e => e.Amount);
+
+        // §A3's documented order spends Trial first — approximating that here
+        // (not a precise per-entry attribution; see CreditBalanceBreakdown's
+        // remarks) by assuming every debit so far came out of the trial grant
+        // until it's exhausted. Also capped at `total`: an already-expired-by-
+        // timer trial grant must not make TrialRemaining exceed what's actually
+        // still in the live balance.
+        var trialRemaining = Math.Clamp(trialGranted - consumedTotal, 0, Math.Min(trialGranted, Math.Max(total, 0)));
+
+        return new CreditBalanceBreakdown(trialRemaining, total - trialRemaining, total);
+    }
+
+    public async Task ExpireTrialCreditsAsync(Guid workspaceId, CancellationToken ct = default)
+    {
+        var breakdown = await GetBalanceBreakdownAsync(workspaceId, ct);
+        if (breakdown.TrialRemaining <= 0) return;
+
+        var now = DateTime.UtcNow;
+        // The compensating entry must expire alongside the trial grant(s) it
+        // offsets — never null/permanent, or it would keep subtracting from
+        // the balance forever, long after the original grant's own 30-day
+        // timer would have zeroed it out on its own anyway (CreditLedgerEntry.Expire's
+        // remarks). Latest ExpiresAtUtc among the still-unexpired TrialGrant
+        // entries being revoked, in case more than one somehow exists.
+        var trialExpiresAtUtc = await db.CreditLedgerEntries.AsNoTracking()
+            .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.TrialGrant
+                     && (e.ExpiresAtUtc == null || e.ExpiresAtUtc > now))
+            .MaxAsync(e => (DateTime?)e.ExpiresAtUtc, ct);
+
+        db.CreditLedgerEntries.Add(CreditLedgerEntry.Expire(workspaceId, breakdown.TrialRemaining, trialExpiresAtUtc));
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>
     /// How long a repeated <paramref name="idempotencyFingerprint"/> is still
     /// treated as "the same request, retried" rather than a genuine new

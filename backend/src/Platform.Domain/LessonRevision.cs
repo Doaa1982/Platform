@@ -201,6 +201,37 @@ public class LessonRevision
         UpdatedAt = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Rule 13, revised: a new Draft starts as a full copy of the revision it
+    /// was started from — the video, its transcript, and the completion-gating
+    /// toggle, not just the "safe metadata" subset <see cref="Edit"/> covers.
+    /// A tutor starting a new revision to add an activity or fix a typo
+    /// should not be forced to re-upload the video, lose its transcript, or
+    /// re-attach every resource. Video/transcript are copied by reference
+    /// rather than replayed through <see cref="AttachVideo"/>/
+    /// <see cref="BeginTranscription"/> — this is initialization from an
+    /// already-known-good state, not a new change event. A tutor who does
+    /// want to replace the video afterward still goes through
+    /// <see cref="AttachVideo"/>/<see cref="SetVideoUrl"/>, which correctly
+    /// clears the carried-over transcript at that point. Resources and
+    /// Learning Activities are separate child collections/aggregates cloned
+    /// by the caller (ContentStudioService), not by this method.
+    /// </summary>
+    public void CopyContentFrom(LessonRevision source)
+    {
+        RequireDraft();
+        VideoAssetId = source.VideoAssetId;
+        VideoUrl = source.VideoUrl;
+        Transcript = source.Transcript;
+        TranscriptStatus = source.TranscriptStatus;
+        TranscriptSource = source.TranscriptSource;
+        TranscriptError = source.TranscriptError;
+        TranscriptChaptersJson = source.TranscriptChaptersJson;
+        TranscriptSegmentsJson = source.TranscriptSegmentsJson;
+        RequireQuizToComplete = source.RequireQuizToComplete;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     /// <summary>Attaches an uploaded video by reference. Draft-only, same reasoning as <see cref="Edit"/>. Clears any external URL — one video source at a time.</summary>
     public void AttachVideo(Guid learningAssetId)
     {
@@ -283,19 +314,22 @@ public class LessonRevision
 
     /// <summary>Adds a Learning Activity to this revision's instructional design. Draft-only — see <see cref="LearningActivities"/>.</summary>
     public LearningActivity AddLearningActivity(
-        LearningActivityType type, string title, string? instructions, Guid? assessmentId = null, string? externalUrl = null)
+        LearningActivityType type, string title, string? instructions, Guid? assessmentId = null, string? externalUrl = null,
+        Guid? activityFileAssetId = null, LearningActivitySubmissionMode submissionMode = LearningActivitySubmissionMode.TextOrFile)
     {
         RequireDraft();
-        var activity = LearningActivity.Create(Id, type, title, instructions, _learningActivities.Count, assessmentId, externalUrl);
+        var activity = LearningActivity.Create(Id, type, title, instructions, _learningActivities.Count, assessmentId, externalUrl, activityFileAssetId, submissionMode);
         _learningActivities.Add(activity);
         UpdatedAt = DateTime.UtcNow;
         return activity;
     }
 
-    public void UpdateLearningActivity(Guid activityId, LearningActivityType type, string title, string? instructions, Guid? assessmentId, string? externalUrl)
+    public void UpdateLearningActivity(
+        Guid activityId, LearningActivityType type, string title, string? instructions, Guid? assessmentId, string? externalUrl,
+        Guid? activityFileAssetId = null, LearningActivitySubmissionMode submissionMode = LearningActivitySubmissionMode.TextOrFile)
     {
         RequireDraft();
-        FindLearningActivity(activityId).Edit(type, title, instructions, assessmentId, externalUrl);
+        FindLearningActivity(activityId).Edit(type, title, instructions, assessmentId, externalUrl, activityFileAssetId, submissionMode);
         UpdatedAt = DateTime.UtcNow;
     }
 

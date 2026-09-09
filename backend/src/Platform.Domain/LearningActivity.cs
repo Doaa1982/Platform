@@ -21,6 +21,17 @@ public enum LearningActivityType
 }
 
 /// <summary>
+/// The way a learner is required to submit evidence back for a Learning
+/// Activity (<see cref="Submission.RecordResponse"/>) — a tutor-configured
+/// setting on the activity itself, independent of <see cref="LearningActivityType"/>.
+/// <see cref="TextOrFile"/> is first (= the default) so every pre-existing
+/// activity and every call site that doesn't set this explicitly keeps
+/// today's "either is fine" behavior. Inert for Quiz/QuestionSet, which never
+/// reach RecordResponse.
+/// </summary>
+public enum LearningActivitySubmissionMode { TextOrFile, TextOnly, FileOnly }
+
+/// <summary>
 /// A piece of educational work designed as part of a Lesson Revision
 /// (Learning Activity Assignment Business Analysis §4) — "what learners
 /// should do," authored once as instructional design. Owned by
@@ -62,6 +73,19 @@ public class LearningActivity
     /// <summary>Meaningful only when <see cref="Type"/> is ExternalLearningTool.</summary>
     public string? ExternalUrl { get; private set; }
 
+    /// <summary>
+    /// An instructional file attached to this activity itself (a worksheet,
+    /// handout, or reference material a learner needs before responding) —
+    /// reference by identifier only, same convention as <see cref="AssessmentId"/>
+    /// and <see cref="LessonRevision.VideoAssetId"/> (Learning Asset Aggregate
+    /// Design INV-003). Distinct from whatever file a learner later attaches
+    /// to their own <see cref="Submission"/>.
+    /// </summary>
+    public Guid? ActivityFileAssetId { get; private set; }
+
+    /// <summary>How a learner must respond — see <see cref="LearningActivitySubmissionMode"/>.</summary>
+    public LearningActivitySubmissionMode SubmissionMode { get; private set; } = LearningActivitySubmissionMode.TextOrFile;
+
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
@@ -69,17 +93,22 @@ public class LearningActivity
 
     internal static LearningActivity Create(
         Guid lessonRevisionId, LearningActivityType type, string title, string? instructions,
-        int position, Guid? assessmentId, string? externalUrl)
+        int position, Guid? assessmentId, string? externalUrl,
+        Guid? activityFileAssetId = null, LearningActivitySubmissionMode submissionMode = LearningActivitySubmissionMode.TextOrFile)
     {
         var activity = new LearningActivity { Id = Guid.NewGuid(), LessonRevisionId = lessonRevisionId, Position = position, CreatedAt = DateTime.UtcNow };
-        activity.Apply(type, title, instructions, assessmentId, externalUrl);
+        activity.Apply(type, title, instructions, assessmentId, externalUrl, activityFileAssetId, submissionMode);
         return activity;
     }
 
-    internal void Edit(LearningActivityType type, string title, string? instructions, Guid? assessmentId, string? externalUrl)
-        => Apply(type, title, instructions, assessmentId, externalUrl);
+    internal void Edit(
+        LearningActivityType type, string title, string? instructions, Guid? assessmentId, string? externalUrl,
+        Guid? activityFileAssetId = null, LearningActivitySubmissionMode submissionMode = LearningActivitySubmissionMode.TextOrFile)
+        => Apply(type, title, instructions, assessmentId, externalUrl, activityFileAssetId, submissionMode);
 
-    private void Apply(LearningActivityType type, string title, string? instructions, Guid? assessmentId, string? externalUrl)
+    private void Apply(
+        LearningActivityType type, string title, string? instructions, Guid? assessmentId, string? externalUrl,
+        Guid? activityFileAssetId, LearningActivitySubmissionMode submissionMode)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         if (type == LearningActivityType.ExternalLearningTool && string.IsNullOrWhiteSpace(externalUrl))
@@ -90,6 +119,8 @@ public class LearningActivity
         Instructions = string.IsNullOrWhiteSpace(instructions) ? null : instructions.Trim();
         AssessmentId = type is LearningActivityType.QuestionSet or LearningActivityType.Quiz ? assessmentId : null;
         ExternalUrl = type == LearningActivityType.ExternalLearningTool ? externalUrl!.Trim() : null;
+        ActivityFileAssetId = activityFileAssetId;
+        SubmissionMode = submissionMode;
         UpdatedAt = DateTime.UtcNow;
     }
 

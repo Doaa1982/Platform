@@ -69,7 +69,23 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
             // tutor speaking, but worth remembering if multi-speaker lesson
             // videos ever become common — the labels would then carry real
             // information current skills don't use.
-            TranscriptionConfig: new TranscriptionConfig(options.Language, options.Model, "speaker"),
+            TranscriptionConfig: new TranscriptionConfig(options.Language, options.Model, "speaker",
+                // Speechmatics' default behavior for Automatic Language
+                // Identification is to reject the whole job outright when its
+                // confidence is low ("Language identification could not
+                // identify any language with sufficient confidence") — seen
+                // in practice on a real lesson video whose audio transcribed
+                // fine once a language was picked manually on Speechmatics'
+                // own web console, so the audio itself was transcribable; ALI
+                // just wasn't confident enough on its own. ExpectedLanguages
+                // narrows ALI's guess to the two languages lesson videos
+                // actually use (see options.Language's own doc comment) and
+                // LowConfidenceAction "allow" stops a shaky-but-plausible
+                // guess from failing the entire job, without hard-pinning one
+                // language the way setting options.Language itself would.
+                options.Language.Equals("auto", StringComparison.OrdinalIgnoreCase)
+                    ? new LanguageIdentificationConfig(["en", "ar"], "allow")
+                    : null),
             AutoChaptersConfig: new AutoChaptersConfig()), JsonOptions);
 
         await using var fileStream = File.OpenRead(filePath);
@@ -180,7 +196,12 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
     private record TranscriptionConfig(
         [property: JsonPropertyName("language")] string Language,
         [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("diarization")] string Diarization);
+        [property: JsonPropertyName("diarization")] string Diarization,
+        [property: JsonPropertyName("language_identification_config")] LanguageIdentificationConfig? LanguageIdentificationConfig);
+
+    private record LanguageIdentificationConfig(
+        [property: JsonPropertyName("expected_languages")] string[] ExpectedLanguages,
+        [property: JsonPropertyName("low_confidence_action")] string LowConfidenceAction);
 
     /// <summary>Empty object enables the feature with defaults — Speechmatics' documented config shape.</summary>
     private record AutoChaptersConfig;

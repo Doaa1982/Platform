@@ -24,10 +24,14 @@ public class CommercialAllowanceGrantConcurrencyTests(PlatformApiTestFixture fix
         var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
         var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "grant-test-tutor@integrationtest.local", "grant-test-workspace");
 
-        // solo-professional promises 20,000 included AI credits (CommercialCatalog.cs) —
-        // plus the 200-credit trial grant every new workspace already received.
+        // solo-professional promises 20,000 included AI credits (CommercialCatalog.cs).
+        // The workspace's Free-plan trial grant (200) does NOT carry over: this
+        // upgrade is a free→paid conversion, so §A4 ("at first paid conversion,
+        // whichever comes first") expires whatever trial balance remains —
+        // CommercialOpsService.MarkInvoicePaidAsync — leaving exactly the new
+        // plan's 20,000.
         var balanceAfterUpgrade = await TestOnboarding.UpgradePlanAsync(client, adminToken, tutor.Token, tutor.WorkspaceSlug, "solo-professional");
-        Assert.Equal(20_200, balanceAfterUpgrade);
+        Assert.Equal(20_000, balanceAfterUpgrade);
 
         using var scope = fixture.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
@@ -39,12 +43,35 @@ public class CommercialAllowanceGrantConcurrencyTests(PlatformApiTestFixture fix
         var thisWorkspaceGrant = grants.Single(); // exactly one SubscriptionGrant for THIS workspace
         Assert.Equal(20_000, thisWorkspaceGrant.Amount);
 
-        // Append-only / auditable: the pre-existing trial grant is still present, untouched.
+        // Append-only / auditable: the original trial grant is still present,
+        // untouched — a new compensating Expiration entry revoked it instead
+        // of the row itself being mutated or deleted (CreditLedgerEntry.Expire).
         var trialGrants = await db.CreditLedgerEntries
             .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.TrialGrant)
             .ToListAsync();
         Assert.Single(trialGrants);
         Assert.Equal(200, trialGrants[0].Amount);
+
+        var expirations = await db.CreditLedgerEntries
+            .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.Expiration)
+            .ToListAsync();
+        var expiration = expirations.Single();
+        Assert.Equal(-200, expiration.Amount);
+    }
+
+    [Fact]
+    public async Task Free_Plan_Trial_Credits_Are_Not_Prematurely_Expired_Before_Any_Paid_Conversion()
+    {
+        var client = fixture.CreateClient();
+        var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
+
+        // OnboardTutorAsync auto-checks-out the Free ($0) plan — this is the
+        // workspace's first-ever subscription, not a conversion from anything,
+        // so it must keep its just-granted 200 trial credits untouched.
+        var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "trial-intact-tutor@integrationtest.local", "trial-intact-workspace");
+
+        var balance = await TestOnboarding.GetAiCreditsRemainingAsync(client, tutor.Token, tutor.WorkspaceSlug);
+        Assert.Equal(200, balance);
     }
 
     [Fact]

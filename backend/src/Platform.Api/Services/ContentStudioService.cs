@@ -198,6 +198,7 @@ public class ContentStudioService(
                         : (Guid?)null;
                     return new LearningActivityRow(
                         la.Id, la.Type.ToString(), la.Title, la.Instructions, la.Position, effectiveAssessmentId, la.ExternalUrl,
+                        la.ActivityFileAssetId, la.SubmissionMode.ToString(),
                         assignment is not null, assignment?.Id, assignment?.Status.ToString());
                 }).ToList());
         }
@@ -313,13 +314,16 @@ public class ContentStudioService(
         try { draft = lesson.StartRevision(ctx.MembershipId); }
         catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
 
-        // Lesson Editing & Publication UX, Rule 13: a new revision is
-        // pre-filled from the one it was started from — every field except
-        // the video (VideoAssetId/VideoUrl are never copied; a tutor starting
-        // a new revision because the video needs replacing is not asked to
-        // re-author content that didn't change).
+        // Lesson Editing & Publication UX, Rule 13 (revised): a new revision
+        // is pre-filled from the one it was started from — every field,
+        // including the video/transcript and attached resources — so a tutor
+        // starting a new revision to add an activity or fix a typo isn't
+        // forced to re-author or re-attach content that didn't change.
         if (previousRevision is not null)
+        {
             draft.Edit(previousRevision.Title, previousRevision.Body, previousRevision.EstimatedMinutes, previousRevision.DeliveryMode, previousRevision.WhatYoullLearn, previousRevision.LearningObjectives, previousRevision.Glossary, previousRevision.Homework);
+            draft.CopyContentFrom(previousRevision);
+        }
 
         // Interactive questions are versioned together with their revision
         // (Lesson Revision Aggregate Design §7's "Interactive Learning Event");
@@ -330,6 +334,7 @@ public class ContentStudioService(
         {
             await CloneAssessmentAsync(ctx.Workspace!.Id, lessonId, previousRevision.Id, draft.Id, ct);
             await CloneLearningActivitiesAsync(previousRevision.Id, draft, ct);
+            await CloneResourcesAsync(previousRevision.Id, draft, ct);
         }
 
         await db.SaveChangesAsync(ct);
@@ -367,9 +372,11 @@ public class ContentStudioService(
         db.Lessons.Add(clone);
 
         clone.DraftRevision!.Edit(clone.DraftRevision!.Title, sourceRevision.Body, sourceRevision.EstimatedMinutes, sourceRevision.DeliveryMode, sourceRevision.WhatYoullLearn, sourceRevision.LearningObjectives, sourceRevision.Glossary, sourceRevision.Homework);
+        clone.DraftRevision!.CopyContentFrom(sourceRevision);
 
         await CloneAssessmentAsync(ctx.Workspace!.Id, clone.Id, sourceRevision.Id, clone.DraftRevision!.Id, ct);
         await CloneLearningActivitiesAsync(sourceRevision.Id, clone.DraftRevision!, ct);
+        await CloneResourcesAsync(sourceRevision.Id, clone.DraftRevision!, ct);
 
         await db.SaveChangesAsync(ct);
         return await GetLessonAsync(slug, caller, clone.Id, ct);
@@ -413,7 +420,27 @@ public class ContentStudioService(
             .Where(a => a.LessonRevisionId == sourceRevisionId).OrderBy(a => a.Position).ToListAsync(ct);
 
         foreach (var source in sources)
-            targetRevision.AddLearningActivity(source.Type, source.Title, source.Instructions, source.AssessmentId, source.ExternalUrl);
+            targetRevision.AddLearningActivity(
+                source.Type, source.Title, source.Instructions, source.AssessmentId, source.ExternalUrl,
+                source.ActivityFileAssetId, source.SubmissionMode);
+    }
+
+    /// <summary>
+    /// Copies a revision's attached Resources (slides, worksheets, handouts)
+    /// onto a newly-started draft — used by both StartRevisionAsync and
+    /// DuplicateLessonAsync, same reasoning as <see cref="CloneLearningActivitiesAsync"/>.
+    /// Resources aren't Draft-only to add (<see cref="AddResourceAsync"/>
+    /// targets DraftRevision ?? CurrentRevision), but each one still lives on
+    /// one specific revision row — without this, a brand-new draft would
+    /// start with none of the previous revision's attachments.
+    /// </summary>
+    private async Task CloneResourcesAsync(Guid sourceRevisionId, LessonRevision targetRevision, CancellationToken ct)
+    {
+        var sources = await db.LessonResources.AsNoTracking()
+            .Where(r => r.LessonRevisionId == sourceRevisionId).OrderBy(r => r.Position).ToListAsync(ct);
+
+        foreach (var source in sources)
+            targetRevision.AddResource(source.LearningAssetId, source.VisibleToLearners);
     }
 
     /// <summary>
@@ -569,6 +596,11 @@ public class ContentStudioService(
             ? parsed
             : throw new ArgumentException($"\"{type}\" is not a recognized learning activity type.", nameof(type));
 
+    private static LearningActivitySubmissionMode ParseSubmissionMode(string mode) =>
+        Enum.TryParse<LearningActivitySubmissionMode>(mode, ignoreCase: true, out var parsed)
+            ? parsed
+            : throw new ArgumentException($"\"{mode}\" is not a recognized submission mode.", nameof(mode));
+
     public async Task<ProvisioningResult<LessonDetailResponse>> AddLearningActivityAsync(
         string slug, Guid caller, Guid lessonId, SaveLearningActivityRequest request, CancellationToken ct = default)
     {
@@ -583,7 +615,9 @@ public class ContentStudioService(
         {
             var draft = lesson.DraftRevision
                 ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
-            draft.AddLearningActivity(ParseActivityType(request.Type), request.Title, request.Instructions, request.AssessmentId, request.ExternalUrl);
+            draft.AddLearningActivity(
+                ParseActivityType(request.Type), request.Title, request.Instructions, request.AssessmentId, request.ExternalUrl,
+                request.ActivityFileAssetId, ParseSubmissionMode(request.SubmissionMode));
         }
         catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
         catch (ArgumentException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Invalid, ex.Message)); }
@@ -606,7 +640,9 @@ public class ContentStudioService(
         {
             var draft = lesson.DraftRevision
                 ?? throw new InvalidOperationException("This lesson has no open draft. Start a new revision first.");
-            draft.UpdateLearningActivity(activityId, ParseActivityType(request.Type), request.Title, request.Instructions, request.AssessmentId, request.ExternalUrl);
+            draft.UpdateLearningActivity(
+                activityId, ParseActivityType(request.Type), request.Title, request.Instructions, request.AssessmentId, request.ExternalUrl,
+                request.ActivityFileAssetId, ParseSubmissionMode(request.SubmissionMode));
         }
         catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
         catch (ArgumentException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Invalid, ex.Message)); }

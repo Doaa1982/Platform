@@ -493,6 +493,11 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.AssessmentId);
             entity.Property(e => e.ExternalUrl).HasMaxLength(2048);
 
+            // Reference-only, same convention as AssessmentId above.
+            entity.Property(e => e.ActivityFileAssetId);
+            entity.Property(e => e.SubmissionMode).HasConversion<string>().HasMaxLength(16)
+                .HasDefaultValue(LearningActivitySubmissionMode.TextOrFile);
+
             entity.HasIndex(e => e.LessonRevisionId);
         });
 

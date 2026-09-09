@@ -180,16 +180,41 @@ public class Submission
         };
     }
 
-    /// <summary>Records this learner's Response (Assessment and Submission Aggregate Design v1.1 §8) and moves to Submitted. INV-007: at least one of text or an attached asset is required.</summary>
-    public void RecordResponse(string? text, Guid? attachedLearningAssetId)
+    /// <summary>
+    /// Records this learner's Response (Assessment and Submission Aggregate
+    /// Design v1.1 §8) and moves to Submitted. What's required depends on
+    /// <paramref name="requiredMode"/> — the target Learning Activity's
+    /// configured <see cref="LearningActivitySubmissionMode"/>: TextOnly needs
+    /// text (any attached file is dropped, unused), FileOnly needs a file
+    /// (any text is dropped), and TextOrFile (the default, and the only mode
+    /// that existed before this parameter was added) needs at least one of
+    /// the two — INV-007.
+    /// </summary>
+    public void RecordResponse(string? text, Guid? attachedLearningAssetId, LearningActivitySubmissionMode requiredMode = LearningActivitySubmissionMode.TextOrFile)
     {
         if (AssignmentId is null)
             throw new InvalidOperationException("RecordResponse only applies to an Assignment-target Submission.");
         if (Status != SubmissionStatus.InProgress)
             throw new InvalidOperationException("Only an in-progress submission can record a response.");
         var trimmedText = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-        if (trimmedText is null && attachedLearningAssetId is null)
-            throw new ArgumentException("A response needs text, an attached file, or both before it can be submitted (INV-007).", nameof(text));
+
+        switch (requiredMode)
+        {
+            case LearningActivitySubmissionMode.TextOnly:
+                if (trimmedText is null)
+                    throw new ArgumentException("This activity requires a written text response.", nameof(text));
+                attachedLearningAssetId = null;
+                break;
+            case LearningActivitySubmissionMode.FileOnly:
+                if (attachedLearningAssetId is null)
+                    throw new ArgumentException("This activity requires an uploaded file.", nameof(attachedLearningAssetId));
+                trimmedText = null;
+                break;
+            default:
+                if (trimmedText is null && attachedLearningAssetId is null)
+                    throw new ArgumentException("A response needs text, an attached file, or both before it can be submitted (INV-007).", nameof(text));
+                break;
+        }
 
         ResponseText = trimmedText;
         ResponseLearningAssetId = attachedLearningAssetId;

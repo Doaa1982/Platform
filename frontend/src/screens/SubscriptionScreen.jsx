@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
+import InfoTip from "../components/InfoTip";
 import Modal, { MODAL_CSS } from "../components/Modal";
 import SplitStepModal, { SPLIT_STEP_MODAL_CSS } from "../components/SplitStepModal";
 import PlanPickerCards, { PLAN_PICKER_CARDS_CSS } from "../components/PlanPickerCards";
@@ -647,11 +648,17 @@ function BillingOverview({
               <td>{capacityCell(learnerCapacityEnt)}</td>
             </tr>
             <tr>
-              <th scope="row">{t("subscription.videoStorage")}</th>
+              <th scope="row">
+                {t("subscription.videoStorage")}
+                <InfoTip text={t("subscription.storageUsedOfTotal")} />
+              </th>
               <td>{capacityCell(videoStorageEnt, "GB")}</td>
             </tr>
             <tr>
-              <th scope="row">{t("subscription.resourceStorage")}</th>
+              <th scope="row">
+                {t("subscription.resourceStorage")}
+                <InfoTip text={t("subscription.storageUsedOfTotal")} />
+              </th>
               <td>{capacityCell(resourceStorageEnt, "GB")}</td>
             </tr>
             <tr>
@@ -659,7 +666,12 @@ function BillingOverview({
               <td>{aiCredits ? Number(aiCredits).toLocaleString() : "—"}</td>
             </tr>
             <tr>
-              <th scope="row">{t("subscription.aiCreditsRemaining")}</th>
+              <th scope="row">
+                {t("subscription.aiCreditsRemaining")}
+                {subscription.aiCreditsTrialRemaining > 0 && (
+                  <InfoTip text={t("subscription.aiCreditsTrialBreakdown", { trial: Number(subscription.aiCreditsTrialRemaining).toLocaleString() })} />
+                )}
+              </th>
               <td>
                 {Number(subscription.aiCreditsRemaining ?? 0).toLocaleString()}
                 {!hasAiDomain && subscription.aiCreditsRemaining > 0 && (

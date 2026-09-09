@@ -1061,12 +1061,15 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
 
   /**
    * "Create new version" — a new draft revision of this SAME lesson. Stays
-   * on this same editor, lands on Delivery so the new video can be uploaded
-   * right away; nothing navigates away. If the dialog was opened from the
-   * delivery-type select, the chosen mode is applied to the fresh draft
-   * immediately, since a real draft now exists to save it onto.
+   * on this same editor, lands on whichever tab triggered the dialog (video/
+   * delivery-mode changes land on Delivery so the new video can be uploaded
+   * right away; an activity add/edit lands back on Activities) — nothing
+   * navigates away. If the dialog was opened from the delivery-type select,
+   * the chosen mode is applied to the fresh draft immediately, since a real
+   * draft now exists to save it onto.
    */
   async function confirmSameLessonNewVersion() {
+    const trigger = versionDialogTrigger;
     setVersionDialogTrigger(null);
     const started = await run(() => api.startLessonRevision(session.token, slug, lessonId), t("studio.toastNewVersionStarted"));
     if (!started) return;
@@ -1083,7 +1086,7 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
     setLesson(finalLesson);
     applyDraftToForm(finalLesson);
     setPendingDeliveryMode(null);
-    setActiveTab("delivery");
+    setActiveTab(trigger === "activity" ? "activities" : "delivery");
   }
 
   /**
@@ -1524,7 +1527,10 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
 
             {activeTab === "activities" && (
               (lesson.currentRevision || lesson.draftRevision) ? (
-                <LearningActivitiesSection lesson={lesson} editable={editable} onChanged={load} />
+                <LearningActivitiesSection
+                  lesson={lesson} editable={editable} onChanged={load}
+                  onRequestNewVersion={() => setVersionDialogTrigger("activity")}
+                />
               ) : (
                 <p className="muted" style={{ marginTop: 14 }}>{t("studio.startRevisionForActivities")}</p>
               )
@@ -1599,31 +1605,37 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
 
 /**
  * Lesson Editing & Publication UX, Scenario 5's "Replace Video Dialog" —
- * shown before replacing the video or changing delivery mode on a published
- * lesson, since both start a new version. Both options here call the same
- * backend action (a new draft, carried forward, video cleared); the
- * difference is purely which tab the tutor lands on afterward.
+ * shown before any Major-classified change on a published lesson (replacing
+ * the video, changing delivery mode, or — same underlying rule, Learning
+ * Activity Assignment BA §8 — adding/editing a Learning Activity), since all
+ * of these start a new version. Every trigger shares the same two backend
+ * actions (a new draft of this same lesson, carried forward; or a genuinely
+ * separate duplicate lesson); only the heading/explanation and which tab the
+ * tutor lands on afterward differ per trigger.
  */
+const VERSION_DIALOG_COPY = {
+  video: { title: "studio.replacingVideoTitle", note: "studio.replacingVideoNote", li2: "studio.newVersionLi2" },
+  delivery: { title: "studio.changingDeliveryTitle", note: "studio.changingDeliveryNote", li2: "studio.newVersionLi2" },
+  activity: { title: "studio.editingActivityTitle", note: "studio.editingActivityNote", li2: "studio.newVersionLi2Activity" },
+};
+
 function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onChooseNewDraft }) {
   const { t } = useLanguage();
+  const copy = VERSION_DIALOG_COPY[trigger] ?? VERSION_DIALOG_COPY.video;
   return (
     <div className="lw-studio__overlay" role="dialog" aria-modal="true" onClick={onCancel}>
       <div className="lw-studio__panel" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
         <button className="lw-studio__panelclose" onClick={onCancel} aria-label={t("studio.close")}><X size={16} /></button>
         <div className="lw-eyebrow">{t("studio.newVersionEyebrow")}</div>
-        <h2 className="lw-studio__panelh2">
-          {trigger === "video" ? t("studio.replacingVideoTitle") : t("studio.changingDeliveryTitle")}
-        </h2>
-        <Notice tone="warning" style={{ marginBottom: 16 }}>
-          {trigger === "video" ? t("studio.replacingVideoNote") : t("studio.changingDeliveryNote")}
-        </Notice>
+        <h2 className="lw-studio__panelh2">{t(copy.title)}</h2>
+        <Notice tone="warning" style={{ marginBottom: 16 }}>{t(copy.note)}</Notice>
 
         <div className="lw-studio__versionoptions">
           <div className="lw-studio__versionoption">
             <h3>{t("studio.createNewVersion")}</h3>
             <ul>
               <li>{t("studio.newVersionLi1")}</li>
-              <li>{t("studio.newVersionLi2")}</li>
+              <li>{t(copy.li2)}</li>
               <li>{t("studio.newVersionLi3")}</li>
               <li>{t("studio.newVersionLi4")}</li>
             </ul>
@@ -2212,7 +2224,7 @@ const LEARNING_ACTIVITY_TYPES = [
   "AiPracticeSession", "ExternalLearningTool",
 ];
 
-function LearningActivitiesSection({ lesson, editable, onChanged }) {
+function LearningActivitiesSection({ lesson, editable, onChanged, onRequestNewVersion }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -2222,6 +2234,7 @@ function LearningActivitiesSection({ lesson, editable, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [formMode, setFormMode] = useState(null); // null | "new" | activity being edited
   const [assigningActivity, setAssigningActivity] = useState(null);
+  const [viewingActivity, setViewingActivity] = useState(null);
 
   const hasDraft = !!lesson.draftRevision;
   const revision = lesson.draftRevision ?? lesson.currentRevision;
@@ -2238,11 +2251,6 @@ function LearningActivitiesSection({ lesson, editable, onChanged }) {
     try { const r = await fn(); if (successMessage) setSuccess(successMessage); return r; }
     catch (e) { setError(e.message); return null; }
     finally { setBusy(false); }
-  }
-
-  async function handleStartRevision() {
-    const result = await run(() => api.startLessonRevision(session.token, slug, lesson.id), t("studio.toastNewVersionStarted"));
-    if (result) onChanged();
   }
 
   async function saveActivity(body) {
@@ -2276,18 +2284,10 @@ function LearningActivitiesSection({ lesson, editable, onChanged }) {
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
 
-      {editable && !hasDraft && (
-        <div className="lw-studio__blocker">
-          <AlertCircle size={14} /> {t("studio.activitiesNeedDraft")}
-          <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handleStartRevision} style={{ marginInlineStart: 10 }}>
-            <Plus size={13} /> {t("studio.startNewRevision")}
-          </button>
-        </div>
-      )}
-
-      {canEditActivities && (
+      {editable && (
         <div className="lw-studio__bar">
-          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setFormMode("new")}>
+          <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
+                  onClick={() => (hasDraft ? setFormMode("new") : onRequestNewVersion())}>
             <Plus size={13} /> {t("studio.addActivity")}
           </button>
         </div>
@@ -2322,7 +2322,7 @@ function LearningActivitiesSection({ lesson, editable, onChanged }) {
                 <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setAssigningActivity(activity)}>
                   <Send size={13} /> {t("studio.assign")}
                 </button>
-                {canEditActivities && (
+                {canEditActivities ? (
                   <>
                     <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setFormMode(activity)}>
                       <Pencil size={13} /> {t("studio.edit")}
@@ -2330,6 +2330,25 @@ function LearningActivitiesSection({ lesson, editable, onChanged }) {
                     <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => removeActivity(activity.id)}>
                       <Trash2 size={13} /> {t("studio.remove")}
                     </button>
+                  </>
+                ) : (
+                  <>
+                    {/* Editing is blocked (no author rights, curriculum locked, or
+                        this lesson has no open draft) — a tutor should still be
+                        able to see what this activity contains without committing
+                        to anything. */}
+                    <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setViewingActivity(activity)}>
+                      <Eye size={13} /> {t("studio.view")}
+                    </button>
+                    {/* Only when the tutor has author rights but this lesson
+                        simply has no open draft yet — same "start a new version
+                        first" mechanism VideoSection's Replace/Add video buttons
+                        use, not a dead end. */}
+                    {editable && (
+                      <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onRequestNewVersion}>
+                        <Pencil size={13} /> {t("studio.edit")}
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -2345,6 +2364,13 @@ function LearningActivitiesSection({ lesson, editable, onChanged }) {
         </Modal>
       )}
 
+      {viewingActivity && (
+        <Modal onClose={() => setViewingActivity(null)} closeLabel={t("studio.close")}>
+          <h2 className="lw-modal__title">{t("studio.viewActivity")}</h2>
+          <LearningActivityForm initial={viewingActivity} readOnly onCancel={() => setViewingActivity(null)} />
+        </Modal>
+      )}
+
       {assigningActivity && (
         <AssignmentModal
           lessonId={lesson.id} activity={assigningActivity}
@@ -2356,57 +2382,147 @@ function LearningActivitiesSection({ lesson, editable, onChanged }) {
   );
 }
 
-function LearningActivityForm({ initial, busy, onSave, onCancel }) {
+const ACTIVITY_SUBMISSION_MODES = ["TextOrFile", "TextOnly", "FileOnly"];
+
+function LearningActivityForm({ initial, busy = false, onSave, onCancel, readOnly = false }) {
+  const { session, workspace } = useAuth();
   const { t } = useLanguage();
+  const slug = workspace?.slug;
+  const disabled = busy || readOnly;
   const [type, setType] = useState(initial?.type ?? "Homework");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [instructions, setInstructions] = useState(initial?.instructions ?? "");
   const [externalUrl, setExternalUrl] = useState(initial?.externalUrl ?? "");
+  const [submissionMode, setSubmissionMode] = useState(initial?.submissionMode ?? "TextOrFile");
+  const [activityFileAssetId, setActivityFileAssetId] = useState(initial?.activityFileAssetId ?? null);
+  // The file's name is only known within this session (right after an
+  // upload) — an id carried over from a previous edit has no title to show,
+  // same "reference by identifier only" limitation AssessmentId already has.
+  const [activityFileTitle, setActivityFileTitle] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const [attempted, setAttempted] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Quiz/QuestionSet never reach the free-text/file Response flow (they hand
+  // off to QuizScreen entirely) — same treatment the quiz note below already
+  // gives this pair of types.
+  const isQuizLike = type === "Quiz" || type === "QuestionSet";
+
+  async function handleUploadFile(fileList) {
+    const file = fileList?.[0];
+    if (!file) return;
+    setUploading(true); setUploadError(null);
+    try {
+      const asset = await api.uploadLearningAsset(session.token, slug, file, file.name, undefined, "Resource");
+      setActivityFileAssetId(asset.id);
+      setActivityFileTitle(asset.title);
+    } catch (e) { setUploadError(e.message); }
+    finally { setUploading(false); }
+  }
+
+  const validationMessages = [
+    !title.trim() && t("studio.enterActivityTitle"),
+    type === "ExternalLearningTool" && !externalUrl.trim() && t("studio.enterActivityExternalUrl"),
+  ].filter(Boolean);
+  const valid = validationMessages.length === 0;
 
   function submit(e) {
     e.preventDefault();
-    setAttempted(true);
-    if (!title.trim()) return;
-    if (type === "ExternalLearningTool" && !externalUrl.trim()) return;
+    if (readOnly) return;
+    if (!valid) { setAttempted(true); return; }
     onSave({
       type, title: title.trim(), instructions: instructions.trim() || null,
       assessmentId: initial?.assessmentId ?? null,
       externalUrl: type === "ExternalLearningTool" ? externalUrl.trim() : null,
+      activityFileAssetId: isQuizLike ? null : activityFileAssetId,
+      submissionMode: isQuizLike ? "TextOrFile" : submissionMode,
     });
   }
 
   return (
-    <form onSubmit={submit} className="lw-studio__draftform">
+    <form onSubmit={submit} className="lw-studio__draftform" noValidate>
+      {attempted && validationMessages.length > 0 && (
+        <Message type="error">
+          {validationMessages.length === 1 ? validationMessages[0] : (
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {validationMessages.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          )}
+        </Message>
+      )}
       <label>
-        <span>{t("studio.activityTypeLabel")}<RequiredMark /></span>
-        <select value={type} onChange={(e) => setType(e.target.value)} disabled={busy}>
+        <span>{t("studio.activityTypeLabel")}{!readOnly && <RequiredMark />}</span>
+        <select value={type} onChange={(e) => setType(e.target.value)} disabled={disabled}>
           {LEARNING_ACTIVITY_TYPES.map((v) => <option key={v} value={v}>{t(`studio.activityType.${v}`)}</option>)}
         </select>
       </label>
       <label>
-        <span>{t("studio.activityTitleLabel")}<RequiredMark /></span>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy}
+        <span>{t("studio.activityTitleLabel")}{!readOnly && <RequiredMark />}</span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={disabled}
                style={attempted && !title.trim() ? invalidFieldStyle : undefined} />
       </label>
       <label>
         <span>{t("studio.activityInstructionsLabel")}</span>
-        <textarea rows={5} value={instructions} onChange={(e) => setInstructions(e.target.value)} disabled={busy}
+        <textarea rows={5} value={instructions} onChange={(e) => setInstructions(e.target.value)} disabled={disabled}
                   placeholder={t("studio.activityInstructionsPlaceholder")} />
       </label>
       {type === "ExternalLearningTool" && (
         <label>
-          <span>{t("studio.activityExternalUrlLabel")}<RequiredMark /></span>
-          <input value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} disabled={busy}
+          <span>{t("studio.activityExternalUrlLabel")}{!readOnly && <RequiredMark />}</span>
+          <input value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} disabled={disabled}
                  placeholder="https://…" style={attempted && !externalUrl.trim() ? invalidFieldStyle : undefined} />
         </label>
       )}
-      {(type === "Quiz" || type === "QuestionSet") && (
+      {isQuizLike && (
         <p className="muted" style={{ fontSize: 12 }}>{t("studio.activityQuizNote")}</p>
       )}
+      {!isQuizLike && (
+        <>
+          <label>
+            <span>{t("studio.activityFileLabel")}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {activityFileAssetId ? (
+                <a href={api.learningAssetDownloadUrl(session.token, slug, activityFileAssetId)} target="_blank" rel="noreferrer"
+                   style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Paperclip size={13} /> {activityFileTitle ?? t("studio.activityFileAttached")}
+                </a>
+              ) : readOnly && (
+                <span className="muted">{t("studio.activityFileNone")}</span>
+              )}
+              {!readOnly && (uploading ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <LoaderCircle size={14} className="lw-studio__spin" /> {t("studio.uploading")}
+                </span>
+              ) : (
+                <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={disabled} onClick={() => fileInputRef.current?.click()}>
+                  <UploadCloud size={13} /> {activityFileAssetId ? t("studio.activityFileReplace") : t("studio.activityFileUpload")}
+                </button>
+              ))}
+              {!readOnly && activityFileAssetId && !uploading && (
+                <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" disabled={disabled}
+                        onClick={() => { setActivityFileAssetId(null); setActivityFileTitle(null); }} title={t("studio.remove")}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            {!readOnly && (
+              <input ref={fileInputRef} type="file" style={{ display: "none" }}
+                     onChange={(e) => { handleUploadFile(e.target.files); e.target.value = ""; }} />
+            )}
+          </label>
+          {uploadError && <Message type="error">{uploadError}</Message>}
+          <label>
+            <span>{t("studio.submissionModeLabel")}</span>
+            <select value={submissionMode} onChange={(e) => setSubmissionMode(e.target.value)} disabled={disabled}>
+              {ACTIVITY_SUBMISSION_MODES.map((v) => <option key={v} value={v}>{t(`studio.submissionMode.${v}`)}</option>)}
+            </select>
+          </label>
+        </>
+      )}
       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <button type="submit" className="lw-btn lw-btn--primary lw-btn--sm" disabled={busy}>{t("studio.save")}</button>
-        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancel}>{t("studio.cancel")}</button>
+        {!readOnly && <button type="submit" className="lw-btn lw-btn--primary lw-btn--sm" disabled={disabled}>{t("studio.save")}</button>}
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancel}>{readOnly ? t("studio.close") : t("studio.cancel")}</button>
       </div>
     </form>
   );

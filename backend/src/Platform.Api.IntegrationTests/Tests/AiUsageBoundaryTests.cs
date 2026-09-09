@@ -41,11 +41,20 @@ public class AiUsageBoundaryTests(PlatformApiTestFixture fixture) : IClassFixtur
             var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
             var workspaceId = await GetWorkspaceId(db, tutor.WorkspaceSlug);
 
-            var existingGrants = await db.CreditLedgerEntries
-                .Where(e => e.WorkspaceId == workspaceId && e.Amount > 0)
+            // Every existing entry, not just grants (Amount > 0): a free→paid
+            // upgrade (UpgradePlanAsync, above) now also leaves a compensating
+            // negative Expiration entry offsetting the trial grant (§A4,
+            // CreditLedgerService.ExpireTrialCreditsAsync) — it carries the
+            // same real expiry the trial grant it offsets had, so in actual
+            // wall-clock time it would lapse alongside it, but rewinding only
+            // the grants here and leaving that entry's still-future expiry
+            // untouched would double-count the removal (its −200 would keep
+            // subtracting from the "clean slate" this setup wants to establish).
+            var existingEntries = await db.CreditLedgerEntries
+                .Where(e => e.WorkspaceId == workspaceId)
                 .ToListAsync();
-            foreach (var grant in existingGrants)
-                db.Entry(grant).Property("ExpiresAtUtc").CurrentValue = DateTime.UtcNow.AddSeconds(-1);
+            foreach (var entry in existingEntries)
+                db.Entry(entry).Property("ExpiresAtUtc").CurrentValue = DateTime.UtcNow.AddSeconds(-1);
 
             db.CreditLedgerEntries.Add(CreditLedgerEntry.Grant(
                 workspaceId, CreditLedgerEntryType.PromotionalGrant, startingBalance, expiresAtUtc: DateTime.UtcNow.AddDays(1)));
@@ -99,8 +108,10 @@ public class AiUsageBoundaryTests(PlatformApiTestFixture fixture) : IClassFixtur
         {
             var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
             var workspaceId = await GetWorkspaceId(db, tutor.WorkspaceSlug);
-            var grants = await db.CreditLedgerEntries.Where(e => e.WorkspaceId == workspaceId && e.Amount > 0).ToListAsync();
-            foreach (var g in grants) db.Entry(g).Property("ExpiresAtUtc").CurrentValue = DateTime.UtcNow.AddSeconds(-1);
+            // All entries, not just grants — see the sibling test's comment on
+            // why the compensating Expiration entry (§A4) needs the same treatment.
+            var entries = await db.CreditLedgerEntries.Where(e => e.WorkspaceId == workspaceId).ToListAsync();
+            foreach (var e in entries) db.Entry(e).Property("ExpiresAtUtc").CurrentValue = DateTime.UtcNow.AddSeconds(-1);
             await db.SaveChangesAsync();
         }
 

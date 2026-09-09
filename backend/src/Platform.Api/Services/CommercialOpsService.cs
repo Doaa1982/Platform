@@ -22,7 +22,8 @@ namespace Platform.Api.Services;
 /// transaction record.
 /// </summary>
 public class CommercialOpsService(
-    PlatformDbContext db, CommercialSubscriptionService subscriptions, LicensingService licensing)
+    PlatformDbContext db, CommercialSubscriptionService subscriptions, LicensingService licensing,
+    ICreditLedgerService credits)
 {
     /// <summary>Manual Commercial Activation (§27a): the actual trigger for Active in this platform.</summary>
     public async Task<ProvisioningResult<SubscriptionSummary>> MarkInvoicePaidAsync(
@@ -59,6 +60,22 @@ public class CommercialOpsService(
         db.SubscriptionEvents.Add(activation);
         await db.SaveChangesAsync(ct);
         await licensing.RecomputeLicenseAsync(subscription.Id, ct);
+
+        // A4: trial credits expire "30 days after grant, or at first paid
+        // conversion, whichever comes first" — the 30-day timer is
+        // ExpiresAtUtc itself; this is the other half. Only a genuine
+        // free→paid conversion counts: a workspace whose first-ever
+        // subscription is already paid takes the Activate() branch above,
+        // never this one, so its just-granted trial credits are never
+        // clawed back in the same transaction they were given in.
+        if (isConfirmingRequestedChange)
+        {
+            var prices = await db.ConfigurationSnapshots.AsNoTracking()
+                .Where(s => s.Id == previousSnapshotId || s.Id == newSnapshotId)
+                .ToDictionaryAsync(s => s.Id, s => s.PriceAmount, ct);
+            if (prices.GetValueOrDefault(previousSnapshotId!.Value) == 0 && prices.GetValueOrDefault(newSnapshotId!.Value) > 0)
+                await credits.ExpireTrialCreditsAsync(subscription.WorkspaceId, ct);
+        }
 
         return ProvisioningResult<SubscriptionSummary>.Success(await subscriptions.BuildSummaryAsync(subscription, ct));
     }
