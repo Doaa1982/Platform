@@ -103,34 +103,43 @@ function Resources({ lessonId, slug, token, onBackToLesson }) {
 const CSS = `
   .lw-nby {
     display: flex; gap: 16px; align-items: flex-start;
-    background: var(--surface); border: 1px dashed var(--line);
-    border-radius: var(--radius-sm); padding: 24px 26px; max-width: 62ch;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   }
   .lw-nby__icon {
-    width: 42px; height: 42px; border-radius: var(--radius-sm); flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    background: var(--surface-2); color: var(--ink-soft);
+    background: var(--surface-2); color: var(--accent);
   }
-  .lw-nby__lead { font-size: 0.95rem; margin: 0 0 14px; line-height: 1.6; }
+  .lw-nby__lead { font-size: 0.95rem; margin: 0; line-height: 1.6; }
 
   .lw-learn__back {
     display: inline-flex; align-items: center; gap: 6px;
-    background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft);
-    font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 3px 6px; margin-bottom: 14px; margin-inline-start: -6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 20px; color: var(--ink-soft);
+    font-family: var(--font-body); font-size: 0.82rem; font-weight: 500; cursor: pointer; padding: 6px 14px; margin-bottom: 18px;
+    transition: all 0.15s ease;
   }
-  .lw-learn__back:hover { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
+  .lw-learn__back:hover { color: var(--ink); border-color: var(--accent); transform: translateX(-2px); }
   .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
   .lw-learn__spin { animation: lwLearnSpin 0.9s linear infinite; }
   @keyframes lwLearnSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .lw-learn__spin { animation: none; } }
 
-  .lw-resourcelist { display: grid; gap: 10px; max-width: 60ch; margin-top: 14px; }
+  .lw-resourcelist { display: grid; gap: 12px; max-width: 72ch; margin-top: 18px; }
   .lw-resourcelist__item {
-    display: flex; align-items: center; gap: 10px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
-    padding: 13px 16px; text-decoration: none; color: var(--ink);
+    display: flex; align-items: center; gap: 14px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 20px; text-decoration: none; color: var(--ink);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03); transition: all 0.18s ease;
   }
-  .lw-resourcelist__item:hover { border-color: var(--accent); }
-  .lw-resourcelist__title { flex: 1; font-size: 0.9rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lw-resourcelist__meta { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); flex-shrink: 0; }
+  .lw-resourcelist__item:hover {
+    border-color: var(--accent); transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+  }
+  .lw-resourcelist__title { flex: 1; font-size: 0.95rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lw-resourcelist__meta {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft);
+    background: var(--surface-2); padding: 4px 10px; border-radius: 12px; flex-shrink: 0;
+  }
 `;

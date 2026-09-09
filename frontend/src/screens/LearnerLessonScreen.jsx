@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio, HelpCircle, FileText, ClipboardList, Paperclip, ListChecks,
+  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio, HelpCircle, FileText, ClipboardList, Paperclip, ListChecks, Play, Clock, CheckCircle
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -51,10 +51,6 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
 
   useEffect(() => {
     let cancelled = false;
-    // A fresh lesson: reset every bit of the previous lesson's local
-    // progress (answers, active checkpoint, grading result) — this effect
-    // now re-runs whenever the sidebar swaps lessonId on an already-mounted
-    // screen, not just on first mount.
     setLesson(null);
     setAnswers({});
     setAnsweredIds(new Set());
@@ -67,27 +63,20 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
         if (cancelled) return;
         setLesson(l);
         setError(null);
-        // No video and no questions: the lesson already completed itself on
-        // open (LearningDeliveryService.GetLessonAsync) — nothing to drive here.
         if (!l.video && !l.videoUrl) setVideoEnded(true);
       })
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [session.token, slug, lessonId]);
 
-  // Tells App's LessonSidebar (a sibling, not a child, of this screen) to
-  // re-fetch — auto-complete on open, video watched, or a passing
-  // submission all change this lesson's row/unit-count there.
   useEffect(() => {
     onProgress?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lesson?.progressStatus, result]);
 
-  // Once the video has ended (or there was none), work through whatever
-  // questions remain one at a time; once none remain, submit the whole set.
   useEffect(() => {
     if (!lesson || activeQuestion || result || submitting || completed) return;
-    if ((lesson.video || lesson.videoUrl) && !videoEnded) return; // timeupdate handles in-video checkpoints
+    if ((lesson.video || lesson.videoUrl) && !videoEnded) return;
 
     const remaining = lesson.questions.filter((q) => !answeredIds.has(q.id));
     if (remaining.length > 0) {
@@ -114,10 +103,6 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
 
   function handleVideoEnded() {
     setVideoEnded(true);
-    // The response already carries the authoritative post-watch progress —
-    // a video-only lesson (no questions to submit afterward) completes right
-    // here, and without applying it back nothing else ever refreshes this
-    // screen's `lesson` to show that.
     if (!completed) api.markVideoWatched(session.token, slug, lessonId).then(setLesson).catch(() => {});
   }
 
@@ -148,165 +133,273 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
   const done = result ? true : lesson?.progressStatus === "Completed";
   const isLive = lesson?.deliveryMode === "LiveSession";
   const hasVideo = !!(lesson?.video || lesson?.videoUrl);
-  // PDF & Image Lesson Content Extraction §10.1 — a Reading-mode (or any
-  // video-less) lesson features its first visible PDF/image resource
-  // (already position-ordered, already learner-visibility-filtered
-  // server-side) in the same slot the video would occupy, instead of
-  // leaving it one click away behind the Resources button. Any further
-  // resources stay reachable there as before.
   const inlineResource = !hasVideo
     ? lesson?.resources?.find((r) => INLINE_RESOURCE_TYPES.has((r.contentType || "").toLowerCase()))
     : null;
 
   return (
-    <div className="lw-page">
+    <div className="lw-page lw-lesson-page">
       <style>{CSS}</style>
-      <BackLink onBack={onBack} />
+      
+      {/* Top Header Navigation & Status Bar */}
+      <div className="lw-lesson-topbar">
+        <button className="lw-lesson-backbtn" onClick={onBack} title={t("learnerLesson.backToCourse")}>
+          <ArrowLeft size={15} />
+          <span>{t("learnerLesson.backToCourse")}</span>
+        </button>
+
+        {done ? (
+          <div className="lw-lesson-statuspill lw-lesson-statuspill--done">
+            <CheckCircle size={14} />
+            <span>{t("learnerCourses.completed")}</span>
+          </div>
+        ) : (
+          <div className="lw-lesson-statuspill lw-lesson-statuspill--active">
+            <span className="lw-lesson-statuspulse" />
+            <span>In Progress</span>
+          </div>
+        )}
+      </div>
 
       {error && !lesson && <Message type="error">{error}</Message>}
       {!lesson && !error && (
-        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> {t("learnerLesson.loading")}</div>
+        <div className="lw-learn__loading">
+          <LoaderCircle size={22} className="lw-learn__spin" />
+          <span>{t("learnerLesson.loading")}</span>
+        </div>
       )}
 
-      {lesson && <>
-        <div className="lw-eyebrow">{t("studio.lessonEyebrow")}</div>
-        <div className="lw-learn__heading">
-          <h1>{lesson.title}</h1>
-          {done && <span className="lw-learn__donepill"><CheckCircle2 size={12} /> {t("learnerCourses.completed")}</span>}
-          {onOpenContent && (
-            <button type="button" className="lw-learn__askai" onClick={onOpenContent}>
-              <FileText size={13} /> {t("learnerContent.eyebrow")}
-            </button>
+      {lesson && (
+        <div className="lw-lesson-container">
+          {/* 1. Video Player Cinema Experience at the top */}
+          {hasVideo && (
+            <div className="lw-lesson-cinema">
+              <div className="lw-lesson-playerframe">
+                <VideoPlayer
+                  ref={videoRef}
+                  src={lesson.video ? api.learningAssetDownloadUrl(session.token, slug, lesson.video.id) : lesson.videoUrl}
+                  controls={!activeQuestion}
+                  onTimeUpdate={handleTimeUpdate}
+                  onEnded={handleVideoEnded}
+                  style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
+                />
+                {activeQuestion && (
+                  <div className="lw-lesson-checkpoint-overlay">
+                    <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
+                  </div>
+                )}
+              </div>
+            </div>
           )}
-          {onOpenHomework && (
-            <button type="button" className="lw-learn__askai" onClick={onOpenHomework}>
-              <ClipboardList size={13} /> {t("learnerHomework.eyebrow")}
-            </button>
+
+          {!hasVideo && inlineResource && (
+            <div className="lw-lesson-cinema">
+              <div className="lw-lesson-playerframe">
+                {inlineResource.contentType.toLowerCase() === "application/pdf" ? (
+                  <iframe
+                    src={api.learningAssetDownloadUrl(session.token, slug, inlineResource.id)}
+                    title={inlineResource.title}
+                    style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
+                  />
+                ) : (
+                  <img
+                    src={api.learningAssetDownloadUrl(session.token, slug, inlineResource.id)}
+                    alt={inlineResource.title}
+                    style={{ width: "100%", height: "100%", objectFit: "contain", background: "#fff" }}
+                  />
+                )}
+              </div>
+            </div>
           )}
-          {onOpenResources && (
-            <button type="button" className="lw-learn__askai" onClick={onOpenResources}>
-              <Paperclip size={13} /> {t("learnerResources.eyebrow")}
-            </button>
+
+          {!hasVideo && activeQuestion && (
+            <div className="lw-lesson-standalone-checkpoint">
+              <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
+            </div>
           )}
-          {onOpenQuiz && (
-            <button type="button" className="lw-learn__askai" onClick={onOpenQuiz}>
-              <HelpCircle size={13} /> {t("learnerStudio.quiz")}
-            </button>
+
+          {/* 2. Main Hero Header: Title, Metadata & Action Toolbar */}
+          <div className="lw-lesson-hero">
+            <div className="lw-lesson-hero__meta">
+              <span className="lw-lesson-eyebadge">
+                <Sparkles size={12} />
+                {t("studio.lessonEyebrow")}
+              </span>
+              {lesson.estimatedMinutes != null && lesson.estimatedMinutes > 0 && (
+                <span className="lw-lesson-metatag">
+                  <Clock size={12} />
+                  {lesson.estimatedMinutes} {t("lessonSidebar.min")}
+                </span>
+              )}
+              {lesson.questions && lesson.questions.length > 0 && (
+                <span className="lw-lesson-metatag">
+                  <HelpCircle size={12} />
+                  {lesson.questions.length} {lesson.questions.length === 1 ? "Checkpoint" : "Checkpoints"}
+                </span>
+              )}
+            </div>
+
+            <h1 className="lw-lesson-title">{lesson.title}</h1>
+
+            {/* Quick Actions Toolbar */}
+            <div className="lw-lesson-actionsbar">
+              {onOpenContent && (
+                <button type="button" className="lw-lesson-actbtn" onClick={onOpenContent}>
+                  <FileText size={14} className="lw-lesson-actbtn__icon" />
+                  <span>{t("learnerContent.eyebrow")}</span>
+                </button>
+              )}
+              {onOpenHomework && (
+                <button type="button" className="lw-lesson-actbtn" onClick={onOpenHomework}>
+                  <ClipboardList size={14} className="lw-lesson-actbtn__icon" />
+                  <span>{t("learnerHomework.eyebrow")}</span>
+                </button>
+              )}
+              {onOpenResources && (
+                <button type="button" className="lw-lesson-actbtn" onClick={onOpenResources}>
+                  <Paperclip size={14} className="lw-lesson-actbtn__icon" />
+                  <span>{t("learnerResources.eyebrow")}</span>
+                </button>
+              )}
+              {onOpenQuiz && (
+                <button type="button" className="lw-lesson-actbtn" onClick={onOpenQuiz}>
+                  <HelpCircle size={14} className="lw-lesson-actbtn__icon" />
+                  <span>{t("learnerStudio.quiz")}</span>
+                </button>
+              )}
+              {onOpenAssignments && (
+                <button type="button" className="lw-lesson-actbtn" onClick={onOpenAssignments}>
+                  <ListChecks size={14} className="lw-lesson-actbtn__icon" />
+                  <span>{t("learnerAssignments.eyebrow")}</span>
+                </button>
+              )}
+              {onOpenAssistant && (
+                <button type="button" className="lw-lesson-actbtn lw-lesson-actbtn--ai" onClick={onOpenAssistant}>
+                  <Bot size={14} className="lw-lesson-actbtn__icon" />
+                  <span>{t("aiAssistant.eyebrow")}</span>
+                  <span className="lw-lesson-actbtn__aiglow" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {error && <Message type="error">{error}</Message>}
+
+          {isLive && (
+            <div className="lw-lesson-livebanner">
+              <Radio size={16} className="lw-lesson-liveicon" />
+              <div className="lw-lesson-livetext">
+                <strong>Live Session</strong> — {t("learnerLesson.liveSessionPrefix")}{(lesson.video || lesson.videoUrl) ? ` ${t("learnerLesson.liveSessionWithRecording")}` : "."}
+              </div>
+            </div>
           )}
-          {onOpenAssignments && (
-            <button type="button" className="lw-learn__askai" onClick={onOpenAssignments}>
-              <ListChecks size={13} /> {t("learnerAssignments.eyebrow")}
-            </button>
+
+          {/* 3. What You'll Learn Card */}
+          {lesson.whatYoullLearn ? (
+            <div className="lw-lesson-outcomes">
+              <div className="lw-lesson-outcomes__header">
+                <div className="lw-lesson-outcomes__iconwrap">
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <div className="lw-lesson-outcomes__title">{t("studio.whatYoullLearnLabel")}</div>
+                  <div className="lw-lesson-outcomes__subtitle">Key objectives covered in this lesson</div>
+                </div>
+              </div>
+              <div className="lw-lesson-outcomes__body">
+                <MarkdownText className="lw-lesson-outcomes__text" text={lesson.whatYoullLearn} />
+              </div>
+            </div>
+          ) : lesson.body ? (
+            <div className="lw-lesson-bodycard">
+              <MarkdownText className="lw-lesson-bodytext" text={lesson.body} />
+            </div>
+          ) : null}
+
+          {submitting && (
+            <div className="lw-lesson-gradingcard">
+              <LoaderCircle size={20} className="lw-learn__spin" />
+              <span>{t("learnerLesson.grading")}</span>
+            </div>
           )}
-          {onOpenAssistant && (
-            <button type="button" className="lw-learn__askai" onClick={onOpenAssistant}>
-              <Bot size={13} /> {t("aiAssistant.eyebrow")}
-            </button>
+
+          {/* Results & AI Feedback */}
+          {result && (
+            <div className="lw-lesson-resultcard">
+              <div className="lw-lesson-resultcard__header">
+                <div className="lw-lesson-resultcard__avatar">
+                  <Bot size={22} />
+                </div>
+                <div className="lw-lesson-resultcard__summary">
+                  <div className="lw-lesson-resultcard__scorebadge" data-passed={result.passed ? "true" : "false"}>
+                    {result.passed ? (
+                      <>
+                        <CheckCircle2 size={16} />
+                        <span>{t("studio.passed")} · {result.scorePercent}%</span>
+                      </>
+                    ) : (
+                      <>
+                        <X size={16} />
+                        <span>{t("studio.notYetPassing")} · {result.scorePercent}%</span>
+                      </>
+                    )}
+                  </div>
+                  {result.aiFeedback && (
+                    <p className="lw-lesson-resultcard__feedback">{result.aiFeedback}</p>
+                  )}
+                </div>
+              </div>
+
+              {lesson.questions && lesson.questions.length > 0 && (
+                <div className="lw-lesson-resultcard__questions">
+                  <div className="lw-lesson-resultcard__sectiontitle">Question Review</div>
+                  {lesson.questions.map((q, idx) => {
+                    const pq = result.perQuestion.find((p) => p.questionId === q.id);
+                    const reviewed = pq?.correct == null;
+                    const isCorrect = pq?.correct === true;
+                    return (
+                      <div key={q.id} className="lw-lesson-resultrow" data-status={reviewed ? "reviewed" : isCorrect ? "correct" : "incorrect"}>
+                        <div className="lw-lesson-resultrow__icon">
+                          {reviewed ? <Sparkles size={16} /> : isCorrect ? <Check size={16} /> : <X size={16} />}
+                        </div>
+                        <div className="lw-lesson-resultrow__content">
+                          <div className="lw-lesson-resultrow__prompt">
+                            <span className="lw-lesson-resultrow__num">Q{idx + 1}.</span> {q.prompt}
+                          </div>
+                          <div className="lw-lesson-resultrow__detail">
+                            {reviewed ? (
+                              <span className="lw-lesson-resultrow__subtext">{t("studio.reviewedNotScored")}</span>
+                            ) : isCorrect ? (
+                              <span className="lw-lesson-resultrow__correcttag">{t("studio.correct")}</span>
+                            ) : (
+                              <span className="lw-lesson-resultrow__incorrecttag">
+                                {t("studio.correctAnswerIs", { answer: pq?.correctAnswerDisplay ?? t("studio.notAvailable") })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {result.competencyLevels && Object.keys(result.competencyLevels).length > 0 && (
+                <div className="lw-lesson-resultcard__competencies">
+                  <CompetencyBreakdown levels={result.competencyLevels} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {!hasVideo && lesson.questions.length === 0 && done && (
+            <div className="lw-lesson-donebanner">
+              <CheckCircle2 size={18} />
+              <span>{t("learnerLesson.doneBanner")}</span>
+            </div>
           )}
         </div>
-
-        {error && <Message type="error">{error}</Message>}
-
-        {isLive && (
-          <p className="muted" style={{ marginBottom: 14 }}>
-            <Radio size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />
-            {t("learnerLesson.liveSessionPrefix")}{(lesson.video || lesson.videoUrl) ? ` ${t("learnerLesson.liveSessionWithRecording")}` : "."}
-          </p>
-        )}
-
-        {lesson.whatYoullLearn ? (
-          <div className="lw-learn__outcomes">
-            <div className="lw-learn__outcomeskicker"><Sparkles size={13} /> {t("studio.whatYoullLearnLabel")}</div>
-            <MarkdownText className="lw-learn__outcomestext" text={lesson.whatYoullLearn} />
-          </div>
-        ) : lesson.body && <MarkdownText className="lw-learn__body" text={lesson.body} />}
-
-        {hasVideo && (
-          <div className="lw-learn__playerframe">
-            <VideoPlayer
-              ref={videoRef}
-              src={lesson.video ? api.learningAssetDownloadUrl(session.token, slug, lesson.video.id) : lesson.videoUrl}
-              controls={!activeQuestion}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={handleVideoEnded}
-              style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
-            />
-            {activeQuestion && (
-              <div className="lw-learn__checkpoint">
-                <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
-              </div>
-            )}
-          </div>
-        )}
-
-        {!hasVideo && inlineResource && (
-          <div className="lw-learn__playerframe">
-            {inlineResource.contentType.toLowerCase() === "application/pdf" ? (
-              <iframe
-                src={api.learningAssetDownloadUrl(session.token, slug, inlineResource.id)}
-                title={inlineResource.title}
-                style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
-              />
-            ) : (
-              <img
-                src={api.learningAssetDownloadUrl(session.token, slug, inlineResource.id)}
-                alt={inlineResource.title}
-                style={{ width: "100%", height: "100%", objectFit: "contain", background: "#fff" }}
-              />
-            )}
-          </div>
-        )}
-
-        {!hasVideo && activeQuestion && (
-          <div className="lw-learn__standalone">
-            <QuestionPrompt question={activeQuestion} onAnswer={(a) => recordAnswer(activeQuestion.id, a)} />
-          </div>
-        )}
-
-        {submitting && (
-          <div className="lw-learn__grading"><LoaderCircle size={16} className="lw-learn__spin" /> {t("learnerLesson.grading")}</div>
-        )}
-
-        {result && (
-          <div className="lw-aicard" style={{ marginTop: 18, flexDirection: "column", alignItems: "stretch" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <Bot size={16} />
-              <div className="lw-aicard__body">
-                <strong>{result.passed ? t("studio.passed") : t("studio.notYetPassing")} — {result.scorePercent}%</strong>
-                <p style={{ margin: "4px 0 0" }}>{result.aiFeedback}</p>
-              </div>
-            </div>
-            <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
-              {lesson.questions.map((q) => {
-                const pq = result.perQuestion.find((p) => p.questionId === q.id);
-                const reviewed = pq?.correct == null;
-                return (
-                  <div key={q.id} className="lw-feedback" style={{ margin: 0 }}>
-                    {reviewed ? <Sparkles size={14} /> : pq?.correct ? <Check size={14} /> : <X size={14} />}
-                    <span>
-                      {q.prompt}{" "}
-                      {reviewed ? t("studio.reviewedNotScored") : pq?.correct ? t("studio.correct") : t("studio.correctAnswerIs", { answer: pq?.correctAnswerDisplay ?? t("studio.notAvailable") })}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <CompetencyBreakdown levels={result.competencyLevels} />
-          </div>
-        )}
-
-        {/*
-          Gated on `done`, not just "no video and no interactive questions" —
-          a Reading lesson with RequireQuizToComplete on and no passing
-          Standalone submission yet is exactly "no video, no interactive
-          questions" but genuinely NOT complete (LearningDeliveryService
-          .GetLessonAsync's RequireQuizToComplete branch). Claiming "marked
-          complete" here would be flatly wrong for that case.
-        */}
-        {!hasVideo && lesson.questions.length === 0 && done && (
-          <Message type="success">{t("learnerLesson.doneBanner")}</Message>
-        )}
-      </>}
+      )}
     </div>
   );
 }
@@ -319,120 +412,756 @@ function QuestionPrompt({ question, onAnswer }) {
   const isChoice = question.type === "MultipleChoice" || question.type === "TrueFalse";
   const canSubmit = isChoice ? selected != null : text.trim().length > 0;
 
+  const optionLetters = ["A", "B", "C", "D", "E", "F"];
+
   return (
-    <div className="lw-learn__checkpointcard">
-      <div className="lw-learn__checkpointkicker"><Sparkles size={13} /> {t("learnerLesson.checkpoint")}</div>
-      <p className="lw-learn__checkpointprompt">{question.prompt}</p>
+    <div className="lw-checkpoint-card">
+      <div className="lw-checkpoint-card__header">
+        <span className="lw-checkpoint-kicker">
+          <Sparkles size={13} />
+          {t("learnerLesson.checkpoint")}
+        </span>
+      </div>
+      <p className="lw-checkpoint-prompt">{question.prompt}</p>
+
       {isChoice ? (
-        <div className="lw-options">
-          {question.options.map((opt, i) => (
-            <button
-              type="button" key={i}
-              className={`lw-option ${selected === i ? "is-selected" : ""}`}
-              onClick={() => setSelected(i)}
-            >
-              {opt}
-            </button>
-          ))}
+        <div className="lw-checkpoint-options">
+          {question.options.map((opt, i) => {
+            const isSel = selected === i;
+            return (
+              <button
+                type="button"
+                key={i}
+                className={`lw-checkpoint-option ${isSel ? "is-selected" : ""}`}
+                onClick={() => setSelected(i)}
+              >
+                <span className="lw-checkpoint-optletter">{optionLetters[i] ?? (i + 1)}</span>
+                <span className="lw-checkpoint-opttext">{opt}</span>
+                {isSel && <Check size={16} className="lw-checkpoint-optcheck" />}
+              </button>
+            );
+          })}
         </div>
       ) : (
-        <input
-          className="lw-learn__checkpointinput" value={text} onChange={(e) => setText(e.target.value)} autoFocus
-          placeholder={question.type === "CompleteTheSentence" ? t("studio.yourAnswerPlaceholder") : t("studio.yourResponsePlaceholder")}
-        />
+        <div className="lw-checkpoint-inputwrap">
+          <textarea
+            className="lw-checkpoint-input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder={question.type === "CompleteTheSentence" ? t("studio.yourAnswerPlaceholder") : t("studio.yourResponsePlaceholder")}
+          />
+        </div>
       )}
-      <button
-        type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={!canSubmit}
-        onClick={() => onAnswer(isChoice ? { selectedOptionIndex: selected, textAnswer: null } : { selectedOptionIndex: null, textAnswer: text.trim() })}
-      >
-        <Check size={13} /> {t("learnerLesson.continue")}
-      </button>
+
+      <div className="lw-checkpoint-footer">
+        <button
+          type="button"
+          className="lw-checkpoint-submitbtn"
+          disabled={!canSubmit}
+          onClick={() => onAnswer(isChoice ? { selectedOptionIndex: selected, textAnswer: null } : { selectedOptionIndex: null, textAnswer: text.trim() })}
+        >
+          <span>{t("learnerLesson.continue")}</span>
+          <Check size={15} />
+        </button>
+      </div>
     </div>
   );
 }
 
-function BackLink({ onBack }) {
-  const { t } = useLanguage();
-  return (
-    <button className="lw-learn__back" onClick={onBack}>
-      <ArrowLeft size={13} /> {t("learnerLesson.backToCourse")}
-    </button>
-  );
-}
-
 const CSS = `
-  .muted { color: var(--ink-soft); font-size: 0.86rem; line-height: 1.55; }
-  .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-learn__back {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft);
-    font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 3px 6px; margin-bottom: 14px; margin-inline-start: -6px;
-  }
-  .lw-learn__back:hover { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
-
-  .lw-learn__heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .lw-learn__donepill {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-family: var(--font-mono); font-size: 10px; border-radius: 20px; padding: 3px 9px;
-    background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2);
-  }
-  .lw-learn__askai {
-    display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto;
-    font-family: var(--font-body); font-size: 0.8rem; cursor: pointer;
-    background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 20px; padding: 5px 12px;
-  }
-  .lw-learn__askai:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-  .lw-learn__body { font-size: 0.92rem; color: var(--ink); line-height: 1.7; margin: 14px 0 20px; white-space: pre-wrap; }
-
-  .lw-learn__outcomes {
-    background: color-mix(in srgb, var(--accent) 6%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
-    border-radius: var(--radius-sm); padding: 14px 16px; margin: 14px 0 20px;
-  }
-  .lw-learn__outcomeskicker {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);
-  }
-  .lw-learn__outcomestext { font-size: 0.92rem; color: var(--ink); line-height: 1.7; margin: 8px 0 0; white-space: pre-wrap; }
-
-  .lw-learn__playerframe { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; background: #000; }
-  .lw-learn__checkpoint {
-    position: absolute; inset: 0; background: rgba(10,12,15,0.88);
-    display: flex; align-items: center; justify-content: center; padding: 24px;
-  }
-  .lw-learn__standalone { display: flex; justify-content: center; }
-  .lw-learn__checkpointcard {
-    background: var(--surface); color: var(--ink); border-radius: var(--radius);
-    padding: 22px 24px; width: 100%; max-width: 460px;
-    display: flex; flex-direction: column; gap: 12px;
-    position: relative;
-  }
-  /* Notebook theme: dog-eared page corner (2026-08-15). */
-  .lw-learn__checkpointcard::after {
-    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
-    border-style: solid; border-width: 0 14px 14px 0;
-    border-color: transparent var(--surface-2) transparent transparent;
-    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
-    pointer-events: none;
-  }
-  [dir="rtl"] .lw-learn__checkpointcard::after { transform: scaleX(-1); }
-  .lw-learn__checkpointkicker {
-    display: inline-flex; align-items: center; gap: 6px; width: fit-content;
-    font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
-    padding: 3px 9px; border-radius: 20px;
-  }
-  .lw-learn__checkpointprompt { font-size: 0.98rem; font-weight: 600; margin: 0; line-height: 1.5; }
-  .lw-learn__checkpointinput {
-    width: 100%; font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
-    background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 9px 11px;
+  /* Modern Learner Lesson Experience */
+  .lw-lesson-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 0 48px;
   }
 
-  .lw-learn__grading { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 0.87rem; margin-top: 16px; }
+  /* Top Navigation & Status Bar */
+  .lw-lesson-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+  }
 
-  .lw-option.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+  .lw-lesson-backbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 9999px;
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 6px 14px;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .lw-lesson-backbtn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+    transform: translateX(-2px);
+  }
 
-  .lw-learn__spin { animation: lwLearnSpin 0.9s linear infinite; }
+  .lw-lesson-statuspill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 9999px;
+    letter-spacing: 0.02em;
+  }
+  .lw-lesson-statuspill--done {
+    background: color-mix(in srgb, var(--success, #1E7D61) 14%, var(--surface));
+    color: var(--success, #1E7D61);
+    border: 1px solid color-mix(in srgb, var(--success, #1E7D61) 30%, transparent);
+    box-shadow: 0 1px 4px rgba(30,125,97,0.12);
+  }
+  .lw-lesson-statuspill--active {
+    background: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
+    color: var(--accent-2);
+    border: 1px solid color-mix(in srgb, var(--accent-2) 25%, transparent);
+  }
+  .lw-lesson-statuspulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-2) 40%, transparent);
+    animation: lwPulse 2s infinite cubic-bezier(0.45, 0, 0.55, 1);
+  }
+  @keyframes lwPulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-2) 50%, transparent); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px transparent; }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 transparent; }
+  }
+
+  /* Loading State */
+  .lw-learn__loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+    padding: 60px 0;
+    font-weight: 500;
+  }
+  .lw-learn__spin {
+    animation: lwLearnSpin 0.8s linear infinite;
+    color: var(--accent);
+  }
   @keyframes lwLearnSpin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .lw-learn__spin { animation: none; } }
+
+  /* Lesson Hero Header */
+  .lw-lesson-hero {
+    margin-bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .lw-lesson-hero__meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .lw-lesson-eyebadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+    padding: 3px 10px;
+    border-radius: 9999px;
+  }
+
+  .lw-lesson-metatag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    background: var(--surface-2, rgba(0,0,0,0.04));
+    padding: 3px 9px;
+    border-radius: 9999px;
+    font-weight: 500;
+  }
+
+  .lw-lesson-title {
+    font-family: var(--font-body, system-ui);
+    font-size: 2.1rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--ink);
+    margin: 4px 0 8px;
+    letter-spacing: -0.02em;
+    text-align: start;
+  }
+
+  /* Quick Actions Bar */
+  .lw-lesson-actionsbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px 0;
+  }
+
+  .lw-lesson-actbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 9999px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    position: relative;
+    overflow: hidden;
+  }
+  .lw-lesson-actbtn:hover {
+    background: var(--surface-2, rgba(0,0,0,0.05));
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+    color: var(--ink);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.06);
+  }
+  .lw-lesson-actbtn__icon {
+    color: var(--ink-soft);
+    transition: color 0.15s ease;
+  }
+  .lw-lesson-actbtn:hover .lw-lesson-actbtn__icon {
+    color: var(--accent);
+  }
+
+  .lw-lesson-actbtn--ai {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--surface)), var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .lw-lesson-actbtn--ai .lw-lesson-actbtn__icon {
+    color: var(--accent);
+  }
+  .lw-lesson-actbtn--ai:hover {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 20%, var(--surface)), var(--surface));
+    border-color: var(--accent);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  /* Live Session Banner */
+  .lw-lesson-livebanner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: color-mix(in srgb, #E53E3E 8%, var(--surface));
+    border: 1px solid color-mix(in srgb, #E53E3E 24%, var(--line));
+    border-radius: var(--radius, 12px);
+    margin-bottom: 20px;
+    font-size: 0.88rem;
+    color: var(--ink);
+  }
+  .lw-lesson-liveicon {
+    color: #E53E3E;
+    flex-shrink: 0;
+  }
+
+  /* What You'll Learn Outcomes Card */
+  .lw-lesson-outcomes {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 5%, var(--surface)), var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+    border-radius: var(--radius, 16px);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  }
+  .lw-lesson-outcomes__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .lw-lesson-outcomes__iconwrap {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .lw-lesson-outcomes__title {
+    font-family: var(--font-body, system-ui);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .lw-lesson-outcomes__subtitle {
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    margin-top: 1px;
+  }
+  .lw-lesson-outcomes__body {
+    border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--line));
+    padding-top: 12px;
+  }
+  .lw-lesson-outcomes__text {
+    font-size: 0.92rem;
+    color: var(--ink);
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+  .lw-lesson-outcomes__text ul {
+    margin: 0;
+    padding-inline-start: 20px;
+  }
+  .lw-lesson-outcomes__text li {
+    margin-bottom: 6px;
+  }
+
+  .lw-lesson-bodycard {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius, 16px);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .lw-lesson-bodytext {
+    font-size: 0.94rem;
+    color: var(--ink);
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+
+  /* Cinema Video Player Experience */
+  .lw-lesson-cinema {
+    position: relative;
+    width: 100%;
+    margin-bottom: 28px;
+    border-radius: var(--radius, 16px);
+    box-shadow: 0 16px 40px -12px rgba(0,0,0,0.35);
+    background: #000;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .lw-lesson-playerframe {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+  }
+
+  /* Interactive Checkpoint Overlay */
+  .lw-lesson-checkpoint-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 14, 22, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 10;
+    animation: lwFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .lw-lesson-standalone-checkpoint {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 28px;
+  }
+
+  @keyframes lwFadeIn {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* Checkpoint Card */
+  .lw-checkpoint-card {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: var(--radius, 16px);
+    padding: 26px 28px;
+    width: 100%;
+    max-width: 520px;
+    box-shadow: 0 20px 48px -8px rgba(0,0,0,0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: lwSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes lwSlideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .lw-checkpoint-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .lw-checkpoint-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    padding: 4px 10px;
+    border-radius: 9999px;
+  }
+
+  .lw-checkpoint-prompt {
+    font-family: var(--font-body, system-ui);
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  /* Options list */
+  .lw-checkpoint-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .lw-checkpoint-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    text-align: start;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .lw-checkpoint-option:hover {
+    background: var(--surface-2, rgba(0,0,0,0.04));
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+    transform: translateX(2px);
+  }
+  .lw-checkpoint-option.is-selected {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .lw-checkpoint-optletter {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--surface-2, rgba(0,0,0,0.06));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+  .lw-checkpoint-option.is-selected .lw-checkpoint-optletter {
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+  }
+  .lw-checkpoint-opttext {
+    flex: 1;
+    line-height: 1.4;
+  }
+  .lw-checkpoint-optcheck {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .lw-checkpoint-inputwrap {
+    width: 100%;
+  }
+  .lw-checkpoint-input {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 14px;
+    line-height: 1.5;
+    resize: vertical;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .lw-checkpoint-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  .lw-checkpoint-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+  }
+  .lw-checkpoint-submitbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+    border: none;
+    border-radius: 9999px;
+    padding: 9px 20px;
+    font-family: var(--font-body);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .lw-checkpoint-submitbtn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .lw-checkpoint-submitbtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* Grading Card */
+  .lw-lesson-gradingcard {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius, 14px);
+    color: var(--ink-soft);
+    font-size: 0.94rem;
+    font-weight: 500;
+    margin-top: 20px;
+  }
+
+  /* Results Card */
+  .lw-lesson-resultcard {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius, 16px);
+    padding: 24px 28px;
+    margin-top: 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+  }
+  .lw-lesson-resultcard__header {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .lw-lesson-resultcard__avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .lw-lesson-resultcard__summary {
+    flex: 1;
+  }
+  .lw-lesson-resultcard__scorebadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .lw-lesson-resultcard__scorebadge[data-passed="true"] {
+    background: color-mix(in srgb, var(--success, #1E7D61) 14%, var(--surface));
+    color: var(--success, #1E7D61);
+    border: 1px solid color-mix(in srgb, var(--success, #1E7D61) 30%, transparent);
+  }
+  .lw-lesson-resultcard__scorebadge[data-passed="false"] {
+    background: color-mix(in srgb, var(--danger, #E53E3E) 14%, var(--surface));
+    color: var(--danger, #E53E3E);
+    border: 1px solid color-mix(in srgb, var(--danger, #E53E3E) 30%, transparent);
+  }
+  .lw-lesson-resultcard__feedback {
+    margin: 4px 0 0;
+    font-size: 0.94rem;
+    color: var(--ink);
+    line-height: 1.6;
+  }
+
+  .lw-lesson-resultcard__questions {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .lw-lesson-resultcard__sectiontitle {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    margin-bottom: 4px;
+  }
+
+  .lw-lesson-resultrow {
+    display: flex;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+  }
+  .lw-lesson-resultrow[data-status="correct"] {
+    border-color: color-mix(in srgb, var(--success, #1E7D61) 30%, var(--line));
+    background: color-mix(in srgb, var(--success, #1E7D61) 4%, var(--bg));
+  }
+  .lw-lesson-resultrow[data-status="incorrect"] {
+    border-color: color-mix(in srgb, var(--danger, #E53E3E) 30%, var(--line));
+    background: color-mix(in srgb, var(--danger, #E53E3E) 4%, var(--bg));
+  }
+  .lw-lesson-resultrow__icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .lw-lesson-resultrow[data-status="correct"] .lw-lesson-resultrow__icon {
+    background: color-mix(in srgb, var(--success, #1E7D61) 18%, transparent);
+    color: var(--success, #1E7D61);
+  }
+  .lw-lesson-resultrow[data-status="incorrect"] .lw-lesson-resultrow__icon {
+    background: color-mix(in srgb, var(--danger, #E53E3E) 18%, transparent);
+    color: var(--danger, #E53E3E);
+  }
+  .lw-lesson-resultrow[data-status="reviewed"] .lw-lesson-resultrow__icon {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+  }
+  .lw-lesson-resultrow__content {
+    flex: 1;
+  }
+  .lw-lesson-resultrow__prompt {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  .lw-lesson-resultrow__num {
+    color: var(--ink-soft);
+    margin-inline-end: 4px;
+  }
+  .lw-lesson-resultrow__detail {
+    margin-top: 4px;
+    font-size: 0.84rem;
+  }
+  .lw-lesson-resultrow__correcttag {
+    color: var(--success, #1E7D61);
+    font-weight: 600;
+  }
+  .lw-lesson-resultrow__incorrecttag {
+    color: var(--danger, #E53E3E);
+  }
+  .lw-lesson-resultrow__subtext {
+    color: var(--ink-soft);
+  }
+
+  .lw-lesson-resultcard__competencies {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+
+  .lw-lesson-donebanner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: var(--radius, 12px);
+    background: color-mix(in srgb, var(--success, #1E7D61) 10%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--success, #1E7D61) 25%, var(--line));
+    color: var(--success, #1E7D61);
+    font-size: 0.92rem;
+    font-weight: 600;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 640px) {
+    .lw-lesson-title {
+      font-size: 1.6rem;
+    }
+    .lw-lesson-topbar {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .lw-lesson-actionsbar {
+      gap: 6px;
+    }
+    .lw-lesson-actbtn {
+      padding: 5px 10px;
+      font-size: 0.78rem;
+    }
+    .lw-checkpoint-card {
+      padding: 18px 16px;
+    }
+  }
 `;
+

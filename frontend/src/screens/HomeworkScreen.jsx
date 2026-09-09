@@ -97,36 +97,38 @@ function Homework({ lessonId, slug, token, onBackToLesson }) {
 const CSS = `
   .lw-nby {
     display: flex; gap: 16px; align-items: flex-start;
-    background: var(--surface); border: 1px dashed var(--line);
-    border-radius: var(--radius-sm); padding: 24px 26px; max-width: 62ch;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   }
   .lw-nby__icon {
-    width: 42px; height: 42px; border-radius: var(--radius-sm); flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    background: var(--surface-2); color: var(--ink-soft);
+    background: var(--surface-2); color: var(--accent);
   }
-  .lw-nby__lead { font-size: 0.95rem; margin: 0 0 14px; line-height: 1.6; }
+  .lw-nby__lead { font-size: 0.95rem; margin: 0; line-height: 1.6; }
 
   .lw-learn__back {
     display: inline-flex; align-items: center; gap: 6px;
-    background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft);
-    font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 3px 6px; margin-bottom: 14px; margin-inline-start: -6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 20px; color: var(--ink-soft);
+    font-family: var(--font-body); font-size: 0.82rem; font-weight: 500; cursor: pointer; padding: 6px 14px; margin-bottom: 18px;
+    transition: all 0.15s ease;
   }
-  .lw-learn__back:hover { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
+  .lw-learn__back:hover { color: var(--ink); border-color: var(--accent); transform: translateX(-2px); }
   .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
   .lw-learn__spin { animation: lwLearnSpin 0.9s linear infinite; }
   @keyframes lwLearnSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .lw-learn__spin { animation: none; } }
 
   .lw-content__section {
-    max-width: 72ch; margin: 0 0 20px; background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 16px 18px;
+    max-width: 72ch; margin: 0 0 24px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 24px 26px; box-shadow: 0 3px 12px rgba(0,0,0,0.03);
   }
   .lw-content__kicker {
     display: inline-flex; align-items: center; gap: 6px; width: fit-content;
-    font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
-    padding: 3px 9px; border-radius: 20px; margin-bottom: 10px;
+    padding: 4px 12px; border-radius: 20px; margin-bottom: 14px;
   }
-  .lw-content__text { font-size: 0.92rem; color: var(--ink); line-height: 1.7; margin: 0; white-space: pre-wrap; }
+  .lw-content__text { font-size: 0.95rem; color: var(--ink); line-height: 1.75; margin: 0; white-space: pre-wrap; }
 `;

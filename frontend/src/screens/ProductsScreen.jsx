@@ -463,107 +463,121 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, on
 
 const CSS = `
   .lw-prod__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-prod__bar { display: flex; gap: 8px; margin-bottom: 18px; }
+  .lw-prod__bar { display: flex; gap: 10px; margin-bottom: 22px; }
 
-  /* UIC-003: every field is a property-name / value row in one shared grid,
-     rather than a label stacked above its control. */
-  .lw-prod__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 14px; column-gap: 16px; align-items: start; }
+  /* UIC-003: every field is a property-name / value row in one shared grid */
+  .lw-prod__form { display: grid; grid-template-columns: max-content 1fr; row-gap: 16px; column-gap: 18px; align-items: start; }
   .lw-prod__form > label { display: contents; }
-  .lw-prod__form label > span:first-child { font-size: 0.78rem; font-weight: 600; padding-top: 9px; white-space: nowrap; }
+  .lw-prod__form label > span:first-child { font-size: 0.82rem; font-weight: 600; padding-top: 10px; white-space: nowrap; color: var(--ink); }
   .lw-prod__form em { font-style: normal; font-weight: 400; color: var(--ink-soft); }
   .lw-prod__form input, .lw-prod__form textarea, .lw-prod__form select {
-    width: 100%; font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
+    width: 100%; font-family: var(--font-body); font-size: 0.92rem; color: var(--ink);
     background: var(--bg); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 9px 11px; resize: vertical;
+    border-radius: var(--radius-sm); padding: 10px 14px; resize: vertical;
+    transition: border-color 0.15s ease;
   }
-  .lw-prod__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+  .lw-prod__form input:focus, .lw-prod__form textarea:focus, .lw-prod__form select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .lw-prod__formactions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
   .lw-prod__desclabel { display: flex !important; align-items: center; gap: 8px; white-space: normal !important; }
-  .lw-btn--xs { font-size: 0.72rem; padding: 3px 8px; gap: 4px; }
+  .lw-btn--xs { font-size: 0.76rem; padding: 4px 10px; gap: 4px; border-radius: 20px; }
   @media (max-width: 560px) {
     .lw-prod__form { grid-template-columns: 1fr; }
-    .lw-prod__form > label { display: flex; flex-direction: column; gap: 5px; }
+    .lw-prod__form > label { display: flex; flex-direction: column; gap: 6px; }
     .lw-prod__form label > span:first-child { padding-top: 0; white-space: normal; }
   }
 
   .lw-prod__grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;
   }
   .lw-prod__card {
     display: flex; flex-direction: column;
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius); overflow: hidden;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.03); transition: all 0.2s ease;
+  }
+  .lw-prod__card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.06);
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
   }
   .lw-prod__card.is-archived { opacity: 0.55; }
 
   .lw-prod__cover {
-    height: 64px; flex-shrink: 0; position: relative;
+    height: 80px; flex-shrink: 0; position: relative;
     display: flex; align-items: center; justify-content: center;
   }
-  .lw-prod__monogram { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: rgba(255,255,255,0.92); }
+  .lw-prod__monogram { font-family: var(--font-display); font-size: 1.8rem; font-weight: 700; color: rgba(255,255,255,0.95); text-shadow: 0 2px 4px rgba(0,0,0,0.15); }
   .lw-prod__coverimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .lw-prod__coverupload { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .lw-prod__coverpreview { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); flex-shrink: 0; }
-  .lw-prod__cover .lw-prod__pill { position: absolute; top: 9px; inset-inline-end: 9px; background: rgba(10,12,15,0.4); color: #fff; }
+  .lw-prod__coverupload { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .lw-prod__coverpreview { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; border: 1px solid var(--line); flex-shrink: 0; }
+  .lw-prod__cover .lw-prod__pill { position: absolute; top: 10px; inset-inline-end: 10px; background: rgba(10,12,15,0.55); backdrop-filter: blur(4px); color: #fff; }
   .lw-cover--0 { background: linear-gradient(135deg, #2D5BD1, #6D3FC4); }
   .lw-cover--1 { background: linear-gradient(135deg, #1E7F63, #5B8DEF); }
   .lw-cover--2 { background: linear-gradient(135deg, #E0A83E, #C4533F); }
   .lw-cover--3 { background: linear-gradient(135deg, #0EA5A5, #6D3FC4); }
   .lw-cover--4 { background: linear-gradient(135deg, #D1477A, #E0A83E); }
 
-  .lw-prod__body { flex: 1; padding: 13px 15px 4px; }
-  .lw-prod__title { font-weight: 600; font-size: 0.98rem; }
+  .lw-prod__body { flex: 1; padding: 18px 20px 8px; }
+  .lw-prod__title { font-weight: 700; font-size: 1.05rem; color: var(--ink); }
 
-  /* Display only, one property per row: label (with its emoji) in the left
-     column, value in the right — never two properties sharing a line. */
   .lw-prod__proplist {
     display: grid; grid-template-columns: max-content 1fr;
-    row-gap: 7px; column-gap: 12px; margin-top: 11px; font-size: 0.82rem;
+    row-gap: 8px; column-gap: 14px; margin-top: 14px; font-size: 0.85rem;
   }
-  .lw-prod__proplabel { color: var(--ink-soft); white-space: nowrap; }
+  .lw-prod__proplabel { color: var(--ink-soft); white-space: nowrap; font-weight: 500; }
   .lw-prod__propvalue { color: var(--ink); line-height: 1.5; word-break: break-word; }
   .lw-prod__propvalue.is-empty { color: var(--ink-soft); font-style: italic; }
   .lw-prod__propvalue.is-ready { color: var(--accent-2); font-weight: 600; }
 
   .lw-prod__overlay {
-    position: fixed; inset: 0; background: rgba(10,12,15,0.55);
+    position: fixed; inset: 0; background: rgba(10,12,15,0.6); backdrop-filter: blur(4px);
     display: flex; align-items: flex-start; justify-content: center;
     padding: 40px 20px; z-index: 50; overflow-y: auto;
   }
   .lw-prod__panel {
-    background: var(--surface); color: var(--ink); border-radius: var(--radius);
-    max-width: 640px; width: 100%; padding: 30px 32px 34px; position: relative;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius);
+    max-width: 660px; width: 100%; padding: 32px 36px; position: relative;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
   }
-  .lw-prod__panelclose { position: absolute; top: 18px; inset-inline-end: 18px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
-  .lw-prod__panelclose:hover { color: var(--ink); }
-  .lw-prod__panelh2 { margin: 2px 0 18px; text-align: center; }
+  .lw-prod__panelclose {
+    position: absolute; top: 20px; inset-inline-end: 20px; background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 50%; width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft);
+    transition: all 0.15s ease;
+  }
+  .lw-prod__panelclose:hover { color: var(--ink); border-color: var(--accent); }
+  .lw-prod__panelh2 { margin: 2px 0 22px; font-size: 1.35rem; font-weight: 700; text-align: center; }
 
   .lw-toggle {
-    width: 40px; height: 22px; border-radius: 20px; background: var(--line); border: none;
-    cursor: pointer; position: relative; flex-shrink: 0; transition: background .15s;
+    width: 44px; height: 24px; border-radius: 20px; background: var(--line); border: none;
+    cursor: pointer; position: relative; flex-shrink: 0; transition: background .18s;
   }
   .lw-toggle span {
-    position: absolute; top: 2px; inset-inline-start: 2px; width: 18px; height: 18px; border-radius: 50%;
-    background: #fff; transition: inset-inline-start .15s; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    position: absolute; top: 3px; inset-inline-start: 3px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: inset-inline-start .18s; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
   }
   .lw-toggle.is-on { background: var(--accent-2); }
-  .lw-toggle.is-on span { inset-inline-start: 20px; }
+  .lw-toggle.is-on span { inset-inline-start: 23px; }
   .lw-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .lw-prod__pill {
-    font-family: var(--font-mono); font-size: 10px; border-radius: 20px; padding: 3px 9px;
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; border-radius: 20px; padding: 4px 10px;
     background: var(--surface-2); color: var(--ink-soft);
   }
   .lw-prod__pill.is-published { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
   .lw-prod__pill.is-underreview { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 
-  .lw-prod__actions { display: flex; gap: 5px; flex-wrap: wrap; padding: 12px 15px 15px; }
+  .lw-prod__actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 20px 18px; border-top: 1px solid var(--line); margin-top: 10px; }
   .lw-prod__actions button {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-family: var(--font-body); font-size: 11px;
-    background: transparent; color: var(--ink-soft);
-    border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-body); font-size: 11.5px; font-weight: 500;
+    background: var(--surface-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 20px; padding: 5px 12px; cursor: pointer;
+    transition: all 0.15s ease;
   }
-  .lw-prod__actions button:hover:not(:disabled) { color: var(--ink); }
+  .lw-prod__actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .lw-prod__actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .lw-prod__spin { animation: lwProdSpin 0.9s linear infinite; }

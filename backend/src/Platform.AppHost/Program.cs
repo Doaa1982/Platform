@@ -33,27 +33,19 @@ var mail = builder.AddContainer("mailpit", "axllent/mailpit")
     .WithHttpEndpoint(port: 8025, targetPort: 8025, name: "ui")
     .WithExternalHttpEndpoints();
 
-// Local faster-whisper transcription server (speaches) — the dev-only
-// alternative to Speechmatics selected via Transcription:Provider =
-// "FasterWhisper" in appsettings.Development.json (see Program.cs in
-// Platform.Api). CPU image; swap the tag for a GPU build if the host has
-// one. Fixed host port matches FasterWhisperOptions.BaseUrl's hardcoded
-// "http://localhost:8000/" — this isn't wired through Aspire service
-// discovery, so keep the two in sync if either changes. Named volume keeps
-// models downloaded via POST /v1/models (see FasterWhisperOptions.Model)
-// across AppHost restarts, same reasoning as Postgres's WithDataVolume —
-// without it, the ~150MB base model would re-download every restart.
-var speaches = builder.AddContainer("speaches", "ghcr.io/speaches-ai/speaches", "latest-cpu")
-    .WithHttpEndpoint(port: 8000, targetPort: 8000, name: "http")
-    .WithVolume("speaches-cache", "/home/ubuntu/.cache/huggingface")
-    .WithExternalHttpEndpoints();
+// Speechmatics API key, used by the API for both dev and production
+// transcription (see Speechmatics:ApiKey / SpeechmaticsOptions in
+// Platform.Api). Never committed — set it via AppHost user-secrets:
+//   cd backend/src/Platform.AppHost
+//   dotnet user-secrets set "Parameters:speechmatics-api-key" "<your key>"
+var speechmaticsApiKey = builder.AddParameter("speechmatics-api-key", secret: true);
 
 // Register the API backend project
 var api = builder.AddProject<Projects.Platform_Api>("api")
     .WithReference(db)
     .WaitFor(db)
     .WaitFor(mail)
-    .WaitFor(speaches)
+    .WithEnvironment("Speechmatics__ApiKey", speechmaticsApiKey)
     .WithEnvironment("Email__Enabled", "true")
     .WithEnvironment("Email__Host", "localhost")
     .WithEnvironment("Email__Port", "1025")

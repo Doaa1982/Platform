@@ -69,35 +69,39 @@ function LessonContent({ lessonId, slug, token, onBackToLesson }) {
   ].filter((s) => s.text && s.text.trim()) : [];
 
   return (
-    <div className="lw-page">
+    <div className="lw-page lw-lessoncontent-page">
       <style>{CSS}</style>
       {onBackToLesson && (
         <button className="lw-learn__back" onClick={onBackToLesson}>
-          <ArrowLeft size={13} /> {t("aiAssistant.backToLesson")}
+          <ArrowLeft size={14} /> <span>{t("aiAssistant.backToLesson")}</span>
         </button>
       )}
 
-      <div className="lw-eyebrow">{t("learnerContent.eyebrow")}</div>
-      <h1>{lesson ? lesson.title : "…"}</h1>
+      <div className="lw-lessoncontent-header">
+        <div className="lw-eyebrow">{t("learnerContent.eyebrow")}</div>
+        <h1 className="lw-lessoncontent-title">{lesson ? lesson.title : "…"}</h1>
+      </div>
 
       {error && <Message type="error">{error}</Message>}
       {!lesson && !error && (
-        <div className="lw-learn__loading"><LoaderCircle size={18} className="lw-learn__spin" /> {t("learnerLesson.loading")}</div>
+        <div className="lw-learn__loading"><LoaderCircle size={22} className="lw-learn__spin" /> <span>{t("learnerLesson.loading")}</span></div>
       )}
 
       {lesson && sections.length === 0 && (
         <div className="lw-nby">
-          <span className="lw-nby__icon" aria-hidden="true"><FileText size={20} /></span>
+          <span className="lw-nby__icon" aria-hidden="true"><FileText size={22} /></span>
           <div><p className="lw-nby__lead">{t("learnerContent.emptyState")}</p></div>
         </div>
       )}
 
-      {sections.map((s) => (
-        <div className="lw-content__section" key={s.key}>
-          <div className="lw-content__kicker"><Sparkles size={13} /> {s.label}</div>
-          {s.key === "glossary" ? <GlossaryTable text={s.text} /> : <MarkdownText className="lw-content__text" text={s.text} />}
-        </div>
-      ))}
+      <div className="lw-lessoncontent-sections">
+        {sections.map((s) => (
+          <div className="lw-content__section" key={s.key}>
+            <div className="lw-content__kicker"><Sparkles size={13} /> {s.label}</div>
+            {s.key === "glossary" ? <GlossaryTable text={s.text} /> : <MarkdownText className="lw-content__text" text={s.text} />}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -118,59 +122,87 @@ function parseGlossary(text) {
 function GlossaryTable({ text }) {
   const entries = parseGlossary(text);
   return (
-    <table className="lw-glossary">
-      <tbody>
-        {entries.map((e, i) => (
-          <tr key={i}>
-            <th scope="row">{e.term}</th>
-            <td>{e.definition}</td>
+    <div className="lw-glossary-wrap">
+      <table className="lw-glossary">
+        <thead>
+          <tr>
+            <th>Term</th>
+            <th>Definition</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {entries.map((e, i) => (
+            <tr key={i}>
+              <th scope="row"><span className="lw-glossary-term">{e.term}</span></th>
+              <td>{e.definition}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
 const CSS = `
+  .lw-lessoncontent-page { max-width: 900px; margin: 0 auto; padding-bottom: 56px; }
+  .lw-lessoncontent-header { text-align: start; margin-bottom: 24px; }
+  .lw-lessoncontent-title { font-size: 2.1rem; font-weight: 700; color: var(--ink); margin: 4px 0 0; letter-spacing: -0.02em; text-align: start; }
+
   .lw-nby {
     display: flex; gap: 16px; align-items: flex-start;
     background: var(--surface); border: 1px dashed var(--line);
-    border-radius: var(--radius-sm); padding: 24px 26px; max-width: 62ch;
+    border-radius: var(--radius, 16px); padding: 28px 26px; max-width: 62ch; margin: 0 auto;
   }
   .lw-nby__icon {
-    width: 42px; height: 42px; border-radius: var(--radius-sm); flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     background: var(--surface-2); color: var(--ink-soft);
   }
   .lw-nby__lead { font-size: 0.95rem; margin: 0 0 14px; line-height: 1.6; }
 
   .lw-learn__back {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft);
-    font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; padding: 3px 6px; margin-bottom: 14px; margin-inline-start: -6px;
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 9999px;
+    color: var(--ink); font-family: var(--font-body); font-size: 0.84rem; font-weight: 500;
+    cursor: pointer; padding: 6px 14px; margin-bottom: 20px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .lw-learn__back:hover { color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
-  .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
-  .lw-learn__spin { animation: lwLearnSpin 0.9s linear infinite; }
+  .lw-learn__back:hover {
+    color: var(--accent); border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface)); transform: translateX(-2px);
+  }
+  .lw-learn__loading { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--ink-soft); padding: 50px 0; font-size: 0.95rem; }
+  .lw-learn__spin { animation: lwLearnSpin 0.8s linear infinite; color: var(--accent); }
   @keyframes lwLearnSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .lw-learn__spin { animation: none; } }
 
+  .lw-lessoncontent-sections { display: flex; flex-direction: column; gap: 20px; }
   .lw-content__section {
-    max-width: 72ch; margin: 0 0 20px; background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 16px 18px;
+    width: 100%; background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius, 16px); padding: 22px 26px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02); text-align: start;
   }
   .lw-content__kicker {
     display: inline-flex; align-items: center; gap: 6px; width: fit-content;
-    font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
-    padding: 3px 9px; border-radius: 20px; margin-bottom: 10px;
+    padding: 3px 10px; border-radius: 9999px; margin-bottom: 14px;
   }
-  .lw-content__text { font-size: 0.92rem; color: var(--ink); line-height: 1.7; margin: 0; white-space: pre-wrap; }
+  .lw-content__text { font-size: 0.94rem; color: var(--ink); line-height: 1.75; margin: 0; white-space: pre-wrap; }
 
+  .lw-glossary-wrap { overflow-x: auto; margin-top: 8px; border: 1px solid var(--line); border-radius: 12px; }
   .lw-glossary { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  .lw-glossary thead th {
+    background: var(--surface-2, rgba(0,0,0,0.03)); color: var(--ink-soft);
+    font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 10px 16px; text-align: start; border-bottom: 1px solid var(--line);
+  }
   .lw-glossary tr { border-top: 1px solid var(--line); }
   .lw-glossary tr:first-child { border-top: none; }
-  .lw-glossary th, .lw-glossary td { text-align: start; padding: 9px 12px 9px 0; vertical-align: top; line-height: 1.6; }
-  .lw-glossary th { color: var(--ink); font-weight: 600; white-space: nowrap; width: 1%; }
+  .lw-glossary th, .lw-glossary td { text-align: start; padding: 12px 16px; vertical-align: top; line-height: 1.6; }
+  .lw-glossary th { color: var(--ink); font-weight: 600; white-space: nowrap; width: 25%; }
+  .lw-glossary-term {
+    display: inline-block; background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    color: var(--accent); padding: 3px 8px; border-radius: 6px; font-size: 0.88rem;
+  }
   .lw-glossary td { color: var(--ink-soft); }
 `;

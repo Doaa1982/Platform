@@ -210,67 +210,52 @@ const CSS = `
   }
   .pl-login__mark { line-height: 0; }
 
-  /* Notebook theme (2026-08-15): a bound-spine flourish where the cover
-     panel meets the form, mirroring the same treatment used in-app —
-     stitching for the tutor's leather ledger, perforation for the student's
-     composition notebook. Logical inset so it mirrors correctly under RTL. */
-  .pl-login--teach .pl-login__aside::after {
-    content: ""; position: absolute; top: 24px; bottom: 24px; inset-inline-end: 0; width: 1px;
-    background-image: repeating-linear-gradient(to bottom, rgba(247,245,241,0.55) 0 5px, transparent 5px 10px);
-  }
-  .pl-login--learn .pl-login__aside::after {
-    content: ""; position: absolute; top: 0; bottom: 0; inset-inline-end: -1px; width: 10px;
-    background-image: radial-gradient(circle at 0 10px, var(--pl-bg) 4px, transparent 4.2px);
-    background-size: 10px 20px; background-repeat: repeat-y;
-  }
   .pl-login__asidetitle {
-    font-family: 'Fraunces', Georgia, serif;
-    font-weight: 600;
-    font-size: clamp(1.9rem, 3.4vw, 2.7rem);
-    line-height: 1.12;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.9rem, 3.4vw, 2.6rem);
+    line-height: 1.15;
     margin: 0;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
   }
   .pl-login__asidetext {
-    color: rgba(247,245,241,0.74);
-    font-size: 0.98rem;
-    line-height: 1.6;
+    color: rgba(247,245,241,0.85);
+    font-size: 1rem;
+    line-height: 1.65;
     max-width: 38ch;
     margin: 0;
   }
 
   /* ── Right form panel ─────────────────────────────────────────────────── */
-  /* Notebook theme (2026-08-15): faint ruled-page texture, tinted per side —
-     same idea as .lw-content's --page-texture in-app, just a static rule
-     here since there's no --page-texture token before Workspace Resolution. */
   .pl-login__panel {
     display: flex; align-items: center; justify-content: center; padding: 48px 32px;
-    background-image: var(--pl-texture, none);
+    background: var(--pl-bg, #fff);
   }
   .pl-login__form-wrap { width: 100%; max-width: 380px; }
 
   .pl-login__back {
-    display: inline-flex; align-items: center; gap: 5px;
-    background: transparent; border: 1px solid var(--pl-line); border-radius: 6px; padding: 3px 6px; margin-bottom: 22px; margin-inline-start: -6px;
-    font-family: inherit; font-size: 0.82rem; color: var(--pl-ink-soft); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--pl-surface, #fff); border: 1px solid var(--pl-line); border-radius: 20px; padding: 6px 14px; margin-bottom: 24px;
+    font-family: inherit; font-size: 0.82rem; font-weight: 500; color: var(--pl-ink-soft); cursor: pointer;
+    transition: all 0.15s ease;
   }
-  .pl-login__back:hover { color: var(--pl-ink); background: var(--surface-2, rgba(0,0,0,0.05)); }
-  .pl-login__back:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; border-radius: 4px; }
+  .pl-login__back:hover { color: var(--pl-ink); border-color: var(--pl-accent); transform: translateX(-2px); }
+  .pl-login__back:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; border-radius: 20px; }
 
   .pl-login__eyebrow {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
     color: var(--pl-accent); margin-bottom: 10px;
   }
   .pl-login__title {
-    font-family: 'Fraunces', Georgia, serif;
-    font-size: 2.1rem; font-weight: 600; margin: 0 0 6px; line-height: 1.1;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 2rem; font-weight: 700; margin: 0 0 6px; line-height: 1.15; letter-spacing: -0.02em;
   }
-  .pl-login__sub { color: var(--pl-ink-soft); font-size: 0.94rem; margin: 0 0 28px; }
+  .pl-login__sub { color: var(--pl-ink-soft); font-size: 0.94rem; margin: 0 0 28px; line-height: 1.5; }
 
   .pl-field { margin-bottom: 18px; }
   .pl-field label {
-    display: block; font-size: 0.82rem; font-weight: 600;
+    display: block; font-size: 0.84rem; font-weight: 600;
     margin-bottom: 6px; color: var(--pl-ink);
   }
   .pl-field__labelrow {

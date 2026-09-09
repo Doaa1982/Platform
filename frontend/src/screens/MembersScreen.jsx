@@ -1060,96 +1060,95 @@ const CSS = `
   .lw-members__bulkpreview .is-muted { font-style: italic; }
 
   .lw-members__toolbar {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px;
   }
   .lw-members__searchbox {
-    display: flex; align-items: center; gap: 7px; flex: 1; min-width: 200px;
-    background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);
-    padding: 7px 10px; color: var(--ink-soft);
+    display: flex; align-items: center; gap: 9px; flex: 1; min-width: 220px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 9px 13px; color: var(--ink-soft); box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    transition: border-color 0.15s ease;
   }
+  .lw-members__searchbox:focus-within { border-color: var(--accent); }
   .lw-members__searchbox input {
     flex: 1; border: none; background: transparent; font-family: var(--font-body);
-    font-size: 0.85rem; color: var(--ink); outline: none;
+    font-size: 0.9rem; color: var(--ink); outline: none;
   }
   .lw-members__searchbox input::-webkit-search-cancel-button { cursor: pointer; }
-  .lw-members__sortbox { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
-  .lw-members__sortbox span { font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
+  .lw-members__sortbox { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .lw-members__sortbox span { font-size: 0.82rem; color: var(--ink-soft); white-space: nowrap; font-weight: 500; }
   .lw-members__sortbox select {
-    font-family: var(--font-body); font-size: 0.85rem; color: var(--ink);
-    background: var(--bg); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 7px 8px;
+    font-family: var(--font-body); font-size: 0.88rem; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 8px 12px;
   }
 
-  .lw-members__list { display: flex; flex-direction: column; gap: 8px; }
+  .lw-members__list { display: flex; flex-direction: column; gap: 10px; }
   .lw-members__grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 8px; align-items: stretch;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px; align-items: stretch;
   }
-  /* Member cards carry a lot more per row (roles, role-adder, up to 3 action
-     buttons) than an invitation card does — a wider minimum keeps that from
-     wrapping into a cramped stack the way the invitations' 260px would. */
-  .lw-members__grid--members { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+  .lw-members__grid--members { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
   .lw-members__row {
-    display: flex; align-items: center; gap: 13px;
+    display: flex; align-items: center; gap: 14px;
     flex-wrap: wrap;
     background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 13px 15px;
+    border-radius: var(--radius); padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: all 0.18s ease;
+  }
+  .lw-members__row:hover {
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+    box-shadow: 0 4px 14px rgba(0,0,0,0.04);
   }
   .lw-members__grid .lw-members__row { height: 100%; }
 
-  .lw-members__pager { display: flex; align-items: center; gap: 4px; margin-top: 12px; }
+  .lw-members__pager { display: flex; align-items: center; gap: 6px; margin-top: 16px; }
   .lw-members__pager button {
     display: inline-flex; align-items: center; justify-content: center;
-    min-width: 26px; height: 26px; font-family: var(--font-mono); font-size: 11px;
+    min-width: 30px; height: 30px; font-family: var(--font-mono); font-size: 11.5px;
     background: var(--surface); color: var(--ink-soft);
-    border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; cursor: pointer;
+    transition: all 0.15s ease;
   }
-  .lw-members__pager button:hover:not(:disabled) { color: var(--ink); }
+  .lw-members__pager button:hover:not(:disabled) { color: var(--ink); border-color: var(--accent); }
   .lw-members__pager button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .lw-members__pager button.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .lw-members__pagergap { color: var(--ink-soft); font-size: 11px; padding: 0 2px; }
+  .lw-members__pager button.is-active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .lw-members__pagergap { color: var(--ink-soft); font-size: 11.5px; padding: 0 4px; }
   .lw-members__avatar {
-    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+    width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     background: var(--accent); color: #fff;
-    font-family: var(--font-display); font-weight: 600;
+    font-family: var(--font-display); font-weight: 700; font-size: 1.05rem;
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 30%, transparent);
   }
-  .lw-members__avatar.is-pending { background: var(--line); color: var(--ink-soft); }
-  .lw-members__avatar.is-request { background: var(--accent-2); }
+  .lw-members__avatar.is-pending { background: var(--surface-2); color: var(--ink-soft); box-shadow: none; }
+  .lw-members__avatar.is-request { background: var(--accent-2); box-shadow: 0 2px 6px color-mix(in srgb, var(--accent-2) 30%, transparent); }
   .lw-members__msg {
-    font-size: 0.82rem; color: var(--ink-soft); font-style: italic;
-    margin-top: 6px; max-width: 52ch; line-height: 1.5;
+    font-size: 0.84rem; color: var(--ink-soft); font-style: italic;
+    margin-top: 6px; max-width: 52ch; line-height: 1.55;
   }
 
-  /* min-width isn't 0: below this the name/email column would rather force
-     the status pill and action buttons onto their own line (the row already
-     wraps) than get crushed down to an unreadable sliver itself. */
   .lw-members__who { flex: 1; min-width: 160px; }
-  .lw-members__name { font-weight: 600; font-size: 0.93rem; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; overflow-wrap: anywhere; }
+  .lw-members__name { font-weight: 600; font-size: 0.96rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
   .lw-members__owner {
-    display: inline-flex; align-items: center; gap: 3px;
-    font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em;
-    background: var(--accent-2); color: #fff; border-radius: 20px; padding: 2px 7px;
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    background: var(--accent-2); color: #fff; border-radius: 20px; padding: 2px 8px;
   }
-  /* An email has no natural break points, so a narrow grid card (which
-     .who shrinks into via min-width: 0) needs an explicit permission to
-     break it — otherwise it overflows into the status pill/actions
-     next to it instead of wrapping onto a second line. */
-  .lw-members__email { font-size: 0.79rem; color: var(--ink-soft); margin-top: 2px; overflow-wrap: anywhere; }
+  .lw-members__email { font-size: 0.82rem; color: var(--ink-soft); margin-top: 3px; overflow-wrap: anywhere; }
   .lw-members__course {
-    display: inline-flex; align-items: center; margin-top: 5px;
-    font-family: var(--font-mono); font-size: 10px; color: var(--accent-2);
+    display: inline-flex; align-items: center; margin-top: 6px;
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--accent-2);
     background: color-mix(in srgb, var(--accent-2) 12%, transparent);
-    border-radius: 20px; padding: 2px 8px;
+    border-radius: 20px; padding: 3px 9px; font-weight: 500;
   }
-  .lw-members__courses { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+  .lw-members__courses { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .lw-members__courses .lw-members__course { margin-top: 0; }
   .lw-members__course--pending { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
-  .lw-members__roles { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+  .lw-members__roles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .lw-members__role {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-family: var(--font-mono); font-size: 10px;
-    background: var(--surface-2); color: var(--ink); border-radius: 20px; padding: 3px 8px;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+    background: var(--surface-2); color: var(--ink); border-radius: 20px; padding: 3px 9px;
   }
   .lw-members__role button {
     display: flex; background: transparent; border: 1px solid var(--line); border-radius: 50%; padding: 2px;
@@ -1157,48 +1156,52 @@ const CSS = `
   }
   .lw-members__role button:hover { color: var(--danger); background: var(--surface-2, rgba(0,0,0,0.05)); }
   .lw-members__roleadd {
-    display: inline-flex; align-items: center; gap: 3px;
-    font-family: var(--font-mono); font-size: 10px;
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--font-mono); font-size: 10.5px;
     background: transparent; color: var(--ink-soft);
-    border: 1px dashed var(--line); border-radius: 20px; padding: 3px 8px; cursor: pointer;
+    border: 1px dashed var(--line); border-radius: 20px; padding: 3px 9px; cursor: pointer;
+    transition: all 0.15s ease;
   }
+  .lw-members__roleadd:hover { border-color: var(--accent); color: var(--accent); }
   .lw-members__rolepick {
-    font-family: var(--font-body); font-size: 11px;
+    font-family: var(--font-body); font-size: 11.5px;
     background: var(--bg); color: var(--ink);
-    border: 1px solid var(--accent); border-radius: 20px; padding: 3px 6px;
+    border: 1px solid var(--accent); border-radius: 20px; padding: 3px 8px;
   }
 
   .lw-members__status {
-    font-family: var(--font-mono); font-size: 10px; flex-shrink: 0;
-    border-radius: 20px; padding: 3px 9px;
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; flex-shrink: 0;
+    border-radius: 20px; padding: 4px 10px;
     background: var(--surface-2); color: var(--ink-soft);
   }
   .lw-members__status.is-active { background: color-mix(in srgb, var(--accent-2) 18%, transparent); color: var(--accent-2); }
   .lw-members__status.is-suspended, .lw-members__status.is-pending, .lw-members__status.is-expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
 
-  .lw-members__actions { display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; }
+  .lw-members__actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
   .lw-members__actions button {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-family: var(--font-body); font-size: 11px;
-    background: transparent; color: var(--ink-soft);
-    border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-body); font-size: 11.5px; font-weight: 500;
+    background: var(--surface-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 20px; padding: 4px 10px; cursor: pointer;
+    transition: all 0.15s ease;
   }
-  .lw-members__actions button:hover:not(:disabled) { color: var(--ink); }
+  .lw-members__actions button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
   .lw-members__actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
-  .lw-members__enrollinline { display: inline-flex; align-items: center; gap: 5px; }
+  .lw-members__enrollinline { display: inline-flex; align-items: center; gap: 6px; }
   .lw-members__enrollinline select {
-    font-family: var(--font-body); font-size: 11px; color: var(--ink);
-    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px;
-    max-width: 150px;
+    font-family: var(--font-body); font-size: 11.5px; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px;
+    max-width: 160px;
   }
   .lw-members__enrollinline button {
     display: inline-flex; align-items: center; gap: 4px;
-    font-family: var(--font-body); font-size: 11px;
-    background: transparent; color: var(--ink-soft);
-    border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer;
+    font-family: var(--font-body); font-size: 11.5px;
+    background: var(--surface-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 20px; padding: 4px 10px; cursor: pointer;
+    transition: all 0.15s ease;
   }
-  .lw-members__enrollinline button:hover:not(:disabled) { color: var(--ink); }
+  .lw-members__enrollinline button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
   .lw-members__enrollinline button:disabled { opacity: 0.45; cursor: not-allowed; }
 
   /* Groups the Create Invitation form's fields (Who / How / Enrollment /

@@ -104,37 +104,52 @@ const CSS = `
 
   .lw-nby {
     display: flex; gap: 16px; align-items: flex-start;
-    background: var(--surface); border: 1px dashed var(--line);
-    border-radius: var(--radius-sm); padding: 24px 26px; max-width: 62ch;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   }
   .lw-nby__icon {
-    width: 42px; height: 42px; border-radius: var(--radius-sm); flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    background: var(--surface-2); color: var(--ink-soft);
+    background: var(--surface-2); color: var(--accent);
   }
   .lw-nby__lead { font-size: 0.95rem; margin: 0; line-height: 1.6; }
 
-  .lw-lassign__group { margin-bottom: 26px; max-width: 72ch; }
-  .lw-lassign__grouptitle { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin-bottom: 8px; }
-  .lw-lassign__row {
-    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
-    padding: 13px 16px; margin-bottom: 8px; cursor: pointer; text-align: start;
-    font-family: var(--font-body); color: var(--ink);
+  .lw-lassign__group { margin-bottom: 30px; max-width: 76ch; }
+  .lw-lassign__grouptitle {
+    font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--ink-soft); margin-bottom: 12px;
   }
-  .lw-lassign__row:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
-  .lw-lassign__row:disabled { cursor: default; color: var(--ink-soft); }
-  .lw-lassign__rowmain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .lw-lassign__rowtitle { font-size: 0.9rem; font-weight: 600; }
-  .lw-lassign__lesson { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
-  .lw-lassign__due { font-size: 0.78rem; color: var(--ink-soft); }
-  .lw-lassign__rowarrow { color: var(--ink-soft); flex-shrink: 0; }
+  .lw-lassign__row {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 20px; margin-bottom: 10px; cursor: pointer; text-align: start;
+    font-family: var(--font-body); color: var(--ink); box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+    transition: all 0.18s ease;
+  }
+  .lw-lassign__row:hover:not(:disabled) {
+    border-color: var(--accent); transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.05);
+  }
+  .lw-lassign__row:disabled { cursor: default; opacity: 0.7; }
+  .lw-lassign__rowmain { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .lw-lassign__rowtitle { font-size: 0.95rem; font-weight: 600; }
+  .lw-lassign__lesson {
+    font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-soft); background: var(--surface-2); padding: 2px 8px; border-radius: 6px;
+  }
+  .lw-lassign__due {
+    font-size: 0.82rem; color: var(--ink-soft); background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+    padding: 2px 8px; border-radius: 6px;
+  }
+  .lw-lassign__rowarrow { color: var(--ink-soft); flex-shrink: 0; transition: transform 0.15s ease; }
+  .lw-lassign__row:hover:not(:disabled) .lw-lassign__rowarrow { transform: translateX(3px); color: var(--accent); }
 
   .lw-lassign__pill {
-    display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 10px;
-    border-radius: 20px; padding: 3px 9px; background: var(--surface-2); color: var(--ink-soft);
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    border-radius: 20px; padding: 4px 11px; background: var(--surface-2); color: var(--ink-soft);
   }
-  .lw-lassign__pill.is-pending { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .lw-lassign__pill.is-pending { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .lw-lassign__pill.is-passed { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
-  .lw-lassign__pill.is-failed { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+  .lw-lassign__pill.is-failed { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
 `;

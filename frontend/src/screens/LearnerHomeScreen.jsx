@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  LoaderCircle, BookOpen, CheckCircle2, ClipboardCheck, Award, Trophy, Clock, PlayCircle, ChevronRight,
+  LoaderCircle, BookOpen, CheckCircle2, ClipboardCheck, Award, Trophy, Clock, PlayCircle, ChevronRight, Sparkles, ArrowRight, Play
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -15,20 +15,6 @@ function coverVariant(id) {
   return hash % COVER_VARIANTS;
 }
 
-/* =========================================================================
-   LEARNER HOME — what a learner sees in a workspace they belong to.
-
-   Replaces the prototype's learner dashboard, which showed courses, streaks
-   and progress bars from fixture data. Presented to a real learner those were
-   claims about study they had never done, in courses that do not exist.
-
-   Learning Products, curriculum, lesson progress and graded assessments are
-   real now (Learning Workspace Delivery Context) — the stat cards below read
-   LearningDeliveryService.GetStatsAsync, not fixtures. Certificates still
-   have no backing aggregate anywhere in the domain, so that card stays a
-   static "not built" placeholder rather than a fabricated number.
-   ========================================================================= */
-
 /** "0 min" / "45 min" / "2h" / "2h 15m" — minutes alone past the first hour reads worse than the split. */
 function formatMinutes(t, total) {
   if (!total) return t("learnerHome.zeroMin");
@@ -37,34 +23,6 @@ function formatMinutes(t, total) {
   const m = total % 60;
   return m === 0 ? `${h}${t("learnerHome.hour")}` : `${h}${t("learnerHome.hour")} ${m}${t("learnerHome.minShort")}`;
 }
-
-/** A stat card reads as "what is this measuring" first, the number second — title carries the weight, the value is a colored accent underneath it, not the headline. */
-function StatCard({ icon: Icon, color, title, value, note, muted }) {
-  const style = muted ? undefined : {
-    "--card-bg": `color-mix(in srgb, ${color.icon} 16%, var(--surface-2))`,
-    "--card-icon": color.icon,
-  };
-  return (
-    <div className={`lw-lh__card ${muted ? "is-muted" : ""}`} style={style}>
-      <div className="lw-lh__cardicon"><Icon size={17} /></div>
-      <div className="lw-lh__cardtitle">{title}</div>
-      <div className="lw-lh__cardvalue">{value}</div>
-      {note && <div className="lw-lh__cardnote">{note}</div>}
-    </div>
-  );
-}
-
-/* Backgrounds are derived (color-mix against --surface-2, see StatCard) so
-   these tints stay a light accent wash in Light mode and a muted dark-surface
-   wash in Dark mode, instead of a hardcoded pastel fighting the page. */
-const CARD_COLORS = {
-  courses: { icon: "#E0912E" },
-  completedCourses: { icon: "#1FA971" },
-  lessons: { icon: "#3E6FE0" },
-  time: { icon: "#8B5CF6" },
-  assessments: { icon: "#E0537B" },
-  certificates: { icon: "#C9971C" },
-};
 
 export default function LearnerHomeScreen({ onContinueLesson }) {
   const { session, workspace, me } = useAuth();
@@ -77,7 +35,6 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
 
   useEffect(() => {
     let cancelled = false;
-    // Any active member may read this; it carries no management detail
     Promise.all([
       api.getSetup(session.token, slug),
       api.getLearnerStats(session.token, slug),
@@ -95,186 +52,660 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
   if (!setup || !stats) {
     return (
       <div className="lw-page">
-        <div className="lw-lh__loading"><LoaderCircle size={18} className="lw-lh__spin" /> {t("learnerHome.loading")}</div>
+        <style>{CSS}</style>
+        <div className="lw-lh__loading">
+          <LoaderCircle size={22} className="lw-lh__spin" />
+          <span>{t("learnerHome.loading")}</span>
+        </div>
       </div>
     );
   }
 
   const enrolled = stats.enrolledProductsCount > 0;
+  const courseCompletionPercent = (enrolled && stats.enrolledProductsCount > 0)
+    ? Math.round((stats.completedProductsCount / stats.enrolledProductsCount) * 100)
+    : 0;
+  const lessonCompletionPercent = (enrolled && stats.totalLessonsCount > 0)
+    ? Math.round((stats.completedLessonsCount / stats.totalLessonsCount) * 100)
+    : 0;
 
   return (
-    <div className="lw-page">
+    <div className="lw-page lw-dashboard-page">
       <style>{CSS}</style>
 
-      <div className="lw-eyebrow">{setup.name}</div>
-      <h1>{firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")}</h1>
+      {/* Hero Welcome Banner */}
+      <div className="lw-db-hero">
+        <div className="lw-db-hero__content">
+          <div className="lw-db-eyebadge">
+            <Sparkles size={12} />
+            <span>{setup.name}</span>
+          </div>
+          <h1 className="lw-db-title">
+            {firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")}
+          </h1>
+          <p className="lw-db-subtitle">
+            Track your progress, resume your lessons, and achieve your learning goals.
+          </p>
+        </div>
+      </div>
 
+      {/* Continue Learning Section */}
       {stats.continueLearning.length > 0 && (
-        <div className="lw-lh__continuepanel">
-          <div className="lw-lh__continueheader">
-            <span className="lw-lh__continueheadericon"><PlayCircle size={20} /></span>
+        <div className="lw-db-section">
+          <div className="lw-db-sectionheader">
+            <div className="lw-db-sectionicon">
+              <PlayCircle size={20} />
+            </div>
             <div>
-              <div className="lw-lh__continueheading">{t("learnerHome.continueLearning")}</div>
-              <div className="lw-lh__continuesubtitle">{t("learnerHome.continueSubtitle")}</div>
+              <h2 className="lw-db-sectiontitle">{t("learnerHome.continueLearning")}</h2>
+              <div className="lw-db-sectionsubtitle">{t("learnerHome.continueSubtitle")}</div>
             </div>
           </div>
 
-          <div className="lw-lh__continuelist">
+          <div className="lw-db-continuelist">
             {stats.continueLearning.map((c) => (
-              <button key={c.lessonId} className="lw-lh__featured"
-                      onClick={() => onContinueLesson?.(c.productId, c.lessonId)}>
-                <div className={`lw-lh__featuredthumb ${c.productCoverImageAssetId ? "" : `lw-cover--${coverVariant(c.productId)}`}`}>
+              <div
+                key={c.lessonId}
+                className="lw-db-resumecard"
+                onClick={() => onContinueLesson?.(c.productId, c.lessonId)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onContinueLesson?.(c.productId, c.lessonId); }}
+              >
+                <div className={`lw-db-resumethumb ${c.productCoverImageAssetId ? "" : `lw-cover--${coverVariant(c.productId)}`}`}>
                   {c.productCoverImageAssetId && (
-                    <img className="lw-lh__continueimg" alt=""
-                         src={api.learningAssetDownloadUrl(session.token, slug, c.productCoverImageAssetId)} />
+                    <img
+                      className="lw-db-resumeimg"
+                      alt=""
+                      src={api.learningAssetDownloadUrl(session.token, slug, c.productCoverImageAssetId)}
+                    />
                   )}
-                  <span className="lw-lh__continueplay"><PlayCircle size={40} /></span>
-                </div>
-                <div className="lw-lh__featuredbody">
-                  <div className="lw-lh__continuecourse">{c.productTitle}</div>
-                  <div className="lw-lh__featuredlessontitle">{c.lessonTitle}</div>
-                  <div className="lw-lh__continuemeta">
-                    {t("learnerHome.lesson")}
-                    {c.estimatedMinutes != null && <> · {c.estimatedMinutes}{t("learnerHome.minShort")}</>}
+                  <div className="lw-db-playoverlay">
+                    <span className="lw-db-playbtn">
+                      <Play size={20} className="lw-db-playicon" />
+                    </span>
                   </div>
-                  <span className="lw-lh__featuredcta">{t("learnerHome.continueButton")} <ChevronRight size={16} /></span>
                 </div>
-              </button>
+
+                <div className="lw-db-resumebody">
+                  <div className="lw-db-resumecourse">{c.productTitle}</div>
+                  <h3 className="lw-db-resumetitle">{c.lessonTitle}</h3>
+                  <div className="lw-db-resumemeta">
+                    <span className="lw-db-tag">
+                      <BookOpen size={11} />
+                      {t("learnerHome.lesson")}
+                    </span>
+                    {c.estimatedMinutes != null && (
+                      <span className="lw-db-tag">
+                        <Clock size={11} />
+                        {c.estimatedMinutes} {t("learnerHome.minShort")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="lw-db-resumeaction">
+                  <span className="lw-db-actbtn">
+                    <span>{t("learnerHome.continueButton")}</span>
+                    <ArrowRight size={15} />
+                  </span>
+                </div>
+              </div>
             ))}
           </div>
         </div>
       )}
 
-      <div className="lw-lh__cards">
-        <StatCard
-          icon={BookOpen} color={CARD_COLORS.courses} title={t("learnerHome.enrolledCourses")}
-          value={stats.enrolledProductsCount}
-        />
+      {/* Metrics / Progress Overview Grid */}
+      <div className="lw-db-section">
+        <div className="lw-db-statsgrid">
+          {/* 1. Enrolled Courses */}
+          <div className="lw-db-statcard lw-db-statcard--courses">
+            <div className="lw-db-statcard__top">
+              <span className="lw-db-staticon">
+                <BookOpen size={18} />
+              </span>
+              <span className="lw-db-stattrend">Active</span>
+            </div>
+            <div className="lw-db-statcard__val">
+              {stats.enrolledProductsCount}
+            </div>
+            <div className="lw-db-statcard__title">
+              {t("learnerHome.enrolledCourses")}
+            </div>
+            <div className="lw-db-statcard__note">
+              Courses currently enrolled
+            </div>
+          </div>
 
-        <StatCard
-          icon={Trophy} color={CARD_COLORS.completedCourses} title={t("learnerHome.coursesCompleted")}
-          value={enrolled ? <>{stats.completedProductsCount} <span className="lw-lh__cardof">{t("learnerHome.of")} {stats.enrolledProductsCount}</span></> : "—"}
+          {/* 2. Courses Completed */}
+          <div className="lw-db-statcard lw-db-statcard--completed">
+            <div className="lw-db-statcard__top">
+              <span className="lw-db-staticon">
+                <Trophy size={18} />
+              </span>
+              {enrolled && (
+                <span className="lw-db-stattrend lw-db-stattrend--pct">
+                  {courseCompletionPercent}%
+                </span>
+              )}
+            </div>
+            <div className="lw-db-statcard__val">
+              {enrolled ? (
+                <>
+                  {stats.completedProductsCount}
+                  <span className="lw-db-statof">/ {stats.enrolledProductsCount}</span>
+                </>
+              ) : "—"}
+            </div>
+            <div className="lw-db-statcard__title">
+              {t("learnerHome.coursesCompleted")}
+            </div>
+            {enrolled && stats.enrolledProductsCount > 0 ? (
+              <div className="lw-db-statprogress">
+                <div className="lw-db-statprogress__fill" style={{ width: `${courseCompletionPercent}%` }} />
+              </div>
+            ) : (
+              <div className="lw-db-statcard__note">Completed curriculum</div>
+            )}
+          </div>
 
-        />
+          {/* 3. Lessons Completed */}
+          <div className="lw-db-statcard lw-db-statcard--lessons">
+            <div className="lw-db-statcard__top">
+              <span className="lw-db-staticon">
+                <CheckCircle2 size={18} />
+              </span>
+              {enrolled && (
+                <span className="lw-db-stattrend lw-db-stattrend--pct">
+                  {lessonCompletionPercent}%
+                </span>
+              )}
+            </div>
+            <div className="lw-db-statcard__val">
+              {enrolled ? (
+                <>
+                  {stats.completedLessonsCount}
+                  <span className="lw-db-statof">/ {stats.totalLessonsCount}</span>
+                </>
+              ) : "—"}
+            </div>
+            <div className="lw-db-statcard__title">
+              {t("learnerHome.lessonsCompleted")}
+            </div>
+            {enrolled && stats.totalLessonsCount > 0 ? (
+              <div className="lw-db-statprogress">
+                <div className="lw-db-statprogress__fill" style={{ width: `${lessonCompletionPercent}%` }} />
+              </div>
+            ) : (
+              <div className="lw-db-statcard__note">All finished checkpoints</div>
+            )}
+          </div>
 
-        <StatCard
-          icon={CheckCircle2} color={CARD_COLORS.lessons} title={t("learnerHome.lessonsCompleted")}
-          value={enrolled ? <>{stats.completedLessonsCount} <span className="lw-lh__cardof">{t("learnerHome.of")} {stats.totalLessonsCount}</span></> : "—"}
+          {/* 4. Time Invested */}
+          <div className="lw-db-statcard lw-db-statcard--time">
+            <div className="lw-db-statcard__top">
+              <span className="lw-db-staticon">
+                <Clock size={18} />
+              </span>
+            </div>
+            <div className="lw-db-statcard__val">
+              {enrolled ? formatMinutes(t, stats.timeInvestedMinutes) : "—"}
+            </div>
+            <div className="lw-db-statcard__title">
+              {t("learnerHome.timeInvested")}
+            </div>
+            <div className="lw-db-statcard__note">
+              Total interactive study time
+            </div>
+          </div>
 
-        />
+          {/* 5. Assessments Passed */}
+          <div className="lw-db-statcard lw-db-statcard--assessments">
+            <div className="lw-db-statcard__top">
+              <span className="lw-db-staticon">
+                <ClipboardCheck size={18} />
+              </span>
+            </div>
+            <div className="lw-db-statcard__val">
+              {enrolled ? stats.passedAssessmentsCount : "—"}
+            </div>
+            <div className="lw-db-statcard__title">
+              {t("learnerHome.assessmentsPassed")}
+            </div>
+            <div className="lw-db-statcard__note">
+              Passing submissions recorded
+            </div>
+          </div>
 
-        <StatCard
-          icon={Clock} color={CARD_COLORS.time} title={t("learnerHome.timeInvested")}
-          value={enrolled ? formatMinutes(t, stats.timeInvestedMinutes) : "—"}
-
-        />
-
-        <StatCard
-          icon={ClipboardCheck} color={CARD_COLORS.assessments} title={t("learnerHome.assessmentsPassed")}
-          value={enrolled ? stats.passedAssessmentsCount : "—"}
-
-        />
-
-        <StatCard icon={Award} color={CARD_COLORS.certificates} title={t("learnerHome.certificates")} value="—" note={t("learnerHome.notBuiltYet")} />
+          {/* 6. Certificates */}
+          <div className="lw-db-statcard lw-db-statcard--certs is-placeholder">
+            <div className="lw-db-statcard__top">
+              <span className="lw-db-staticon">
+                <Award size={18} />
+              </span>
+              <span className="lw-db-badge-soon">{t("learnerHome.notBuiltYet")}</span>
+            </div>
+            <div className="lw-db-statcard__val">—</div>
+            <div className="lw-db-statcard__title">
+              {t("learnerHome.certificates")}
+            </div>
+            <div className="lw-db-statcard__note">
+              Verified credentials
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 const CSS = `
-  .lw-lh__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
+  .lw-dashboard-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-bottom: 56px;
+  }
 
-  /* The "resume learning" panel — deliberately its own boxed-off, tinted
-     card (not just another block on the page) so it reads as a distinct
-     destination, not one item among the stat tiles below it. */
-  .lw-lh__continuepanel {
-    max-width: 900px; margin: 0 auto 26px;
-    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
-    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
-    border-radius: 18px; padding: 18px 20px 20px;
+  .lw-lh__loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--ink-soft);
+    padding: 60px 0;
+    font-size: 0.95rem;
+    font-weight: 500;
   }
-  .lw-lh__continueheader { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-  .lw-lh__continueheadericon {
-    width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--accent); color: var(--on-accent, #fff);
+  .lw-lh__spin {
+    animation: lwLhSpin 0.8s linear infinite;
+    color: var(--accent);
   }
-  .lw-lh__continueheading { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; color: var(--ink); line-height: 1.2; }
-  .lw-lh__continuesubtitle { font-size: 0.8rem; color: var(--ink-soft); margin-top: 1px; }
+  @keyframes lwLhSpin { to { transform: rotate(360deg); } }
 
-  /* Every in-progress lesson gets the exact same "resume here" treatment —
-     no small/large split, every item in this list is equally prominent
-     (thumbnail, big title, explicit CTA), Netflix continue-watching style. */
-  .lw-lh__continuelist { display: flex; flex-direction: column; gap: 12px; }
-  .lw-lh__featured {
-    display: flex; text-align: start; cursor: pointer; padding: 0; width: 100%;
-    background: var(--bg); border: 1px solid var(--line); border-radius: 14px;
-    overflow: hidden; font-family: var(--font-body); transition: border-color .12s;
+  /* Hero Welcome Banner */
+  .lw-db-hero {
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+    text-align: start;
   }
-  .lw-lh__featured:hover { border-color: var(--accent); }
-  .lw-lh__featuredthumb { position: relative; flex: 0 0 220px; min-height: 140px; display: flex; align-items: center; justify-content: center; }
-  .lw-lh__continueimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .lw-lh__continueplay { position: relative; color: rgba(255,255,255,0.92); display: flex; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35)); }
-  .lw-lh__featuredbody { flex: 1; min-width: 0; padding: 14px 18px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
-  .lw-lh__continuecourse { font-size: 0.74rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lw-lh__featuredlessontitle { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--ink); line-height: 1.25; }
-  .lw-lh__continuemeta { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
-  .lw-lh__featuredcta {
-    display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; width: fit-content;
-    font-size: 0.85rem; font-weight: 700; color: var(--accent);
+  .lw-db-eyebadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    padding: 3px 10px;
+    border-radius: 9999px;
+    margin-bottom: 8px;
   }
-  [dir="rtl"] .lw-lh__featuredcta svg { transform: scaleX(-1); }
+  .lw-db-title {
+    font-family: var(--font-body, system-ui);
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 4px 0 6px;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-align: start;
+  }
+  .lw-db-subtitle {
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+    margin: 0;
+    line-height: 1.5;
+  }
 
-  /* Most students open this on a phone — each card stacks (thumb full-width
-     on top), and its CTA becomes a real full-width button, so every single
-     "continue here" is unmissable and easy to tap without any side-scrolling. */
-  @media (max-width: 640px) {
-    .lw-lh__continuepanel { padding: 14px 14px 16px; border-radius: 14px; }
-    .lw-lh__featured { flex-direction: column; }
-    .lw-lh__featuredthumb { flex: none; width: 100%; height: 170px; }
-    .lw-lh__featuredbody { padding: 14px 16px 16px; }
-    .lw-lh__featuredlessontitle { font-size: 1.1rem; }
-    .lw-lh__featuredcta {
-      justify-content: center; width: 100%; margin-top: 12px;
-      background: var(--accent); color: var(--on-accent, #fff);
-      padding: 11px; border-radius: 10px;
+  /* Section Wrapper */
+  .lw-db-section {
+    margin-bottom: 32px;
+  }
+  .lw-db-sectionheader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .lw-db-sectionicon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .lw-db-sectiontitle {
+    font-family: var(--font-body, system-ui);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .lw-db-sectionsubtitle {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    margin-top: 1px;
+  }
+
+  /* Continue Learning Cards */
+  .lw-db-continuelist {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .lw-db-resumecard {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius, 16px);
+    padding: 14px 18px 14px 14px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+    text-align: start;
+  }
+  .lw-db-resumecard:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+    background: color-mix(in srgb, var(--accent) 3%, var(--surface));
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(0,0,0,0.08);
+  }
+
+  .lw-db-resumethumb {
+    position: relative;
+    width: 170px;
+    height: 100px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .lw-db-resumeimg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .lw-db-playoverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease;
+  }
+  .lw-db-resumecard:hover .lw-db-playoverlay {
+    background: rgba(0,0,0,0.4);
+  }
+  .lw-db-playbtn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.92);
+    color: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .lw-db-playicon {
+    margin-inline-start: 2px;
+  }
+  .lw-db-resumecard:hover .lw-db-playbtn {
+    transform: scale(1.1);
+    background: #fff;
+  }
+
+  .lw-db-resumebody {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .lw-db-resumecourse {
+    font-size: 0.76rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+  .lw-db-resumetitle {
+    font-family: var(--font-body, system-ui);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 0;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+  .lw-db-resumemeta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+  .lw-db-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--ink-soft);
+    background: var(--surface-2, rgba(0,0,0,0.04));
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+
+  .lw-db-resumeaction {
+    flex-shrink: 0;
+  }
+  .lw-db-actbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+    font-family: var(--font-body);
+    font-size: 0.84rem;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 9999px;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 26%, transparent);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .lw-db-resumecard:hover .lw-db-actbtn {
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 38%, transparent);
+    transform: translateX(2px);
+  }
+  [dir="rtl"] .lw-db-actbtn svg { transform: scaleX(-1); }
+
+  /* Metrics Grid */
+  .lw-db-statsgrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .lw-db-statcard {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius, 16px);
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    text-align: start;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  }
+  .lw-db-statcard:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+    box-shadow: 0 6px 16px -2px rgba(0,0,0,0.05);
+  }
+
+  .lw-db-statcard__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .lw-db-staticon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .lw-db-statcard--courses .lw-db-staticon {
+    background: color-mix(in srgb, #E0912E 14%, transparent);
+    color: #E0912E;
+  }
+  .lw-db-statcard--completed .lw-db-staticon {
+    background: color-mix(in srgb, #1FA971 14%, transparent);
+    color: #1FA971;
+  }
+  .lw-db-statcard--lessons .lw-db-staticon {
+    background: color-mix(in srgb, #3E6FE0 14%, transparent);
+    color: #3E6FE0;
+  }
+  .lw-db-statcard--time .lw-db-staticon {
+    background: color-mix(in srgb, #8B5CF6 14%, transparent);
+    color: #8B5CF6;
+  }
+  .lw-db-statcard--assessments .lw-db-staticon {
+    background: color-mix(in srgb, #E0537B 14%, transparent);
+    color: #E0537B;
+  }
+  .lw-db-statcard--certs .lw-db-staticon {
+    background: color-mix(in srgb, #C9971C 14%, transparent);
+    color: #C9971C;
+  }
+
+  .lw-db-stattrend {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    background: var(--surface-2, rgba(0,0,0,0.04));
+    padding: 3px 8px;
+    border-radius: 9999px;
+  }
+  .lw-db-stattrend--pct {
+    color: var(--success, #1E7D61);
+    background: color-mix(in srgb, var(--success, #1E7D61) 12%, transparent);
+  }
+
+  .lw-db-badge-soon {
+    font-size: 10px;
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    background: var(--surface-2, rgba(0,0,0,0.04));
+    padding: 2px 7px;
+    border-radius: 6px;
+  }
+
+  .lw-db-statcard__val {
+    font-family: var(--font-body, system-ui);
+    font-size: 1.85rem;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .lw-db-statof {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin-inline-start: 4px;
+  }
+
+  .lw-db-statcard__title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 2px;
+  }
+  .lw-db-statcard__note {
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+
+  .lw-db-statprogress {
+    width: 100%;
+    height: 5px;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--line) 60%, transparent);
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .lw-db-statprogress__fill {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  }
+
+  .lw-db-statcard.is-placeholder {
+    opacity: 0.8;
+  }
+
+  @media (max-width: 860px) {
+    .lw-db-statsgrid {
+      grid-template-columns: repeat(2, 1fr);
     }
   }
-  .lw-lh__cards {
-    display: flex; flex-wrap: wrap; justify-content: center; gap: 14px;
-    max-width: 900px; margin: 0 auto;
+
+  @media (max-width: 640px) {
+    .lw-db-statsgrid {
+      grid-template-columns: 1fr;
+    }
+    .lw-db-resumecard {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 14px;
+    }
+    .lw-db-resumethumb {
+      width: 100%;
+      height: 160px;
+    }
+    .lw-db-resumeaction {
+      margin-top: 8px;
+    }
+    .lw-db-actbtn {
+      width: 100%;
+      justify-content: center;
+      padding: 10px;
+    }
+    .lw-db-title {
+      font-size: 1.6rem;
+    }
   }
-  .lw-lh__card {
-    background: var(--card-bg, var(--surface-2)); border: 1px solid transparent;
-    border-radius: 16px; padding: 16px 18px; width: 160px;
-    display: flex; flex-direction: column; align-items: flex-start;
-    position: relative;
-  }
-  .lw-lh__card.is-muted { background: var(--surface-2); border: 1px dashed var(--line); opacity: 0.75; }
-  /* Notebook theme: dog-eared page corner (2026-08-15). */
-  .lw-lh__card::after {
-    content: ""; position: absolute; top: 0; inset-inline-end: 0; width: 0; height: 0;
-    border-style: solid; border-width: 0 12px 12px 0;
-    border-color: transparent var(--line) transparent transparent;
-    filter: drop-shadow(-1px 1px 1.5px rgba(0,0,0,0.18));
-    pointer-events: none;
-  }
-  [dir="rtl"] .lw-lh__card::after { transform: scaleX(-1); }
-  .lw-lh__cardicon {
-    width: 34px; height: 34px; border-radius: 9px; margin-bottom: 10px;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--card-icon, var(--ink-soft)); color: #fff;
-  }
-  .lw-lh__card.is-muted .lw-lh__cardicon { background: var(--line); color: var(--ink-soft); }
-  .lw-lh__cardtitle {
-    font-family: var(--font-display); font-size: 0.98rem; font-weight: 700;
-    line-height: 1.25; margin-bottom: 6px;
-  }
-  .lw-lh__cardvalue { font-size: 0.92rem; font-weight: 600; color: var(--card-icon, var(--ink-soft)); }
-  .lw-lh__card.is-muted .lw-lh__cardvalue { color: var(--ink-soft); }
-  .lw-lh__cardof { font-size: 0.8rem; font-weight: 500; color: var(--ink-soft); }
-  .lw-lh__cardnote { font-size: 0.76rem; color: var(--ink-soft); margin-top: 3px; }
-  .lw-lh__spin { animation: lwLhSpin 0.9s linear infinite; }
-  @keyframes lwLhSpin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .lw-lh__spin { animation: none; } }
 `;
+

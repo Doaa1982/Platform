@@ -76,16 +76,16 @@ const ACCOUNTBAR_COMPACT_QUERY = `(max-width: ${ACCOUNTBAR_COMPACT_PX}px)`;
    `role` (owner/learner) × `mode` (light/dark). */
 
 const TUTOR_SHARED = {
-  "--radius": "6px", "--radius-sm": "4px",
-  "--font-display": "'Caveat', cursive",
-  "--font-body": "'Lora', Georgia, serif",
+  "--radius": "12px", "--radius-sm": "8px",
+  "--font-display": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  "--font-body": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   "--font-mono": "'IBM Plex Mono', monospace",
 };
 
 const STUDENT_SHARED = {
-  "--radius": "16px", "--radius-sm": "10px",
-  "--font-display": "'Kalam', cursive",
-  "--font-body": "'IBM Plex Sans', system-ui, sans-serif",
+  "--radius": "14px", "--radius-sm": "8px",
+  "--font-display": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  "--font-body": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   "--font-mono": "'IBM Plex Mono', monospace",
 };
 
@@ -518,10 +518,12 @@ function LearnerTopNav({ screen, onNavigate, aiLabel, compact }) {
 function AcademyHeader({ c }) {
   return (
     <div className="lw-academyheader">
-      <div className="lw-academyheader__mark"><BrandMark c={c} size={40} /></div>
-      <div className="lw-academyheader__text">
-        <div className="lw-academyheader__name">{c.name}</div>
-        <div className="lw-academyheader__tagline">{c.tagline}</div>
+      <div className="lw-academyheader__inner">
+        <div className="lw-academyheader__mark"><BrandMark c={c} size={42} /></div>
+        <div className="lw-academyheader__text">
+          <div className="lw-academyheader__name">{c.name}</div>
+          {c.tagline && <div className="lw-academyheader__tagline">{c.tagline}</div>}
+        </div>
       </div>
     </div>
   );
@@ -678,25 +680,59 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
 
   if (!curriculum) return <div className="lw-lessonnav" />;
 
+  const allLessons = curriculum.units.flatMap((u) => u.lessons || []);
+  const totalLessons = allLessons.length;
+  const totalDone = allLessons.filter((l) => l.progressStatus === "Completed").length;
+  const progressPercent = totalLessons > 0 ? Math.round((totalDone / totalLessons) * 100) : 0;
+
   return (
     <div className="lw-lessonnav">
-      <div className="lw-lessonnav__head">{t("lessonSidebar.courseContent")}</div>
+      <div className="lw-lessonnav__header-block">
+        <div className="lw-lessonnav__head">{t("lessonSidebar.courseContent")}</div>
+        {totalLessons > 0 && (
+          <div className="lw-lessonnav__progress">
+            <div className="lw-lessonnav__progress-text">
+              <span>{totalDone}/{totalLessons} {t("learnerCourses.completed")}</span>
+              <span>{progressPercent}%</span>
+            </div>
+            <div className="lw-lessonnav__progressbar">
+              <div className="lw-lessonnav__progressfill" style={{ width: `${progressPercent}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
+
       {curriculum.requiresSequentialCompletion && (
         <div className="lw-lessonnav__seqhint">
-          <Lock size={11} /> {t("lessonSidebar.seqHint")}
+          <Lock size={12} />
+          <span>{t("lessonSidebar.seqHint")}</span>
         </div>
       )}
+
       <div className="lw-lessonnav__units">
         {curriculum.units.map((u, i) => {
           const open = openUnits.has(u.position);
           const doneCount = u.lessons.filter((l) => l.progressStatus === "Completed").length;
           const mins = u.lessons.reduce((sum, l) => sum + (l.estimatedMinutes ?? 0), 0);
+          const unitAllDone = u.lessons.length > 0 && doneCount === u.lessons.length;
+
           return (
             <div className="lw-lessonnav__unit" key={u.position}>
-              <button type="button" className="lw-lessonnav__unithead" onClick={() => toggleUnit(u.position)}>
+              <button type="button" className={`lw-lessonnav__unithead ${open ? "is-open" : ""}`} onClick={() => toggleUnit(u.position)}>
                 <ChevronDown size={14} className={`lw-lessonnav__chevron ${open ? "is-open" : ""}`} />
-                <span className="lw-lessonnav__unittitle">{i + 1}. {u.title}</span>
-                <span className="lw-lessonnav__unitmeta">{doneCount}/{u.lessons.length}{mins > 0 ? ` · ${mins}${t("lessonSidebar.min")}` : ""}</span>
+                <span className="lw-lessonnav__unittitle">
+                  <span className="lw-lessonnav__unitnum">{i + 1}.</span> {u.title}
+                </span>
+                <span className="lw-lessonnav__unitmeta">
+                  {unitAllDone ? (
+                    <span className="lw-lessonnav__unitdonebadge">
+                      <CheckCircle2 size={11} /> {doneCount}/{u.lessons.length}
+                    </span>
+                  ) : (
+                    `${doneCount}/${u.lessons.length}`
+                  )}
+                  {mins > 0 ? ` · ${mins}${t("lessonSidebar.min")}` : ""}
+                </span>
               </button>
               {open && (
                 <div className="lw-lessonnav__lessons">
@@ -706,16 +742,26 @@ function LessonSidebar({ productId, lessonId, onOpenLesson, refreshToken }) {
                     return (
                       <button
                         type="button" key={l.id}
-                        className={`lw-lessonnav__lessonrow ${active ? "is-active" : ""} ${l.locked ? "is-locked" : ""}`}
+                        className={`lw-lessonnav__lessonrow ${active ? "is-active" : ""} ${lessonDone ? "is-done" : ""} ${l.locked ? "is-locked" : ""}`}
                         disabled={l.locked}
                         title={l.locked ? t("lessonSidebar.lockedTitle") : undefined}
                         onClick={() => !active && !l.locked && onOpenLesson?.(l.id)}
                       >
-                        {lessonDone
-                          ? <CheckCircle2 size={14} className="is-done" />
-                          : l.locked ? <Lock size={14} /> : <PlayCircle size={14} />}
+                        <span className="lw-lessonnav__iconwrap">
+                          {lessonDone ? (
+                            <CheckCircle2 size={15} className="is-done" />
+                          ) : l.locked ? (
+                            <Lock size={14} className="is-locked" />
+                          ) : active ? (
+                            <PlayCircle size={15} className="is-active" />
+                          ) : (
+                            <PlayCircle size={15} className="is-ready" />
+                          )}
+                        </span>
                         <span className="lw-lessonnav__lessontitle">{l.title}</span>
-                        {l.estimatedMinutes != null && <span className="lw-lessonnav__lessonmins">{l.estimatedMinutes}{t("lessonSidebar.min")}</span>}
+                        {l.estimatedMinutes != null && (
+                          <span className="lw-lessonnav__lessonmins">{l.estimatedMinutes}{t("lessonSidebar.min")}</span>
+                        )}
                       </button>
                     );
                   })}
@@ -1089,51 +1135,74 @@ const CSS = `
   .lw-root { font-family: var(--font-body); color: var(--ink); background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; }
   .lw-root * { box-sizing: border-box; }
 
-  .lw-accountbar { background: var(--bar-bg); color: var(--bar-ink); border-bottom: 1px solid var(--bar-line); font-family: var(--font-body); font-size: 12px; display: flex; align-items: center; gap: 10px; padding: 8px 18px; flex-wrap: wrap; }
-  .lw-accountbar__side { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; background: var(--side-accent); color: #fff; border-radius: 20px; padding: 3px 9px; }
-  .lw-accountbar__ws { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
-  .lw-accountbar__roles { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-  .lw-accountbar__role { font-family: var(--font-mono); font-size: 10px; background: var(--bar-role-bg); color: var(--bar-role-ink); border-radius: 20px; padding: 2px 8px; }
-  .lw-accountbar__spacer { flex: 1; }
-  .lw-accountbar button { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--bar-line); color: var(--ink-soft); border-radius: 7px; padding: 4px 10px; font-family: var(--font-body); font-size: 11.5px; cursor: pointer; }
-  .lw-accountbar button:hover { color: var(--bar-ink); border-color: var(--bar-hover-line); }
-  .lw-accountbar .lw-accountbar__who {
-    background: transparent; border: 1px solid var(--line); color: var(--ink-soft); padding: 4px 6px;
+  /* Modern Sticky Glassmorphic Account & Nav Bar */
+  .lw-accountbar {
+    position: sticky; top: 0; z-index: 100;
+    background: color-mix(in srgb, var(--bar-bg) 88%, transparent);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    color: var(--bar-ink); border-bottom: 1px solid var(--bar-line);
+    font-family: var(--font-body); font-size: 12px;
+    display: flex; align-items: center; gap: 12px; padding: 10px 24px; flex-wrap: wrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
   }
-  .lw-accountbar .lw-accountbar__who:hover { color: var(--bar-ink); border-color: var(--bar-line); background: var(--surface-2, rgba(0,0,0,0.05)); }
+  .lw-accountbar__side { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; background: var(--side-accent); color: #fff; border-radius: 20px; padding: 3px 9px; }
+  .lw-accountbar__ws { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; }
+  .lw-accountbar__roles { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .lw-accountbar__role { font-family: var(--font-mono); font-size: 10px; background: var(--bar-role-bg); color: var(--bar-role-ink); border-radius: 20px; padding: 2px 8px; font-weight: 500; }
+  .lw-accountbar__spacer { flex: 1; }
+  .lw-accountbar button {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; border: 1px solid var(--bar-line); color: var(--ink-soft);
+    border-radius: 9999px; padding: 5px 12px; font-family: var(--font-body); font-size: 11.5px; font-weight: 500;
+    cursor: pointer; transition: all .18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .lw-accountbar button:hover {
+    color: var(--bar-ink); border-color: var(--bar-hover-line);
+    background: var(--surface-2, rgba(0,0,0,0.04)); transform: translateY(-1px);
+  }
+  .lw-accountbar .lw-accountbar__who {
+    background: var(--surface); border: 1px solid var(--line); color: var(--ink); padding: 5px 12px; font-weight: 600;
+  }
+  .lw-accountbar .lw-accountbar__who:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
   .lw-accountbar__avatar {
     display: flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; border-radius: 50%;
     background: var(--accent); color: #fff;
-    font-family: var(--font-display); font-weight: 600; font-size: 0.75rem;
+    font-family: var(--font-body); font-weight: 700; font-size: 0.75rem;
   }
 
-  .lw-accountbar__navlinks { display: inline-flex; align-items: center; gap: 4px; }
-  .lw-accountbar .lw-accountbar__navlink { border-color: transparent; }
-  .lw-accountbar .lw-accountbar__navlink.is-active { color: var(--bar-active-ink); border-color: var(--bar-active-line); background: var(--bar-active-bg); }
+  .lw-accountbar__navlinks { display: inline-flex; align-items: center; gap: 6px; }
+  .lw-accountbar .lw-accountbar__navlink {
+    border-color: transparent; border-radius: 9999px; padding: 5px 14px; font-weight: 500;
+  }
+  .lw-accountbar .lw-accountbar__navlink:hover {
+    background: var(--surface-2, rgba(0,0,0,0.05)); color: var(--bar-ink);
+  }
+  .lw-accountbar .lw-accountbar__navlink.is-active {
+    color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bar-bg)); font-weight: 600;
+  }
   .lw-accountbar__more { position: relative; }
   .lw-accountbar__morepanel {
     position: absolute; top: calc(100% + 8px); inset-inline-start: 0; z-index: 41;
-    width: 200px; overflow: hidden;
-    background: var(--bar-bg); color: var(--bar-ink); border: 1px solid var(--bar-line); border-radius: 10px;
-    box-shadow: 0 10px 30px var(--bar-panel-shadow);
+    width: 210px; overflow: hidden;
+    background: var(--bar-bg); color: var(--bar-ink); border: 1px solid var(--bar-line); border-radius: 12px;
+    box-shadow: 0 12px 36px var(--bar-panel-shadow);
     display: flex; flex-direction: column; padding: 6px;
+    animation: lwFadeIn 0.2s ease;
   }
   .lw-accountbar .lw-accountbar__moreitem {
-    display: flex; align-items: center; gap: 8px; width: 100%; text-align: start;
-    background: transparent; border: none; color: var(--bar-ink); border-radius: 7px;
-    padding: 8px 9px; font-family: var(--font-body); font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: start;
+    background: transparent; border: none; color: var(--bar-ink); border-radius: 8px;
+    padding: 9px 12px; font-family: var(--font-body); font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: background 0.15s ease;
   }
   .lw-accountbar__moreitem svg { color: var(--ink-soft); flex-shrink: 0; }
-  .lw-accountbar .lw-accountbar__moreitem:hover { background: var(--bar-hover-bg); border-color: transparent; }
-  .lw-accountbar .lw-accountbar__moreitem.is-active { background: var(--bar-active-bg); color: var(--bar-active-ink); border-color: transparent; }
+  .lw-accountbar .lw-accountbar__moreitem:hover { background: var(--bar-hover-bg); color: var(--ink); }
+  .lw-accountbar .lw-accountbar__moreitem.is-active { background: var(--bar-active-bg); color: var(--bar-active-ink); font-weight: 600; }
 
-  /* The icon-only swaps above (compact prop) get everything down to one row
-     at ordinary phone widths, but a long workspace name or the container's
-     own desktop-sized gaps/padding can still be the last straw at the
-     narrowest ones — this trims exactly those, on the same breakpoint. */
   @media (max-width: ${ACCOUNTBAR_COMPACT_PX}px) {
-    .lw-accountbar { gap: 5px; padding: 6px 10px; }
+    .lw-accountbar { gap: 5px; padding: 6px 12px; }
     .lw-accountbar button { gap: 3px; padding: 4px 7px; }
     .lw-accountbar__ws { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .lw-accountbar__ws svg { flex-shrink: 0; }
@@ -1141,11 +1210,11 @@ const CSS = `
 
   .lw-notifbell { position: relative; }
   .lw-accountbar .lw-notifbell__trigger {
-    position: relative; padding: 5px; border-radius: 50%; border: 1px solid transparent;
+    position: relative; padding: 6px; border-radius: 50%; border: 1px solid transparent;
   }
-  .lw-accountbar .lw-notifbell__trigger:hover { border-color: var(--bar-line); }
+  .lw-accountbar .lw-notifbell__trigger:hover { border-color: var(--bar-line); background: var(--surface-2, rgba(0,0,0,0.04)); }
   .lw-notifbell__badge {
-    position: absolute; top: -3px; inset-inline-end: -3px;
+    position: absolute; top: -2px; inset-inline-end: -2px;
     min-width: 15px; height: 15px; padding: 0 3px; border-radius: 50%;
     background: var(--danger); color: #fff;
     font-family: var(--font-mono); font-size: 9px; font-weight: 700;
@@ -1155,8 +1224,8 @@ const CSS = `
   .lw-notifbell__panel {
     position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 41;
     width: 320px; max-height: 380px; overflow-y: auto;
-    background: var(--bar-bg); color: var(--bar-ink); border: 1px solid var(--bar-line); border-radius: 10px;
-    box-shadow: 0 10px 30px var(--bar-panel-shadow);
+    background: var(--bar-bg); color: var(--bar-ink); border: 1px solid var(--bar-line); border-radius: 12px;
+    box-shadow: 0 12px 36px var(--bar-panel-shadow);
   }
   .lw-notifbell__head {
     font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
@@ -1181,48 +1250,46 @@ const CSS = `
   .lw-controlstrip__new { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px dashed #4A5058 !important; color: #8FE3EA !important; border-radius: 20px; padding: 3px 10px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; }
   .lw-controlstrip__reset { margin-inline-start: auto; display: flex; align-items: center; gap: 5px; background: transparent; border: none; color: #8A8F97; cursor: pointer; font-family: var(--font-mono); font-size: 11px; }
 
-  .lw-academyheader { display: flex; align-items: center; gap: 16px; padding: 20px 32px; width: 100%; background: linear-gradient(120deg, var(--accent), var(--accent-2)); box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08); position: relative; }
-  .lw-academyheader__mark { background: rgba(255,255,255,0.18); padding: 6px; border-radius: var(--radius-sm); display: flex; flex-shrink: 0; }
-  .lw-academyheader__name { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.15; color: #fff; }
-  .lw-academyheader__tagline { font-size: 0.85rem; color: rgba(255,255,255,0.88); margin-top: 2px; }
-  @media (max-width: 640px) { .lw-academyheader { padding: 16px 20px; } .lw-academyheader__name { font-size: 1.2rem; } }
-
-  /* Composition-notebook touch: a perforated/torn edge where the coloured
-     cover band meets the page, standing in for a spiral binding since the
-     Student side has no persistent left sidebar to hang one off. */
-  .lw-root--learner .lw-academyheader::after {
-    content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 10px;
-    background-image: radial-gradient(circle at 10px 0, var(--bg) 4px, transparent 4.2px);
-    background-size: 20px 10px; background-repeat: repeat-x; pointer-events: none;
+  /* Centralized, Refined Academy Header */
+  .lw-academyheader {
+    width: 100%; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    padding: 16px 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  }
+  .lw-academyheader__inner {
+    max-width: 1080px; margin: 0 auto; width: 100%;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .lw-academyheader__mark {
+    background: rgba(255,255,255,0.18); padding: 7px; border-radius: 12px;
+    display: flex; flex-shrink: 0; backdrop-filter: blur(4px);
+  }
+  .lw-academyheader__name {
+    font-family: var(--font-body, system-ui); font-weight: 700; font-size: 1.4rem;
+    line-height: 1.2; color: #fff; letter-spacing: -0.01em;
+  }
+  .lw-academyheader__tagline { font-size: 0.85rem; color: rgba(255,255,255,0.9); margin-top: 2px; }
+  @media (max-width: 640px) {
+    .lw-academyheader { padding: 14px 16px; }
+    .lw-academyheader__name { font-size: 1.15rem; }
   }
 
   .lw-shell { display: flex; flex: 1; min-height: 0; }
-  .lw-content { flex: 1; overflow-y: auto; padding: 40px 48px 64px; position: relative; background-image: var(--page-texture, none); }
-  /* Composition-notebook margin rule — a persistent line down the reading
-     column, same idea as the red vertical rule on real notebook paper. */
-  .lw-root--learner .lw-content::before {
-    content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 34px; width: 1.5px;
-    background: var(--danger); opacity: 0.45; pointer-events: none;
+  .lw-content {
+    flex: 1; overflow-y: auto; padding: 32px 32px 64px; position: relative;
+    background: var(--bg);
   }
-  .lw-page { max-width: 880px; margin: 0 auto; animation: lwFade .3s ease; }
-  /* opacity-only, deliberately no transform: an ancestor with any transform
-     (even translateY(0) at animation end, since that isn't the same as
-     "none") creates a new containing block — in Safari specifically, this
-     breaks native select dropdown positioning for every select anywhere
-     inside it, rendering the option list off past the page edge. .lw-page
-     uses this animation and wraps almost every screen, so this one
-     keyframe change is the actual fix, not a per-select patch. */
+  .lw-page {
+    max-width: 1080px; margin: 0 auto; width: 100%; box-sizing: border-box;
+    animation: lwFade .25s ease;
+  }
   @keyframes lwFade { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .lw-page { animation: none; } }
 
-  /* UIC-004: a page or panel's own title (its eyebrow + h1, or a panel's h2)
-     is centered — every such heading in this shared shell reads as one. Body
-     copy underneath (.lw-sub, section dividers like h2.lw-sectiontitle) stays
-     left-aligned; centering is for the header itself, not the page. */
-  h1 { font-family: var(--font-display); font-weight: 600; font-size: 2rem; margin: 2px 0 6px; line-height: 1.15; text-align: center; }
-  h2.lw-sectiontitle { font-family: var(--font-display); font-size: 1.2rem; margin: 36px 0 14px; font-weight: 600; }
+  /* Modern typography hierarchy */
+  h1 { font-family: var(--font-body, system-ui); font-weight: 700; font-size: 2rem; margin: 4px 0 10px; line-height: 1.25; letter-spacing: -0.02em; text-align: center; }
+  h2.lw-sectiontitle { font-family: var(--font-body, system-ui); font-size: 1.25rem; margin: 32px 0 14px; font-weight: 700; letter-spacing: -0.01em; }
   .lw-eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; text-align: center; }
-  .lw-sub { color: var(--ink-soft); font-size: 0.94rem; max-width: 62ch; margin-bottom: 22px; }
+  .lw-sub { color: var(--ink-soft); font-size: 0.95rem; max-width: 62ch; margin: 0 auto 24px; text-align: center; line-height: 1.55; }
 
   .lw-nav { width: 250px; flex-shrink: 0; background: var(--nav-bg); color: var(--nav-text); display: flex; flex-direction: column; padding: 22px 16px; position: relative; }
   /* Leather-ledger touch: a stitched edge along the sidebar's inner border,
@@ -1287,53 +1354,88 @@ const CSS = `
     .lw-lessonnav { width: 100%; max-height: 220px; border-inline-end: none; border-bottom: 1px solid var(--line); }
   }
 
-  /* The Learner side's left-sidebar slot, in-lesson only — fills the same
-     .lw-shell column Nav does for the owner side, but light (a distinct
-     "you're inside a lesson now" surface) rather than the dark app chrome. */
+  /* The Learner side's left-sidebar slot, in-lesson only */
   .lw-lessonnav {
-    width: 300px; flex-shrink: 0; overflow-y: auto;
+    width: 320px; flex-shrink: 0; overflow-y: auto;
     background: var(--surface); border-inline-end: 1px solid var(--line);
+    display: flex; flex-direction: column;
   }
-  /* Bumped from 0.95rem, same reasoning as .lw-nav__name — a lesson title is
-     also arbitrary-length user content, and the notebook script fonts need
-     more room than a sans label would at this size (2026-08-15). */
+  .lw-lessonnav__header-block {
+    padding: 20px 20px 16px; border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface-2, rgba(0,0,0,0.02)) 50%, var(--surface));
+  }
   .lw-lessonnav__head {
-    font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; letter-spacing: 0.1px;
-    padding: 18px 16px 14px; border-bottom: 1px solid var(--line);
+    font-family: var(--font-body, system-ui); font-weight: 700; font-size: 1.05rem;
+    color: var(--ink); letter-spacing: -0.01em; margin-bottom: 8px;
+  }
+  .lw-lessonnav__progress {
+    display: flex; flex-direction: column; gap: 6px; margin-top: 4px;
+  }
+  .lw-lessonnav__progress-text {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.78rem; font-weight: 600; color: var(--ink-soft);
+  }
+  .lw-lessonnav__progressbar {
+    width: 100%; height: 6px; border-radius: 9999px;
+    background: color-mix(in srgb, var(--line) 60%, transparent);
+    overflow: hidden;
+  }
+  .lw-lessonnav__progressfill {
+    height: 100%; border-radius: 9999px;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent));
+    transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .lw-lessonnav__seqhint {
-    display: flex; align-items: center; gap: 5px;
-    font-size: 10px; color: var(--ink-soft); padding: 8px 16px;
-    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--ink-soft); padding: 9px 20px;
+    border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent) 5%, var(--surface));
   }
+  .lw-lessonnav__units { display: flex; flex-direction: column; }
   .lw-lessonnav__unit { border-bottom: 1px solid var(--line); }
   .lw-lessonnav__unithead {
-    width: 100%; display: flex; align-items: center; gap: 8px; text-align: start;
-    background: transparent; border: none; cursor: pointer; padding: 12px 16px;
-    font-family: var(--font-body); color: var(--ink);
+    width: 100%; display: flex; align-items: center; gap: 10px; text-align: start;
+    background: transparent; border: none; cursor: pointer; padding: 13px 18px;
+    font-family: var(--font-body); color: var(--ink); transition: background 0.15s ease;
   }
-  .lw-lessonnav__unithead:hover { background: var(--surface-2); }
-  .lw-lessonnav__chevron { flex-shrink: 0; color: var(--ink-soft); transition: transform 0.15s ease; }
-  .lw-lessonnav__chevron.is-open { transform: rotate(180deg); }
-  .lw-lessonnav__unittitle { flex: 1; font-weight: 600; font-size: 0.85rem; }
-  .lw-lessonnav__unitmeta { font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft); white-space: nowrap; }
+  .lw-lessonnav__unithead:hover { background: var(--surface-2, rgba(0,0,0,0.04)); }
+  .lw-lessonnav__chevron { flex-shrink: 0; color: var(--ink-soft); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+  .lw-lessonnav__chevron.is-open { transform: rotate(180deg); color: var(--accent); }
+  .lw-lessonnav__unittitle { flex: 1; font-weight: 600; font-size: 0.88rem; line-height: 1.35; color: var(--ink); }
+  .lw-lessonnav__unitnum { font-weight: 700; color: var(--accent); margin-inline-end: 2px; }
+  .lw-lessonnav__unitmeta { font-family: var(--font-mono, monospace); font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+  .lw-lessonnav__unitdonebadge {
+    display: inline-flex; align-items: center; gap: 3px;
+    color: var(--success, #1E7D61); font-weight: 600;
+  }
   .lw-lessonnav__lessons { display: flex; flex-direction: column; background: var(--bg); }
   .lw-lessonnav__lessonrow {
-    display: flex; align-items: center; gap: 8px; width: 100%; text-align: start;
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
     background: transparent; border: none; border-top: 1px solid var(--line); cursor: pointer;
-    padding-block: 10px; padding-inline: 34px 16px; font-family: var(--font-body); color: var(--ink);
+    padding: 11px 18px 11px 28px; font-family: var(--font-body); color: var(--ink);
+    transition: all 0.15s ease; position: relative;
   }
-  .lw-lessonnav__lessonrow:hover { background: var(--surface-2); }
+  .lw-lessonnav__lessonrow:hover:not(.is-locked) {
+    background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+  }
   .lw-lessonnav__lessonrow.is-active {
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-    border-inline-start: 3px solid var(--accent); padding-inline-start: 31px; cursor: default;
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    font-weight: 600; cursor: default;
+  }
+  .lw-lessonnav__lessonrow.is-active::before {
+    content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 0; width: 3px;
+    background: var(--accent); border-radius: 0 2px 2px 0;
+  }
+  .lw-lessonnav__iconwrap {
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
   .lw-lessonnav__lessonrow svg { flex-shrink: 0; color: var(--ink-soft); }
-  .lw-lessonnav__lessonrow svg.is-done { color: var(--accent-2); }
-  .lw-lessonnav__lessonrow.is-locked { cursor: not-allowed; opacity: 0.55; }
-  .lw-lessonnav__lessonrow.is-locked:hover { background: transparent; }
-  .lw-lessonnav__lessontitle { flex: 1; font-size: 0.82rem; }
-  .lw-lessonnav__lessonmins { font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft); }
+  .lw-lessonnav__lessonrow svg.is-done { color: var(--success, #1E7D61); }
+  .lw-lessonnav__lessonrow svg.is-active { color: var(--accent); }
+  .lw-lessonnav__lessonrow svg.is-ready { color: var(--ink-soft); }
+  .lw-lessonnav__lessonrow.is-locked { cursor: not-allowed; opacity: 0.5; }
+  .lw-lessonnav__lessontitle { flex: 1; font-size: 0.84rem; line-height: 1.4; color: var(--ink); }
+  .lw-lessonnav__lessonrow.is-active .lw-lessonnav__lessontitle { color: var(--accent); }
+  .lw-lessonnav__lessonmins { font-family: var(--font-mono, monospace); font-size: 10.5px; color: var(--ink-soft); }
 
   .lw-btn { font-family: var(--font-body); font-weight: 600; font-size: 0.85rem; border-radius: var(--radius-sm); padding: 10px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: transform .12s, box-shadow .12s; }
   .lw-btn:hover { transform: translateY(-1px); }
