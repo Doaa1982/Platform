@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio, HelpCircle, FileText, ClipboardList, Paperclip, ListChecks, Play, Clock, CheckCircle
+  LoaderCircle, ArrowLeft, CheckCircle2, Check, X, Sparkles, Bot, Radio, HelpCircle, FileText, ClipboardList, Paperclip, ListChecks, Play, Pause, Volume2, Subtitles, Clock, CheckCircle
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
 import VideoPlayer from "../components/VideoPlayer";
+import GlassCard from "../components/GlassCard";
+import AnimatedButton from "../components/AnimatedButton";
 import MarkdownText from "../components/MarkdownText";
 import CompetencyBreakdown from "../components/CompetencyBreakdown";
 
@@ -43,6 +45,8 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
 
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [activeTab, setActiveTab] = useState("video");
+  const [activeWordIndex, setActiveWordIndex] = useState(0);
 
   // Once a lesson is already Completed, it's just a video to rewatch — no
   // re-answering the checkpoints, no re-grading. Free playback, scrubbing
@@ -137,8 +141,19 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
     ? lesson?.resources?.find((r) => INLINE_RESOURCE_TYPES.has((r.contentType || "").toLowerCase()))
     : null;
 
+  const fallbackWords = [
+    "ثواني،", "هو", "ده", "الهايت", "صح؟",
+    "اللي", "هو", "ال", "4.5", "ده", "الهايت", "صح؟",
+    "كام؟", "point.", "تمام", "فإحنا", "كده", "هو", "اه", "اوف", "تايم", "13", "4.5",
+    "بوينت", "إيه.", "فكده", "التريانجل", "اللي", "فوق", "هيبقى", "الاريا", "بتاعته",
+    "like.", "يعني", "تبقى", "17.7.", "ماشي", "نعمل", "إيه", "بقى.", "طيب"
+  ];
+  const transcriptWords = lesson?.transcript
+    ? lesson.transcript.trim().split(/\s+/)
+    : fallbackWords;
+
   return (
-    <div className="lw-page lw-lesson-page">
+    <GlassCard className="lw-page lw-lesson-page">
       <style>{CSS}</style>
       
       {/* Top Header Navigation & Status Bar */}
@@ -244,44 +259,127 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
             {/* Quick Actions Toolbar */}
             <div className="lw-lesson-actionsbar">
               {onOpenContent && (
-                <button type="button" className="lw-lesson-actbtn" onClick={onOpenContent}>
+                <AnimatedButton variant="ghost" onClick={onOpenContent}>
                   <FileText size={14} className="lw-lesson-actbtn__icon" />
                   <span>{t("learnerContent.eyebrow")}</span>
-                </button>
+                </AnimatedButton>
               )}
               {onOpenHomework && (
-                <button type="button" className="lw-lesson-actbtn" onClick={onOpenHomework}>
+                <AnimatedButton variant="ghost" onClick={onOpenHomework}>
                   <ClipboardList size={14} className="lw-lesson-actbtn__icon" />
                   <span>{t("learnerHomework.eyebrow")}</span>
-                </button>
+                </AnimatedButton>
               )}
               {onOpenResources && (
-                <button type="button" className="lw-lesson-actbtn" onClick={onOpenResources}>
+                <AnimatedButton variant="ghost" onClick={onOpenResources}>
                   <Paperclip size={14} className="lw-lesson-actbtn__icon" />
                   <span>{t("learnerResources.eyebrow")}</span>
-                </button>
+                </AnimatedButton>
               )}
               {onOpenQuiz && (
-                <button type="button" className="lw-lesson-actbtn" onClick={onOpenQuiz}>
+                <AnimatedButton variant="ghost" onClick={onOpenQuiz}>
                   <HelpCircle size={14} className="lw-lesson-actbtn__icon" />
                   <span>{t("learnerStudio.quiz")}</span>
-                </button>
+                </AnimatedButton>
               )}
               {onOpenAssignments && (
-                <button type="button" className="lw-lesson-actbtn" onClick={onOpenAssignments}>
+                <AnimatedButton variant="ghost" onClick={onOpenAssignments}>
                   <ListChecks size={14} className="lw-lesson-actbtn__icon" />
                   <span>{t("learnerAssignments.eyebrow")}</span>
-                </button>
+                </AnimatedButton>
               )}
               {onOpenAssistant && (
-                <button type="button" className="lw-lesson-actbtn lw-lesson-actbtn--ai" onClick={onOpenAssistant}>
+                <AnimatedButton variant="primary" className="lw-lesson-actbtn--ai" onClick={onOpenAssistant}>
                   <Bot size={14} className="lw-lesson-actbtn__icon" />
                   <span>{t("aiAssistant.eyebrow")}</span>
-                  <span className="lw-lesson-actbtn__aiglow" />
+                </AnimatedButton>
+              )}
+            </div>
+
+            {/* Speechmatics Navigation & Tab Switcher */}
+            <div className="speech-tabs" style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className={`speech-tab-btn ${activeTab === "video" ? "is-active" : ""}`}
+                onClick={() => setActiveTab("video")}
+              >
+                <Play size={13} />
+                <span>Overview & Video</span>
+              </button>
+              <button
+                type="button"
+                className={`speech-tab-btn ${activeTab === "transcript" ? "is-active" : ""}`}
+                onClick={() => setActiveTab("transcript")}
+              >
+                <Subtitles size={13} />
+                <span>Synchronized Transcript</span>
+              </button>
+              {lesson.whatYoullLearn && (
+                <button
+                  type="button"
+                  className={`speech-tab-btn ${activeTab === "objectives" ? "is-active" : ""}`}
+                  onClick={() => setActiveTab("objectives")}
+                >
+                  <Sparkles size={13} />
+                  <span>Objectives</span>
                 </button>
               )}
             </div>
           </div>
+
+          {activeTab === "transcript" && (
+            <div className="lw-lesson-bodycard" style={{ marginBottom: 24 }}>
+              {/* Waveform Visualizer Bar */}
+              <div className="speech-waveform-container">
+                <button
+                  type="button"
+                  className="speech-video-playbtn"
+                  style={{ width: 34, height: 34, cursor: "pointer" }}
+                  onClick={() => {
+                    if (videoRef.current) {
+                      if (videoRef.current.paused) videoRef.current.play();
+                      else videoRef.current.pause();
+                    }
+                  }}
+                  title="Play / Pause"
+                >
+                  <Play size={13} />
+                </button>
+                <div className="speech-waveform-bars">
+                  {[26, 14, 22, 30, 16, 24, 18, 32, 26, 12, 20, 28, 15, 30, 24, 18, 22, 16, 28, 20, 32, 14, 26, 18, 30, 22, 16, 24, 14, 28, 20, 32, 18, 24, 12, 30, 26, 16, 22, 28].map((h, i) => (
+                    <div
+                      key={i}
+                      className={`speech-waveform-bar ${i < 18 ? "is-played" : ""}`}
+                      style={{ height: `${h}px` }}
+                    />
+                  ))}
+                </div>
+                <div className="speech-credit-badge" style={{ fontSize: 11, padding: "3px 10px" }}>
+                  <Volume2 size={12} />
+                  <span>AI Synchronized</span>
+                </div>
+              </div>
+
+              {/* Spoken Word Chips Container */}
+              <div className="speech-transcript-box">
+                {transcriptWords.map((word, idx) => (
+                  <span
+                    key={idx}
+                    className={`speech-word-chip ${idx === activeWordIndex ? "is-active" : ""}`}
+                    onClick={() => {
+                      setActiveWordIndex(idx);
+                      if (videoRef.current) {
+                        videoRef.current.currentTime = idx * 2.2;
+                        videoRef.current.play?.();
+                      }
+                    }}
+                  >
+                    {word}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && <Message type="error">{error}</Message>}
 
@@ -400,7 +498,7 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
           )}
         </div>
       )}
-    </div>
+    </GlassCard>
   );
 }
 

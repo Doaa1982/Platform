@@ -1,75 +1,389 @@
 /* src/styles/designSystem.css */
 
 /* Google Font Import */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* Color palette (HSL) */
-  --color-primary-h: 260;
-  --color-primary-s: 80%;
-  --color-primary-l: 60%;
-  --color-primary: hsl(var(--color-primary-h), var(--color-primary-s), var(--color-primary-l));
-  --color-primary-dark: hsl(var(--color-primary-h), var(--color-primary-s), calc(var(--color-primary-l) - 10%));
-  --color-accent-h: 190;
-  --color-accent-s: 70%;
-  --color-accent-l: 55%;
-  --color-accent: hsl(var(--color-accent-h), var(--color-accent-s), var(--color-accent-l));
-  --color-bg: hsl(0, 0%, 100%);
-  --color-bg-dark: hsl(0, 0%, 10%);
-  --color-surface: rgba(255, 255, 255, 0.8);
-  --color-surface-dark: rgba(20, 20, 20, 0.8);
-  --glass-blur: 12px;
+  /* Speechmatics Palette Tokens */
+  --speech-cyan: #00A3BF;
+  --speech-cyan-hover: #00B8D9;
+  --speech-cyan-active: #0088A0;
+  --speech-cyan-glow: #00E5FF;
+  --speech-cyan-subtle: rgba(0, 163, 191, 0.14);
+  --speech-cyan-border: rgba(0, 163, 191, 0.32);
+
+  --speech-emerald: #10B981;
+  --speech-emerald-subtle: rgba(16, 185, 129, 0.12);
+  --speech-emerald-border: rgba(16, 185, 129, 0.28);
+
+  --speech-dark-bg: #0B0F17;
+  --speech-dark-surface: #111827;
+  --speech-dark-surface-2: #1E293B;
+  --speech-dark-border: rgba(255, 255, 255, 0.08);
+  --speech-dark-ink: #F8FAFC;
+  --speech-dark-ink-soft: #94A3B8;
+
+  /* Theme Variables Default (Light) */
+  --color-primary: var(--speech-cyan);
+  --color-primary-dark: var(--speech-cyan-active);
+  --color-accent: var(--speech-cyan-glow);
+  --color-bg: #FAFBFD;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F1F5F9;
+  --color-ink: #0F172A;
+  --color-ink-soft: #64748B;
+  --color-border: #E2E8F0;
+
+  --glass-blur: 16px;
+  --radius-sm: 8px;
   --radius: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
   --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Dark Mode Overrides */
+[data-theme="dark"],
+.dark {
+  --color-bg: var(--speech-dark-bg);
+  --color-surface: var(--speech-dark-surface);
+  --color-surface-2: var(--speech-dark-surface-2);
+  --color-ink: var(--speech-dark-ink);
+  --color-ink-soft: var(--speech-dark-ink-soft);
+  --color-border: var(--speech-dark-border);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: var(--color-bg-dark);
-    --color-surface: var(--color-surface-dark);
-    --color-primary: hsl(var(--color-primary-h), var(--color-primary-s), calc(var(--color-primary-l) + 10%));
-    --color-accent: hsl(var(--color-accent-h), var(--color-accent-s), calc(var(--color-accent-l) + 10%));
+  :root:not([data-theme="light"]) {
+    --color-bg: var(--speech-dark-bg);
+    --color-surface: var(--speech-dark-surface);
+    --color-surface-2: var(--speech-dark-surface-2);
+    --color-ink: var(--speech-dark-ink);
+    --color-ink-soft: var(--speech-dark-ink-soft);
+    --color-border: var(--speech-dark-border);
   }
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--color-bg);
-  color: var(--color-primary);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Glassmorphism utility class */
+/* =========================================================================
+   SPEECHMATICS GLASS CARD COMPONENT
+   ========================================================================= */
 .glass-card {
   background: var(--color-surface);
-  backdrop-filter: saturate(180%) blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border-radius: var(--radius);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
   transition: var(--transition);
 }
 
-.glass-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+[data-theme="dark"] .glass-card,
+.dark .glass-card {
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 36px -8px rgba(0, 0, 0, 0.5);
 }
 
-/* Animated button utility */
+[data-theme="dark"] .glass-card:hover,
+.dark .glass-card:hover {
+  border-color: rgba(0, 163, 191, 0.28);
+  box-shadow: 0 16px 42px -6px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 163, 191, 0.1);
+  transform: translateY(-2px);
+}
+
+/* =========================================================================
+   ANIMATED BUTTON COMPONENT (Speechmatics Primary & Outline Styling)
+   ========================================================================= */
 .button-animated {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
-  border: none;
-  border-radius: var(--radius);
-  padding: 0.5rem 1rem;
-  color: #fff;
+  justify-content: center;
+  gap: 8px;
+  background: var(--speech-cyan);
+  color: #FFFFFF;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.86rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 2px 8px rgba(0, 163, 191, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.button-animated:hover:not(:disabled) {
+  background: var(--speech-cyan-hover);
+  box-shadow: 0 4px 16px rgba(0, 163, 191, 0.4);
+  transform: translateY(-1px);
+}
+
+.button-animated:active:not(:disabled) {
+  background: var(--speech-cyan-active);
+  transform: translateY(0);
+}
+
+.button-animated:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Outline Variant */
+.button-animated--outline {
+  background: transparent;
+  color: var(--speech-cyan);
+  border: 1px solid var(--speech-cyan);
+  box-shadow: none;
+}
+
+.button-animated--outline:hover:not(:disabled) {
+  background: var(--speech-cyan-subtle);
+  border-color: var(--speech-cyan-hover);
+  color: var(--speech-cyan-glow);
+  box-shadow: 0 0 14px rgba(0, 163, 191, 0.2);
+}
+
+/* Secondary Dark Ghost Variant */
+.button-animated--ghost {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--speech-dark-ink);
+  border: 1px solid var(--speech-dark-border);
+  box-shadow: none;
+}
+
+.button-animated--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+}
+
+/* =========================================================================
+   SPEECHMATICS UI PRIMITIVES
+   ========================================================================= */
+
+/* 1. Credit Badge Pill (e.g. 99.75 credits) */
+.speech-credit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--speech-emerald-subtle);
+  color: var(--speech-emerald);
+  border: 1px solid var(--speech-emerald-border);
+  border-radius: var(--radius-full);
+  padding: 4px 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* 2. Top Announcement Bar */
+.speech-announcement-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #000000;
+  color: #F8FAFC;
+  font-size: 0.82rem;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 50;
+}
+
+.speech-announcement-bar a {
+  color: var(--speech-cyan-glow);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+  transition: opacity 0.15s ease;
+}
+
+.speech-announcement-bar a:hover {
+  opacity: 0.85;
+}
+
+/* 3. Segmented Pill Tabs (e.g. Transcribe audio file / streaming) */
+.speech-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  background: rgba(17, 24, 39, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+}
+
+.speech-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--speech-dark-ink-soft);
+  border-radius: 8px;
+  padding: 7px 15px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.84rem;
+  font-weight: 500;
   cursor: pointer;
   transition: var(--transition);
 }
 
-.button-animated:hover {
-  background: linear-gradient(135deg, var(--color-primary-dark), var(--color-accent));
-  transform: translateY(-1px);
+.speech-tab-btn:hover {
+  color: var(--speech-dark-ink);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.speech-tab-btn.is-active {
+  color: var(--speech-cyan-glow);
+  background: var(--speech-cyan-subtle);
+  border-color: var(--speech-cyan);
+  box-shadow: 0 0 12px rgba(0, 163, 191, 0.25);
+  font-weight: 600;
+}
+
+/* 4. Interactive Synchronized Spoken Word Chips (Speechmatics Demo) */
+.speech-transcript-box {
+  background: rgba(11, 15, 23, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  font-family: 'Inter', system-ui, sans-serif;
+  line-height: 2;
+  direction: auto;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.speech-word-chip {
+  display: inline-block;
+  background: var(--speech-cyan-subtle);
+  color: var(--speech-cyan-glow);
+  border: 1px solid var(--speech-cyan-border);
+  border-radius: 4px;
+  padding: 2px 7px;
+  margin: 2px 3px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.speech-word-chip:hover {
+  background: rgba(0, 163, 191, 0.28);
+  border-color: var(--speech-cyan-glow);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.35);
+}
+
+.speech-word-chip.is-active {
+  background: var(--speech-cyan);
+  color: #FFFFFF;
+  border-color: var(--speech-cyan-glow);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
+  transform: scale(1.04);
+}
+
+/* 5. Waveform Visualizer Bar */
+.speech-waveform-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+}
+
+.speech-waveform-bars {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  height: 32px;
+}
+
+.speech-waveform-bar {
+  width: 3px;
+  border-radius: 3px;
+  background: var(--speech-cyan);
+  opacity: 0.65;
+  transition: height 0.1s ease, opacity 0.1s ease;
+}
+
+.speech-waveform-bar.is-played {
+  opacity: 1;
+  background: var(--speech-cyan-glow);
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+}
+
+/* 6. Video Learning Card (Thumbnail + Play overlay + Duration badge) */
+.speech-video-card {
+  position: relative;
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: var(--transition);
+  cursor: pointer;
+}
+
+.speech-video-card:hover {
+  border-color: var(--speech-cyan);
+  box-shadow: 0 10px 24px -4px rgba(0, 163, 191, 0.2);
+  transform: translateY(-2px);
+}
+
+.speech-video-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, #092027, #0B0F17);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.speech-video-playbtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: #0B0F17;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s ease;
+}
+
+.speech-video-card:hover .speech-video-playbtn {
+  transform: scale(1.1);
+  background: var(--speech-cyan-glow);
+}
+
+.speech-video-duration {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #F8FAFC;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
 }

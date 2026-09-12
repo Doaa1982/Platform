@@ -128,52 +128,31 @@ const TUTOR_LIGHT = {
 
 const TUTOR_DARK = {
   ...TUTOR_SHARED,
-  "--bg": "#1C1712", "--surface": "#241D16", "--surface-2": "#2C2419",
-  "--ink": "#F1EAD9", "--ink-soft": "#B3A48A", "--accent": "#D4AF6A",
-  // accent-2/danger lightened 2026-08-15 (WCAG pass) — #C1615A cleared only
-  // 4.34:1 as --danger text against --bg (needs 4.5:1); #C2655E clears it
-  // while keeping the same rust hue.
-  "--accent-2": "#C2655E", "--line": "rgba(241,234,217,0.16)", "--danger": "#C2655E",
-  // success (2026-08-21): a light mint clears 7.3:1+ against this theme's
-  // dark surfaces (--bg #1C1712, --surface #241D16) — same role #1E7D61
-  // plays in the light themes, lightened for a dark background.
-  "--success": "#5FCB9E",
-  "--on-accent": "#1C1712",
-  // Added 2026-08-15 (WCAG pass): unlike --on-accent, --accent-2's fill
-  // (chat avatars, stepper dots, active row buttons) needs a DARK label —
-  // this rust is mid-light, so white text on it only clears 3.95:1; the
-  // near-black --nav-bg value clears 4.86:1.
-  "--on-accent-2": "#120E0A",
-  "--nav-bg": "#120E0A", "--nav-text": "#F1EAD9",
-  "--bar-bg": "#241D16", "--bar-ink": "#F1EAD9", "--bar-line": "rgba(241,234,217,0.16)",
-  "--bar-hover-line": "rgba(241,234,217,0.28)", "--bar-panel-shadow": "rgba(0,0,0,0.5)",
-  "--bar-role-bg": "#3A2A22", "--bar-role-ink": "#D4AF6A",
-  "--bar-active-bg": "#3A2A22", "--bar-active-ink": "#D4AF6A", "--bar-active-line": "#4A362B",
-  "--bar-hover-bg": "#2C2419", "--bar-unread-bg": "#3A2A22", "--bar-unread-hover-bg": "#45301F",
-  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 34px, rgba(212,175,106,0.035) 34px 35px)",
-  "--callout-bg": "#2C2419", "--callout-line": "#D4AF6A",
+  "--bg": "#0B0F17", "--surface": "#111827", "--surface-2": "#1E293B",
+  "--ink": "#F8FAFC", "--ink-soft": "#94A3B8", "--accent": "#00A3BF",
+  "--accent-2": "#38BDF8", "--line": "rgba(255,255,255,0.08)", "--danger": "#F43F5E",
+  "--success": "#10B981",
+  "--on-accent": "#FFFFFF",
+  "--on-accent-2": "#070A11",
+  "--nav-bg": "#070A11", "--nav-text": "#F8FAFC",
+  "--bar-bg": "#0B0F17", "--bar-ink": "#F8FAFC", "--bar-line": "rgba(255,255,255,0.08)",
+  "--bar-hover-line": "rgba(255,255,255,0.16)", "--bar-panel-shadow": "rgba(0,0,0,0.6)",
+  "--bar-role-bg": "rgba(0,163,191,0.12)", "--bar-role-ink": "#00C2CB",
+  "--bar-active-bg": "rgba(0,163,191,0.18)", "--bar-active-ink": "#00E5FF", "--bar-active-line": "rgba(0,163,191,0.3)",
+  "--bar-hover-bg": "#1E293B", "--bar-unread-bg": "rgba(244,63,94,0.16)", "--bar-unread-hover-bg": "rgba(244,63,94,0.26)",
+  "--page-texture": "none",
+  "--callout-bg": "#1E293B", "--callout-line": "#00A3BF",
 };
 
 const STUDENT_LIGHT = {
   ...STUDENT_SHARED,
   "--bg": "#FAF6EC", "--surface": "#FFFEFA", "--surface-2": "#EEF3FA",
   "--ink": "#1F2E4D",
-  // ink-soft darkened 2026-08-15 (WCAG pass) — #767C89 cleared only
-  // 3.88:1/4.15:1 as secondary body text against --bg/--surface (needs 4.5:1).
   "--ink-soft": "#6A707B",
-  // accent/danger darkened — #D93A3A cleared only 4.21:1 as danger/link
-  // text against --bg (needs 4.5:1); #D52929 clears it and keeps the
-  // white-on-accent button pairing comfortably above 3:1.
   "--accent": "#D52929",
-  // accent-2 darkened — #3B6FD9 cleared only 4.14:1 as --bar-role-ink /
-  // --bar-active-ink text against --bar-role-bg (needs 4.5:1).
   "--accent-2": "#2E66D7", "--line": "#B9D0EE", "--danger": "#D52929",
-  // success (2026-08-21): same value as the tutor light theme — this green
-  // clears 4.5:1+ against --surface/--bg here too, no role-specific tuning needed.
   "--success": "#1E7D61",
   "--on-accent": "#FFFFFF",
-  // Added 2026-08-15 (WCAG pass): --accent-2 fill (chat avatars, stepper
-  // dots, active row buttons) — white clears 5.25:1 here, same as --on-accent.
   "--on-accent-2": "#FFFFFF",
   "--nav-bg": "#1B1B1D", "--nav-text": "#FAF6EC",
   "--bar-bg": "#FFFEFA", "--bar-ink": "#1F2E4D", "--bar-line": "#B9D0EE",
@@ -182,40 +161,26 @@ const STUDENT_LIGHT = {
   "--bar-active-bg": "#EAF1FC", "--bar-active-ink": "#2E66D7", "--bar-active-line": "#D3E3FA",
   "--bar-hover-bg": "#FAF6EC", "--bar-unread-bg": "#FDEBEB", "--bar-unread-hover-bg": "#FBDCDC",
   "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(59,111,217,0.08) 27px 28px)",
-  // callout-line darkened significantly — #E8D877 on #FFF3A3 was 1.28:1,
-  // an effectively invisible border (needs 3:1 as a UI/non-text element);
-  // #9C8A1A (a mustard olive) clears 3:1 while staying in the same warm-
-  // yellow family as the sticky-note callout background.
   "--callout-bg": "#FFF3A3", "--callout-line": "#9C8A1A",
 };
 
 const STUDENT_DARK = {
   ...STUDENT_SHARED,
-  "--bg": "#16241D", "--surface": "#1C2C23", "--surface-2": "#23362A",
-  "--ink": "#F5F3EC", "--ink-soft": "#9FB0A5",
-  // accent/danger lightened 2026-08-15 (WCAG pass) — #E06A5E cleared only
-  // 4.46:1 as accent/danger text against --surface (needs 4.5:1).
-  "--accent": "#E16E62",
-  "--accent-2": "#6FB3D9", "--line": "rgba(245,243,236,0.16)", "--danger": "#E16E62",
-  // success (2026-08-21): same mint as the tutor dark theme — clears 7.3:1+
-  // against this theme's dark surfaces (--bg #16241D, --surface #1C2C23).
-  "--success": "#5FCB9E",
-  "--on-accent": "#16241D",
-  // Added 2026-08-15 (WCAG pass): the worst case found in the audit —
-  // --accent-2 here is a light sky-blue (correct as small text against the
-  // dark bg), but the same token filling chat avatars/stepper dots/active
-  // row buttons with hardcoded white text was only 2.30:1, effectively
-  // unreadable. No single color can serve both roles; --nav-bg clears
-  // 7.67:1 as a dark label on this light fill.
-  "--on-accent-2": "#101B15",
-  "--nav-bg": "#101B15", "--nav-text": "#F5F3EC",
-  "--bar-bg": "#1C2C23", "--bar-ink": "#F5F3EC", "--bar-line": "rgba(245,243,236,0.16)",
-  "--bar-hover-line": "rgba(245,243,236,0.28)", "--bar-panel-shadow": "rgba(0,0,0,0.5)",
-  "--bar-role-bg": "#23384A", "--bar-role-ink": "#6FB3D9",
-  "--bar-active-bg": "#23384A", "--bar-active-ink": "#6FB3D9", "--bar-active-line": "#2E4A61",
-  "--bar-hover-bg": "#23362A", "--bar-unread-bg": "#3A2426", "--bar-unread-hover-bg": "#472C2E",
-  "--page-texture": "repeating-linear-gradient(to bottom, transparent 0 27px, rgba(245,243,236,0.03) 27px 28px)",
-  "--callout-bg": "#23362A", "--callout-line": "#6FB3D9",
+  "--bg": "#0B0F17", "--surface": "#111827", "--surface-2": "#1E293B",
+  "--ink": "#F8FAFC", "--ink-soft": "#94A3B8",
+  "--accent": "#00A3BF",
+  "--accent-2": "#38BDF8", "--line": "rgba(255,255,255,0.08)", "--danger": "#F43F5E",
+  "--success": "#10B981",
+  "--on-accent": "#FFFFFF",
+  "--on-accent-2": "#070A11",
+  "--nav-bg": "#070A11", "--nav-text": "#F8FAFC",
+  "--bar-bg": "#0B0F17", "--bar-ink": "#F8FAFC", "--bar-line": "rgba(255,255,255,0.08)",
+  "--bar-hover-line": "rgba(255,255,255,0.16)", "--bar-panel-shadow": "rgba(0,0,0,0.6)",
+  "--bar-role-bg": "rgba(0,163,191,0.12)", "--bar-role-ink": "#00C2CB",
+  "--bar-active-bg": "rgba(0,163,191,0.18)", "--bar-active-ink": "#00E5FF", "--bar-active-line": "rgba(0,163,191,0.3)",
+  "--bar-hover-bg": "#1E293B", "--bar-unread-bg": "rgba(244,63,94,0.16)", "--bar-unread-hover-bg": "rgba(244,63,94,0.26)",
+  "--page-texture": "none",
+  "--callout-bg": "#1E293B", "--callout-line": "#00A3BF",
 };
 
 /* =========================================================================

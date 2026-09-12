@@ -21,6 +21,13 @@ export function ThemeProvider({ children }) {
   });
 
   useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", mode);
+      document.documentElement.classList.toggle("dark", mode === "dark");
+    }
+  }, [mode]);
+
+  useEffect(() => {
     if (hasOverride) return;
     const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
     if (!mq) return;
