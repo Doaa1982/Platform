@@ -463,6 +463,7 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.TranscriptStatus).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.TranscriptSource).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.TranscriptError).HasMaxLength(2000);
+            entity.Property(e => e.TranscriptionJobId);
 
             entity.Property(e => e.WhatYoullLearn).HasMaxLength(1000);
 

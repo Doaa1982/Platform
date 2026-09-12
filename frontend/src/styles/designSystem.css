@@ -1,0 +1,75 @@
+/* src/styles/designSystem.css */
+
+/* Google Font Import */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+:root {
+  /* Color palette (HSL) */
+  --color-primary-h: 260;
+  --color-primary-s: 80%;
+  --color-primary-l: 60%;
+  --color-primary: hsl(var(--color-primary-h), var(--color-primary-s), var(--color-primary-l));
+  --color-primary-dark: hsl(var(--color-primary-h), var(--color-primary-s), calc(var(--color-primary-l) - 10%));
+  --color-accent-h: 190;
+  --color-accent-s: 70%;
+  --color-accent-l: 55%;
+  --color-accent: hsl(var(--color-accent-h), var(--color-accent-s), var(--color-accent-l));
+  --color-bg: hsl(0, 0%, 100%);
+  --color-bg-dark: hsl(0, 0%, 10%);
+  --color-surface: rgba(255, 255, 255, 0.8);
+  --color-surface-dark: rgba(20, 20, 20, 0.8);
+  --glass-blur: 12px;
+  --radius: 12px;
+  --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: var(--color-bg-dark);
+    --color-surface: var(--color-surface-dark);
+    --color-primary: hsl(var(--color-primary-h), var(--color-primary-s), calc(var(--color-primary-l) + 10%));
+    --color-accent: hsl(var(--color-accent-h), var(--color-accent-s), calc(var(--color-accent-l) + 10%));
+  }
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-primary);
+}
+
+/* Glassmorphism utility class */
+.glass-card {
+  background: var(--color-surface);
+  backdrop-filter: saturate(180%) blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: var(--transition);
+}
+
+.glass-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* Animated button utility */
+.button-animated {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.button-animated:hover {
+  background: linear-gradient(135deg, var(--color-primary-dark), var(--color-accent));
+  transform: translateY(-1px);
+}

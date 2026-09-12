@@ -38,7 +38,13 @@ export function ThemeProvider({ children }) {
     setHasOverride(true);
   }, []);
 
-  const value = useMemo(() => ({ mode, toggleMode }), [mode, toggleMode]);
+  const setThemeMode = useCallback((next) => {
+    localStorage.setItem(STORAGE_KEY, next);
+    setMode(next);
+    setHasOverride(true);
+  }, []);
+
+  const value = useMemo(() => ({ mode, toggleMode, setThemeMode }), [mode, toggleMode, setThemeMode]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

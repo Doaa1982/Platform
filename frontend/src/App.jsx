@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMediaQuery } from "usehooks-ts";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, Calendar, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, ListChecks, Lock, LogOut, Menu, MessageCircle, MessageSquare, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, Zap
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, ListChecks, Lock, LogOut, Menu, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, Zap
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -434,22 +434,71 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onToggleNav }) {
       <LanguageToggle compact={compact} />
       <ThemeToggle />
       <NotificationBell />
-      <span className="lw-accountbar__who">
-        {compact ? <span className="lw-accountbar__avatar">{(me?.fullName || "?").trim()[0]}</span> : me?.fullName}
-      </span>
-      {canSwitchSide && (
-        <button onClick={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}
-                aria-label={t(`sides.${otherKey}.label`)}>
-          <ArrowLeftRight size={12} /> {!compact && t(`sides.${otherKey}.label`)}
-        </button>
-      )}
-      {eligibleWorkspaces.length > 1 && (
-        <button onClick={leaveWorkspace}>{t("accountbar.switchWorkspace")}</button>
-      )}
-      <button onClick={signOut} aria-label={t("accountbar.signOut")}>
-        <LogOut size={12} /> {!compact && t("accountbar.signOut")}
-      </button>
+      <AccountMenu
+        me={me}
+        canSwitchSide={canSwitchSide}
+        switchSideLabel={t(`sides.${otherKey}.label`)}
+        onSwitchSide={() => { window.history.pushState({}, "", other.path); window.dispatchEvent(new PopStateEvent("popstate")); }}
+        canSwitchWorkspace={eligibleWorkspaces.length > 1}
+        onSwitchWorkspace={leaveWorkspace}
+        onSignOut={signOut}
+      />
     </div>
+  );
+}
+
+/* A single, familiar avatar-trigger dropdown (same scrim+panel affordance as
+   NotificationBell and the "More" nav menu) replacing what used to be up to
+   four separate, disconnected controls (name pill, switch-side, switch-
+   workspace, sign out) crowding the bar. Avatar+name read clearly at any
+   width, so this needs none of AccountBar's own compact-mode branching. */
+function AccountMenu({ me, canSwitchSide, switchSideLabel, onSwitchSide, canSwitchWorkspace, onSwitchWorkspace, onSignOut }) {
+  const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const name = (me?.fullName || "?").trim();
+  const initial = name[0]?.toUpperCase() || "?";
+  const hasExtras = canSwitchSide || canSwitchWorkspace;
+
+  return (
+    <span className="lw-accountmenu">
+      <button
+        className="lw-accountmenu__trigger" onClick={() => setOpen((v) => !v)}
+        aria-label={t("accountbar.myAccount")} aria-haspopup="true" aria-expanded={open}
+      >
+        <span className="lw-accountmenu__avatar">{initial}</span>
+        <span className="lw-accountmenu__name">{name}</span>
+        <ChevronDown size={12} className="lw-accountmenu__chev" />
+      </button>
+      {open && (
+        <>
+          <div className="lw-notifbell__scrim" onClick={() => setOpen(false)} />
+          <div className="lw-accountmenu__panel">
+            <div className="lw-accountmenu__id">
+              <span className="lw-accountmenu__avatar lw-accountmenu__avatar--lg">{initial}</span>
+              <span className="lw-accountmenu__idtext">
+                <span className="lw-accountmenu__idname">{name}</span>
+                {me?.email && <span className="lw-accountmenu__idemail">{me.email}</span>}
+              </span>
+            </div>
+            {hasExtras && <div className="lw-accountmenu__divider" />}
+            {canSwitchSide && (
+              <button className="lw-accountmenu__item" onClick={() => { onSwitchSide(); setOpen(false); }}>
+                <ArrowLeftRight size={14} /> {switchSideLabel}
+              </button>
+            )}
+            {canSwitchWorkspace && (
+              <button className="lw-accountmenu__item" onClick={() => { onSwitchWorkspace(); setOpen(false); }}>
+                <Building2 size={14} /> {t("accountbar.switchWorkspace")}
+              </button>
+            )}
+            <div className="lw-accountmenu__divider" />
+            <button className="lw-accountmenu__item lw-accountmenu__item--danger" onClick={onSignOut}>
+              <LogOut size={14} /> {t("accountbar.signOut")}
+            </button>
+          </div>
+        </>
+      )}
+    </span>
   );
 }
 
@@ -552,10 +601,6 @@ const LEARNER_NAV = [
   { id: "courses", labelKey: "learnerNav.courses", icon: BookOpen },
   { id: "assessments", labelKey: "learnerNav.assessments", icon: ClipboardCheck, capability: "assessments" },
   { id: "assignments", labelKey: "learnerNav.assignments", icon: ListChecks },
-  { id: "certificates", labelKey: "learnerNav.certificates", icon: Award, capability: "certificates" },
-  { id: "schedule", labelKey: "learnerNav.schedule", icon: Calendar, capability: "schedule" },
-  { id: "messages", labelKey: "learnerNav.messages", icon: MessageSquare, capability: "messages" },
-  { id: "community", labelKey: "learnerNav.community", icon: MessageCircle, capability: "community" },
   { id: "ai", labelKey: "__AI__", icon: Bot, capability: "aiTutor" },
 ];
 const PRIMARY_LEARNER_NAV = ["dashboard", "courses"];
@@ -1184,14 +1229,43 @@ const CSS = `
     color: var(--bar-ink); border-color: var(--bar-hover-line);
     background: var(--surface-2, rgba(0,0,0,0.04)); transform: translateY(-1px);
   }
-  .lw-accountbar .lw-accountbar__who {
-    background: var(--surface); border: 1px solid var(--line); color: var(--ink); padding: 5px 12px; font-weight: 600;
+  .lw-accountmenu { position: relative; }
+  .lw-accountbar .lw-accountmenu__trigger {
+    background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+    padding: 4px 10px 4px 4px; font-weight: 600;
   }
-  .lw-accountbar__avatar {
-    display: flex; align-items: center; justify-content: center;
+  .lw-accountbar .lw-accountmenu__trigger:hover { border-color: var(--bar-hover-line); }
+  .lw-accountmenu__avatar {
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     width: 22px; height: 22px; border-radius: 50%;
     background: var(--accent); color: #fff;
     font-family: var(--font-body); font-weight: 700; font-size: 0.75rem;
+  }
+  .lw-accountmenu__avatar--lg { width: 36px; height: 36px; font-size: 0.95rem; }
+  .lw-accountmenu__chev { color: var(--ink-soft); transition: transform .18s ease; }
+  .lw-accountmenu__trigger[aria-expanded="true"] .lw-accountmenu__chev { transform: rotate(180deg); }
+  .lw-accountmenu__panel {
+    position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 41;
+    width: 250px; overflow: hidden; padding: 6px;
+    background: var(--bar-bg); color: var(--bar-ink); border: 1px solid var(--bar-line); border-radius: 12px;
+    box-shadow: 0 12px 36px var(--bar-panel-shadow);
+  }
+  .lw-accountmenu__id { display: flex; align-items: center; gap: 10px; padding: 8px 8px 10px; }
+  .lw-accountmenu__idtext { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .lw-accountmenu__idname { font-weight: 700; font-size: 0.88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lw-accountmenu__idemail { font-size: 0.76rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lw-accountmenu__divider { height: 1px; background: var(--bar-line); margin: 4px 4px; }
+  .lw-accountbar .lw-accountmenu__item {
+    display: flex; width: 100%; justify-content: flex-start; gap: 8px;
+    background: transparent; border: 1px solid transparent; color: var(--bar-ink);
+    border-radius: 8px; padding: 8px; font-weight: 500;
+  }
+  .lw-accountbar .lw-accountmenu__item:hover { background: var(--bar-hover-bg, var(--surface-2, rgba(0,0,0,0.05))); transform: none; }
+  .lw-accountbar .lw-accountmenu__item--danger { color: var(--danger); }
+  .lw-accountbar .lw-accountmenu__item--danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  @media (max-width: ${ACCOUNTBAR_COMPACT_PX}px) {
+    .lw-accountmenu__name { display: none; }
+    .lw-accountbar .lw-accountmenu__trigger { padding: 4px; border-color: transparent; background: transparent; }
   }
 
   .lw-accountbar__navlinks { display: inline-flex; align-items: center; gap: 6px; }

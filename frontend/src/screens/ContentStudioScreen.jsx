@@ -1698,6 +1698,11 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   const transcriptSource = revision?.transcriptSource ?? "None";
   const [transcriptError, setTranscriptError] = useState(null);
   const [startingTranscript, setStartingTranscript] = useState(false);
+  // Automatic language detection has been observed to confidently pick the
+  // wrong language on a real, heavily code-switched lesson video (mostly
+  // Arabic, transcribed almost entirely in English) — letting the tutor pin
+  // it here is more reliable than trusting the guess.
+  const [transcriptLanguage, setTranscriptLanguage] = useState("auto");
 
   useEffect(() => {
     if (transcriptStatus !== "Processing") return;
@@ -1709,7 +1714,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
     setTranscriptError(null);
     setStartingTranscript(true);
     try {
-      await api.generateLessonTranscript(session.token, slug, lesson.id);
+      await api.generateLessonTranscript(session.token, slug, lesson.id, transcriptLanguage);
       onChanged();
     } catch (e) {
       setTranscriptError(e.message);
@@ -1924,9 +1929,23 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                   )}
                 </span>
                 {transcriptStatus !== "Processing" && (
-                  <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={startingTranscript || !hasVideo} onClick={(e) => { e.preventDefault(); handleGenerateTranscript(); }} title={!hasVideo ? "Upload a video first" : ""}>
-                    {startingTranscript ? <LoaderCircle size={13} className="lw-studio__spin" /> : <Sparkles size={13} />} {t(transcriptStatus === "Failed" ? "studio.retryTranscript" : "studio.generateTranscript")}
-                  </button>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <select
+                      value={transcriptLanguage}
+                      disabled={startingTranscript || !hasVideo}
+                      onChange={(e) => setTranscriptLanguage(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      title={t("studio.transcriptLanguageHint")}
+                      style={{ fontSize: "0.78rem", padding: "3px 6px" }}
+                    >
+                      <option value="auto">{t("studio.transcriptLanguageAuto")}</option>
+                      <option value="ar">{t("studio.transcriptLanguageArabic")}</option>
+                      <option value="en">{t("studio.transcriptLanguageEnglish")}</option>
+                    </select>
+                    <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={startingTranscript || !hasVideo} onClick={(e) => { e.preventDefault(); handleGenerateTranscript(); }} title={!hasVideo ? "Upload a video first" : ""}>
+                      {startingTranscript ? <LoaderCircle size={13} className="lw-studio__spin" /> : <Sparkles size={13} />} {t(transcriptStatus === "Failed" ? "studio.retryTranscript" : "studio.generateTranscript")}
+                    </button>
+                  </span>
                 )}
                 {transcriptStatus === "Processing" && (
                   <span className="muted" style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: 4 }}>
@@ -1934,6 +1953,11 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                   </span>
                 )}
               </summary>
+              {transcriptStatus === "Failed" && (
+                <p className="muted" style={{ margin: "8px 0 0", whiteSpace: "pre-wrap" }}>
+                  {revision.transcriptError ?? t("studio.transcriptFailed")}
+                </p>
+              )}
               <textarea
                 rows={8}
                 value={transcript}

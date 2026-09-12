@@ -51,11 +51,11 @@ const en = {
   },
 
   accountbar: {
-    switchWorkspace: "Switch workspace", signOut: "Sign out",
+    switchWorkspace: "Switch workspace", signOut: "Sign out", myAccount: "My account",
   },
 
   themeToggle: {
-    switchToLight: "Switch to light mode", switchToDark: "Switch to dark mode",
+    switchToLight: "Switch to light mode", switchToDark: "Switch to dark mode", groupLabel: "Theme",
   },
 
   notifbell: {
@@ -943,6 +943,10 @@ const en = {
     confirmRemoveVideo: "Remove this lesson's video? This cannot be undone.",
     transcriptNone: "No transcript yet.",
     generateTranscript: "Generate transcript",
+    transcriptLanguageHint: "Pin the spoken language if you know it — automatic detection can pick the wrong one on a mixed-language video.",
+    transcriptLanguageAuto: "Auto-detect",
+    transcriptLanguageArabic: "Arabic",
+    transcriptLanguageEnglish: "English",
     transcriptProcessing: "Transcribing… this can take a few minutes.",
     transcriptFailed: "Transcription failed.",
     retryTranscript: "Try again",
@@ -1627,11 +1631,11 @@ const ar = {
   },
 
   accountbar: {
-    switchWorkspace: "تبديل مساحة العمل", signOut: "تسجيل الخروج",
+    switchWorkspace: "تبديل مساحة العمل", signOut: "تسجيل الخروج", myAccount: "حسابي",
   },
 
   themeToggle: {
-    switchToLight: "التبديل إلى الوضع الفاتح", switchToDark: "التبديل إلى الوضع الداكن",
+    switchToLight: "التبديل إلى الوضع الفاتح", switchToDark: "التبديل إلى الوضع الداكن", groupLabel: "المظهر",
   },
 
   notifbell: {
@@ -2519,6 +2523,10 @@ const ar = {
     confirmRemoveVideo: "هل تريد إزالة فيديو هذا الدرس؟ لا يمكن التراجع عن هذا الإجراء.",
     transcriptNone: "لا يوجد نص مكتوب بعد.",
     generateTranscript: "إنشاء نص مكتوب",
+    transcriptLanguageHint: "حدد لغة الحديث إذا كنت تعرفها — قد يختار الكشف التلقائي اللغة الخطأ في فيديو متعدد اللغات.",
+    transcriptLanguageAuto: "كشف تلقائي",
+    transcriptLanguageArabic: "العربية",
+    transcriptLanguageEnglish: "الإنجليزية",
     transcriptProcessing: "جارٍ تحويل الفيديو إلى نص… قد يستغرق هذا بضع دقائق.",
     transcriptFailed: "فشل إنشاء النص المكتوب.",
     retryTranscript: "إعادة المحاولة",

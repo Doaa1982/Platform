@@ -18,6 +18,8 @@ public class TranscriptionBackgroundService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await RecoverInterruptedJobsAsync(stoppingToken);
+
         await foreach (var job in queue.Reader.ReadAllAsync(stoppingToken))
         {
             try
@@ -38,6 +40,55 @@ public class TranscriptionBackgroundService(
         }
     }
 
+    /// <summary>
+    /// <see cref="TranscriptionQueue"/> is an in-memory channel (its own doc comment already
+    /// calls this out): a job that was enqueued or already in flight is lost outright if the
+    /// process restarts, but the revision it belonged to was already flipped to Processing
+    /// before that job was queued. Left alone, that revision stays stuck in Processing forever
+    /// — no job is ever coming to complete or fail it, and nothing about that is visible
+    /// anywhere. Every restart (an ordinary occurrence in local Aspire development) sweeps
+    /// these up front and resolves them to a clear, visible Failed state instead.
+    /// </summary>
+    private async Task RecoverInterruptedJobsAsync(CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+
+        var stuck = await db.Set<LessonRevision>()
+            .Where(r => r.TranscriptStatus == TranscriptStatus.Processing)
+            .ToListAsync(ct);
+
+        var changed = false;
+        foreach (var revision in stuck)
+        {
+            if (revision.TranscriptionJobId is not { } jobId)
+            {
+                // Processing with no TranscriptionJobId shouldn't happen through
+                // BeginTranscription (it always sets one), but a row could reach this
+                // state some other way (a pre-migration row, manual data edit, etc.).
+                // There's no job id to satisfy FailTranscription's match check, and
+                // guessing one would be worse than leaving it — surface it loudly
+                // instead of crashing this service's startup for every other stuck row.
+                logger.LogError(
+                    "Lesson revision {LessonRevisionId} is stuck in Processing with no TranscriptionJobId — " +
+                    "can't be auto-recovered. Needs a manual fix (e.g. set TranscriptStatus back to Failed/None " +
+                    "directly in the database).",
+                    revision.Id);
+                continue;
+            }
+
+            logger.LogWarning(
+                "Recovering lesson revision {LessonRevisionId} left in Processing from before this service last " +
+                "started — its transcription job was lost with the previous process and can never complete.",
+                revision.Id);
+            revision.FailTranscription(jobId,
+                "Transcription was interrupted when the service restarted before it finished. Please try again.");
+            changed = true;
+        }
+
+        if (changed) await db.SaveChangesAsync(ct);
+    }
+
     private async Task ProcessAsync(TranscriptionJob job, CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
@@ -53,14 +104,22 @@ public class TranscriptionBackgroundService(
         try
         {
             var filePath = job.FilePath ?? (downloadedFilePath = await DownloadToTempFileAsync(job.SourceUrl!, ct));
-            result = await provider.TranscribeAsync(filePath, job.FileName, ct);
+            result = await provider.TranscribeAsync(filePath, job.FileName, job.Language, ct);
         }
         catch (Exception ex)
         {
             // Provider failures (bad key, rejected job, timeout) are expected
             // operational outcomes, not bugs — recorded on the revision as a
-            // normal Failed state rather than rethrown.
+            // normal Failed state rather than rethrown. Still logged here,
+            // unconditionally: this is the only place that ever sees the full
+            // exception, and previously only its .Message reached the DB —
+            // nothing was ever written to the console/Aspire logs, so a
+            // provider failure was invisible outside the tutor manually
+            // reading the revision's TranscriptError.
             failure = ex.Message;
+            logger.LogError(ex,
+                "Transcription provider failed for lesson revision {LessonRevisionId} (job {JobId})",
+                job.LessonRevisionId, job.JobId);
         }
         finally
         {
@@ -88,6 +147,7 @@ public class TranscriptionBackgroundService(
             return;
         }
 
+        bool applied;
         if (result is not null)
         {
             // No chapters is a normal outcome (short video, unsupported
@@ -97,11 +157,28 @@ public class TranscriptionBackgroundService(
             // treatment for segments — most providers simply don't expose them.
             var chaptersJson = result.Chapters.Count > 0 ? JsonSerializer.Serialize(result.Chapters) : null;
             var segmentsJson = result.Segments.Count > 0 ? JsonSerializer.Serialize(result.Segments) : null;
-            revision.CompleteTranscription(result.Text, chaptersJson, segmentsJson);
+            applied = revision.CompleteTranscription(job.JobId, result.Text, chaptersJson, segmentsJson);
         }
         else
         {
-            revision.FailTranscription(failure ?? "Transcription failed for an unknown reason.");
+            applied = revision.FailTranscription(job.JobId, failure ?? "Transcription failed for an unknown reason.");
+        }
+
+        if (!applied)
+        {
+            // The revision moved on before this job's result arrived — the
+            // video was replaced, or transcription was re-run, while this job
+            // was still in flight. Discarding is correct (this result no
+            // longer describes what the revision now points at), but it must
+            // be visible: previously this branch was unreachable (the old
+            // signature just no-opped on the same condition), which is
+            // exactly how a video could end up with no transcript and no
+            // trace of why.
+            logger.LogWarning(
+                "Discarding {Outcome} transcription result for lesson revision {LessonRevisionId} (job {JobId}): " +
+                "no longer the current attempt — superseded by a video replacement or a newer transcription run.",
+                result is not null ? "successful" : "failed", job.LessonRevisionId, job.JobId);
+            return;
         }
 
         await db.SaveChangesAsync(ct);

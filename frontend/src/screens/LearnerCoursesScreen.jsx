@@ -401,13 +401,13 @@ const CSS = `
 
   /* Curriculum Detail View */
   .lw-curriculum-hero {
-    text-align: start; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--line);
+    text-align: center; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--line);
   }
   .lw-curriculum-title {
     font-size: 2.1rem; font-weight: 700; color: var(--ink); margin: 4px 0 14px; letter-spacing: -0.02em; line-height: 1.25;
   }
   .lw-curriculum-stats {
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;
   }
   .lw-curriculum-stat {
     display: inline-flex; align-items: center; gap: 6px; font-size: 0.86rem; font-weight: 500;

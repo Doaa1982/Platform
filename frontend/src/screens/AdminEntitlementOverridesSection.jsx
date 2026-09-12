@@ -175,6 +175,7 @@ export default function AdminEntitlementOverridesSection() {
           {overrides.length === 0 && <p className="pl-admin__overridesempty">{t("admin.overridesEmpty")}</p>}
 
           {overrides.length > 0 && (
+            <div className="pl-admin__tablewrap">
             <table className="pl-admin__table">
               <thead>
                 <tr>
@@ -205,6 +206,7 @@ export default function AdminEntitlementOverridesSection() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </>
       )}

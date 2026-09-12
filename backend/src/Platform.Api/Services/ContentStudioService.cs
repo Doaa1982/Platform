@@ -29,7 +29,7 @@ public class ContentStudioService(
     GenerateGlossarySkill generateGlossary, GenerateHomeworkSkill generateHomework,
     ExtractLessonContentFromResourceSkill extractLessonContent)
 {
-    /// <summary>Speechmatics' supported input formats (AI Video Transcript Implementation Plan §4/§7) — checked against the uploaded file's extension before a job is ever submitted.</summary>
+    /// <summary>Supported input formats for whichever IAudioTranscriptionProvider is active (AI Video Transcript Implementation Plan §4/§7; both Deepgram and Speechmatics accept all of these directly) — checked against the uploaded file's extension before a job is ever submitted.</summary>
     private static readonly string[] SupportedTranscriptionExtensions =
         [".wav", ".mp3", ".aac", ".ogg", ".mpeg", ".amr", ".m4a", ".mp4", ".flac"];
 
@@ -875,6 +875,8 @@ public class ContentStudioService(
         return await GetLessonAsync(slug, caller, lessonId, ct);
     }
 
+    private static readonly string[] SupportedTranscriptionLanguages = ["auto", "en", "ar"];
+
     /// <summary>
     /// Kicks off AI transcription (AI Video Transcript Implementation Plan) for
     /// whichever revision is currently open for editing — the draft if one
@@ -884,12 +886,21 @@ public class ContentStudioService(
     /// MutateLessonAsync's single-aggregate mutate delegate. Returns as soon
     /// as the job is queued — the actual transcription runs on
     /// TranscriptionBackgroundService, not inside this request.
+    /// <paramref name="language"/> null/"auto" defers to the provider's own Automatic Language
+    /// Identification (SpeechmaticsOptions.Language); "en"/"ar" pins it. A tutor override exists
+    /// because ALI has been observed to confidently mistranscribe a real, heavily code-switched
+    /// lesson video entirely in the wrong language — the tutor who spoke it is the more reliable
+    /// source of truth than a guess.
     /// </summary>
     public async Task<ProvisioningResult<LessonDetailResponse>> GenerateTranscriptAsync(
-        string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
+        string slug, Guid caller, Guid lessonId, string? language, CancellationToken ct = default)
     {
         var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        if (language is not null && !SupportedTranscriptionLanguages.Contains(language, StringComparer.OrdinalIgnoreCase))
+            return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
+                $"\"{language}\" isn't a supported transcription language. Use one of: {string.Join(", ", SupportedTranscriptionLanguages)}."));
 
         if (!await entitlements.HasEntitlementAsync(
                 ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
@@ -905,7 +916,9 @@ public class ContentStudioService(
         if (revision is null)
             return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This lesson has no revision to transcribe yet."));
 
-        TranscriptionJob job;
+        string fileNameForJob;
+        string? filePathForJob = null;
+        string? sourceUrlForJob = null;
         if (revision.VideoAssetId is not null)
         {
             var asset = await db.LearningAssets.AsNoTracking()
@@ -917,8 +930,8 @@ public class ContentStudioService(
                 return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
                     $"\"{extension}\" videos aren't supported for transcription yet. Supported formats: {string.Join(", ", SupportedTranscriptionExtensions)}."));
 
-            job = new TranscriptionJob(ctx.Workspace!.Id, lessonId, revision.Id, asset.OriginalFileName,
-                FilePath: assetStorage.ResolvePath(asset.ObjectKey));
+            fileNameForJob = asset.OriginalFileName;
+            filePathForJob = assetStorage.ResolvePath(asset.ObjectKey);
         }
         else if (revision.VideoUrl is not null)
         {
@@ -934,18 +947,24 @@ public class ContentStudioService(
                 return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
                     $"This video link doesn't look like a supported video file. Supported formats: {string.Join(", ", SupportedTranscriptionExtensions)}."));
 
-            var fileName = Path.GetFileName(uri.AbsolutePath);
-            job = new TranscriptionJob(ctx.Workspace!.Id, lessonId, revision.Id, fileName, SourceUrl: revision.VideoUrl);
+            fileNameForJob = Path.GetFileName(uri.AbsolutePath);
+            sourceUrlForJob = revision.VideoUrl;
         }
         else
         {
             return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This revision has no video to transcribe yet."));
         }
 
-        try { revision.BeginTranscription(); }
+        Guid jobId;
+        try { jobId = revision.BeginTranscription(); }
         catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
 
         await db.SaveChangesAsync(ct);
+
+        var languageOverride = language is null || language.Equals("auto", StringComparison.OrdinalIgnoreCase)
+            ? null : language.ToLowerInvariant();
+        var job = new TranscriptionJob(ctx.Workspace!.Id, lessonId, revision.Id, fileNameForJob, jobId,
+            filePathForJob, sourceUrlForJob, languageOverride);
 
         transcriptionQueue.Enqueue(job);
 

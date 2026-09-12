@@ -107,7 +107,7 @@ const CSS = `
   .lw-nby {
     display: flex; gap: 16px; align-items: flex-start;
     background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch;
+    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch; margin: 0 auto;
     box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   }
   .lw-nby__icon {
@@ -117,7 +117,7 @@ const CSS = `
   }
   .lw-nby__lead { font-size: 0.95rem; margin: 0; line-height: 1.6; }
 
-  .lw-lassess__group { margin-bottom: 30px; max-width: 76ch; }
+  .lw-lassess__group { margin-bottom: 30px; }
   .lw-lassess__grouptitle {
     font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.06em; color: var(--ink-soft); margin-bottom: 12px;

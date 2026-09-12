@@ -622,7 +622,7 @@ function BillingOverview({
       <CurrentPlanCard plan={plan} packs={packs} subscription={subscription} />
 
       <div className="lw-bill__entcard">
-        <h2 className="lw-bill__sectiontitle">{t("subscription.entitlementsTitle")}</h2>
+        <h2 className="lw-sectiontitle">{t("subscription.entitlementsTitle")}</h2>
         <table className="lw-bill__enttable">
           <tbody>
             {ENTITLEMENT_DOMAINS.flatMap((domain) => {
@@ -1094,7 +1094,7 @@ const CSS = `
     pointer-events: none;
   }
   [dir="rtl"] .lw-bill__entcard::after { transform: scaleX(-1); }
-  .lw-bill__entcard .lw-bill__sectiontitle { margin-top: 0; }
+  .lw-bill__entcard h2.lw-sectiontitle { margin-top: 0; }
   .lw-bill__enttable { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-bottom: 0; }
   .lw-bill__enttable tr { border-top: 1px solid var(--line); }
   .lw-bill__enttable tr:first-child { border-top: none; }
@@ -1149,7 +1149,6 @@ const CSS = `
   .lw-bill__reactivatebanner p { margin: 0; font-size: 0.82rem; color: var(--ink-soft); }
   .lw-bill__reactivatebanneractions { display: flex; gap: 8px; flex-shrink: 0; }
 
-  .lw-bill__sectiontitle { font-size: 0.98rem; margin: 22px 0 10px; }
 
   .lw-bill__actions { margin-top: 18px; }
   .lw-bill__changenote { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 10px; max-width: 60ch; }

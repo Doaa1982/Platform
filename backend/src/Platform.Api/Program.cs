@@ -301,9 +301,12 @@ else if (transcriptionOptions.Provider.Equals("LocalWhisper", StringComparison.O
     // client.Timeout = Timeout.InfiniteTimeSpan above is the only ceiling.
 #pragma warning restore EXTEXP0001
 }
-else
+else if (transcriptionOptions.Provider.Equals("Speechmatics", StringComparison.OrdinalIgnoreCase))
 {
-    // Hosted, production default. Speechmatics accepts the stored video file
+    // Former hosted production default, replaced by Deepgram (see the "else"
+    // branch below) but kept fully wired up and selectable — set
+    // Transcription:Provider back to "Speechmatics" to roll back, no rebuild
+    // beyond a restart needed. Speechmatics accepts the stored video file
     // directly (mp4 is a supported input format), so no audio-extraction step.
     var speechmaticsOptions = builder.Configuration.GetSection(SpeechmaticsOptions.Section).Get<SpeechmaticsOptions>() ?? new SpeechmaticsOptions();
     builder.Services.AddSingleton(speechmaticsOptions);
@@ -317,6 +320,23 @@ else
     // need extending too, mainly to give a large video's upload (the one
     // real risk for a single HTTP call here) enough room.
     ExtendResilienceTimeouts(speechmaticsClientBuilder, TimeSpan.FromHours(2));
+}
+else
+{
+    // Hosted, production default as of 2026-09-11 (previously Speechmatics —
+    // see the branch above, kept selectable). Deepgram's pre-recorded API is
+    // synchronous (transcript comes back in the same response), so no
+    // polling loop is needed the way Speechmatics required one.
+    var deepgramOptions = builder.Configuration.GetSection(DeepgramOptions.Section).Get<DeepgramOptions>() ?? new DeepgramOptions();
+    builder.Services.AddSingleton(deepgramOptions);
+    var deepgramClientBuilder = builder.Services.AddHttpClient<IAudioTranscriptionProvider, DeepgramTranscriptionProvider>(client =>
+    {
+        client.BaseAddress = new Uri("https://api.deepgram.com/");
+        client.Timeout = Timeout.InfiniteTimeSpan; // a large video's upload + processing can run long; no separate polling deadline exists here
+    });
+    // Same reasoning as Speechmatics' own extension above — give a large
+    // video's upload (held open for the whole synchronous call) enough room.
+    ExtendResilienceTimeouts(deepgramClientBuilder, TimeSpan.FromHours(2));
 }
 // A lesson's video can also be a direct-file URL instead of an uploaded
 // asset (TranscriptionBackgroundService downloads it to a temp file before

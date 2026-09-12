@@ -671,10 +671,14 @@ export function changeAssignmentVisibility(token, slug, lessonId, activityId, vi
  * POST .../lessons/{lessonId}/transcript/generate — starts AI transcription
  * of the open revision's uploaded video. Returns immediately with
  * TranscriptStatus "Processing"; poll getLesson to see when it's Ready.
+ * `language` is optional — null/"auto" (the default) defers to the
+ * provider's own automatic language detection; "en"/"ar" pins it, for a
+ * tutor who already knows what language they taught in and doesn't want to
+ * risk a wrong automatic guess.
  */
-export function generateLessonTranscript(token, slug, lessonId) {
+export function generateLessonTranscript(token, slug, lessonId, language = null) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/transcript/generate`, {
-    method: "POST", token,
+    method: "POST", token, body: { language },
   });
 }
 

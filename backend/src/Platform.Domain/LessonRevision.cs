@@ -59,6 +59,16 @@ public class LessonRevision
     /// <summary>Why the last transcription attempt failed, if TranscriptStatus is Failed. Null otherwise.</summary>
     public string? TranscriptError { get; private set; }
     public TranscriptSource TranscriptSource { get; private set; } = TranscriptSource.None;
+    /// <summary>
+    /// Identifies which background attempt is the current one while TranscriptStatus is
+    /// Processing — set by <see cref="BeginTranscription"/>, checked by
+    /// <see cref="CompleteTranscription"/>/<see cref="FailTranscription"/> so a job that was
+    /// superseded (video replaced, or transcription re-run, while it was still in flight)
+    /// can be told apart from the current one purely by enum state, which previously let a
+    /// late-arriving stale result silently overwrite — or be silently swallowed by — the
+    /// attempt that actually matters. Null once the attempt resolves (Ready/Failed/None).
+    /// </summary>
+    public Guid? TranscriptionJobId { get; private set; }
 
     /// <summary>
     /// Speechmatics Auto Chapters for this transcript, as JSON
@@ -222,12 +232,32 @@ public class LessonRevision
         RequireDraft();
         VideoAssetId = source.VideoAssetId;
         VideoUrl = source.VideoUrl;
-        Transcript = source.Transcript;
-        TranscriptStatus = source.TranscriptStatus;
-        TranscriptSource = source.TranscriptSource;
-        TranscriptError = source.TranscriptError;
-        TranscriptChaptersJson = source.TranscriptChaptersJson;
-        TranscriptSegmentsJson = source.TranscriptSegmentsJson;
+        if (source.TranscriptStatus == TranscriptStatus.Processing)
+        {
+            // The source's running job targets the source revision's own id
+            // (TranscriptionJob.LessonRevisionId) — it will never resolve
+            // against this draft. Copying "Processing" here would leave this
+            // draft stuck in that state forever, with no job coming to
+            // complete or fail it. There's nothing stable to copy yet, so
+            // this draft starts clean instead of inheriting an in-flight
+            // attempt it doesn't own.
+            Transcript = null;
+            TranscriptStatus = TranscriptStatus.None;
+            TranscriptSource = TranscriptSource.None;
+            TranscriptError = null;
+            TranscriptChaptersJson = null;
+            TranscriptSegmentsJson = null;
+        }
+        else
+        {
+            Transcript = source.Transcript;
+            TranscriptStatus = source.TranscriptStatus;
+            TranscriptSource = source.TranscriptSource;
+            TranscriptError = source.TranscriptError;
+            TranscriptChaptersJson = source.TranscriptChaptersJson;
+            TranscriptSegmentsJson = source.TranscriptSegmentsJson;
+        }
+        TranscriptionJobId = null;
         RequireQuizToComplete = source.RequireQuizToComplete;
         UpdatedAt = DateTime.UtcNow;
     }
@@ -363,30 +393,43 @@ public class LessonRevision
     // should be able to transcribe a video that's already published and live,
     // not just while still drafting it.
 
-    /// <summary>Starts a transcription attempt. Refuses to start a second one while one is already running.</summary>
-    public void BeginTranscription()
+    /// <summary>Starts a transcription attempt. Refuses to start a second one while one is already running. Returns the new attempt's id, which the caller must carry through to <see cref="CompleteTranscription"/>/<see cref="FailTranscription"/> so a later, superseded attempt can't be mistaken for this one.</summary>
+    public Guid BeginTranscription()
     {
         if (VideoAssetId is null && VideoUrl is null)
             throw new InvalidOperationException("This revision has no video to transcribe.");
         if (TranscriptStatus == TranscriptStatus.Processing)
             throw new InvalidOperationException("A transcription is already running for this revision.");
 
+        TranscriptionJobId = Guid.NewGuid();
         TranscriptStatus = TranscriptStatus.Processing;
         TranscriptError = null;
         UpdatedAt = DateTime.UtcNow;
+        return TranscriptionJobId.Value;
     }
 
-    /// <summary>Records a successful transcription. Only valid while one is running — a stray completion for a job that was never started or already resolved is ignored rather than trusted. <paramref name="chaptersJson"/> and <paramref name="segmentsJson"/> are null when the provider detected none (e.g. the video was too short, or this provider doesn't expose that granularity) — a normal outcome, not a failure.</summary>
-    public void CompleteTranscription(string text, string? chaptersJson = null, string? segmentsJson = null)
+    /// <summary>
+    /// Records a successful transcription for the given <paramref name="jobId"/>. Only takes
+    /// effect while that exact attempt is still the current one — returns false (and applies
+    /// nothing) for a stray completion whose job was never started, already resolved, or was
+    /// superseded by a newer attempt (e.g. the video was replaced, or transcription was re-run,
+    /// while this one was still in flight). <paramref name="chaptersJson"/> and
+    /// <paramref name="segmentsJson"/> are null when the provider detected none (e.g. the video
+    /// was too short, or this provider doesn't expose that granularity) — a normal outcome, not
+    /// a failure.
+    /// </summary>
+    public bool CompleteTranscription(Guid jobId, string text, string? chaptersJson = null, string? segmentsJson = null)
     {
-        if (TranscriptStatus != TranscriptStatus.Processing) return;
+        if (TranscriptStatus != TranscriptStatus.Processing || TranscriptionJobId != jobId) return false;
         Transcript = text;
         TranscriptChaptersJson = chaptersJson;
         TranscriptSegmentsJson = segmentsJson;
         TranscriptStatus = TranscriptStatus.Ready;
         TranscriptSource = TranscriptSource.Automatic;
         TranscriptError = null;
+        TranscriptionJobId = null;
         UpdatedAt = DateTime.UtcNow;
+        return true;
     }
 
     /// <summary>
@@ -408,16 +451,18 @@ public class LessonRevision
         UpdatedAt = DateTime.UtcNow;
     }
 
-    /// <summary>Records a failed transcription attempt. Same "only while Processing" guard as <see cref="CompleteTranscription"/>.</summary>
-    public void FailTranscription(string reason)
+    /// <summary>Records a failed transcription attempt for the given <paramref name="jobId"/>. Same "only while it's still the current attempt" guard, and same false-for-stale return, as <see cref="CompleteTranscription"/>.</summary>
+    public bool FailTranscription(Guid jobId, string reason)
     {
-        if (TranscriptStatus != TranscriptStatus.Processing) return;
+        if (TranscriptStatus != TranscriptStatus.Processing || TranscriptionJobId != jobId) return false;
         TranscriptStatus = TranscriptStatus.Failed;
         TranscriptError = reason;
+        TranscriptionJobId = null;
         UpdatedAt = DateTime.UtcNow;
+        return true;
     }
 
-    /// <summary>The video changed underneath an existing transcript, so it no longer describes the current video — back to None rather than leaving stale text in place.</summary>
+    /// <summary>The video changed underneath an existing transcript, so it no longer describes the current video — back to None rather than leaving stale text in place. Also abandons any in-flight job: its eventual result would otherwise arrive with a TranscriptionJobId that no longer matches anything and be silently discarded anyway, so this just makes that explicit up front.</summary>
     private void ClearTranscript()
     {
         Transcript = null;
@@ -426,6 +471,7 @@ public class LessonRevision
         TranscriptStatus = TranscriptStatus.None;
         TranscriptSource = TranscriptSource.None;
         TranscriptError = null;
+        TranscriptionJobId = null;
     }
 
     private void RequireDraft()

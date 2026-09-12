@@ -44,7 +44,12 @@ public interface IAudioTranscriptionProvider
     /// returns the plain-text transcript plus any detected chapters. May take
     /// a long time for a real video — callers must not call this from inside
     /// a request a user is waiting on; it belongs on a background worker (AI
-    /// Video Transcript Implementation Plan §6).
+    /// Video Transcript Implementation Plan §6). <paramref name="languageOverride"/>
+    /// null defers to this provider's own configured default (e.g. Speechmatics'
+    /// Automatic Language Identification); an ISO-639-1 code pins the language for
+    /// this one job — a tutor-supplied override, since automatic detection has
+    /// been observed to confidently pick the wrong language on real, heavily
+    /// code-switched lesson audio.
     /// </summary>
-    Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, CancellationToken ct = default);
+    Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default);
 }

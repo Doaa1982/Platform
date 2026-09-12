@@ -110,6 +110,16 @@ public record SetResourceVisibilityRequest(bool VisibleToLearners);
 public record SetRequireQuizToCompleteRequest(bool RequireQuizToComplete);
 public record SetVideoUrlRequest(string Url);
 
+/// <summary>
+/// Language is optional and null/omitted means "let Speechmatics guess" (Automatic Language
+/// Identification, narrowed to English/Arabic — see SpeechmaticsOptions.Language). Automatic
+/// detection has been observed to confidently pick the wrong language on real, heavily
+/// code-switched lesson audio (a mostly-Arabic lesson transcribed almost entirely in English),
+/// so a tutor who already knows what language they taught in can pin it here instead of
+/// gambling on ALI. "en" or "ar" — any other value is rejected.
+/// </summary>
+public record GenerateTranscriptRequest(string? Language);
+
 /// <summary>Type is one of LearningActivityType's 14 names. AssessmentId only applies for Quiz/QuestionSet; ExternalUrl only for ExternalLearningTool — both ignored otherwise.</summary>
 public record SaveLearningActivityRequest(
     string Type, string Title, string? Instructions, Guid? AssessmentId = null, string? ExternalUrl = null,

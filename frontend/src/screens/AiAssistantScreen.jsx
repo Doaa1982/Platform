@@ -153,7 +153,7 @@ const CSS = `
   .lw-nby {
     display: flex; gap: 16px; align-items: flex-start;
     background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch;
+    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch; margin: 0 auto;
     box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   }
   .lw-nby__icon {
@@ -174,12 +174,12 @@ const CSS = `
   @keyframes lwLearnSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .lw-learn__spin { animation: none; } }
 
-  .lw-ai__askingabout { color: var(--ink-soft); font-size: 0.88rem; margin: -6px 0 20px; }
+  .lw-ai__askingabout { color: var(--ink-soft); font-size: 0.88rem; margin: -6px 0 20px; text-align: center; }
 
   .lw-ai__chat {
     display: flex; flex-direction: column;
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-    max-width: 76ch; height: min(600px, 65vh); overflow: hidden;
+    max-width: 76ch; margin: 0 auto; height: min(600px, 65vh); overflow: hidden;
     box-shadow: 0 8px 30px rgba(0,0,0,0.04);
   }
   .lw-ai__list { flex: 1; overflow-y: auto; padding: 24px 24px; display: flex; flex-direction: column; gap: 18px; }

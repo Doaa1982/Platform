@@ -23,15 +23,23 @@ namespace Platform.Api.AI;
 /// </summary>
 public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOptions options) : IAudioTranscriptionProvider
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    // DefaultIgnoreCondition matters specifically for JobConfig: Speechmatics rejects a job whose
+    // config has language_identification_config present with a JSON null value ("Invalid type.
+    // Expected: object, given: null") when a language is pinned instead of "auto" — it wants the
+    // key omitted entirely, not null. This only affects writing (serializing JobConfig below); it
+    // has no effect on this same JsonOptions instance's other use here, deserializing responses.
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
 
-    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, CancellationToken ct = default)
+    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(
                 "Speechmatics:ApiKey is not configured. Set it in appsettings.Development.json or user secrets before requesting a transcript.");
 
-        var jobId = await SubmitJobAsync(filePath, fileName, ct);
+        var jobId = await SubmitJobAsync(filePath, fileName, languageOverride, ct);
         await WaitForCompletionAsync(jobId, ct);
 
         // Two GET requests against the same completed job, not two jobs — no
@@ -53,8 +61,14 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
         return new TranscriptionResult(text, chapters, []);
     }
 
-    private async Task<string> SubmitJobAsync(string filePath, string fileName, CancellationToken ct)
+    private async Task<string> SubmitJobAsync(string filePath, string fileName, string? languageOverride, CancellationToken ct)
     {
+        // A tutor-supplied override (see IAudioTranscriptionProvider.TranscribeAsync) always
+        // wins over the configured default — added after Automatic Language Identification
+        // confidently mistranscribed a real, heavily code-switched lesson video entirely in
+        // the wrong language. The tutor who spoke it knows better than a guess.
+        var language = languageOverride ?? options.Language;
+
         var config = JsonSerializer.Serialize(new JobConfig(
             Type: "transcription",
             // Speaker diarization requested specifically because Speechmatics'
@@ -69,24 +83,28 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
             // tutor speaking, but worth remembering if multi-speaker lesson
             // videos ever become common — the labels would then carry real
             // information current skills don't use.
-            TranscriptionConfig: new TranscriptionConfig(options.Language, options.Model, "speaker",
-                // Speechmatics' default behavior for Automatic Language
-                // Identification is to reject the whole job outright when its
-                // confidence is low ("Language identification could not
-                // identify any language with sufficient confidence") — seen
-                // in practice on a real lesson video whose audio transcribed
-                // fine once a language was picked manually on Speechmatics'
-                // own web console, so the audio itself was transcribable; ALI
-                // just wasn't confident enough on its own. ExpectedLanguages
-                // narrows ALI's guess to the two languages lesson videos
-                // actually use (see options.Language's own doc comment) and
-                // LowConfidenceAction "allow" stops a shaky-but-plausible
-                // guess from failing the entire job, without hard-pinning one
-                // language the way setting options.Language itself would.
-                options.Language.Equals("auto", StringComparison.OrdinalIgnoreCase)
-                    ? new LanguageIdentificationConfig(["en", "ar"], "allow")
-                    : null),
-            AutoChaptersConfig: new AutoChaptersConfig()), JsonOptions);
+            TranscriptionConfig: new TranscriptionConfig(language, options.Model, "speaker"),
+            AutoChaptersConfig: new AutoChaptersConfig(),
+            // Speechmatics' default behavior for Automatic Language
+            // Identification is to reject the whole job outright when its
+            // confidence is low ("Language identification could not
+            // identify any language with sufficient confidence") — seen
+            // in practice on a real lesson video whose audio transcribed
+            // fine once a language was picked manually on Speechmatics'
+            // own web console, so the audio itself was transcribable; ALI
+            // just wasn't confident enough on its own. ExpectedLanguages
+            // narrows ALI's guess to the two languages lesson videos
+            // actually use (see options.Language's own doc comment) and
+            // LowConfidenceAction "allow" stops a shaky-but-plausible
+            // guess from failing the entire job, without hard-pinning one
+            // language the way pinning it here would. Only attached when the
+            // resolved language is actually "auto" — a pinned language (the
+            // override, or a non-"auto" configured default) needs no ALI at
+            // all, and Speechmatics rejects language_identification_config
+            // alongside a non-"auto" language.
+            LanguageIdentificationConfig: language.Equals("auto", StringComparison.OrdinalIgnoreCase)
+                ? new LanguageIdentificationConfig(["en", "ar"], "allow")
+                : null), JsonOptions);
 
         await using var fileStream = File.OpenRead(filePath);
         using var content = new MultipartFormDataContent();
@@ -191,13 +209,20 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
     private record JobConfig(
         [property: JsonPropertyName("type")] string Type,
         [property: JsonPropertyName("transcription_config")] TranscriptionConfig TranscriptionConfig,
-        [property: JsonPropertyName("auto_chapters_config")] AutoChaptersConfig AutoChaptersConfig);
+        [property: JsonPropertyName("auto_chapters_config")] AutoChaptersConfig AutoChaptersConfig,
+        // A top-level sibling of transcription_config, NOT nested inside it —
+        // Speechmatics rejects the whole job with "Additional property
+        // language_identification_config is not allowed" if it's nested
+        // (confirmed against Speechmatics' own docs after seeing that exact
+        // rejection in practice; this was wrong from the start, silently
+        // failing every "auto" job with zero visibility until logging was
+        // added to the background service).
+        [property: JsonPropertyName("language_identification_config")] LanguageIdentificationConfig? LanguageIdentificationConfig);
 
     private record TranscriptionConfig(
         [property: JsonPropertyName("language")] string Language,
         [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("diarization")] string Diarization,
-        [property: JsonPropertyName("language_identification_config")] LanguageIdentificationConfig? LanguageIdentificationConfig);
+        [property: JsonPropertyName("diarization")] string Diarization);
 
     private record LanguageIdentificationConfig(
         [property: JsonPropertyName("expected_languages")] string[] ExpectedLanguages,

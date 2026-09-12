@@ -69,34 +69,36 @@ function OverviewTable({ slug, token, onSelect, t }) {
       )}
 
       {data && data.assessments.length > 0 && (
-        <table className="lw-assess__table">
-          <thead>
-            <tr>
-              <th>{t("assessOverview.colProduct")}</th>
-              <th>{t("assessOverview.colLesson")}</th>
-              <th>{t("assessOverview.colKind")}</th>
-              <th>{t("assessOverview.colStatus")}</th>
-              <th>{t("assessOverview.colQuestions")}</th>
-              <th>{t("assessOverview.colSubmissions")}</th>
-              <th>{t("assessOverview.colAvgScore")}</th>
-              <th>{t("assessOverview.colPassRate")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.assessments.map((a) => (
-              <tr key={a.assessmentId} className="lw-assess__row" onClick={() => onSelect(a.assessmentId)}>
-                <td>{a.productTitle}</td>
-                <td>{a.lessonTitle}</td>
-                <td>{t(a.kind === "Standalone" ? "assessOverview.kindStandalone" : "assessOverview.kindInteractive")}</td>
-                <td><span className={`lw-assess__pill ${a.status === "Published" ? "is-published" : ""}`}>{a.status}</span></td>
-                <td>{a.questionCount}</td>
-                <td>{a.submissionCount}</td>
-                <td>{a.averageScorePercent != null ? `${a.averageScorePercent}%` : "—"}</td>
-                <td>{a.passRatePercent != null ? `${a.passRatePercent}%` : "—"}</td>
+        <div className="lw-assess__tablescroll">
+          <table className="lw-assess__table">
+            <thead>
+              <tr>
+                <th>{t("assessOverview.colProduct")}</th>
+                <th>{t("assessOverview.colLesson")}</th>
+                <th>{t("assessOverview.colKind")}</th>
+                <th>{t("assessOverview.colStatus")}</th>
+                <th>{t("assessOverview.colQuestions")}</th>
+                <th>{t("assessOverview.colSubmissions")}</th>
+                <th>{t("assessOverview.colAvgScore")}</th>
+                <th>{t("assessOverview.colPassRate")}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.assessments.map((a) => (
+                <tr key={a.assessmentId} className="lw-assess__row" onClick={() => onSelect(a.assessmentId)}>
+                  <td>{a.productTitle}</td>
+                  <td>{a.lessonTitle}</td>
+                  <td>{t(a.kind === "Standalone" ? "assessOverview.kindStandalone" : "assessOverview.kindInteractive")}</td>
+                  <td><span className={`lw-assess__pill ${a.status === "Published" ? "is-published" : ""}`}>{a.status}</span></td>
+                  <td>{a.questionCount}</td>
+                  <td>{a.submissionCount}</td>
+                  <td>{a.averageScorePercent != null ? `${a.averageScorePercent}%` : "—"}</td>
+                  <td>{a.passRatePercent != null ? `${a.passRatePercent}%` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <div className="lw-assess__certnote">
@@ -164,7 +166,7 @@ function AssessmentDetail({ assessmentId, slug, token, onBack }) {
           {t("assessOverview.passingThreshold", { percent: data.passingThresholdPercent })} · {data.submissions.length} {t("assessOverview.submissionsWord")}
         </p>
 
-        <h2 className="lw-assess__sectiontitle">{t("assessOverview.questionBreakdown")}</h2>
+        <h2 className="lw-sectiontitle">{t("assessOverview.questionBreakdown")}</h2>
         {data.questions.length === 0 && <p className="muted">{t("assessOverview.noQuestions")}</p>}
         {data.questions.map((q) => (
           <div className="lw-assess__qcard" key={q.questionId}>
@@ -190,9 +192,10 @@ function AssessmentDetail({ assessmentId, slug, token, onBack }) {
           </div>
         ))}
 
-        <h2 className="lw-assess__sectiontitle">{t("assessOverview.submitters")}</h2>
+        <h2 className="lw-sectiontitle">{t("assessOverview.submitters")}</h2>
         {data.submissions.length === 0 && <p className="muted">{t("assessOverview.noSubmissions")}</p>}
         {data.submissions.length > 0 && (
+          <div className="lw-assess__tablescroll">
           <table className="lw-assess__table">
             <thead>
               <tr>
@@ -258,6 +261,7 @@ function AssessmentDetail({ assessmentId, slug, token, onBack }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </>}
     </div>
@@ -278,7 +282,8 @@ const CSS = `
   @media (prefers-reduced-motion: reduce) { .lw-learn__spin { animation: none; } }
 
 
-  .lw-assess__table { width: 100%; border-collapse: collapse; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; font-size: 0.86rem; }
+  .lw-assess__tablescroll { width: 100%; overflow-x: auto; border-radius: var(--radius-sm); }
+  .lw-assess__table { width: 100%; min-width: 640px; border-collapse: collapse; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; font-size: 0.86rem; }
   .lw-assess__table th {
     text-align: start; font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--ink-soft); background: var(--surface-2); padding: 10px 14px; border-bottom: 1px solid var(--line);
@@ -304,7 +309,6 @@ const CSS = `
   .lw-assess__overridenote { flex: 1; min-width: 160px; }
 
   .lw-assess__meta { color: var(--ink-soft); font-size: 0.85rem; margin: -6px 0 20px; }
-  .lw-assess__sectiontitle { font-size: 1rem; margin: 26px 0 12px; }
 
   .lw-assess__qcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 10px; position: relative; }
   /* Notebook theme: dog-eared page corner (2026-08-15). */

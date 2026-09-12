@@ -9,10 +9,19 @@ namespace Platform.Api.AI;
 /// uploaded asset, already on local disk) or <see cref="SourceUrl"/> (a
 /// direct-file video URL — the worker downloads it to a temp file first) is
 /// set; the worker deletes the file afterward only when it downloaded it.
+/// <see cref="JobId"/> is the id LessonRevision.BeginTranscription handed
+/// back when this job was created — carried through to
+/// CompleteTranscription/FailTranscription so a job superseded while still in
+/// flight (video replaced, or transcription re-run) can be told apart from
+/// the current attempt instead of matching it by coincidence.
+/// <see cref="Language"/> null defers to the provider's own configured default
+/// (Automatic Language Identification for Speechmatics); a tutor-supplied
+/// "en"/"ar" pins it instead — added after ALI confidently mistranscribed a
+/// real, heavily code-switched lesson video entirely in the wrong language.
 /// </summary>
 public record TranscriptionJob(
-    Guid WorkspaceId, Guid LessonId, Guid LessonRevisionId, string FileName,
-    string? FilePath = null, string? SourceUrl = null);
+    Guid WorkspaceId, Guid LessonId, Guid LessonRevisionId, string FileName, Guid JobId,
+    string? FilePath = null, string? SourceUrl = null, string? Language = null);
 
 /// <summary>
 /// In-process work queue for transcription jobs (AI Video Transcript

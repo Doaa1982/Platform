@@ -519,7 +519,7 @@ const CSS = `
   .lw-nby {
     display: flex; gap: 16px; align-items: flex-start;
     background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch;
+    border-radius: var(--radius); padding: 24px 26px; max-width: 68ch; margin: 0 auto;
     box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   }
   .lw-nby__icon {

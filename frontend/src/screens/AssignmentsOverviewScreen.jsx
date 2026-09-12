@@ -229,7 +229,7 @@ function EvaluateForm({ row, lessonId, activityId, slug, token, onDone, onCancel
 
   return (
     <div className="lw-assign__evalpanel">
-      <h2 className="lw-assign__sectiontitle">{t("assignOverview.evaluateTitle", { name: row.fullName })}</h2>
+      <h2 className="lw-sectiontitle">{t("assignOverview.evaluateTitle", { name: row.fullName })}</h2>
       {row.responseText && <p className="lw-assign__responsefull">{row.responseText}</p>}
       {error && <Message type="error">{error}</Message>}
       <form onSubmit={submit} className="lw-assign__evalform">
@@ -292,7 +292,6 @@ const CSS = `
   .lw-assign__pill.is-failed, .lw-assign__pill.is-closed { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
 
   .lw-assign__meta { color: var(--ink-soft); font-size: 0.85rem; margin: -6px 0 20px; }
-  .lw-assign__sectiontitle { font-size: 1rem; margin: 26px 0 12px; }
 
   .lw-assign__evalpanel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 16px; margin-top: 18px; }
   .lw-assign__responsefull { white-space: pre-wrap; background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 0.86rem; }

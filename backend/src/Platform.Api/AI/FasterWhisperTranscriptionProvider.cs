@@ -24,8 +24,12 @@ public class FasterWhisperTranscriptionProvider(HttpClient http, FasterWhisperOp
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, CancellationToken ct = default)
+    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default)
     {
+        // A tutor-supplied override always wins over the configured default —
+        // see IAudioTranscriptionProvider.TranscribeAsync.
+        var language = languageOverride ?? options.Language;
+
         await using var fileStream = File.OpenRead(filePath);
         using var content = new MultipartFormDataContent();
 
@@ -35,8 +39,8 @@ public class FasterWhisperTranscriptionProvider(HttpClient http, FasterWhisperOp
         content.Add(new StringContent(options.Model), "model");
         // Omitting "language" entirely (rather than sending "auto") is what
         // makes faster-whisper detect it per file — see FasterWhisperOptions.Language.
-        if (!options.Language.Equals("auto", StringComparison.OrdinalIgnoreCase))
-            content.Add(new StringContent(options.Language), "language");
+        if (!language.Equals("auto", StringComparison.OrdinalIgnoreCase))
+            content.Add(new StringContent(language), "language");
         content.Add(new StringContent("json"), "response_format");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "v1/audio/transcriptions") { Content = content };

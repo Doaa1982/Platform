@@ -145,8 +145,8 @@ function GlossaryTable({ text }) {
 
 const CSS = `
   .lw-lessoncontent-page { max-width: 900px; margin: 0 auto; padding-bottom: 56px; }
-  .lw-lessoncontent-header { text-align: start; margin-bottom: 24px; }
-  .lw-lessoncontent-title { font-size: 2.1rem; font-weight: 700; color: var(--ink); margin: 4px 0 0; letter-spacing: -0.02em; text-align: start; }
+  .lw-lessoncontent-header { text-align: center; margin-bottom: 24px; }
+  .lw-lessoncontent-title { font-size: 2.1rem; font-weight: 700; color: var(--ink); margin: 4px 0 0; letter-spacing: -0.02em; }
 
   .lw-nby {
     display: flex; gap: 16px; align-items: flex-start;

@@ -31,7 +31,10 @@ public class LocalWhisperTranscriptionProvider(HttpClient http, LocalWhisperOpti
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, CancellationToken ct = default)
+    // languageOverride is accepted for interface compliance but not forwarded — this provider's
+    // local transcription service has no language-selection parameter of its own today (it
+    // always auto-detects), unlike FasterWhisperTranscriptionProvider/SpeechmaticsTranscriptionProvider.
+    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default)
     {
         await using var fileStream = File.OpenRead(filePath);
         using var content = new MultipartFormDataContent();

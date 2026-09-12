@@ -40,12 +40,23 @@ var mail = builder.AddContainer("mailpit", "axllent/mailpit")
 //   dotnet user-secrets set "Parameters:speechmatics-api-key" "<your key>"
 var speechmaticsApiKey = builder.AddParameter("speechmatics-api-key", secret: true);
 
+// Deepgram API key — the hosted production default as of 2026-09-11 (see
+// Transcription:Provider / DeepgramOptions in Platform.Api), replacing
+// Speechmatics in that role. Speechmatics stays fully wired below so
+// Transcription:Provider can be flipped back to "Speechmatics" without a
+// rebuild if Deepgram needs to be rolled back — both keys are supplied so
+// either path works. Never committed — set it via AppHost user-secrets:
+//   cd backend/src/Platform.AppHost
+//   dotnet user-secrets set "Parameters:deepgram-api-key" "<your key>"
+var deepgramApiKey = builder.AddParameter("deepgram-api-key", secret: true);
+
 // Register the API backend project
 var api = builder.AddProject<Projects.Platform_Api>("api")
     .WithReference(db)
     .WaitFor(db)
     .WaitFor(mail)
     .WithEnvironment("Speechmatics__ApiKey", speechmaticsApiKey)
+    .WithEnvironment("Deepgram__ApiKey", deepgramApiKey)
     .WithEnvironment("Email__Enabled", "true")
     .WithEnvironment("Email__Host", "localhost")
     .WithEnvironment("Email__Port", "1025")

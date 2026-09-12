@@ -228,8 +228,9 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     /// lands asynchronously; poll GET (this lesson) to see when it's Ready.
     /// </summary>
     [HttpPost("transcript/generate")]
-    public async Task<ActionResult<LessonDetailResponse>> GenerateTranscript(string slug, Guid lessonId, CancellationToken ct)
-        => Run(await studio.GenerateTranscriptAsync(slug, Caller(), lessonId, ct));
+    public async Task<ActionResult<LessonDetailResponse>> GenerateTranscript(
+        string slug, Guid lessonId, [FromBody] GenerateTranscriptRequest? request, CancellationToken ct)
+        => Run(await studio.GenerateTranscriptAsync(slug, Caller(), lessonId, request?.Language, ct));
 
     /// <summary>Drafts or improves lesson body content from whatever's currently typed in the form. Nothing is saved — the tutor still hits Save themselves.</summary>
     [HttpPost("draft/ai-suggest-body")]

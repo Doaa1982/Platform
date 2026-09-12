@@ -12,8 +12,15 @@ public class SpeechmaticsOptions
 
     public string ApiKey { get; set; } = string.Empty;
 
-    /// <summary>"standard" (cost/turnaround) or "enhanced" (accuracy) — AI Video Transcript plan §2/§8.</summary>
-    public string Model { get; set; } = "standard";
+    /// <summary>
+    /// "standard" (cost/turnaround) or "enhanced" (accuracy) — AI Video Transcript plan §2/§8.
+    /// Defaults to "enhanced": a real lesson video came back with a near-total wrong-language
+    /// transcript under "standard" (Automatic Language Identification confidently picked
+    /// English for audio that was mostly Arabic, heavily code-switched with English math
+    /// terms) — "enhanced" gives ALI a materially better acoustic/language model to work
+    /// from, at higher cost per job.
+    /// </summary>
+    public string Model { get; set; } = "enhanced";
 
     /// <summary>
     /// "auto" (default) turns on Speechmatics' Automatic Language
