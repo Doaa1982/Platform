@@ -59,3 +59,15 @@ public enum TranscriptStatus { None, Processing, Ready, Failed }
 /// by the tutor (Manual), or imported from an external source.
 /// </summary>
 public enum TranscriptSource { None, Automatic, Manual, Imported }
+
+/// <summary>
+/// Where a Lesson Revision's AI transcript enhancement stands. Independent of
+/// <see cref="TranscriptStatus"/> — the raw transcript can be Ready while its
+/// enhancement is None, Processing, Failed, or successfully Ready/ReviewRequired.
+/// ReviewRequired is a distinct terminal state from Ready: the enhanced text was
+/// produced and is saved (so a tutor can read it), but the conservative
+/// preservation checks found something — a changed number, an uncertain segment,
+/// a self-reported preservation-check failure — that means it should not be
+/// treated as a clean, silent replacement candidate without a human look.
+/// </summary>
+public enum EnhancementStatus { None, Processing, Ready, ReviewRequired, Failed }

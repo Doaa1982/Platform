@@ -243,6 +243,20 @@ builder.Services.AddScoped<LessonAssistantSkill>();
 builder.Services.AddScoped<GenerateLessonQuizSkill>();
 builder.Services.AddScoped<GenerateStandaloneQuestionsSkill>();
 builder.Services.AddScoped<ExtractLessonContentFromResourceSkill>();
+builder.Services.AddScoped<EnhanceTranscriptSkill>();
+
+// ── Transcript enhancement (AI Capability Architecture §8, "Enhance
+// Transcript") — a conservative post-transcription editing pass, entirely
+// separate from which speech-to-text provider produced the raw transcript.
+// Same in-memory-queue + background-worker shape as video transcription
+// below, for the same reason: keep the HTTP request fast, poll for the
+// result. A job in flight is lost if the process restarts — same accepted
+// limitation, same startup recovery sweep.
+var transcriptEnhancementOptions = builder.Configuration.GetSection(TranscriptEnhancementOptions.Section)
+    .Get<TranscriptEnhancementOptions>() ?? new TranscriptEnhancementOptions();
+builder.Services.AddSingleton(transcriptEnhancementOptions);
+builder.Services.AddSingleton<TranscriptEnhancementQueue>();
+builder.Services.AddHostedService<TranscriptEnhancementBackgroundService>();
 
 // ── Video transcription (AI Video Transcript Implementation Plan) ──────────
 // A separate provider boundary from the text-completion one above: Claude
@@ -525,6 +539,18 @@ app.MapDefaultEndpoints();
             SkillCreditCost.Create(AiSkillKeys.ExtractLessonContentFromResource, 2, 25),
             SkillCreditCost.Create(AiSkillKeys.ExtractLessonContentFromResource, CreditLedgerService.UnboundedBand, 60));
 
+        db.SaveChanges();
+    }
+
+    // Added after the block above's one-time seed had already run against
+    // real databases (including this one) — `if (!db.SkillCreditCosts.Any())`
+    // only ever fires once per database, so a skill added later needs its own
+    // idempotent, per-key check instead of just appending a row to the list
+    // above, or CreditLedgerService.TryDebitAsync throws
+    // "No SkillCreditCost is priced for ..." on every call to it.
+    if (!db.SkillCreditCosts.Any(c => c.SkillKey == AiSkillKeys.EnhanceTranscript))
+    {
+        db.SkillCreditCosts.Add(SkillCreditCost.Create(AiSkillKeys.EnhanceTranscript, null, 20));
         db.SaveChanges();
     }
 

@@ -73,7 +73,21 @@ public record LessonRevisionRow(
     /// <summary>When true, a video-less lesson only completes once the learner passes its Standalone Quiz, instead of on open. Default false.</summary>
     bool RequireQuizToComplete,
     /// <summary>The work this revision assigns to learners (LearningActivity) — see LearningActivityRow.</summary>
-    IReadOnlyList<LearningActivityRow> LearningActivities);
+    IReadOnlyList<LearningActivityRow> LearningActivities,
+    /// <summary>AI-enhanced version of Transcript — ASR-error correction only, never a replacement. Raw Transcript above is never overwritten. Null until an enhancement has ever completed.</summary>
+    string? EnhancedTranscript,
+    /// <summary>"None" | "Processing" | "Ready" | "ReviewRequired" | "Failed" (EnhancementStatus).</summary>
+    string EnhancementStatus,
+    string? EnhancementProvider,
+    string? EnhancementModel,
+    string? EnhancementPromptVersion,
+    DateTime? EnhancementRequestedAt,
+    DateTime? EnhancementCompletedAt,
+    string? EnhancementError,
+    /// <summary>Increments on every successful (Ready or ReviewRequired) completion.</summary>
+    int EnhancementVersion,
+    /// <summary>Raw JSON array of {segmentId, issue, originalText, reason} the model itself flagged — null until an enhancement has completed; "[]" is a normal "nothing flagged" outcome. Frontend parses defensively.</summary>
+    string? EnhancementReviewItemsJson);
 
 /// <summary>One supplementary file attached to a Lesson Revision (LessonResource), with its Learning Asset's details inlined for display.</summary>
 public record LessonResourceRow(

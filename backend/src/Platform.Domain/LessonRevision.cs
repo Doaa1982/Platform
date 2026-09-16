@@ -95,6 +95,48 @@ public class LessonRevision
     public string? TranscriptSegmentsJson { get; private set; }
 
     /// <summary>
+    /// AI-enhanced version of <see cref="Transcript"/> — ASR-error correction only,
+    /// never a replacement (AI Capability Architecture §8, "Enhance Transcript").
+    /// <see cref="Transcript"/> itself is never overwritten by enhancement; this is
+    /// a separate field precisely so the raw, provider-produced transcript stays
+    /// available for comparison/audit no matter how enhancement turns out. Null
+    /// until an enhancement has ever completed (successfully or with ReviewRequired).
+    /// </summary>
+    public string? EnhancedTranscript { get; private set; }
+
+    public EnhancementStatus EnhancementStatus { get; private set; } = EnhancementStatus.None;
+
+    /// <summary>Why the last enhancement attempt failed, if EnhancementStatus is Failed. Null otherwise.</summary>
+    public string? EnhancementError { get; private set; }
+
+    /// <summary>Which IAiModelProvider produced the current EnhancedTranscript (e.g. "Claude") — audit trail, not used for behavior.</summary>
+    public string? EnhancementProvider { get; private set; }
+
+    /// <summary>Which model produced the current EnhancedTranscript (e.g. "claude-sonnet-5") — audit trail.</summary>
+    public string? EnhancementModel { get; private set; }
+
+    /// <summary>Which version of the enhancement system prompt produced the current EnhancedTranscript (e.g. "TranscriptEnhancement.System.v1") — lets a later prompt change be told apart from an earlier one when auditing past results.</summary>
+    public string? EnhancementPromptVersion { get; private set; }
+
+    public DateTime? EnhancementRequestedAt { get; private set; }
+    public DateTime? EnhancementCompletedAt { get; private set; }
+
+    /// <summary>Increments on every successful (Ready or ReviewRequired) completion — a cheap revision counter a tutor or auditor can use to tell "has this been re-enhanced since I last looked" without comparing text.</summary>
+    public int EnhancementVersion { get; private set; }
+
+    /// <summary>Same race-guard purpose as <see cref="TranscriptionJobId"/> — see its own doc comment. Set by <see cref="BeginEnhancement"/>, checked by <see cref="CompleteEnhancement"/>/<see cref="FailEnhancement"/>.</summary>
+    public Guid? EnhancementJobId { get; private set; }
+
+    /// <summary>Per-segment enhancement detail as JSON (segmentId, text before/after, status, confidence, reason, requiresReview) — present only when the model's response included segments; null for a document-level-only enhancement. Cleared alongside EnhancedTranscript.</summary>
+    public string? EnhancementSegmentsJson { get; private set; }
+
+    /// <summary>Flagged issues the model itself surfaced (segmentId, issue, originalText, reason) as JSON — empty array is a normal "nothing flagged" outcome, not the same as null (never enhanced). Cleared alongside EnhancedTranscript.</summary>
+    public string? EnhancementReviewItemsJson { get; private set; }
+
+    /// <summary>The model's own self-reported preservation-check booleans, as JSON — one input (not the only input) to whether EnhancementStatus lands on Ready or ReviewRequired; see EnhanceTranscriptSkill/TranscriptEnhancementValidator for the independent, code-based checks run alongside it. Cleared alongside EnhancedTranscript.</summary>
+    public string? EnhancementPreservationChecksJson { get; private set; }
+
+    /// <summary>
     /// Short (~3 line) learner-facing preview of what this lesson teaches, shown
     /// before a learner starts it — AI-drafted, tutor-editable, optional. Distinct
     /// from <see cref="Body"/>, which only renders once a learner is already in
@@ -258,6 +300,33 @@ public class LessonRevision
             TranscriptSegmentsJson = source.TranscriptSegmentsJson;
         }
         TranscriptionJobId = null;
+
+        if (source.TranscriptStatus == TranscriptStatus.Processing || source.EnhancementStatus == EnhancementStatus.Processing)
+        {
+            // Same "the running job targets the source revision's own id, and
+            // will never resolve against this draft" reasoning as the
+            // transcript branch above — either there's no stable raw
+            // transcript to enhance yet, or the source's own in-flight
+            // enhancement job can't complete against this new draft.
+            ClearEnhancement();
+        }
+        else
+        {
+            EnhancedTranscript = source.EnhancedTranscript;
+            EnhancementStatus = source.EnhancementStatus;
+            EnhancementError = source.EnhancementError;
+            EnhancementProvider = source.EnhancementProvider;
+            EnhancementModel = source.EnhancementModel;
+            EnhancementPromptVersion = source.EnhancementPromptVersion;
+            EnhancementRequestedAt = source.EnhancementRequestedAt;
+            EnhancementCompletedAt = source.EnhancementCompletedAt;
+            EnhancementVersion = source.EnhancementVersion;
+            EnhancementSegmentsJson = source.EnhancementSegmentsJson;
+            EnhancementReviewItemsJson = source.EnhancementReviewItemsJson;
+            EnhancementPreservationChecksJson = source.EnhancementPreservationChecksJson;
+            EnhancementJobId = null;
+        }
+
         RequireQuizToComplete = source.RequireQuizToComplete;
         UpdatedAt = DateTime.UtcNow;
     }
@@ -428,6 +497,9 @@ public class LessonRevision
         TranscriptSource = TranscriptSource.Automatic;
         TranscriptError = null;
         TranscriptionJobId = null;
+        // A fresh raw transcript makes any existing enhancement stale — it was
+        // produced from whatever text used to be here, not this new text.
+        ClearEnhancement();
         UpdatedAt = DateTime.UtcNow;
         return true;
     }
@@ -448,6 +520,10 @@ public class LessonRevision
         TranscriptStatus = TranscriptStatus.Ready;
         TranscriptSource = TranscriptSource.Manual;
         TranscriptError = null;
+        // Same reasoning as CompleteTranscription: the raw transcript just
+        // changed underneath any existing enhancement, which was produced
+        // from whatever text used to be here.
+        ClearEnhancement();
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -472,6 +548,103 @@ public class LessonRevision
         TranscriptSource = TranscriptSource.None;
         TranscriptError = null;
         TranscriptionJobId = null;
+        // An enhancement is only ever meaningful relative to the raw transcript
+        // it was produced from — once that transcript is gone, any enhanced
+        // text (and any in-flight enhancement job, which would resolve against
+        // a raw transcript that no longer exists) is equally stale.
+        ClearEnhancement();
+    }
+
+    // ── Transcript Enhancement (AI Capability Architecture §8, "Enhance Transcript") ──
+    //
+    // Never touches Transcript itself — this only ever reads it as input and
+    // writes to the separate Enhanced* fields, so the raw, provider-produced
+    // transcript stays available for comparison/audit no matter what happens
+    // here. Same job-id race-guard shape as BeginTranscription/
+    // CompleteTranscription/FailTranscription, for the same reason: a
+    // background job's result must be told apart from a stale/superseded one.
+
+    /// <summary>
+    /// Starts an enhancement attempt. Requires a Ready raw transcript to enhance
+    /// (nothing else is a safe input) and refuses to start a second attempt while
+    /// one is already running, so a tutor double-clicking "Enhance transcript" — or
+    /// two tutors doing it at once — can't create two competing background jobs for
+    /// the same revision. Returns the new attempt's id, which the caller must carry
+    /// through to <see cref="CompleteEnhancement"/>/<see cref="FailEnhancement"/>.
+    /// </summary>
+    public Guid BeginEnhancement()
+    {
+        if (TranscriptStatus != TranscriptStatus.Ready || string.IsNullOrWhiteSpace(Transcript))
+            throw new InvalidOperationException("This revision has no raw transcript ready to enhance yet.");
+        if (EnhancementStatus == EnhancementStatus.Processing)
+            throw new InvalidOperationException("An enhancement is already running for this revision.");
+
+        EnhancementJobId = Guid.NewGuid();
+        EnhancementStatus = EnhancementStatus.Processing;
+        EnhancementRequestedAt = DateTime.UtcNow;
+        EnhancementError = null;
+        UpdatedAt = DateTime.UtcNow;
+        return EnhancementJobId.Value;
+    }
+
+    /// <summary>
+    /// Records a successful enhancement for the given <paramref name="jobId"/>. Same
+    /// "only while it's still the current attempt" guard as <see cref="CompleteTranscription"/> —
+    /// returns false (and applies nothing) for a stale/superseded result.
+    /// <paramref name="requiresReview"/> is the caller's already-computed verdict
+    /// (from the model's own self-reported preservation checks and/or
+    /// TranscriptEnhancementValidator's independent, code-based checks) — this
+    /// method only records it as EnhancementStatus.ReviewRequired vs Ready, it does
+    /// not itself decide what counts as reviewable.
+    /// </summary>
+    public bool CompleteEnhancement(
+        Guid jobId, string enhancedText, bool requiresReview, string provider, string model, string promptVersion,
+        string? segmentsJson = null, string? reviewItemsJson = null, string? preservationChecksJson = null)
+    {
+        if (EnhancementStatus != EnhancementStatus.Processing || EnhancementJobId != jobId) return false;
+        EnhancedTranscript = enhancedText;
+        EnhancementSegmentsJson = segmentsJson;
+        EnhancementReviewItemsJson = reviewItemsJson;
+        EnhancementPreservationChecksJson = preservationChecksJson;
+        EnhancementProvider = provider;
+        EnhancementModel = model;
+        EnhancementPromptVersion = promptVersion;
+        EnhancementStatus = requiresReview ? EnhancementStatus.ReviewRequired : EnhancementStatus.Ready;
+        EnhancementError = null;
+        EnhancementCompletedAt = DateTime.UtcNow;
+        EnhancementVersion += 1;
+        EnhancementJobId = null;
+        UpdatedAt = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>Records a failed enhancement attempt. Same stale-job guard and false-for-stale return as <see cref="FailTranscription"/>. Deliberately never touches EnhancedTranscript — a failed re-enhancement attempt must not erase a previous successful one.</summary>
+    public bool FailEnhancement(Guid jobId, string reason)
+    {
+        if (EnhancementStatus != EnhancementStatus.Processing || EnhancementJobId != jobId) return false;
+        EnhancementStatus = EnhancementStatus.Failed;
+        EnhancementError = reason;
+        EnhancementCompletedAt = DateTime.UtcNow;
+        EnhancementJobId = null;
+        UpdatedAt = DateTime.UtcNow;
+        return true;
+    }
+
+    private void ClearEnhancement()
+    {
+        EnhancedTranscript = null;
+        EnhancementStatus = EnhancementStatus.None;
+        EnhancementError = null;
+        EnhancementProvider = null;
+        EnhancementModel = null;
+        EnhancementPromptVersion = null;
+        EnhancementRequestedAt = null;
+        EnhancementCompletedAt = null;
+        EnhancementVersion = 0;
+        EnhancementJobId = null;
+        EnhancementSegmentsJson = null;
+        EnhancementReviewItemsJson = null;
+        EnhancementPreservationChecksJson = null;
     }
 
     private void RequireDraft()

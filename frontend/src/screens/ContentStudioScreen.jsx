@@ -1197,9 +1197,7 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
                       </button>
                     )}
                   </span>
-                  <textarea rows={3} value={whatYoullLearn} onChange={(e) => setWhatYoullLearn(e.target.value)}
-                            placeholder={t("studio.whatYoullLearnPlaceholder")}
-                            disabled={busy || !editable} />
+                  <textarea rows={3} value={whatYoullLearn} onChange={(e) => setWhatYoullLearn(e.target.value)} placeholder={t("studio.whatYoullLearnPlaceholder")} disabled={busy || !editable} className={editable ? "editable" : ""} />
                   {aiOutcomesError && <Message type="error">{aiOutcomesError}</Message>}
                 </label>
 
@@ -1215,9 +1213,7 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
                       </button>
                     )}
                   </span>
-                  <textarea rows={4} value={learningObjectives} onChange={(e) => setLearningObjectives(e.target.value)}
-                            placeholder={t("studio.learningObjectivesPlaceholder")}
-                            disabled={busy || !editable} />
+                  <textarea rows={4} value={learningObjectives} onChange={(e) => setLearningObjectives(e.target.value)} placeholder={t("studio.learningObjectivesPlaceholder") } disabled={busy || !editable} className={editable ? "editable" : ""} />
                   {aiObjectivesError && <Message type="error">{aiObjectivesError}</Message>}
                 </label>
 
@@ -1233,9 +1229,7 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
                       </button>
                     )}
                   </span>
-                  <textarea rows={4} value={glossary} onChange={(e) => setGlossary(e.target.value)}
-                            placeholder={t("studio.glossaryPlaceholder")}
-                            disabled={busy || !editable} />
+                  <textarea rows={4} value={glossary} onChange={(e) => setGlossary(e.target.value)} placeholder={t("studio.glossaryPlaceholder")} disabled={busy || !editable} className={editable ? "editable" : ""} />
                   {aiGlossaryError && <Message type="error">{aiGlossaryError}</Message>}
                 </label>
 
@@ -1251,10 +1245,7 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
                       </button>
                     )}
                   </span>
-                  <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)}
-                            placeholder={t("studio.contentPlaceholder")}
-                            disabled={busy || !editable}
-                            style={publishAttempted && !body.trim() ? invalidFieldStyle : undefined} />
+                  <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} placeholder={t("studio.contentPlaceholder")} disabled={busy || !editable} className={editable ? "editable" : ""} style={publishAttempted && !body.trim() ? invalidFieldStyle : undefined} />
                   {aiBodyError && <Message type="error">{aiBodyError}</Message>}
                 </label>
                 <label className="lw-studio__minsfield">
@@ -1405,7 +1396,7 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
                     </span>
                     <textarea rows={8} value={homework} onChange={(e) => setHomework(e.target.value)}
                               placeholder={t("studio.homeworkPlaceholder")}
-                              disabled={busy || !editable} />
+                              disabled={busy || !editable} className={editable ? "editable" : ""} />
                     {aiHomeworkError && <Message type="error">{aiHomeworkError}</Message>}
                   </label>
                 </div>
@@ -1671,6 +1662,43 @@ function ReplaceVersionDialog({ trigger, busy, onCancel, onChooseNewVersion, onC
 /** Matches LearningAssetService.MaxResourceBytes on the backend. */
 const MAX_VIDEO_BYTES = 500_000_000;
 
+const ENHANCEMENT_BADGE_STYLE = {
+  None: null,
+  Processing: { background: "var(--surface-2, #eee)", color: "var(--ink-soft, #666)" },
+  Ready: { background: "#E5F3EA", color: "#1E7D61" },
+  ReviewRequired: { background: "#F0C040", color: "#4A3A00" },
+  Failed: { background: "color-mix(in srgb, var(--danger, #C0392B) 15%, transparent)", color: "var(--danger, #C0392B)" },
+};
+
+function EnhancementStatusBadge({ status, t }) {
+  const style = ENHANCEMENT_BADGE_STYLE[status];
+  if (!style) return null;
+  return (
+    <span style={{ ...style, borderRadius: 999, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 600 }}>
+      {t(`studio.enhanceStatus${status}`)}
+    </span>
+  );
+}
+
+/** Defensive JSON.parse — the server sends this as a raw string; a parse failure here (unexpected shape, null) just hides the detail list rather than crashing the transcript panel. */
+function EnhancementReviewItems({ json, t }) {
+  let items;
+  try { items = json ? JSON.parse(json) : null; } catch { items = null; }
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  return (
+    <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+      {items.map((item, i) => (
+        <li key={item.segmentId ?? i} style={{ marginBottom: 4 }}>
+          <strong>{item.issue ?? t("studio.enhanceReviewItemFallback")}</strong>
+          {item.originalText && <> — "{item.originalText}"</>}
+          {item.reason && <div className="muted" style={{ fontSize: "0.75rem" }}>{item.reason}</div>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempted, onChanged, onDurationKnown, onRequestNewVersion, transcript, setTranscript }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
@@ -1704,11 +1732,28 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   // it here is more reliable than trusting the guess.
   const [transcriptLanguage, setTranscriptLanguage] = useState("auto");
 
+  // AI Transcript Enhancement — a conservative, tutor-triggered ASR-error
+  // correction pass over the already-Ready raw transcript above. Entirely
+  // separate lifecycle: the raw Transcript field is never touched, and
+  // enhancementStatus/enhancedTranscript are independent server fields. Same
+  // "start job, poll while Processing" shape as transcript generation itself.
+  const enhancementStatus = revision?.enhancementStatus ?? "None";
+  const [enhanceError, setEnhanceError] = useState(null);
+  const [startingEnhancement, setStartingEnhancement] = useState(false);
+  const [confirmingEnhance, setConfirmingEnhance] = useState(false);
+  // Defaults to "enhanced" only when one already existed when this screen
+  // was first opened (e.g. returning to an already-enhanced lesson) — a
+  // lazy initializer, not an effect, so a new enhancement completing later
+  // in the same session never yanks the view out from under a tutor who's
+  // mid-read of the raw text; they switch manually via the buttons below.
+  const [transcriptView, setTranscriptView] = useState(() =>
+    revision?.enhancementStatus === "Ready" || revision?.enhancementStatus === "ReviewRequired" ? "enhanced" : "raw");
+
   useEffect(() => {
-    if (transcriptStatus !== "Processing") return;
+    if (transcriptStatus !== "Processing" && enhancementStatus !== "Processing") return;
     const id = setInterval(() => { onChanged(); }, 5000);
     return () => clearInterval(id);
-  }, [transcriptStatus, onChanged]);
+  }, [transcriptStatus, enhancementStatus, onChanged]);
 
   async function handleGenerateTranscript() {
     setTranscriptError(null);
@@ -1720,6 +1765,20 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
       setTranscriptError(e.message);
     } finally {
       setStartingTranscript(false);
+    }
+  }
+
+  async function handleEnhanceTranscript() {
+    setConfirmingEnhance(false);
+    setEnhanceError(null);
+    setStartingEnhancement(true);
+    try {
+      await api.enhanceLessonTranscript(session.token, slug, lesson.id);
+      onChanged();
+    } catch (e) {
+      setEnhanceError(e.message);
+    } finally {
+      setStartingEnhancement(false);
     }
   }
 
@@ -1966,6 +2025,110 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                 placeholder="Enter or edit the lesson transcript here..."
                 style={{ width: "100%", marginTop: 8, fontFamily: "monospace", fontSize: "13px" }}
               />
+
+              {enhanceError && <Message type="error">{enhanceError}</Message>}
+
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.8rem" }}>
+                    <Sparkles size={13} />
+                    <strong>{t("studio.enhanceTranscriptLabel")}</strong>
+                    <EnhancementStatusBadge status={enhancementStatus} t={t} />
+                  </span>
+
+                  {!confirmingEnhance ? (
+                    <button
+                      className="lw-btn lw-btn--ghost lw-btn--xs"
+                      disabled={transcriptStatus !== "Ready" || startingEnhancement || enhancementStatus === "Processing"}
+                      onClick={() => setConfirmingEnhance(true)}
+                      title={transcriptStatus !== "Ready" ? t("studio.enhanceTranscriptNeedsRawTranscript") : ""}
+                    >
+                      {enhancementStatus === "Processing" ? (
+                        <><LoaderCircle size={13} className="lw-studio__spin" /> {t("studio.enhanceTranscriptEnhancing")}</>
+                      ) : (
+                        <>
+                          <Sparkles size={13} />{" "}
+                          {t(enhancementStatus === "None" ? "studio.enhanceTranscriptEnhance" : "studio.enhanceTranscriptEnhanceAgain")}
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="muted" style={{ fontSize: "0.78rem" }}>{t("studio.enhanceTranscriptConfirm")}</span>
+                      <button className="lw-btn lw-btn--primary lw-btn--xs" disabled={startingEnhancement} onClick={handleEnhanceTranscript}>
+                        {startingEnhancement ? <LoaderCircle size={13} className="lw-studio__spin" /> : t("studio.enhanceTranscriptConfirmYes")}
+                      </button>
+                      <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={startingEnhancement} onClick={() => setConfirmingEnhance(false)}>
+                        {t("studio.enhanceTranscriptConfirmNo")}
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                {enhancementStatus === "Failed" && (
+                  <p className="muted" style={{ margin: "8px 0 0", whiteSpace: "pre-wrap" }}>
+                    {revision.enhancementError ?? t("studio.enhanceTranscriptFailedMessage")}
+                  </p>
+                )}
+
+                {(enhancementStatus === "Ready" || enhancementStatus === "ReviewRequired") && revision.enhancedTranscript && (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, marginBottom: 6 }}>
+                      {["raw", "enhanced", "compare"].map((view) => (
+                        <button
+                          key={view}
+                          className={`lw-btn lw-btn--xs ${transcriptView === view ? "lw-btn--primary" : "lw-btn--ghost"}`}
+                          onClick={() => setTranscriptView(view)}
+                        >
+                          {t(`studio.enhanceTranscriptView${view[0].toUpperCase()}${view.slice(1)}`)}
+                        </button>
+                      ))}
+                    </div>
+
+                    {enhancementStatus === "ReviewRequired" && (
+                      <div style={{ background: "#F0C040", color: "#4A3A00", borderRadius: 8, padding: "8px 12px", marginBottom: 8, fontSize: "0.8rem" }}>
+                        {t("studio.enhanceTranscriptReviewRequired")}
+                        <EnhancementReviewItems json={revision.enhancementReviewItemsJson} t={t} />
+                      </div>
+                    )}
+
+                    <p className="muted" style={{ fontSize: "0.72rem", margin: "4px 0 8px" }}>
+                      {t("studio.enhanceTranscriptMetadata", {
+                        model: revision.enhancementModel ?? "?",
+                        date: revision.enhancementCompletedAt ? new Date(revision.enhancementCompletedAt).toLocaleString() : "?",
+                      })}
+                    </p>
+
+                    {transcriptView === "enhanced" && (
+                      <div>
+                        <span className="lw-tag" style={{ fontSize: "0.7rem" }}>{t("studio.enhanceTranscriptAiTag")}</span>
+                        <textarea
+                          readOnly rows={8} value={revision.enhancedTranscript}
+                          style={{ width: "100%", marginTop: 6, fontFamily: "monospace", fontSize: "13px", background: "var(--surface-2, #f4f4f2)" }}
+                        />
+                      </div>
+                    )}
+
+                    {transcriptView === "compare" && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <div>
+                          <p className="muted" style={{ fontSize: "0.72rem", margin: "0 0 4px" }}>{t("studio.enhanceTranscriptViewRaw")}</p>
+                          <textarea readOnly rows={10} value={transcript} style={{ width: "100%", fontFamily: "monospace", fontSize: "12px" }} />
+                        </div>
+                        <div>
+                          <p className="muted" style={{ fontSize: "0.72rem", margin: "0 0 4px" }}>
+                            {t("studio.enhanceTranscriptAiTag")}
+                          </p>
+                          <textarea
+                            readOnly rows={10} value={revision.enhancedTranscript}
+                            style={{ width: "100%", fontFamily: "monospace", fontSize: "12px", background: "var(--surface-2, #f4f4f2)" }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </details>
           ) : (
             <>

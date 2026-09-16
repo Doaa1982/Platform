@@ -232,6 +232,18 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
         string slug, Guid lessonId, [FromBody] GenerateTranscriptRequest? request, CancellationToken ct)
         => Run(await studio.GenerateTranscriptAsync(slug, Caller(), lessonId, request?.Language, ct));
 
+    /// <summary>
+    /// Starts a conservative AI enhancement pass over the open revision's
+    /// already-Ready raw transcript — ASR-error correction only, the raw
+    /// transcript is never overwritten. Returns immediately with
+    /// EnhancementStatus "Processing" — poll GET (this lesson) to see when
+    /// it's Ready/ReviewRequired/Failed.
+    /// </summary>
+    [HttpPost("transcript/enhance")]
+    public async Task<ActionResult<LessonDetailResponse>> EnhanceTranscript(
+        string slug, Guid lessonId, CancellationToken ct)
+        => Run(await studio.EnhanceTranscriptAsync(slug, Caller(), lessonId, ct));
+
     /// <summary>Drafts or improves lesson body content from whatever's currently typed in the form. Nothing is saved — the tutor still hits Save themselves.</summary>
     [HttpPost("draft/ai-suggest-body")]
     public async Task<ActionResult<AiSuggestBodyResponse>> SuggestBody(

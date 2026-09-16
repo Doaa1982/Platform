@@ -22,8 +22,9 @@ namespace Platform.Api.Services;
 /// things, and only the first should be the starting state.
 /// </summary>
 public class ContentStudioService(
-    PlatformDbContext db, EntitlementResolutionService entitlements,
+    PlatformDbContext db, EntitlementResolutionService entitlements, ICreditLedgerService credits,
     TranscriptionQueue transcriptionQueue, ILearningAssetStorage assetStorage,
+    TranscriptEnhancementQueue transcriptEnhancementQueue, TranscriptEnhancementOptions transcriptEnhancementOptions,
     GenerateLessonBodySkill generateLessonBody, GenerateWhatYoullLearnSkill generateWhatYoullLearn,
     GenerateLessonTitleSkill generateLessonTitle, GenerateLearningObjectivesSkill generateLearningObjectives,
     GenerateGlossarySkill generateGlossary, GenerateHomeworkSkill generateHomework,
@@ -200,7 +201,10 @@ public class ContentStudioService(
                         la.Id, la.Type.ToString(), la.Title, la.Instructions, la.Position, effectiveAssessmentId, la.ExternalUrl,
                         la.ActivityFileAssetId, la.SubmissionMode.ToString(),
                         assignment is not null, assignment?.Id, assignment?.Status.ToString());
-                }).ToList());
+                }).ToList(),
+                r.EnhancedTranscript, r.EnhancementStatus.ToString(), r.EnhancementProvider, r.EnhancementModel,
+                r.EnhancementPromptVersion, r.EnhancementRequestedAt, r.EnhancementCompletedAt, r.EnhancementError,
+                r.EnhancementVersion, r.EnhancementReviewItemsJson);
         }
 
         return ProvisioningResult<LessonDetailResponse>.Success(new LessonDetailResponse(
@@ -969,6 +973,108 @@ public class ContentStudioService(
         transcriptionQueue.Enqueue(job);
 
         return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    /// <summary>
+    /// Starts a conservative, tutor-triggered AI enhancement pass over this
+    /// revision's already-Ready raw transcript (AI Capability Architecture §8,
+    /// "Enhance Transcript") — ASR-error correction only, never a rewrite.
+    /// <see cref="LessonRevision.Transcript"/> itself is never touched; the
+    /// result lands on the separate EnhancedTranscript field once the
+    /// background job completes. Same "start job, enqueue, return
+    /// immediately" shape as <see cref="GenerateTranscriptAsync"/> — the
+    /// actual AI call and validation happen in
+    /// <see cref="TranscriptEnhancementBackgroundService"/>, not this request.
+    /// </summary>
+    public async Task<ProvisioningResult<LessonDetailResponse>> EnhanceTranscriptAsync(
+        string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        if (!transcriptEnhancementOptions.Enabled)
+            return Fail<LessonDetailResponse>((ProvisioningError.Forbidden, "Transcript enhancement is not enabled."));
+
+        if (!await entitlements.HasEntitlementAsync(
+                ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
+                AiAssistanceLevel.Assist.ToString(), ct))
+            return Fail<LessonDetailResponse>((ProvisioningError.Forbidden,
+                "AI transcript enhancement needs the Professional plan or an AI-enabled Learning pack. Upgrade to use this."));
+
+        var lesson = await db.Lessons.Include(l => l.Revisions)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        var revision = lesson.DraftRevision ?? lesson.CurrentRevision;
+        if (revision is null)
+            return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This lesson has no revision to enhance yet."));
+
+        if (revision.TranscriptStatus != TranscriptStatus.Ready || string.IsNullOrWhiteSpace(revision.Transcript))
+            return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
+                "This lesson has no raw transcript yet — generate or write one first, then enhance it."));
+
+        if (revision.Transcript!.Length > transcriptEnhancementOptions.MaxInputCharacters)
+            return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
+                $"This transcript is too long to enhance ({revision.Transcript.Length} characters, limit " +
+                $"{transcriptEnhancementOptions.MaxInputCharacters})."));
+
+        // Every other AI feature in this app runs its model call inline in the
+        // request and lets AiOrchestrator's CreditsExhaustedException surface
+        // as a clean, structured 402 immediately. Enhancement instead queues
+        // the model call onto a background job (see below) — without this
+        // check, a workspace out of credits would get an immediate
+        // "Processing" response and only discover it failed, with no
+        // credits_exhausted structure for the frontend, once the background
+        // job actually tried and failed. This is a best-effort pre-check, not
+        // a reservation (see ICreditLedgerService.GetCurrentCostAsync) — the
+        // real, atomic charge still happens inside the background job via
+        // EnhanceTranscriptSkill's own AiOrchestrator.RunAsync call.
+        var enhanceCost = await credits.GetCurrentCostAsync(AiSkillKeys.EnhanceTranscript, band: null, ct);
+        if (enhanceCost is not null)
+        {
+            var balance = await credits.GetBalanceAsync(ctx.Workspace!.Id, ct);
+            if (balance < enhanceCost)
+                return ProvisioningResult<LessonDetailResponse>.FailCreditsExhausted(
+                    $"Transcript enhancement needs {enhanceCost} AI credits; this workspace has {balance}.",
+                    enhanceCost.Value, balance);
+        }
+
+        Guid jobId;
+        try { jobId = revision.BeginEnhancement(); }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+
+        var lessonContext = await BuildLessonEnhancementContextAsync(lesson, revision, ct);
+        transcriptEnhancementQueue.Enqueue(new TranscriptEnhancementJob(
+            ctx.Workspace!.Id, lessonId, revision.Id, jobId, revision.Transcript!, lessonContext));
+
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    /// <summary>
+    /// Assembles the "background only" lesson context EnhanceTranscriptSkill's
+    /// prompt uses to resolve strongly-supported ASR corrections — subject/topic
+    /// from the Learning Product and Lesson, plus whatever tutor-authored
+    /// metadata already exists on this revision. No "Grade"/"Level" field exists
+    /// anywhere in this domain today, so it's simply omitted rather than
+    /// fabricated — every piece here is real data, never invented for this call.
+    /// </summary>
+    private async Task<string> BuildLessonEnhancementContextAsync(Lesson lesson, LessonRevision revision, CancellationToken ct)
+    {
+        var product = await db.LearningProducts.AsNoTracking()
+            .Where(p => p.Id == lesson.LearningProductId)
+            .Select(p => new { p.Title, p.Category })
+            .FirstOrDefaultAsync(ct);
+
+        return $"""
+            Course/subject: {product?.Title ?? "(unknown)"}
+            Category: {product?.Category ?? "(not specified)"}
+            Lesson topic: {lesson.Title}
+            What learners will learn: {revision.WhatYoullLearn ?? "(none)"}
+            Learning objectives: {revision.LearningObjectives ?? "(none)"}
+            Relevant terminology (glossary): {revision.Glossary ?? "(none)"}
+            """;
     }
 
     /// <summary>

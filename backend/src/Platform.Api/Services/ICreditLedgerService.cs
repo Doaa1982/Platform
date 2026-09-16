@@ -64,4 +64,18 @@ public interface ICreditLedgerService
 
     /// <summary>Writes a compensating Refund entry for a prior Consumption entry — used when the provider call after a successful debit still fails.</summary>
     Task RefundAsync(Guid ledgerEntryId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Read-only lookup of a skill's current price (same resolution
+    /// TryDebitAsync uses internally) — null if nothing is priced for this
+    /// (skillKey, band). For a caller that queues an AI call onto a
+    /// background job rather than running it inline (e.g. transcript
+    /// enhancement): lets it fail fast with a normal, structured
+    /// credits-exhausted response before ever queuing the job, instead of
+    /// only discovering insufficient balance deep inside that job. This is a
+    /// best-effort pre-check, not a reservation — the workspace's balance can
+    /// still change between this call and the job's own TryDebitAsync, which
+    /// remains the sole atomic, authoritative charge.
+    /// </summary>
+    Task<int?> GetCurrentCostAsync(string skillKey, int? band, CancellationToken ct = default);
 }

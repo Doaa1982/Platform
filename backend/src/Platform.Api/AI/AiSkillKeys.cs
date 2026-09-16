@@ -23,4 +23,5 @@ public static class AiSkillKeys
     public const string GenerateGlossary = "GenerateGlossarySkill";
     public const string GenerateProductDescription = "GenerateProductDescriptionSkill";
     public const string ExtractLessonContentFromResource = "ExtractLessonContentFromResourceSkill";
+    public const string EnhanceTranscript = "EnhanceTranscriptSkill";
 }

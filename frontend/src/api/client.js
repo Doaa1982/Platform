@@ -683,6 +683,19 @@ export function generateLessonTranscript(token, slug, lessonId, language = null)
 }
 
 /**
+ * POST .../lessons/{lessonId}/transcript/enhance — starts a conservative AI
+ * enhancement pass (ASR-error correction only) over the open revision's
+ * already-Ready raw transcript. The raw transcript itself is never touched.
+ * Returns immediately with enhancementStatus "Processing"; poll getLesson to
+ * see when it lands on Ready/ReviewRequired/Failed.
+ */
+export function enhanceLessonTranscript(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/transcript/enhance`, {
+    method: "POST", token,
+  });
+}
+
+/**
  * POST .../lessons/{lessonId}/draft/ai-suggest-body — drafts (if empty) or
  * improves (if not) lesson body content from whatever's currently typed in
  * the form. Nothing is saved — the caller still has to Save themselves.

@@ -161,6 +161,9 @@ public class CreditLedgerService(PlatformDbContext db) : ICreditLedgerService
     /// &gt;= the caller's own band size — e.g. 12 open answers lands on the
     /// "&lt;=30" row, not the "&lt;=10" one.
     /// </summary>
+    public Task<int?> GetCurrentCostAsync(string skillKey, int? band, CancellationToken ct = default) =>
+        ResolveCostAsync(skillKey, band, ct);
+
     private async Task<int?> ResolveCostAsync(string skillKey, int? band, CancellationToken ct)
     {
         var now = DateTime.UtcNow;

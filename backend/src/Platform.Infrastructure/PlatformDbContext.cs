@@ -465,6 +465,14 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.TranscriptError).HasMaxLength(2000);
             entity.Property(e => e.TranscriptionJobId);
 
+            entity.Property(e => e.EnhancementStatus).HasConversion<string>().HasMaxLength(32).IsRequired().HasDefaultValue(EnhancementStatus.None);
+            entity.Property(e => e.EnhancementError).HasMaxLength(2000);
+            entity.Property(e => e.EnhancementProvider).HasMaxLength(64);
+            entity.Property(e => e.EnhancementModel).HasMaxLength(128);
+            entity.Property(e => e.EnhancementPromptVersion).HasMaxLength(64);
+            entity.Property(e => e.EnhancementVersion).IsRequired().HasDefaultValue(0);
+            entity.Property(e => e.EnhancementJobId);
+
             entity.Property(e => e.WhatYoullLearn).HasMaxLength(1000);
 
             entity.Property(e => e.RequireQuizToComplete).IsRequired().HasDefaultValue(false);
