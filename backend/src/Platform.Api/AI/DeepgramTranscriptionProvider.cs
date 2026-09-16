@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -35,7 +36,10 @@ public class DeepgramTranscriptionProvider(HttpClient http, DeepgramOptions opti
         // "auto" maps to Deepgram's own single-dominant-language detection,
         // not genuine code-switching — see DeepgramOptions.Language's doc
         // comment for why Arabic+English specifically isn't solved by this.
-        var query = $"model={Uri.EscapeDataString(options.Model)}&punctuate=true&smart_format=true&diarize=true";
+        // utterances=true groups the word-level diarization into per-speaker
+        // turns directly — see BuildLabeledTranscript for why that's used
+        // over manually walking words[].speaker.
+        var query = $"model={Uri.EscapeDataString(options.Model)}&punctuate=true&smart_format=true&diarize=true&utterances=true";
         query += language.Equals("auto", StringComparison.OrdinalIgnoreCase)
             ? "&detect_language=true"
             : $"&language={Uri.EscapeDataString(language)}";
@@ -61,13 +65,17 @@ public class DeepgramTranscriptionProvider(HttpClient http, DeepgramOptions opti
         if (string.IsNullOrWhiteSpace(text))
             throw new InvalidOperationException(BuildEmptyTranscriptMessage(channel));
 
+        // Prefer the per-speaker utterances (labeled "SPEAKER: S1" like
+        // Speechmatics' own transcript did) when present; fall back to the
+        // plain joined transcript on the rare response that has none (e.g. a
+        // single sustained speaker producing one giant utterance, or the
+        // field simply absent) — a normal degrade, not an error.
+        var labeled = BuildLabeledTranscript(parsed.Results?.Utterances);
+
         // No chapter-detection equivalent to Speechmatics' Auto Chapters, and
-        // no segment-level timing mapped here either (Deepgram can expose
-        // per-utterance timing with utterances=true — not requested today,
-        // matching the level of ambition already accepted for Speechmatics'
-        // own segments, which stay empty too) — both empty lists are the
-        // normal, non-error outcome per IAudioTranscriptionProvider's contract.
-        return new TranscriptionResult(text.Trim(), [], []);
+        // no segment-level timing mapped here either — both empty lists are
+        // the normal, non-error outcome per IAudioTranscriptionProvider's contract.
+        return new TranscriptionResult(labeled ?? text.Trim(), [], []);
     }
 
     private void AddAuth(HttpRequestMessage request) =>
@@ -100,6 +108,49 @@ public class DeepgramTranscriptionProvider(HttpClient http, DeepgramOptions opti
                "from the dropdown above instead of \"Auto-detect\".";
     }
 
+    /// <summary>
+    /// Reconstructs a "SPEAKER: S1" / "SPEAKER: S2" labeled transcript from
+    /// Deepgram's <c>utterances</c> array — same inline-label convention
+    /// SpeechmaticsTranscriptionProvider's transcript already used (see its
+    /// own doc comment on why diarization is requested), so every text-based
+    /// AI skill reading LessonRevision.Transcript keeps seeing the same shape
+    /// regardless of which provider produced it.
+    ///
+    /// Deepgram's <c>words[].speaker</c> is the lower-level signal utterances
+    /// are already built from — walking it directly would mean re-deriving
+    /// sentence/pause boundaries ourselves. utterances=true asks Deepgram to
+    /// do that grouping, so this only needs to re-group ADJACENT utterances
+    /// that share a speaker (Deepgram can still split one speaker's turn into
+    /// several short utterances at natural pauses) to avoid a "SPEAKER: S1"
+    /// header before every single sentence.
+    /// </summary>
+    private static string? BuildLabeledTranscript(List<DeepgramUtterance>? utterances)
+    {
+        if (utterances is not { Count: > 0 }) return null;
+
+        var sb = new StringBuilder();
+        int? currentSpeaker = null;
+        foreach (var utterance in utterances)
+        {
+            var text = utterance.Transcript?.Trim();
+            if (string.IsNullOrEmpty(text)) continue;
+
+            if (utterance.Speaker != currentSpeaker)
+            {
+                if (currentSpeaker is not null) sb.Append('\n');
+                sb.Append("SPEAKER: S").Append((utterance.Speaker ?? 0) + 1).Append('\n');
+                currentSpeaker = utterance.Speaker;
+            }
+            else
+            {
+                sb.Append(' ');
+            }
+            sb.Append(text);
+        }
+
+        return sb.Length > 0 ? sb.ToString() : null;
+    }
+
     /// <summary>Deepgram accepts many audio/video containers directly (like Speechmatics does with mp4) — matches ContentStudioService.SupportedTranscriptionExtensions.</summary>
     private static string ResolveContentType(string fileName) =>
         Path.GetExtension(fileName).ToLowerInvariant() switch
@@ -117,7 +168,10 @@ public class DeepgramTranscriptionProvider(HttpClient http, DeepgramOptions opti
         };
 
     private record DeepgramResponse([property: JsonPropertyName("results")] DeepgramResults? Results);
-    private record DeepgramResults([property: JsonPropertyName("channels")] List<DeepgramChannel>? Channels);
+
+    private record DeepgramResults(
+        [property: JsonPropertyName("channels")] List<DeepgramChannel>? Channels,
+        [property: JsonPropertyName("utterances")] List<DeepgramUtterance>? Utterances);
 
     private record DeepgramChannel(
         [property: JsonPropertyName("alternatives")] List<DeepgramAlternative>? Alternatives,
@@ -125,4 +179,8 @@ public class DeepgramTranscriptionProvider(HttpClient http, DeepgramOptions opti
         [property: JsonPropertyName("language_confidence")] double? LanguageConfidence);
 
     private record DeepgramAlternative([property: JsonPropertyName("transcript")] string? Transcript);
+
+    private record DeepgramUtterance(
+        [property: JsonPropertyName("transcript")] string? Transcript,
+        [property: JsonPropertyName("speaker")] int? Speaker);
 }
