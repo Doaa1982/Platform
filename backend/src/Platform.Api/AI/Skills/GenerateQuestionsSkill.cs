@@ -1,4 +1,5 @@
 using Platform.Api.Models;
+using Platform.Domain;
 
 namespace Platform.Api.AI.Skills;
 
@@ -438,9 +439,20 @@ public class GenerateQuestionsSkill(AiOrchestrator orchestrator)
     /// <summary>
     /// Guards against a model that returns syntactically valid JSON shaped
     /// like the requested schema but with its actual content under the
-    /// wrong property names — every timestamp real, every Prompt empty. See
+    /// wrong property names — every timestamp real, every Prompt empty — or
+    /// with a "type" the schema doesn't define at all (seen in practice: a
+    /// math-heavy lesson producing "mathEquation" instead of one of the four
+    /// real QuestionType values, despite the prompt listing exactly those
+    /// four). Without this check that string reaches the tutor's Accept
+    /// button unexamined, AssessmentService.ParseType silently reinterprets
+    /// it as MultipleChoice, and the save then fails (or saves wrong) because
+    /// the suggestion's actual shape — no Options, no CorrectOptionIndex —
+    /// doesn't fit MultipleChoice's invariant. Catching it here instead
+    /// makes AiOrchestrator.RunAsync retry with a real chance of getting a
+    /// valid type back, rather than a suggestion the tutor can't act on. See
     /// <see cref="AiOrchestrator.RunAsync{T}"/>'s isValid remarks.
     /// </summary>
     private static bool HasUsableContent(List<SuggestedQuestion> suggestions) =>
-        suggestions.Count > 0 && suggestions.All(s => !string.IsNullOrWhiteSpace(s.Prompt));
+        suggestions.Count > 0 && suggestions.All(s =>
+            !string.IsNullOrWhiteSpace(s.Prompt) && Enum.TryParse<QuestionType>(s.Type, out _));
 }

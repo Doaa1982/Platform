@@ -1,4 +1,5 @@
 using Platform.Api.Models;
+using Platform.Domain;
 
 namespace Platform.Api.AI.Skills;
 
@@ -107,7 +108,12 @@ public class GenerateStandaloneQuestionsSkill(AiOrchestrator orchestrator)
 
         var suggestions = await orchestrator.RunAsync<List<SuggestedStandaloneQuestion>>(
             SystemPrompt, userPrompt, workspaceId, AiSkillKeys.GenerateStandaloneQuestions, band: questionCount,
-            isValid: qs => qs.Count > 0 && qs.All(q => !string.IsNullOrWhiteSpace(q.Prompt)),
+            // Also rejects a "type" outside the four real QuestionType values
+            // (e.g. a math-heavy lesson producing "mathEquation") — see
+            // GenerateQuestionsSkill.HasUsableContent's remarks for why this
+            // has to be caught here rather than left for AssessmentService.
+            isValid: qs => qs.Count > 0 && qs.All(q =>
+                !string.IsNullOrWhiteSpace(q.Prompt) && Enum.TryParse<QuestionType>(q.Type, out _)),
             ct: ct);
 
         // Defensive clamp: a model that ignores the requested count or omits
