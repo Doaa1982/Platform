@@ -15,8 +15,11 @@ public class TranscriptionOptions
     /// <summary>
     /// "Deepgram" (default as of 2026-09-11 — hosted, used in production),
     /// "Speechmatics" (the previous hosted default — kept fully selectable
-    /// for rollback, see Program.cs's branching on this value), or
-    /// "FasterWhisper" (local, no API key or billing — used in development).
+    /// for rollback, see Program.cs's branching on this value), "Gemini"
+    /// (Gemini 2.5 Flash listening to the audio/video directly instead of a
+    /// dedicated ASR engine — see <see cref="GeminiTranscriptionProvider"/>),
+    /// or "FasterWhisper"/"LocalWhisper" (local, no API key or billing — used
+    /// in development).
     /// </summary>
     public string Provider { get; set; } = "Deepgram";
 }

@@ -335,6 +335,27 @@ else if (transcriptionOptions.Provider.Equals("Speechmatics", StringComparison.O
     // real risk for a single HTTP call here) enough room.
     ExtendResilienceTimeouts(speechmaticsClientBuilder, TimeSpan.FromHours(2));
 }
+else if (transcriptionOptions.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+{
+    // Opt-in alternative added 2026-09-14: sends the video/audio itself to
+    // Gemini 2.5 Flash and prompts it to transcribe what it hears (native
+    // audio/video understanding, the same approach NotebookLM uses) rather
+    // than a dedicated ASR engine. Uses its own key/options
+    // (GeminiTranscriptionOptions), separate from the text-completion Gemini
+    // provider (Ai:Provider = "Gemini", GeminiOptions) — different vendor
+    // account, different capability. Deepgram stays the default; set
+    // Transcription:Provider to "Gemini" to switch.
+    var geminiTranscriptionOptions = builder.Configuration.GetSection(GeminiTranscriptionOptions.Section).Get<GeminiTranscriptionOptions>() ?? new GeminiTranscriptionOptions();
+    builder.Services.AddSingleton(geminiTranscriptionOptions);
+    var geminiTranscriptionClientBuilder = builder.Services.AddHttpClient<IAudioTranscriptionProvider, GeminiTranscriptionProvider>(client =>
+    {
+        client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
+        client.Timeout = Timeout.InfiniteTimeSpan; // a large video's upload + the model's own processing can run long; no separate polling deadline exists here
+    });
+    // Same reasoning as Deepgram/Speechmatics' own extension above — give a
+    // large video's upload (and Gemini's file-processing wait) enough room.
+    ExtendResilienceTimeouts(geminiTranscriptionClientBuilder, TimeSpan.FromHours(2));
+}
 else
 {
     // Hosted, production default as of 2026-09-11 (previously Speechmatics —
