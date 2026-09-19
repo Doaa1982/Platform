@@ -120,7 +120,7 @@ public class TranscriptEnhancementBackgroundService(
 
             applied = revision.CompleteEnhancement(
                 job.JobId, result.EnhancedTranscript!, validation.RequiresReview,
-                provider: aiOptions.Provider, model: aiOptions.Model, promptVersion: EnhanceTranscriptSkill.PromptVersion,
+                provider: aiOptions.Provider, model: ResolveActiveModel(scope.ServiceProvider, aiOptions), promptVersion: EnhanceTranscriptSkill.PromptVersion,
                 segmentsJson: result.Segments is { Count: > 0 } ? JsonSerializer.Serialize(result.Segments) : null,
                 reviewItemsJson: JsonSerializer.Serialize(result.ReviewItems ?? []),
                 preservationChecksJson: result.PreservationChecks is not null ? JsonSerializer.Serialize(result.PreservationChecks) : null);
@@ -145,5 +145,28 @@ public class TranscriptEnhancementBackgroundService(
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// AiOptions.Model only reflects the actually-running model for the
+    /// providers that read it directly (OpenAiModelProvider,
+    /// ClaudeModelProvider both take AiOptions itself) — Gemini and Ollama
+    /// each have their own options class with their own Model field
+    /// (GeminiModelProvider takes GeminiOptions, OllamaModelProvider takes
+    /// OllamaOptions), so stamping aiOptions.Model unconditionally silently
+    /// recorded a stale/irrelevant value for either (confirmed live
+    /// 2026-09-16: an enhancement run under Ai:Provider "Gemini" recorded
+    /// EnhancementModel "llama3.2" — Ai:Model's leftover Ollama value —
+    /// instead of the Gemini model that actually answered). Only the
+    /// provider whose options class is actually registered for the active
+    /// Ai:Provider exists in DI, hence the optional GetService lookups here.
+    /// </summary>
+    private static string ResolveActiveModel(IServiceProvider services, AiOptions aiOptions)
+    {
+        if (aiOptions.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+            return services.GetService<GeminiOptions>()?.Model ?? aiOptions.Model;
+        if (aiOptions.Provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
+            return services.GetService<OllamaOptions>()?.Model ?? aiOptions.Model;
+        return aiOptions.Model;
     }
 }

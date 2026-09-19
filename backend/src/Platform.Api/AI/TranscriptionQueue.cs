@@ -5,10 +5,11 @@ namespace Platform.Api.AI;
 /// <summary>
 /// One transcription request, enough for the background worker to find the
 /// revision again and load the video file without re-deriving anything the
-/// controller already resolved. Exactly one of <see cref="FilePath"/> (an
-/// uploaded asset, already on local disk) or <see cref="SourceUrl"/> (a
-/// direct-file video URL — the worker downloads it to a temp file first) is
-/// set; the worker deletes the file afterward only when it downloaded it.
+/// controller already resolved. Exactly one of <see cref="StorageObjectKey"/> (an
+/// uploaded asset — the worker copies it out of storage to a temp file first)
+/// or <see cref="SourceUrl"/> (a direct-file video URL — the worker downloads
+/// it to a temp file first) is set; either way the worker deletes that temp
+/// file afterward, and never touches the stored object itself.
 /// <see cref="JobId"/> is the id LessonRevision.BeginTranscription handed
 /// back when this job was created — carried through to
 /// CompleteTranscription/FailTranscription so a job superseded while still in
@@ -21,7 +22,7 @@ namespace Platform.Api.AI;
 /// </summary>
 public record TranscriptionJob(
     Guid WorkspaceId, Guid LessonId, Guid LessonRevisionId, string FileName, Guid JobId,
-    string? FilePath = null, string? SourceUrl = null, string? Language = null);
+    string? StorageObjectKey = null, string? SourceUrl = null, string? Language = null);
 
 /// <summary>
 /// In-process work queue for transcription jobs (AI Video Transcript

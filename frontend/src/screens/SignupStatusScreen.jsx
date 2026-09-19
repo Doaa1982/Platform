@@ -47,10 +47,10 @@ export default function SignupStatusScreen({ token }) {
   if (error && !status) {
     return (
       <Shell>
-        <div className="pl-stat__card is-done">
-          <AlertCircle size={26} aria-hidden="true" />
+        <div className="pl-stat__card is-bad">
+          <div className="pl-stat__mark" aria-hidden="true"><AlertCircle size={22} /></div>
           <h1>{t("signupStatus.invalidTitle")}</h1>
-          <p>{error}</p>
+          <p className="pl-stat__lead">{error}</p>
         </div>
       </Shell>
     );
@@ -123,6 +123,7 @@ const CSS = `
   .is-good .pl-stat__mark { background: rgba(127,211,184,0.16); color: #7FD3B8; }
   .is-warn .pl-stat__mark { background: rgba(224,168,62,0.16); color: #E0A83E; }
   .is-done .pl-stat__mark { background: rgba(255,255,255,0.07); color: var(--ink-soft); }
+  .is-bad .pl-stat__mark { background: rgba(192,57,43,0.16); color: #E0685A; }
 
   .pl-stat__eyebrow {
     font-family: 'IBM Plex Mono', monospace; font-size: 11px;

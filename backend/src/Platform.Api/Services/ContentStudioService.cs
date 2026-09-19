@@ -754,7 +754,8 @@ public class ContentStudioService(
 
         try
         {
-            var fileBytes = await File.ReadAllBytesAsync(assetStorage.ResolvePath(asset.ObjectKey), ct);
+            await using var stored = await StorageTempFile.DownloadAsync(assetStorage, asset.ObjectKey, ct);
+            var fileBytes = await File.ReadAllBytesAsync(stored.Path, ct);
             var extracted = await extractLessonContent.ExtractAsync(fileBytes, mediaType, ctx.Workspace!.Id, ct);
             return ProvisioningResult<ExtractResourceContentResponse>.Success(extracted);
         }
@@ -779,7 +780,7 @@ public class ContentStudioService(
             return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict,
                 "AI content extraction isn't available with the current AI provider — this workspace needs a provider that supports reading documents/images."));
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or StoredObjectNotFoundException)
         {
             return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict, $"Could not read the uploaded file: {ex.Message}"));
         }
@@ -921,7 +922,7 @@ public class ContentStudioService(
             return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This lesson has no revision to transcribe yet."));
 
         string fileNameForJob;
-        string? filePathForJob = null;
+        string? objectKeyForJob = null;
         string? sourceUrlForJob = null;
         if (revision.VideoAssetId is not null)
         {
@@ -935,7 +936,7 @@ public class ContentStudioService(
                     $"\"{extension}\" videos aren't supported for transcription yet. Supported formats: {string.Join(", ", SupportedTranscriptionExtensions)}."));
 
             fileNameForJob = asset.OriginalFileName;
-            filePathForJob = assetStorage.ResolvePath(asset.ObjectKey);
+            objectKeyForJob = asset.ObjectKey;
         }
         else if (revision.VideoUrl is not null)
         {
@@ -968,7 +969,7 @@ public class ContentStudioService(
         var languageOverride = language is null || language.Equals("auto", StringComparison.OrdinalIgnoreCase)
             ? null : language.ToLowerInvariant();
         var job = new TranscriptionJob(ctx.Workspace!.Id, lessonId, revision.Id, fileNameForJob, jobId,
-            filePathForJob, sourceUrlForJob, languageOverride);
+            objectKeyForJob, sourceUrlForJob, languageOverride);
 
         transcriptionQueue.Enqueue(job);
 

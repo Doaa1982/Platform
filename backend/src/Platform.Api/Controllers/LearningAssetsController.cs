@@ -11,7 +11,7 @@ namespace Platform.Api.Controllers;
 [ApiController]
 [Route("api/workspaces/{slug}/learning-assets")]
 [Authorize]
-public class LearningAssetsController(LearningAssetService assets) : ControllerBase
+public class LearningAssetsController(LearningAssetService assets, ILearningAssetStorage storage) : ControllerBase
 {
     /// <summary>500MB cap — comfortably above a recorded lesson, far below "someone's whole hard drive".</summary>
     [HttpPost]
@@ -57,8 +57,9 @@ public class LearningAssetsController(LearningAssetService assets) : ControllerB
             };
         }
 
-        var (path, contentType, fileName) = result.Value;
-        return PhysicalFile(path, contentType, fileName, enableRangeProcessing: true);
+        var download = result.Value;
+        return new StoredObjectResult(
+            storage, download.ObjectKey, download.ContentType, download.FileName, download.Length, download.ETag);
     }
 
     [HttpDelete("{assetId:guid}")]

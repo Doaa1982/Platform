@@ -13,10 +13,12 @@ public class GeminiOptions
     public string ApiKey { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gemini 3.5 Flash. Note: the confirmed free-tier-without-billing quota
-    /// (250 req/day, no card) was specifically documented for the 2.5 series
-    /// (Flash/Flash-Lite/Pro) — if 3.5 returns a billing/quota error, that's
-    /// why; switch back to "gemini-2.5-flash" if so.
+    /// Gemini 3.6 Flash. Originally "gemini-3.5-flash", but confirmed
+    /// 2026-09-16 that this key's project can't call 3.5 (403
+    /// "project has been denied access" via generateContent) while 3.6
+    /// works — same finding GeminiTranscriptionOptions.Model documents for
+    /// the transcription side. "gemini-2.5-flash" no longer works for a
+    /// newly issued key either (404 "no longer available to new users").
     /// </summary>
-    public string Model { get; set; } = "gemini-3.5-flash";
+    public string Model { get; set; } = "gemini-3.6-flash";
 }

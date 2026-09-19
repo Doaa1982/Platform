@@ -1,23 +1,12 @@
 namespace Platform.Api.Services;
 
 /// <summary>
-/// Stores Learning Asset files on local disk, under the content root. No
-/// object-storage account exists in this environment yet (Platform.AppHost
-/// declares only Postgres) — this keeps uploads real and durable across
-/// restarts without taking on a cloud storage dependency the project hasn't
-/// adopted. ObjectKey is workspace-scoped so a listing or bulk-delete by
+/// Stores Learning Asset files on local disk, under the content root. This is
+/// the development default — production selects an object-storage provider
+/// via Storage:Provider (see <see cref="R2LearningAssetStorage"/>), because a
+/// container's own filesystem is ephemeral and would lose every upload on
+/// recreation. ObjectKey is workspace-scoped so a listing or bulk-delete by
 /// Workspace stays a directory operation.
-///
-/// Durability today is real but scoped to this machine: RootPath sits beside
-/// the project's own source (App_Data/, gitignored), which survives a
-/// `dotnet build`/restart same as Postgres's own bind-mounted-by-default data
-/// does. It stops being durable the moment the API is containerized rather
-/// than run as a plain Aspire project — App_Data would then live inside the
-/// container's own ephemeral filesystem and vanish on recreation. Whenever
-/// that happens, this needs a mounted volume at RootPath, the same pattern
-/// Platform.AppHost/Program.cs already uses for Postgres
-/// (`.WithDataVolume("PlatformData")`) and speaches (`.WithVolume(...)`) —
-/// not a code change here, an AppHost one.
 /// </summary>
 public class LocalLearningAssetStorage(IHostEnvironment env, IConfiguration config) : ILearningAssetStorage
 {
@@ -32,7 +21,7 @@ public class LocalLearningAssetStorage(IHostEnvironment env, IConfiguration conf
     {
         var extension = Path.GetExtension(fileName);
         var objectKey = $"{workspaceId:N}/{Guid.NewGuid():N}{extension}";
-        var fullPath = ResolvePath(objectKey);
+        var fullPath = PathFor(objectKey);
 
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         await using var fileStream = File.Create(fullPath);
@@ -41,12 +30,24 @@ public class LocalLearningAssetStorage(IHostEnvironment env, IConfiguration conf
         return objectKey;
     }
 
-    public string ResolvePath(string objectKey) =>
-        Path.Combine(RootPath, objectKey.Replace('/', Path.DirectorySeparatorChar));
-
-    public void Delete(string objectKey)
+    public Task<Stream> OpenReadAsync(string objectKey, long offset, long? length, CancellationToken ct)
     {
-        var fullPath = ResolvePath(objectKey);
-        if (File.Exists(fullPath)) File.Delete(fullPath);
+        var fullPath = PathFor(objectKey);
+        if (!File.Exists(fullPath)) throw new StoredObjectNotFoundException(objectKey);
+
+        var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        if (offset > 0) stream.Seek(offset, SeekOrigin.Begin);
+        return Task.FromResult<Stream>(stream);
     }
+
+    public Task DeleteAsync(string objectKey, CancellationToken ct)
+    {
+        var fullPath = PathFor(objectKey);
+        if (File.Exists(fullPath)) File.Delete(fullPath);
+        return Task.CompletedTask;
+    }
+
+    private string PathFor(string objectKey) =>
+        Path.Combine(RootPath, objectKey.Replace('/', Path.DirectorySeparatorChar));
 }

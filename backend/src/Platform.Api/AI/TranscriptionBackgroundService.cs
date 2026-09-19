@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Platform.Api.Services;
 using Platform.Domain;
 using Platform.Infrastructure;
 
@@ -97,13 +98,25 @@ public class TranscriptionBackgroundService(
 
         TranscriptionResult? result = null;
         string? failure = null;
-        // A URL-sourced job has no local file yet — download it into a temp
-        // file first and clean that up afterward; an uploaded asset's file
-        // lives in permanent storage and is never touched here.
+        // Neither source has a local file yet — an uploaded asset lives in
+        // object storage and a URL job lives on the web — so each is copied
+        // into a temp file first and that copy is deleted afterward. The
+        // stored object itself is never touched here.
         string? downloadedFilePath = null;
+        StorageTempFile? storedCopy = null;
         try
         {
-            var filePath = job.FilePath ?? (downloadedFilePath = await DownloadToTempFileAsync(job.SourceUrl!, ct));
+            string filePath;
+            if (job.StorageObjectKey is not null)
+            {
+                var storage = scope.ServiceProvider.GetRequiredService<ILearningAssetStorage>();
+                storedCopy = await StorageTempFile.DownloadAsync(storage, job.StorageObjectKey, ct, logger);
+                filePath = storedCopy.Path;
+            }
+            else
+            {
+                filePath = downloadedFilePath = await DownloadToTempFileAsync(job.SourceUrl!, ct);
+            }
             result = await provider.TranscribeAsync(filePath, job.FileName, job.Language, ct);
         }
         catch (Exception ex)
@@ -123,6 +136,8 @@ public class TranscriptionBackgroundService(
         }
         finally
         {
+            if (storedCopy is not null) await storedCopy.DisposeAsync();
+
             if (downloadedFilePath is not null)
             {
                 try { File.Delete(downloadedFilePath); }

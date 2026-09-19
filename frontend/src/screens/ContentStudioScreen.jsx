@@ -2013,9 +2013,9 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                 )}
               </summary>
               {transcriptStatus === "Failed" && (
-                <p className="muted" style={{ margin: "8px 0 0", whiteSpace: "pre-wrap" }}>
-                  {revision.transcriptError ?? t("studio.transcriptFailed")}
-                </p>
+                <div style={{ marginTop: 8 }}>
+                  <Message type="error">{revision.transcriptError ?? t("studio.transcriptFailed")}</Message>
+                </div>
               )}
               <textarea
                 rows={8}
@@ -2066,9 +2066,9 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                 </div>
 
                 {enhancementStatus === "Failed" && (
-                  <p className="muted" style={{ margin: "8px 0 0", whiteSpace: "pre-wrap" }}>
-                    {revision.enhancementError ?? t("studio.enhanceTranscriptFailedMessage")}
-                  </p>
+                  <div style={{ marginTop: 8 }}>
+                    <Message type="error">{revision.enhancementError ?? t("studio.enhanceTranscriptFailedMessage")}</Message>
+                  </div>
                 )}
 
                 {(enhancementStatus === "Ready" || enhancementStatus === "ReviewRequired") && revision.enhancedTranscript && (
@@ -2139,7 +2139,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                   <span className="muted">{t("studio.transcriptProcessing")}</span>
                 </div>
               )}
-              {transcriptStatus === "Failed" && <span className="muted">{revision.transcriptError ?? t("studio.transcriptFailed")}</span>}
+              {transcriptStatus === "Failed" && <span style={{ color: "var(--danger, #C0392B)" }}>{revision.transcriptError ?? t("studio.transcriptFailed")}</span>}
               {transcriptStatus === "Ready" && (
                 <details>
                   <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.85rem" }}>
@@ -2862,10 +2862,11 @@ function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
         <>
           <div className="lw-studio__heading" style={{ marginBottom: 8 }}>
             <span className={`lw-studio__pill is-${assignment.status.toLowerCase()}`}>{human(t, assignment.status)}</span>
-            {assignment.publicationBlocker && (
-              <span className="muted" style={{ fontSize: 12 }}>{assignment.publicationBlocker}</span>
-            )}
           </div>
+
+          {assignment.publicationBlocker && (
+            <div className="lw-studio__blocker"><AlertCircle size={14} /> {assignment.publicationBlocker}</div>
+          )}
 
           <div className="lw-studio__draftform">
             <label>

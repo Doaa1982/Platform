@@ -167,7 +167,26 @@ builder.Services.AddScoped<JoinRequestService>();
 builder.Services.AddScoped<SignupRequestService>();
  builder.Services.AddScoped<LearningProductService>();
 builder.Services.AddScoped<ContentStudioService>();
-builder.Services.AddSingleton<ILearningAssetStorage, LocalLearningAssetStorage>();
+// Storage:Provider — "Local" (default, development) or "R2" (Cloudflare R2,
+// production). A container's own disk is ephemeral, so production must not
+// use "Local". Same switch-by-config pattern as Ai:/Transcription:Provider.
+var storageProvider = builder.Configuration["Storage:Provider"] ?? "Local";
+if (storageProvider.Equals("R2", StringComparison.OrdinalIgnoreCase))
+{
+    var r2Options = builder.Configuration.GetSection(R2StorageOptions.Section).Get<R2StorageOptions>() ?? new R2StorageOptions();
+    r2Options.Validate();
+    builder.Services.AddSingleton(r2Options);
+    builder.Services.AddSingleton<ILearningAssetStorage, R2LearningAssetStorage>();
+}
+else if (storageProvider.Equals("Local", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddSingleton<ILearningAssetStorage, LocalLearningAssetStorage>();
+}
+else
+{
+    throw new InvalidOperationException(
+        $"Unknown Storage:Provider \"{storageProvider}\". Use \"Local\" or \"R2\".");
+}
 builder.Services.AddScoped<LearningAssetService>();
 builder.Services.AddScoped<AssessmentService>();
 builder.Services.AddScoped<AssignmentService>();
@@ -193,10 +212,20 @@ else if (aiOptions.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase)
     // can't reuse a Claude/OpenAI one.
     var geminiOptions = builder.Configuration.GetSection(GeminiOptions.Section).Get<GeminiOptions>() ?? new GeminiOptions();
     builder.Services.AddSingleton(geminiOptions);
-    builder.Services.AddHttpClient<IAiModelProvider, GeminiModelProvider>(client =>
+    var geminiClientBuilder = builder.Services.AddHttpClient<IAiModelProvider, GeminiModelProvider>(client =>
     {
         client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");
     });
+    // Confirmed 2026-09-16: the default 30s resilience-pipeline ceiling
+    // (ServiceDefaults' standard 10s/30s ConfigureHttpClientDefaults, never
+    // overridden here before now) cut off a real call mid-flight on
+    // EnhanceTranscriptSkill's unusually large prompt (long system prompt +
+    // a full lesson transcript + structured JSON output) — the request
+    // failed with a 30s timeout, not a Gemini-side error. OpenAI/Claude
+    // register with the same un-extended default and likely carry the same
+    // risk on this skill specifically; left alone here since neither is
+    // configured/exercised yet — extend them too if either hits the same wall.
+    ExtendResilienceTimeouts(geminiClientBuilder, TimeSpan.FromMinutes(3));
 }
 else if (aiOptions.Provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
 {

@@ -112,7 +112,7 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
         }
         catch (ArgumentException ex)
         {
-            storage.Delete(objectKey);
+            await storage.DeleteAsync(objectKey, ct);
             return Fail<LearningAssetResponse>((ProvisioningError.Invalid, ex.Message));
         }
 
@@ -172,7 +172,7 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
         }
         catch (ArgumentException ex)
         {
-            storage.Delete(objectKey);
+            await storage.DeleteAsync(objectKey, ct);
             return Fail<LearningAssetResponse>((ProvisioningError.Invalid, ex.Message));
         }
 
@@ -182,18 +182,26 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
         return ProvisioningResult<LearningAssetResponse>.Success(Describe(asset));
     }
 
-    public async Task<ProvisioningResult<(string PhysicalPath, string ContentType, string FileName)>> ResolveDownloadAsync(
+    /// <summary>
+    /// Authorises a download and describes the object to stream — never the
+    /// bytes themselves and never a filesystem path, so the same flow works for
+    /// any storage backend. <see cref="LearningAssetDownload.ETag"/> is derived
+    /// from the (immutable) asset id, not the ObjectKey, which is never exposed
+    /// to the browser.
+    /// </summary>
+    public async Task<ProvisioningResult<LearningAssetDownload>> ResolveDownloadAsync(
         string slug, Guid caller, Guid assetId, CancellationToken ct = default)
     {
         var ctx = await ResolveAsync(slug, caller, requireAuthor: false, ct);
-        if (ctx.Error is not null) return Fail<(string, string, string)>(ctx.Error.Value);
+        if (ctx.Error is not null) return Fail<LearningAssetDownload>(ctx.Error.Value);
 
         var asset = await db.LearningAssets.AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == assetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
-        if (asset is null) return Fail<(string, string, string)>((ProvisioningError.NotFound, "No such learning asset."));
+        if (asset is null) return Fail<LearningAssetDownload>((ProvisioningError.NotFound, "No such learning asset."));
 
-        return ProvisioningResult<(string, string, string)>.Success(
-            (storage.ResolvePath(asset.ObjectKey), asset.ContentType, asset.OriginalFileName));
+        return ProvisioningResult<LearningAssetDownload>.Success(new LearningAssetDownload(
+            asset.ObjectKey, asset.ContentType, asset.OriginalFileName, asset.FileSizeBytes,
+            ETag: $"\"{asset.Id:N}-{asset.FileSizeBytes}\""));
     }
 
     public async Task<ProvisioningResult<LearningAssetResponse>> ArchiveAsync(
@@ -331,3 +339,6 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
     private static ProvisioningResult<T> Fail<T>((ProvisioningError Error, string Message) e)
         => ProvisioningResult<T>.Fail(e.Error, e.Message);
 }
+
+/// <summary>Everything the download endpoint needs to stream one Learning Asset from storage.</summary>
+public record LearningAssetDownload(string ObjectKey, string ContentType, string FileName, long Length, string ETag);
