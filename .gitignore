@@ -496,3 +496,6 @@ node_modules/
 
 # Runtime-uploaded learning assets (videos, PDFs, images) — never belongs in git
 backend/src/Platform.Api/App_Data/
+
+# Built frontend copied in by CI before `dotnet publish` (see .github/workflows/deploy.yml) — never committed
+backend/src/Platform.Api/wwwroot/

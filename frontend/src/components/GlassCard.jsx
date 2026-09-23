@@ -1,5 +1,4 @@
 import React from 'react';
-import PropTypes from 'prop-types';
 
 /**
  * GlassCard component applies the .glass-card utility class for a glassmorphism effect.
@@ -14,7 +13,3 @@ export default function GlassCard({ children, className = '', ...rest }) {
   );
 }
 
-GlassCard.propTypes = {
-  children: PropTypes.node,
-  className: PropTypes.string,
-};

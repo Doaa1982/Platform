@@ -1,5 +1,4 @@
 import React from 'react';
-import PropTypes from 'prop-types';
 import './AnimatedButton.css';
 
 /**
@@ -31,9 +30,3 @@ export default function AnimatedButton({
   );
 }
 
-AnimatedButton.propTypes = {
-  children: PropTypes.node,
-  variant: PropTypes.oneOf(['primary', 'outline', 'ghost']),
-  className: PropTypes.string,
-  type: PropTypes.string,
-};

@@ -804,12 +804,57 @@ else
 
 app.UseCors();
 app.UseHttpsRedirection();
+
+// ── Built frontend (production) ─────────────────────────────────────────────
+// The SPA calls relative /api/... paths (frontend/src/api/client.js), so it
+// must be served from the same origin as this API. In a deployed build the CI
+// pipeline copies frontend/dist into wwwroot before `dotnet publish`; locally
+// there is no wwwroot/index.html (Vite's dev server serves the frontend and
+// proxies /api instead), so this whole block is skipped.
+// Before the rate limiter: static assets shouldn't spend anyone's API budget.
+var spaIndexPresent = app.Environment.WebRootPath is { } webRoot
+    && File.Exists(Path.Combine(webRoot, "index.html"));
+if (spaIndexPresent)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = ctx =>
+        {
+            // Vite fingerprints everything under /assets/ (hash in the file
+            // name), so those can be cached forever; anything else — above
+            // all index.html — must be revalidated so a deploy is picked up
+            // on the next load instead of serving a stale shell that points
+            // at asset hashes that no longer exist.
+            var headers = ctx.Context.Response.Headers;
+            headers.CacheControl = ctx.Context.Request.Path.StartsWithSegments("/assets")
+                ? "public, max-age=31536000, immutable"
+                : "no-cache";
+        }
+    });
+}
+
 // Before authentication: an abusive caller should be turned away without
 // costing a token validation or a database round trip
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+if (spaIndexPresent)
+{
+    // An unknown /api/... path must stay a real 404 — without this, the SPA
+    // fallback below would answer it with index.html and a 200, and a client
+    // calling a wrong/removed endpoint would get HTML where it expects JSON.
+    app.MapFallback("/api/{**path}", () => Results.NotFound());
+    // Every other unmatched, non-file path gets the SPA shell. There is no
+    // client-side router today (TD-021), so this mostly covers "/" and stray
+    // deep links, but it keeps a hard refresh from ever returning a bare 404.
+    app.MapFallbackToFile("index.html", new StaticFileOptions
+    {
+        OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+    });
+}
 
 app.Run();
 

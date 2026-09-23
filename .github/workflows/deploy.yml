@@ -1,0 +1,137 @@
+# Build, test and deploy the Platform app to Azure App Service.
+#
+# One App Service hosts both the API and the built SPA (same origin — the
+# frontend calls relative /api/... paths). The frontend build is copied into
+# Platform.Api/wwwroot before `dotnet publish`; Program.cs serves it only when
+# wwwroot/index.html exists.
+#
+# One-time setup (see the PR/commit that added this file):
+#   Repository variables:  AZURE_WEBAPP_NAME
+#   Repository secrets:    AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#     (a Microsoft Entra app registration with a federated credential for this
+#      repo's "production" environment — no long-lived Azure password stored here)
+#   GitHub environment:    "production" (optionally with required reviewers)
+#
+# App settings (Jwt__Key, ConnectionStrings__PlatformDB, Storage__R2__*, …)
+# live in the App Service configuration, never in this repo or this workflow.
+
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  NODE_VERSION: "22"
+  API_PROJECT: backend/src/Platform.Api/Platform.Api.csproj
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Frontend ─────────────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npx vitest run
+
+      # `npm run lint` currently reports 14 pre-existing errors; add it here
+      # once those are cleared so it can gate deploys.
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      # ── Backend ──────────────────────────────────────────────────────────
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Domain tests
+        run: dotnet test backend/src/Platform.Domain.Tests/Platform.Domain.Tests.csproj -c Release
+
+      # Testcontainers starts a throwaway Postgres in the runner's Docker.
+      # The live-R2 tests skip themselves because no R2 credentials are given.
+      - name: API integration tests
+        run: dotnet test backend/src/Platform.Api.IntegrationTests/Platform.Api.IntegrationTests.csproj -c Release
+
+      - name: Copy frontend build into API wwwroot
+        run: |
+          rm -rf backend/src/Platform.Api/wwwroot
+          cp -r frontend/dist backend/src/Platform.Api/wwwroot
+
+      - name: Publish API
+        run: dotnet publish ${{ env.API_PROJECT }} -c Release -o publish
+
+      - name: Check the SPA made it into the package
+        run: test -f publish/wwwroot/index.html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: platform-app
+          path: publish
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.webapp-url }}
+    permissions:
+      id-token: write   # OIDC login to Azure
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: platform-app
+          path: publish
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: publish
+
+      # The app runs migrations and seeding on startup; wait for it to come up
+      # healthy so a failed boot (missing secret, bad migration) fails this run.
+      - name: Wait for /health
+        run: |
+          url="${{ steps.deploy.outputs.webapp-url }}/health"
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$url"; then echo; echo "Healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "App did not report healthy within 5 minutes: $url"
+          exit 1
