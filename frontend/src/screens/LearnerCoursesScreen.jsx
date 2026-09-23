@@ -3,6 +3,7 @@ import {
   LoaderCircle, ArrowLeft, BookOpen, CheckCircle2, PlayCircle, Lock,
 } from "lucide-react";
 import * as api from "../api/client";
+import AssetImage from "../components/AssetImage";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
@@ -89,7 +90,7 @@ function ProductPicker({ onSelect }) {
           const cover = (
             <div className={`lw-course-cover ${p.coverImageAssetId ? "" : `lw-cover--${coverVariant(p.id)}`}`}>
               {p.coverImageAssetId ? (
-                <img className="lw-course-coverimg" alt="" src={api.learningAssetDownloadUrl(session.token, slug, p.coverImageAssetId)} />
+                <AssetImage batch className="lw-course-coverimg" alt="" token={session?.token} slug={slug} assetId={p.coverImageAssetId} />
               ) : (
                 <span className="lw-course-monogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
               )}

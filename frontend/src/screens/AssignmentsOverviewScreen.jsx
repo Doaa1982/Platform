@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, ArrowLeft, ClipboardCheck, RotateCcw, Paperclip } from "lucide-react";
 import * as api from "../api/client";
+import AssetLink from "../components/AssetLink";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
@@ -164,10 +165,10 @@ function AssignmentDetail({ lessonId, activityId, activityTitle, slug, token, on
                   <td className="lw-assign__responsecell">
                     {r.responseText || (!r.responseLearningAssetId && "—")}
                     {r.responseLearningAssetId && (
-                      <a href={api.learningAssetDownloadUrl(token, slug, r.responseLearningAssetId)} target="_blank" rel="noreferrer"
+                      <AssetLink token={token} slug={slug} assetId={r.responseLearningAssetId}
                          onClick={(e) => e.stopPropagation()} className="lw-assign__downloadlink">
                         <Paperclip size={12} /> {t("assignOverview.hasAttachment")}
-                      </a>
+                      </AssetLink>
                     )}
                   </td>
                   <td className="lw-assign__resultcell">

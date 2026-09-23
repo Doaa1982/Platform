@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Paperclip, Download, LoaderCircle } from "lucide-react";
 import * as api from "../api/client";
+import AssetLink from "../components/AssetLink";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
@@ -86,13 +87,12 @@ function Resources({ lessonId, slug, token, onBackToLesson }) {
       {resources.length > 0 && (
         <div className="lw-resourcelist">
           {resources.map((r) => (
-            <a key={r.id} className="lw-resourcelist__item"
-               href={api.learningAssetDownloadUrl(token, slug, r.id)} target="_blank" rel="noreferrer">
+            <AssetLink key={r.id} className="lw-resourcelist__item" token={token} slug={slug} assetId={r.id}>
               <Paperclip size={14} />
               <span className="lw-resourcelist__title">{r.title}</span>
               <span className="lw-resourcelist__meta">{Math.round(r.fileSizeBytes / 1024)} KB</span>
               <Download size={14} />
-            </a>
+            </AssetLink>
           ))}
         </div>
       )}

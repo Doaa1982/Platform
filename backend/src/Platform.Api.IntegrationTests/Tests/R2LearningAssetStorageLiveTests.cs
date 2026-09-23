@@ -111,6 +111,76 @@ public sealed class R2LearningAssetStorageLiveTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// A real presigned GET against the dev bucket. The URL is a credential, so nothing here prints it: assertions compare
+    /// status codes, headers and bytes only.
+    /// </summary>
+    [R2LiveFact]
+    public async Task PresignedRead_ServesInlineWithTheOverrides_SupportsRanges_RejectsTampering_AndExpires()
+    {
+        var storage = _storage!;
+        Assert.True(storage.SupportsPresignedRead);
+        var data = RandomNumberGenerator.GetBytes(300_000);
+        string? key = null;
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+
+        try
+        {
+            await using (var input = new NonSeekableStream(data))
+                key = await storage.SaveAsync(Guid.NewGuid(), "presign-live-test.mp4", input, default);
+
+            // Full read: 200, the bytes, and the response-header overrides we signed (inline + the content type + the file name).
+            var signed = await storage.CreatePresignedReadUrlAsync(key, "video/mp4", "Lesson One.mp4", TimeSpan.FromSeconds(120), inline: true, default);
+            var full = await http.GetAsync(signed.Url);
+            Assert.Equal(System.Net.HttpStatusCode.OK, full.StatusCode);
+            Assert.Equal(data, await full.Content.ReadAsByteArrayAsync());
+            Assert.Equal("video/mp4", full.Content.Headers.ContentType!.MediaType);
+            var disposition = full.Content.Headers.ContentDisposition!.ToString();
+            Assert.StartsWith("inline", disposition);
+            Assert.Contains("Lesson One.mp4", disposition);
+
+            // A ranged read, the shape a <video> seek makes: 206 and exactly those bytes.
+            using (var ranged = new HttpRequestMessage(HttpMethod.Get, signed.Url))
+            {
+                ranged.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(100_000, 100_999);
+                var partial = await http.SendAsync(ranged);
+                Assert.Equal(System.Net.HttpStatusCode.PartialContent, partial.StatusCode);
+                Assert.Equal(data[100_000..101_000], await partial.Content.ReadAsByteArrayAsync());
+                Assert.Equal(100_000, partial.Content.Headers.ContentRange!.From);
+                Assert.Equal(300_000, partial.Content.Headers.ContentRange.Length);
+            }
+
+            // An explicit download link is the only thing that signs an attachment.
+            var attachment = await storage.CreatePresignedReadUrlAsync(key, "video/mp4", "Lesson One.mp4", TimeSpan.FromSeconds(120), inline: false, default);
+            var downloaded = await http.GetAsync(attachment.Url);
+            Assert.Equal(System.Net.HttpStatusCode.OK, downloaded.StatusCode);
+            Assert.StartsWith("attachment", downloaded.Content.Headers.ContentDisposition!.ToString());
+
+            // Altering the signed content type (an override baked into the signature) is refused.
+            var forgedType = signed.Url.Replace("response-content-type=video%2Fmp4", "response-content-type=text%2Fhtml");
+            Assert.NotEqual(signed.Url, forgedType);
+            Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await http.GetAsync(forgedType)).StatusCode);
+
+            // A damaged signature is refused.
+            var signature = System.Text.RegularExpressions.Regex.Match(signed.Url, "X-Amz-Signature=([0-9a-f]{64})").Groups[1].Value;
+            Assert.Equal(64, signature.Length);
+            var flipped = (signature[0] == 'a' ? 'b' : 'a') + signature[1..]; // same length, wrong value
+            var damaged = signed.Url.Replace(signature, flipped);
+            Assert.NotEqual(signed.Url, damaged);
+            Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await http.GetAsync(damaged)).StatusCode);
+
+            // Expiry: a URL signed for three seconds works now and is refused once that has passed.
+            var brief = await storage.CreatePresignedReadUrlAsync(key, "video/mp4", "Lesson One.mp4", TimeSpan.FromSeconds(3), inline: true, default);
+            Assert.Equal(System.Net.HttpStatusCode.OK, (await http.GetAsync(brief.Url)).StatusCode);
+            await Task.Delay(TimeSpan.FromSeconds(7));
+            Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await http.GetAsync(brief.Url)).StatusCode);
+        }
+        finally
+        {
+            if (key is not null) await storage.DeleteAsync(key, default);
+        }
+    }
+
     /// <summary>The shape of a raw request body: forward-only, length unknown — what forces a multipart upload.</summary>
     private sealed class NonSeekableStream(byte[] data) : Stream
     {

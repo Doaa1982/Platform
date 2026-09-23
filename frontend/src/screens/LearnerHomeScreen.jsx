@@ -3,6 +3,7 @@ import {
   LoaderCircle, BookOpen, CheckCircle2, ClipboardCheck, Award, Trophy, Clock, PlayCircle, ChevronRight, Sparkles, ArrowRight, Play
 } from "lucide-react";
 import * as api from "../api/client";
+import AssetImage from "../components/AssetImage";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
@@ -114,10 +115,13 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
               >
                 <div className={`lw-db-resumethumb ${c.productCoverImageAssetId ? "" : `lw-cover--${coverVariant(c.productId)}`}`}>
                   {c.productCoverImageAssetId && (
-                    <img
+                    <AssetImage
+                      batch
                       className="lw-db-resumeimg"
                       alt=""
-                      src={api.learningAssetDownloadUrl(session.token, slug, c.productCoverImageAssetId)}
+                      token={session?.token}
+                      slug={slug}
+                      assetId={c.productCoverImageAssetId}
                     />
                   )}
                   <div className="lw-db-playoverlay">

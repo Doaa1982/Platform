@@ -514,9 +514,26 @@ export function uploadSubmissionAsset(token, slug, file, onProgress) {
   });
 }
 
-/** GET /api/workspaces/{slug}/learning-assets/{assetId}/download — the URL a <video> element points at */
-export function learningAssetDownloadUrl(token, slug, assetId) {
-  return `/api/workspaces/${encodeURIComponent(slug)}/learning-assets/${assetId}/download?access_token=${encodeURIComponent(token)}`;
+/**
+ * POST /api/workspaces/{slug}/learning-assets/{assetId}/access — authorises the caller for one asset and returns
+ * { url, expiresAt }: a short-lived URL an <img>, <a>, <iframe> or <video> can load without an Authorization
+ * header. The URL carries an asset-scoped token, never the session token. `download` asks for an attachment
+ * (an explicit download link); otherwise the file is served inline.
+ */
+export function requestLearningAssetAccess(token, slug, assetId, { download = false } = {}) {
+  const query = download ? "?disposition=attachment" : "";
+  return request(`/workspaces/${encodeURIComponent(slug)}/learning-assets/${assetId}/access${query}`, { method: "POST", token });
+}
+
+/**
+ * POST /api/workspaces/{slug}/learning-assets/access-batch — URLs for up to 50 Image-category assets (covers, logos) in
+ * one request. Returns { items: [{ assetId, available, url, expiresAt }] }; an asset that is not available for any
+ * reason comes back { available: false } with nothing else. Use through the batcher (api/assetUrls), not directly.
+ */
+export function requestLearningAssetAccessBatch(token, slug, assetIds) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/learning-assets/access-batch`, {
+    method: "POST", token, body: { assetIds },
+  });
 }
 
 /** DELETE .../learning-assets/{assetId} — archives it */

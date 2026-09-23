@@ -866,6 +866,260 @@ check BA-008 confirms is the only intended effect).
 
 ---
 
+## TD-021 — No URL-based routing; full reload from any deep screen returns to the dashboard
+
+**Raised:** 2026-09-22 (student-reported: refreshing a lesson page while its video is playing
+redirects to the dashboard)
+**Area:** `frontend/src/App.jsx` — navigation state (`learnerScreen`, `ownerScreen`,
+`learnerLessonId`, `studioProductId` and siblings)
+**Severity:** Moderate — real, reproducible, user-facing loss of place; not specific to video
+**Status:** Deferred
+
+Which screen and which record are open live only in `useState` (`App.jsx:853-882`), never
+synced to the URL or any persistent storage. `learnerScreen` initializes to `"dashboard"` on
+every mount. A full page reload remounts the app from scratch, so that state resets to its
+default — the user lands on the dashboard regardless of what they were viewing.
+
+**Not video-specific.** Reloading from any deep screen — a lesson, an assignment, a Content
+Studio product, a resource — loses the same way. It is most noticeable on a lesson video
+because playback is audibly/visibly interrupted, which is how it was found, but the root cause
+is the complete absence of routing, not anything about video or the Phase 3 playback-refresh
+work reviewed the same day.
+
+**Security constraint for the fix, stated up front so it isn't rediscovered under pressure
+later:** any deep link a URL-restore reconstructs (a lesson, an asset, an assignment) **must**
+go through the same authorization path it would if reached by clicking through the UI —
+`LearningAssetAccessPolicy` for asset access, and whatever screen-level checks already gate
+lessons/assignments/products — not skip it by restoring component state directly from a URL
+parameter. Routing must not become a second, unchecked way to reach content the click-through
+path would refuse.
+
+**Trigger:** the next time this is reported by a real user (student-reported once already), or
+a deliberate routing pass.
+**Resolution sketch:** real URL routing (`react-router`, or manual `pushState`/`popstate`
+handling already used once in `App.jsx:407` for side-switching) synced to
+`learnerScreen`/`ownerScreen`/the open lesson or product id, with restore-from-URL on load.
+Every restored id must be re-authorized through the existing checks on the way back in, exactly
+as if the user had navigated there by clicking, never assumed valid because it came from a URL.
+
+---
+
+## TD-022 — `playbackRefresh.js`'s initial-load `schedule()` is not gated on a successful first load
+
+**Raised:** 2026-09-22 (Phase 3 video-refresh Run 3/Run 4 Playwright-failure investigation)
+**Area:** `frontend/src/api/playbackRefresh.js` — `start()`
+**Severity:** Low — a real, correctly-diagnosed defect, but not shown to cause any observed
+failure, and the watchdog already provides a safety net
+**Status:** Deferred — do not fix speculatively; no reproducible failure exists to verify a fix
+against
+
+`start()` calls `schedule()` unconditionally, immediately after assigning the very first
+video source — with no gate on whether that source ever reaches `readyState > 0`. Every
+subsequent swap gets this right: its `schedule()` call happens only from `finish()`, after a
+confirmed successful load. Only the first one skips that rule.
+
+Consequence: since a freshly-opened, unplayed video has `media.paused === true` by default,
+the proactive-refresh-while-paused rule (`onProactiveDue()`) can fire on a source that hasn't
+finished loading yet — even one that's healthy and about to succeed — interrupting it
+needlessly. Exact evidence, from Run 4's own network timeline: a second `POST /access` fired
+at ~15s after the first, well before the watchdog's own 20s timeout, aborting the still-loading
+first connection (`net::ERR_ABORTED`) — traced precisely to `schedule()`'s proactive timer
+(`lifetime - lead = 15000ms` for a 30s test lifetime), not to the watchdog.
+
+**Investigated, not confirmed causal.** A full investigation (the original failure's
+millisecond-level reconstruction, plus 10 fresh reproduction attempts) did not establish that
+this defect caused Run 4's actual failure — the underlying stall (TD-023) was already present
+on the first source before the proactive refresh ever fired, so the premature interruption was
+incidental to that failure, not its cause.
+
+**Trigger:** the next time `playbackRefresh.js` is touched for any reason (fix
+opportunistically then); or sooner if TD-023's stall becomes reliably reproducible and this
+interruption is shown to make it worse rather than merely coincide with it.
+**Resolution sketch:** call `schedule()` for the initial source only after its first successful
+`loadedmetadata` — move the first `schedule()` call out of `start()` and into the same success
+path (`finish()`/`onAnyMetadata()`) every subsequent swap already uses.
+
+---
+
+## TD-023 — Chrome/R2 media stall: a video's initial load occasionally never reaches `readyState > 0`
+
+**Raised:** 2026-09-22 (same investigation as TD-022)
+**Area:** Browser/network interaction between Chrome's `<video>` element and Cloudflare R2
+presigned URLs — not directly fixable in application code
+**Severity:** Low-Moderate — real and observed, currently only mitigated, not root-caused or
+fixed
+**Status:** Deferred — not a launch blocker
+
+Chrome's `<video>` element occasionally never progresses past `readyState = 0` (`HAVE_NOTHING`)
+despite R2 responding correctly. Confirmed directly: in Run 4's failing run, three separate
+presigned URLs in the same session each got a clean, fast `206 Partial Content` response
+(350–650ms), yet none of them ever produced a `loadedmetadata` event.
+
+**Estimated rate:** roughly 1-in-6 to 1-in-12 loads, from earlier direct bare-`<video>`
+probing (12 loads: ~2/12 stalled with default Chrome flags, 0/12 with `--disable-quic`) —
+though `--disable-quic` does not fully eliminate it, since Run 4's failure occurred with that
+flag already applied. Root cause (why Chrome's media pipeline stalls specifically against R2,
+even with QUIC disabled) was not identified; it looks connection/negotiation-related, not an
+R2 delivery problem.
+
+**Already mitigated, not fixed.** `playbackRefresh.js`'s stalled-load watchdog (20s timeout,
+up to 2 retries before reporting failure) recovers from this automatically in the ordinary
+case. Only a rare, compounding run of consecutive stalls — as seen once in Run 4 — can exhaust
+that retry budget before recovering, which is what a Playwright test with a fixed wait budget
+can observe as a failure.
+
+**Not reproduced again.** 10 fresh-context reproduction attempts, plus 5 full Playwright runs
+across two later batches (3 then 2 more), all passed cleanly — consistent with a genuinely
+low, roughly-estimated rate rather than a systematic issue, but not a large enough sample to
+rule the underlying condition out.
+
+**Trigger:** a genuine, reproducible recurrence; or a broader Chrome/QUIC/R2 compatibility
+investigation if the same pattern turns up elsewhere.
+**Resolution sketch:** none available yet — this needs browser-level root-causing (a packet
+capture or Chrome `net-internals` trace during a live repro), not an application code change,
+since R2 itself is responding correctly every time this was observed.
+
+---
+## TD-024 — Product Draft/Archived status not enforced in shared learner access rule
+
+**Raised:** 2026-09-22 (LearningAssetAccessPolicy Phase 2 build)
+**Area:** Platform.Api — `LearnerAccess` / `LearningDeliveryService` / `LearningAssetAccessPolicy`
+**Severity:** Moderate — access-control gap, deliberately not fixed in this change
+**Status:** Deferred
+
+`GetLessonAsync` and the new asset policy both ignore `LearningProduct.Status`. A
+learner can still open a Published lesson's content and read its assets even
+when the owning product is `Draft` or `Archived`. Only the product list (hides
+it) and the curriculum endpoint (returns `NotFound`) currently check status.
+Unpublishing or archiving a product does not cascade to its lessons.
+
+Deferred deliberately — fixing it in the shared `LearnerAccess` code would also
+change lesson delivery behaviour, which was out of scope for the asset-security
+work this was found during.
+
+**Trigger:** a product decision on what should happen to learners of a
+retired/unpublished product (keep access? revoke it?), or before launch if that
+decision is made.
+**Resolution sketch:** add a product-status check to the shared `LearnerAccess`
+primitives so lesson delivery and asset access agree by construction.
+
+---
+
+## TD-025 — Assignment view exposes activities on unpublished lessons; asset itself is blocked, content is not
+
+**Raised:** 2026-09-22 (LearningAssetAccessPolicy Phase 2 build)
+**Area:** Platform.Api — assignment/activity delivery path
+**Severity:** Low-Moderate — partial gap, asset download already fixed
+**Status:** Deferred
+
+The asset policy now requires the lesson to be `Published` before serving an
+activity file — stricter than the assignment view itself. An enrolled learner
+can still open an activity belonging to an unpublished lesson through the
+assignment view and receive its file id (the file download now correctly
+403s, but the activity's other content is still visible).
+
+**Trigger:** next time the assignment/activity delivery path is touched, or a
+security review of the learner-facing assignment surface.
+**Resolution sketch:** apply the same lesson-Published check the asset policy
+uses to the assignment view's activity visibility.
+
+---
+
+## TD-026 — Activity-file access is Active-enrollment-only; video/resource access also allows Completed
+
+**Raised:** 2026-09-22 (LearningAssetAccessPolicy Phase 2 build)
+**Area:** Platform.Api — `LearnerAccess` enrollment rules
+**Severity:** Low — inconsistency, not a security gap
+**Status:** Deferred
+
+Lesson videos/resources accept `Active` or `Completed` enrollment. Activity
+files (mirroring the assignment view's rule) accept `Active` only. A learner
+who completes a course can keep rewatching its videos but loses access to its
+activity files.
+
+**Trigger:** a product decision on whether Completed learners should retain
+activity-file access, matching video/resource behaviour.
+**Resolution sketch:** if intended, this changes both the asset policy and the
+assignment view together, so they don't diverge again.
+
+---
+
+## TD-027 — Ad hoc diagnostic/investigation scripts don't clean up on failure
+
+**Raised:** 2026-09-22 (Run 3/Run 4 Playwright investigation)
+**Area:** `frontend/e2e/` throwaway harness scripts (not application code)
+**Severity:** Low — housekeeping, caused one confirmed R2 dev-bucket leftover
+**Status:** Deferred
+
+A throwaway diagnostic harness (`frontend/e2e/.output/investigate.mjs`, since
+deleted) uploaded a video during a seed step, then crashed on an unrelated bug
+before reaching its own cleanup — which only ran at the end of a successful
+pass. The orphaned object sat in `learning-workspace-dev` until caught by a
+manual object-count check.
+
+**Trigger:** the next time a throwaway investigation script uploads to R2.
+**Resolution sketch:** any ad hoc script that writes to R2 should clean up in a
+`try`/`finally` (or equivalent), not only on successful completion.
+
+---
+
+## TD-028 — `Storage__AssetTokenKey` and R2 credentials have no production value yet
+
+**Raised:** 2026-09-22 (Phase 3 close-out / production deployment planning)
+**Area:** Platform.Api — configuration / deployment
+**Severity:** Blocker *at deploy time*, harmless before it — same shape as TD-001
+**Status:** Deferred
+
+`Storage:AssetTokenKey` startup validation (missing, under 32 bytes, a
+placeholder, or equal to the JWT key all fail fast outside Development) is
+correct, but no production value has been generated or set yet. Same is true
+of `Storage__R2__AccessKeyId` / `Storage__R2__SecretAccessKey` — a previously
+exposed key pair was rolled once already during dev setup, and a temporary
+read-only prod token used for the dev-bucket migration is still pending
+revocation.
+
+**Trigger:** first deployment to any shared/hosted environment (same trigger
+as TD-001 — worth doing together).
+**Resolution sketch:** generate `Storage__AssetTokenKey` via
+`openssl rand -base64 48`, distinct from the JWT key and the dev key. Set it
+alongside the R2 keys on the production host. Revoke the old exposed key pair
+and the temporary prod token in Cloudflare before or immediately after deploy.
+
+---
+
+## TD-029 — No hosting environment, CI/CD pipeline, or email/mailing system exists yet
+
+**Raised:** 2026-09-22 (first production deployment planning)
+**Area:** Infrastructure — hosting, deployment, transactional/marketing email
+**Severity:** Blocker for launch, not for continued development
+**Status:** In Progress
+
+This is the first production deployment of the whole app — no hosting
+platform, CI/CD pipeline, custom domain, or email-sending capability exists
+yet. Direction decided so far, nothing provisioned:
+
+- **Hosting:** Azure App Service (.NET-native) + Azure Database for
+  PostgreSQL Flexible Server, UAE North region for proximity to the
+  Egypt-based user base (same reasoning as the R2 EEUR bucket hint). Frontend
+  via Azure Static Web Apps or App Service. Secrets via Azure Key Vault.
+- **CI/CD:** not yet built; GitHub Actions is the likely fit if the repo is
+  on GitHub.
+- **Email:** no transactional or marketing email exists. Needed for account
+  verification, password reset, enrollment notifications, assignment/grading
+  notifications, and marketing/newsletters. Direction: SendGrid (handles
+  both transactional and marketing in one platform). Requires a custom
+  domain (not yet registered), SPF/DKIM/DMARC DNS records, and separate
+  sending subdomains for transactional vs. marketing so a bad marketing send
+  can't damage deliverability of password-reset/verification email.
+- **Domain name:** not yet decided or registered — blocks email setup and
+  the frontend/App Service hostname.
+
+**Trigger:** already triggered — this is the active blocker to launch.
+**Resolution sketch:** pick and register a domain; provision Azure resources;
+build the GitHub Actions pipeline; set up SendGrid with domain verification;
+close out TD-001 and TD-028 (production secrets) as part of the same push.
+
+---
 ## Log
 
 | Date | Change |
@@ -900,3 +1154,6 @@ check BA-008 confirms is the only intended effect).
 | 2026-08-15 | TD-019 closed — Learning Workspace Experience Architecture gained §18 (Owner Setup Experience), appended after §17 so existing citations of its §13 stay valid, defining the Readiness Checklist in terms Workspace Setup Business Analysis §8/§10 already settled. Workspace Setup Business Analysis §4/§14 now cite §18 by number. Implementation (API + screen still expose only a single `blocker` string) intentionally left open — this closed the documentation gap only. |
 | 2026-08-15 | TD-020 closed — Join Request Business Analysis gained BA-008 (v1.1 → v1.2): `AcceptsJoinRequests` authority is Owner-or-Administrator (BA-001, same as every other Workspace Setup action), and toggling it never affects a Join Request already `Submitted`, confirmed against `WorkspaceSetupService.SetAcceptsJoinRequestsAsync` and `JoinRequestService`, neither of which does anything beyond the existing submission-time check. Workspace Setup Business Analysis §8/§14 cross-reference the owning document. No code change. |
 | 2026-08-15 | TD-019's implementation gap closed the same day — `WorkspaceSetupScreen.jsx` gained a `Readiness` component matching §18's Blocking/Addressable/Suggested groups exactly, reading the `Completeness` object `/api/workspaces/{slug}/setup` already returned. Same pass: a success toast for the `AcceptsJoinRequests` toggle (previously silent), a slug-change warning when editing a Published/Active workspace's public identifier (a UI mitigation for §16's still-open "changing a Public Identifier after publication" question, not a resolution of it), and an honest in-screen note that Configuration/Branding/Capabilities aren't built yet (TD-006). `Documents/Workspace Setup Screen — Gap Analysis.md` updated to match. |
+| 2026-09-22 | TD-021 raised — no URL-based routing; a full page reload from any deep screen (lesson, assignment, Content Studio product) loses navigation state and returns to the dashboard. Found via a student report on a lesson video. Fix requires real routing synced to screen/record state with restore-from-URL, and any restored deep link must re-run existing authorization (`LearningAssetAccessPolicy` and equivalent screen-level checks) rather than trusting the URL. |
+| 2026-09-22 | TD-022, TD-023 raised during the Phase 3 video-refresh Playwright investigation (Run 3/Run 4 failures). TD-022 (the `schedule()` gating defect): correctly diagnosed, not proven causal for the observed failure, ruled deferred pending its own trigger rather than fixed speculatively. TD-023 (the underlying Chrome/R2 stall): confirmed real, root cause not identified, already mitigated by the existing watchdog, ruled not a launch blocker at its estimated ~1-in-6 to ~1-in-12 rate. |
+| 2026-09-22 | TD-024 through TD-026 raised during the LearningAssetAccessPolicy Phase 2 build — product Draft/Archived status not enforced, unpublished-lesson activities visible via the assignment view, and Active-only activity-file enrollment inconsistent with video/resource access. All deliberately deferred pending product decisions. TD-027 raised — a throwaway diagnostic script left an orphaned R2 object after crashing before its own cleanup ran. TD-028 raised — `Storage__AssetTokenKey` and production R2 credentials have no value set yet (same trigger as TD-001). TD-029 raised — first production deployment: no hosting, CI/CD, domain, or email system exists yet; direction decided (Azure, SendGrid) but nothing provisioned. |

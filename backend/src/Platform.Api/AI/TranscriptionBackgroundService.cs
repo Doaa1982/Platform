@@ -110,7 +110,21 @@ public class TranscriptionBackgroundService(
             if (job.StorageObjectKey is not null)
             {
                 var storage = scope.ServiceProvider.GetRequiredService<ILearningAssetStorage>();
-                storedCopy = await StorageTempFile.DownloadAsync(storage, job.StorageObjectKey, ct, logger);
+                try
+                {
+                    storedCopy = await StorageTempFile.DownloadAsync(storage, job.StorageObjectKey, ct, logger);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The failure text is saved on the revision and shown to the tutor. A storage or filesystem error can
+                    // carry a bucket, an object key, an endpoint or a local path, so the tutor gets a fixed message and
+                    // the real exception stays in the server log (logged by the catch below).
+                    throw new TranscriptionSourceUnavailableException(
+                        ex is StoredObjectNotFoundException
+                            ? "The lesson's video file could not be found in storage. Please re-attach the video and try again."
+                            : "The lesson's video file could not be read from storage. Please try again in a few minutes.",
+                        ex);
+                }
                 filePath = storedCopy.Path;
             }
             else
@@ -216,3 +230,7 @@ public class TranscriptionBackgroundService(
         return tempPath;
     }
 }
+
+/// <summary>The uploaded video could not be copied out of storage. The message is safe to show a tutor; the InnerException is not.</summary>
+public sealed class TranscriptionSourceUnavailableException(string safeMessage, Exception inner) : Exception(safeMessage, inner);
+

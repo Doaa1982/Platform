@@ -35,6 +35,7 @@ import AssignmentsOverviewScreen from "./screens/AssignmentsOverviewScreen";
 import LearnerAssignmentsScreen from "./screens/LearnerAssignmentsScreen";
 import AssignmentSubmissionScreen from "./screens/AssignmentSubmissionScreen";
 import * as api from "./api/client";
+import { useAssetUrl } from "./hooks/useAssetUrl";
 
 /* Single breakpoint the app shell collapses at — shared between the JS
    media-query check (drawer open/close logic) and the CSS block below, so
@@ -892,6 +893,8 @@ export default function App() {
      substituting anything. */
   const [description, setDescription] = useState(null);
   const [logoAssetId, setLogoAssetId] = useState(null);
+  // Short-lived, asset-scoped URL for the workspace logo — never the session token in an <img> URL.
+  const logoAccess = useAssetUrl(session.token, workspace.slug, logoAssetId);
 
   useEffect(() => {
     let cancelled = false;
@@ -935,7 +938,7 @@ export default function App() {
     tagline: description || "",
     mark: (workspace.name.trim()[0] || "W").toUpperCase(),
     logoStyle: "geometric",
-    logoUrl: logoAssetId ? api.learningAssetDownloadUrl(session.token, workspace.slug, logoAssetId) : null,
+    logoUrl: logoAccess.url,
   };
 
   /* Branding is not implemented (Technical Debt Backlog TD-006), so every

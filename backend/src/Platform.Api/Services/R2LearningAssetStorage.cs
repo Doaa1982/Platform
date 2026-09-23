@@ -2,6 +2,8 @@ using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using System.Buffers;
+using System.Net.Http;
+using Microsoft.Net.Http.Headers;
 
 namespace Platform.Api.Services;
 
@@ -66,6 +68,7 @@ public sealed class R2LearningAssetStorage : ILearningAssetStorage, IDisposable
                 ServiceURL = options.ResolvedServiceUrl,
                 AuthenticationRegion = "auto",
                 ForcePathStyle = true,
+                MaxErrorRetry = 2,
                 // R2 doesn't implement the SDK's newer default trailing-checksum
                 // upload framing; only compute/validate checksums when required.
                 RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
@@ -76,6 +79,12 @@ public sealed class R2LearningAssetStorage : ILearningAssetStorage, IDisposable
     public string ProviderName => "R2";
 
     public async Task<string> SaveAsync(Guid workspaceId, string fileName, Stream content, CancellationToken ct)
+    {
+        try { return await SaveCoreAsync(workspaceId, fileName, content, ct); }
+        catch (Exception ex) when (IsStorageFailure(ex)) { throw new StorageUnavailableException(ex); }
+    }
+
+    private async Task<string> SaveCoreAsync(Guid workspaceId, string fileName, Stream content, CancellationToken ct)
     {
         var objectKey = $"{workspaceId:N}/{Guid.NewGuid():N}{Path.GetExtension(fileName)}";
 
@@ -182,10 +191,58 @@ public sealed class R2LearningAssetStorage : ILearningAssetStorage, IDisposable
         {
             throw new StoredObjectNotFoundException(objectKey);
         }
+        catch (Exception ex) when (IsStorageFailure(ex))
+        {
+            throw new StorageUnavailableException(ex);
+        }
     }
 
-    public async Task DeleteAsync(string objectKey, CancellationToken ct) =>
-        await _s3.DeleteObjectAsync(_bucket, objectKey, ct);
+    public async Task DeleteAsync(string objectKey, CancellationToken ct)
+    {
+        try { await _s3.DeleteObjectAsync(_bucket, objectKey, ct); }
+        catch (Exception ex) when (IsStorageFailure(ex)) { throw new StorageUnavailableException(ex); }
+    }
+
+    public bool SupportsPresignedRead => true;
+
+    /// <summary>
+    /// Signs locally (no network call). The content type and disposition are baked into the signature as response-header
+    /// overrides, so the browser gets what the proxy would have sent, and cannot alter them.
+    /// </summary>
+    public async Task<PresignedRead> CreatePresignedReadUrlAsync(
+        string objectKey, string contentType, string fileName, TimeSpan lifetime, bool inline, CancellationToken ct)
+    {
+        var expires = DateTime.UtcNow.Add(lifetime);
+        var disposition = new ContentDispositionHeaderValue(inline ? "inline" : "attachment");
+        disposition.SetHttpFileName(fileName);
+
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = _bucket,
+            Key = objectKey,
+            Verb = HttpVerb.GET,
+            Expires = expires,
+            ResponseHeaderOverrides = new ResponseHeaderOverrides
+            {
+                ContentType = contentType,
+                ContentDisposition = disposition.ToString(),
+            },
+        };
+
+        try
+        {
+            return new PresignedRead(await _s3.GetPreSignedURLAsync(request), new DateTimeOffset(expires, TimeSpan.Zero));
+        }
+        catch (Exception ex) when (IsStorageFailure(ex))
+        {
+            throw new StorageUnavailableException(ex);
+        }
+    }
+
+    /// <summary>Anything the SDK or the network raises — but never a caller's own cancellation.</summary>
+    private static bool IsStorageFailure(Exception ex) =>
+        ex is AmazonServiceException or AmazonClientException or HttpRequestException or IOException or TimeoutException
+        || (ex is OperationCanceledException && ex.InnerException is not null);
 
     public void Dispose() => _s3.Dispose();
 

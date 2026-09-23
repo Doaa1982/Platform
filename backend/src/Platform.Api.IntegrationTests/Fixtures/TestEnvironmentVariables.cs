@@ -23,6 +23,11 @@ public static class TestEnvironmentVariables
         Environment.SetEnvironmentVariable("Jwt__Audience", "platform-client");
         Environment.SetEnvironmentVariable("Cors__AllowedOrigins__0", "http://localhost");
         Environment.SetEnvironmentVariable("Email__Enabled", "false");
+        // The app defaults to R2; tests must never write to the real bucket.
+        Environment.SetEnvironmentVariable("Storage__Provider", "Local");
+        // A fresh random asset-token key per run: distinct from the JWT key and never a committed value.
+        Environment.SetEnvironmentVariable("Storage__AssetTokenKey",
+            Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)));
         Environment.SetEnvironmentVariable("InitialPlatformOperator__Email", adminEmail);
         Environment.SetEnvironmentVariable("InitialPlatformOperator__Password", adminPassword);
     }

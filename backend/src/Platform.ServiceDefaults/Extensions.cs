@@ -52,11 +52,27 @@ public static class Extensions
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
                     .AddAspNetCoreInstrumentation(tracing =>
+                    {
                         tracing.Filter = context =>
                             !context.Request.Path.StartsWithSegments(HealthEndpointPath)
-                            && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath)
-                    )
-                    .AddHttpClientInstrumentation();
+                            && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath);
+
+                        // Re-applied here rather than trusting the library default, which an environment variable can switch
+                        // off: asset tokens and signatures must never reach an exported trace.
+                        tracing.EnrichWithHttpRequest = (activity, request) =>
+                        {
+                            if (request.QueryString.HasValue)
+                                activity.SetTag("url.query", TelemetryRedaction.RedactQuery(request.QueryString.Value));
+                        };
+                    })
+                    .AddHttpClientInstrumentation(http =>
+                    {
+                        http.EnrichWithHttpRequestMessage = (activity, request) =>
+                        {
+                            if (request.RequestUri is { Query.Length: > 0 } uri)
+                                activity.SetTag("url.full", TelemetryRedaction.RedactUrl(uri));
+                        };
+                    });
             });
 
         builder.AddOpenTelemetryExporters();

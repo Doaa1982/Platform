@@ -4,6 +4,8 @@ import {
   Globe, Archive, Pencil, BookOpen, Layers, X, Sparkles, Image as ImageIcon,
 } from "lucide-react";
 import * as api from "../api/client";
+import { useAssetUrl } from "../hooks/useAssetUrl";
+import AssetImage from "../components/AssetImage";
 import { useAuth } from "../auth/authContext";
 import InfoTip from "../components/InfoTip";
 import Notice from "../components/Notice";
@@ -211,7 +213,7 @@ export default function ProductsScreen({ onOpenStudio }) {
             <div className={`lw-prod__card is-${p.status.toLowerCase()}`} key={p.id}>
               <div className={`lw-prod__cover ${p.coverImageAssetId ? "" : `lw-cover--${coverVariant(p.id)}`}`}>
                 {p.coverImageAssetId ? (
-                  <img className="lw-prod__coverimg" alt="" src={api.learningAssetDownloadUrl(session.token, slug, p.coverImageAssetId)} />
+                  <AssetImage batch className="lw-prod__coverimg" alt="" token={session?.token} slug={slug} assetId={p.coverImageAssetId} />
                 ) : (
                   <span className="lw-prod__monogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
                 )}
@@ -327,8 +329,9 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, on
     }
   }
 
-  const coverPreviewSrc = newCoverPreviewUrl
-    || (product?.coverImageAssetId && !coverCleared ? api.learningAssetDownloadUrl(session.token, slug, product.coverImageAssetId) : null);
+  const coverAccess = useAssetUrl(
+    session?.token, slug, product?.coverImageAssetId && !coverCleared ? product.coverImageAssetId : null, { batch: true });
+  const coverPreviewSrc = newCoverPreviewUrl || coverAccess.url;
   const [description, setDescription] = useState(product?.description ?? "");
   const [category, setCategory] = useState(product?.category ?? "");
   const [tags, setTags] = useState((product?.tags ?? []).join(", "));

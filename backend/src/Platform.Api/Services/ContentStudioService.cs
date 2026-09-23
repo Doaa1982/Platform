@@ -28,7 +28,7 @@ public class ContentStudioService(
     GenerateLessonBodySkill generateLessonBody, GenerateWhatYoullLearnSkill generateWhatYoullLearn,
     GenerateLessonTitleSkill generateLessonTitle, GenerateLearningObjectivesSkill generateLearningObjectives,
     GenerateGlossarySkill generateGlossary, GenerateHomeworkSkill generateHomework,
-    ExtractLessonContentFromResourceSkill extractLessonContent)
+    ExtractLessonContentFromResourceSkill extractLessonContent, ILogger<ContentStudioService> logger)
 {
     /// <summary>Supported input formats for whichever IAudioTranscriptionProvider is active (AI Video Transcript Implementation Plan §4/§7; both Deepgram and Speechmatics accept all of these directly) — checked against the uploaded file's extension before a job is ever submitted.</summary>
     private static readonly string[] SupportedTranscriptionExtensions =
@@ -780,9 +780,12 @@ public class ContentStudioService(
             return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict,
                 "AI content extraction isn't available with the current AI provider — this workspace needs a provider that supports reading documents/images."));
         }
-        catch (Exception ex) when (ex is IOException or StoredObjectNotFoundException)
+        catch (Exception ex) when (ex is IOException or StorageException)
         {
-            return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict, $"Could not read the uploaded file: {ex.Message}"));
+            // Storage and filesystem errors can carry a bucket, key, endpoint or local path — log them, don't show them.
+            logger.LogError(ex, "Could not read resource asset {AssetId} for content extraction", asset.Id);
+            return Fail<ExtractResourceContentResponse>((ProvisioningError.Conflict,
+                "Could not read the uploaded file. Please try again in a few minutes."));
         }
     }
 

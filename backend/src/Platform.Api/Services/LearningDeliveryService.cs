@@ -21,7 +21,8 @@ namespace Platform.Api.Services;
 ///   LessonProgress  the one concrete completion rule this app enforces
 /// </summary>
 public class LearningDeliveryService(
-    PlatformDbContext db, LessonAssistantSkill lessonAssistant, GenerateLessonQuizSkill generateLessonQuiz)
+    PlatformDbContext db, LessonAssistantSkill lessonAssistant, GenerateLessonQuizSkill generateLessonQuiz,
+    LearnerAccess learnerAccess)
 {
     // ── Products ─────────────────────────────────────────────────────────────
 
@@ -407,7 +408,9 @@ public class LearningDeliveryService(
         LearningAssetResponse? video = null;
         if (revision.VideoAssetId is { } videoId)
         {
-            var asset = await db.LearningAssets.AsNoTracking().FirstOrDefaultAsync(a => a.Id == videoId, ct);
+            // An archived asset is never available to a learner (LearningAssetAccessPolicy), so it isn't offered either.
+            var asset = await db.LearningAssets.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == videoId && a.Status != LearningAssetStatus.Archived, ct);
             if (asset is not null) video = LearningAssetService.Describe(asset);
         }
 
@@ -461,7 +464,8 @@ public class LearningDeliveryService(
         {
             var resourceAssetIds = visibleResources.OrderBy(res => res.Position).Select(res => res.LearningAssetId).ToList();
             var resourceAssets = await db.LearningAssets.AsNoTracking()
-                .Where(a => resourceAssetIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, ct);
+                .Where(a => resourceAssetIds.Contains(a.Id) && a.Status != LearningAssetStatus.Archived)
+                .ToDictionaryAsync(a => a.Id, ct);
             resources = resourceAssetIds.Where(resourceAssets.ContainsKey)
                 .Select(id => LearningAssetService.Describe(resourceAssets[id])).ToList();
         }
@@ -1032,25 +1036,8 @@ public class LearningDeliveryService(
             .Select(p => p.DefaultLanguage)
             .FirstOrDefaultAsync(ct);
 
-    private async Task<bool> IsLessonLockedAsync(Guid learningProductId, Guid lessonId, Guid enrollmentId, CancellationToken ct)
-    {
-        var curriculum = await db.Curricula.Include(c => c.Units).ThenInclude(u => u.Lessons).AsNoTracking()
-            .FirstOrDefaultAsync(c => c.LearningProductId == learningProductId && c.Status == CurriculumStatus.Published, ct);
-        if (curriculum is null || !curriculum.RequiresSequentialCompletion) return false;
-
-        var orderedLessonIds = curriculum.Units.OrderBy(u => u.Position)
-            .SelectMany(u => u.Lessons.OrderBy(l => l.Position))
-            .Select(l => l.LessonId).ToList();
-
-        var index = orderedLessonIds.IndexOf(lessonId);
-        if (index <= 0) return false;
-
-        var previousLessonId = orderedLessonIds[index - 1];
-        var previousProgress = await db.LessonProgresses.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.EnrollmentId == enrollmentId && p.LessonId == previousLessonId, ct);
-
-        return previousProgress?.Status != LessonProgressStatus.Completed;
-    }
+    private Task<bool> IsLessonLockedAsync(Guid learningProductId, Guid lessonId, Guid enrollmentId, CancellationToken ct) =>
+        learnerAccess.IsLessonLockedAsync(learningProductId, lessonId, enrollmentId, ct);
 
     // ── Plumbing ─────────────────────────────────────────────────────────────
 
@@ -1147,21 +1134,8 @@ public class LearningDeliveryService(
 
     private async Task<Context> ResolveAsync(string slug, Guid caller, CancellationToken ct)
     {
-        var normalised = slug.ToLowerInvariant().Trim();
-
-        var workspace = await db.Workspaces.AsNoTracking().FirstOrDefaultAsync(w => w.Slug == normalised, ct);
-        if (workspace is null) return new Context(null, Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
-
-        var member = await db.Memberships.Include(m => m.Roles).AsNoTracking()
-            .FirstOrDefaultAsync(m => m.WorkspaceId == workspace.Id && m.IdentityId == caller
-                                   && m.Status == MembershipStatus.Active, ct);
-        // Non-members get 404 so status codes cannot map which workspaces exist
-        if (member is null) return new Context(null, Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
-
-        if (!member.Roles.Any(r => r.Name == WorkspaceRoleName.Learner))
-            return new Context(null, member.Id, (ProvisioningError.Forbidden, "Only a Learner in this workspace can access this."));
-
-        return new Context(workspace, member.Id, null);
+        var resolved = await learnerAccess.ResolveLearnerAsync(slug, caller, ct);
+        return new Context(resolved.Error is null ? resolved.Workspace : null, resolved.MembershipId, resolved.Error);
     }
 
     private static ProvisioningResult<T> Fail<T>((ProvisioningError Error, string Message) e)

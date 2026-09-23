@@ -12,7 +12,9 @@ namespace Platform.Api.Services;
 /// draw against their own plan-resolved storage entitlement, checked before
 /// the file is written.
 /// </summary>
-public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage storage, EntitlementResolutionService entitlements)
+public class LearningAssetService(
+    PlatformDbContext db, ILearningAssetStorage storage, EntitlementResolutionService entitlements,
+    LearningAssetAccessPolicy accessPolicy)
 {
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
@@ -185,20 +187,19 @@ public class LearningAssetService(PlatformDbContext db, ILearningAssetStorage st
     /// <summary>
     /// Authorises a download and describes the object to stream — never the
     /// bytes themselves and never a filesystem path, so the same flow works for
-    /// any storage backend. <see cref="LearningAssetDownload.ETag"/> is derived
+    /// any storage backend. Access is decided by <see cref="LearningAssetAccessPolicy"/>
+    /// (enrollment, published, archived and ownership rules), not merely by
+    /// workspace membership. <see cref="LearningAssetDownload.ETag"/> is derived
     /// from the (immutable) asset id, not the ObjectKey, which is never exposed
     /// to the browser.
     /// </summary>
     public async Task<ProvisioningResult<LearningAssetDownload>> ResolveDownloadAsync(
         string slug, Guid caller, Guid assetId, CancellationToken ct = default)
     {
-        var ctx = await ResolveAsync(slug, caller, requireAuthor: false, ct);
-        if (ctx.Error is not null) return Fail<LearningAssetDownload>(ctx.Error.Value);
+        var decision = await accessPolicy.AuthorizeReadAsync(slug, caller, assetId, ct);
+        if (decision.Denied is { } denied) return Fail<LearningAssetDownload>(denied);
 
-        var asset = await db.LearningAssets.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == assetId && a.WorkspaceId == ctx.Workspace!.Id, ct);
-        if (asset is null) return Fail<LearningAssetDownload>((ProvisioningError.NotFound, "No such learning asset."));
-
+        var asset = decision.Asset!;
         return ProvisioningResult<LearningAssetDownload>.Success(new LearningAssetDownload(
             asset.ObjectKey, asset.ContentType, asset.OriginalFileName, asset.FileSizeBytes,
             ETag: $"\"{asset.Id:N}-{asset.FileSizeBytes}\""));

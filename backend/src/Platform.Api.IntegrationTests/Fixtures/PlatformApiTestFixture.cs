@@ -25,7 +25,7 @@ namespace Platform.Api.IntegrationTests.Fixtures;
 /// same reasoning as the manual clean-environment run this fixture
 /// automates (V1 Launch Readiness Report).
 /// </summary>
-public sealed class PlatformApiTestFixture : WebApplicationFactory<Program>, IAsyncLifetime
+public class PlatformApiTestFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
         .WithImage("postgres:17.6")
@@ -39,7 +39,7 @@ public sealed class PlatformApiTestFixture : WebApplicationFactory<Program>, IAs
 
     public string ConnectionString => _postgres.GetConnectionString();
 
-    public async Task InitializeAsync()
+    public virtual async Task InitializeAsync()
     {
         await _postgres.StartAsync();
         // Must happen before the host is ever built (CreateClient()/Services)
@@ -48,8 +48,12 @@ public sealed class PlatformApiTestFixture : WebApplicationFactory<Program>, IAs
         TestEnvironmentVariables.Apply(ConnectionString, AdminEmail, AdminPassword);
     }
 
+    /// <summary>Lets a derived fixture release what it built on top of this one before Postgres goes away.</summary>
+    protected virtual Task OnDisposingAsync() => Task.CompletedTask;
+
     async Task IAsyncLifetime.DisposeAsync()
     {
+        await OnDisposingAsync();
         await _postgres.StopAsync();
         await base.DisposeAsync();
     }

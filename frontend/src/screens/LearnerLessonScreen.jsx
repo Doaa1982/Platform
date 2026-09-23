@@ -7,6 +7,8 @@ import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
 import VideoPlayer from "../components/VideoPlayer";
+import AssetImage from "../components/AssetImage";
+import AssetFrame from "../components/AssetFrame";
 import GlassCard from "../components/GlassCard";
 import AnimatedButton from "../components/AnimatedButton";
 import MarkdownText from "../components/MarkdownText";
@@ -192,7 +194,9 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
               <div className="lw-lesson-playerframe">
                 <VideoPlayer
                   ref={videoRef}
-                  src={lesson.video ? api.learningAssetDownloadUrl(session.token, slug, lesson.video.id) : lesson.videoUrl}
+                  {...(lesson.video
+                    ? { assetAccess: { token: session?.token, slug, assetId: lesson.video.id } }
+                    : { src: lesson.videoUrl })}
                   controls={!activeQuestion}
                   onTimeUpdate={handleTimeUpdate}
                   onEnded={handleVideoEnded}
@@ -211,14 +215,18 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
             <div className="lw-lesson-cinema">
               <div className="lw-lesson-playerframe">
                 {inlineResource.contentType.toLowerCase() === "application/pdf" ? (
-                  <iframe
-                    src={api.learningAssetDownloadUrl(session.token, slug, inlineResource.id)}
+                  <AssetFrame
+                    token={session?.token}
+                    slug={slug}
+                    assetId={inlineResource.id}
                     title={inlineResource.title}
                     style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
                   />
                 ) : (
-                  <img
-                    src={api.learningAssetDownloadUrl(session.token, slug, inlineResource.id)}
+                  <AssetImage
+                    token={session?.token}
+                    slug={slug}
+                    assetId={inlineResource.id}
                     alt={inlineResource.title}
                     style={{ width: "100%", height: "100%", objectFit: "contain", background: "#fff" }}
                   />

@@ -7,6 +7,7 @@ import {
   ListChecks, Send, CalendarClock, RotateCcw,
 } from "lucide-react";
 import * as api from "../api/client";
+import AssetImage from "../components/AssetImage";
 import { useAuth } from "../auth/authContext";
 import RequiredMark, { invalidFieldStyle } from "../components/RequiredMark";
 import Message from "../components/Message";
@@ -15,6 +16,7 @@ import InfoTip from "../components/InfoTip";
 import TutorTip from "../components/TutorTip";
 import Modal, { MODAL_CSS } from "../components/Modal";
 import VideoPlayer from "../components/VideoPlayer";
+import AssetLink from "../components/AssetLink";
 import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
@@ -110,7 +112,7 @@ function ProductPicker({ onSelect }) {
           <button className="lw-studio__card" key={p.id} onClick={() => onSelect(p.id)}>
             <div className={`lw-studio__cardcover ${p.coverImageAssetId ? "" : `lw-cover--${coverVariant(p.id)}`}`}>
               {p.coverImageAssetId ? (
-                <img className="lw-studio__cardcoverimg" alt="" src={api.learningAssetDownloadUrl(session.token, slug, p.coverImageAssetId)} />
+                <AssetImage batch className="lw-studio__cardcoverimg" alt="" token={session?.token} slug={slug} assetId={p.coverImageAssetId} />
               ) : (
                 <span className="lw-studio__cardmonogram">{(p.title.trim()[0] ?? "?").toUpperCase()}</span>
               )}
@@ -1923,7 +1925,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
           <div className="lw-player__frame">
             <VideoPlayer
               key={video.id}
-              src={api.learningAssetDownloadUrl(session.token, slug, video.id)}
+              assetAccess={{ token: session?.token, slug, assetId: video.id }}
               controls
               style={{ width: "100%", height: "100%" }}
               onDurationChange={(sec) => onDurationKnown(Math.round(sec))}
@@ -2330,12 +2332,12 @@ function ResourcesSection({ lesson, editable, onChanged, onExtract, extractBusyI
         <div className="lw-studio__cardgrid">
           {resources.map((r) => (
             <div key={r.id} className={`lw-studio__resourcecard ${pasteOpenId === r.id ? "is-expanded" : ""}`}>
-              <a href={api.learningAssetDownloadUrl(session.token, slug, r.asset.id)} target="_blank" rel="noreferrer"
+              <AssetLink token={session?.token} slug={slug} assetId={r.asset.id}
                  style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ink)", textDecoration: "none", minWidth: 0 }}>
                 <Paperclip size={14} style={{ flexShrink: 0 }} />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.asset.title}</span>
                 <span className="lw-tag lw-tag--source" style={{ flexShrink: 0 }}>{Math.round(r.asset.fileSizeBytes / 1024)} KB</span>
-              </a>
+              </AssetLink>
               {editable ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   {isExtractable(r.asset) && (
@@ -2670,10 +2672,10 @@ function LearningActivityForm({ initial, busy = false, onSave, onCancel, readOnl
             <span>{t("studio.activityFileLabel")}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {activityFileAssetId ? (
-                <a href={api.learningAssetDownloadUrl(session.token, slug, activityFileAssetId)} target="_blank" rel="noreferrer"
+                <AssetLink token={session?.token} slug={slug} assetId={activityFileAssetId}
                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                   <Paperclip size={13} /> {activityFileTitle ?? t("studio.activityFileAttached")}
-                </a>
+                </AssetLink>
               ) : readOnly && (
                 <span className="muted">{t("studio.activityFileNone")}</span>
               )}

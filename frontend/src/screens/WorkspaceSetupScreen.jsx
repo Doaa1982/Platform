@@ -4,6 +4,8 @@ import {
   Sparkles, Image as ImageIcon, X,
 } from "lucide-react";
 import * as api from "../api/client";
+import AssetImage from "../components/AssetImage";
+import { useAssetUrl } from "../hooks/useAssetUrl";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
@@ -226,7 +228,7 @@ export default function WorkspaceSetupScreen() {
           <div className="lw-setup__brandingview">
             <div className={`lw-setup__logo ${setup.logoAssetId ? "" : "is-empty"}`}>
               {setup.logoAssetId
-                ? <img src={api.learningAssetDownloadUrl(session.token, slug, setup.logoAssetId)} alt="" />
+                ? <AssetImage token={session?.token} slug={slug} assetId={setup.logoAssetId} alt="" />
                 : <ImageIcon size={20} />}
             </div>
             <div className="lw-setup__brandingfields">
@@ -420,8 +422,8 @@ function BrandingForm({ setup, onSubmit, onCancel, busy, session, slug }) {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
   const logoInputRef = useRef(null);
 
-  const logoPreviewSrc = logoPreviewUrl
-    || (logoAssetId && !logoFile ? api.learningAssetDownloadUrl(session.token, slug, logoAssetId) : null);
+  const logoAccess = useAssetUrl(session?.token, slug, logoAssetId && !logoFile ? logoAssetId : null);
+  const logoPreviewSrc = logoPreviewUrl || logoAccess.url;
 
   function handleLogoChange(file) {
     if (!file) return;

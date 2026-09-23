@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Platform.Api;
 using Platform.Api.AI;
 using Platform.Api.AI.Skills;
@@ -22,6 +23,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ── Aspire service defaults (OpenTelemetry, health checks, service discovery) ──
 builder.AddServiceDefaults();
+
+// ASP.NET Core's "Request starting … ?query" line would otherwise put asset tokens (and any other query value)
+// into the log the moment someone raises the Microsoft.AspNetCore level. Pinned at Warning for that one category.
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 
 // ── Controllers + OpenAPI ──────────────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -88,22 +93,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
 
-        // A <video> element cannot set an Authorization header, so the one
-        // streaming endpoint that a browser addresses directly (not via
-        // fetch) also accepts the bearer token as a query parameter.
+        // Sessions authenticate ONLY through the Authorization header. Browser elements that cannot send one (<img>, <a>,
+        // <iframe>, <video>) use short-lived asset-scoped URLs instead (see AssetAccessTokenService) — a session token is
+        // never accepted from a query string.
         options.Events = new JwtBearerEvents
         {
-            OnMessageReceived = context =>
-            {
-                if (context.Request.Path.StartsWithSegments("/api/workspaces", out var remainder)
-                    && remainder.Value?.Contains("/learning-assets/", StringComparison.Ordinal) == true
-                    && context.Request.Query.TryGetValue("access_token", out var token))
-                {
-                    context.Token = token;
-                }
-                return Task.CompletedTask;
-            },
-
             // Signature/expiry alone can't catch a suspended account or an
             // explicit logout — both happen after the token was already
             // issued, and this is stateless JWT (no server-side session to
@@ -187,6 +181,13 @@ else
     throw new InvalidOperationException(
         $"Unknown Storage:Provider \"{storageProvider}\". Use \"Local\" or \"R2\".");
 }
+// Asset-scoped tokens for browser-loaded asset URLs (see AssetAccessTokenService). The key is a dedicated
+// secret — validated here so a missing/short/placeholder/JWT-equal key stops startup outside Development.
+builder.Services.AddSingleton(AssetAccessOptions.Resolve(builder.Configuration, builder.Environment, jwtKey));
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<AssetAccessTokenService>();
+builder.Services.AddScoped<LearnerAccess>();
+builder.Services.AddScoped<LearningAssetAccessPolicy>();
 builder.Services.AddScoped<LearningAssetService>();
 builder.Services.AddScoped<AssessmentService>();
 builder.Services.AddScoped<AssignmentService>();

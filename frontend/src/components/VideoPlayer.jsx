@@ -1,4 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import * as api from "../api/client";
+import { createPlaybackController } from "../api/playbackRefresh";
 import { useLanguage } from "../i18n/useLanguage";
 import { detectVideoSource, youtubeWatchUrl } from "../utils/videoEmbed";
 import { loadYouTubeIframeApi } from "../utils/youtubeIframeApi";
@@ -17,6 +19,12 @@ import { loadYouTubeIframeApi } from "../utils/youtubeIframeApi";
    approximated by polling player.getCurrentTime() every POLL_INTERVAL_MS
    once the player is ready — the one place semantics aren't identical to
    the native path, just close enough for a checkpoint pause to feel instant.
+
+   An uploaded video is played through `assetAccess` ({ token, slug, assetId })
+   instead of `src`. Its URL is short-lived, so a playback controller (see
+   api/playbackRefresh) fetches it, renews it before it expires, and swaps the
+   new one into this same <video> element without losing the learner's place.
+   While a swap is in progress no event or error is forwarded to the caller.
    ========================================================================= */
 
 const POLL_INTERVAL_MS = 250;
@@ -42,11 +50,11 @@ const FALLBACK_STYLE = {
 const FALLBACK_LINK_STYLE = { color: "inherit", textDecoration: "underline", fontSize: "0.85rem" };
 
 const VideoPlayer = forwardRef(function VideoPlayer(
-  { src, controls = true, className, style, onDurationChange, onTimeUpdate, onEnded, onError },
+  { src, assetAccess, controls = true, className, style, onDurationChange, onTimeUpdate, onEnded, onError },
   ref
 ) {
   const { t } = useLanguage();
-  const source = detectVideoSource(src);
+  const source = assetAccess ? { type: "native", url: null } : detectVideoSource(src);
 
   const videoElRef = useRef(null);
   const containerRef = useRef(null);
@@ -55,6 +63,15 @@ const VideoPlayer = forwardRef(function VideoPlayer(
   const durationReportedRef = useRef(false);
 
   const [fallback, setFallback] = useState(null);
+
+  // Asset mode: the controller, the flag that gates forwarded events during a swap, and what the learner is told.
+  const controllerRef = useRef(null);
+  const swappingRef = useRef(false);
+  const accessKey = assetAccess ? `${assetAccess.token}|${assetAccess.slug}|${assetAccess.assetId}` : null;
+  const accessRef = useRef(assetAccess);
+  const [notice, setNotice] = useState({ key: null, accessEnded: false, playBlocked: false });
+  const accessEnded = notice.key === accessKey && notice.accessEnded;
+  const playBlocked = notice.key === accessKey && notice.playBlocked;
 
   // Latest-callback ref: the YouTube setup effect below must only ever
   // re-run because the *video itself* changed (youtubeVideoId), never
@@ -66,7 +83,35 @@ const VideoPlayer = forwardRef(function VideoPlayer(
   const callbacksRef = useRef({});
   useEffect(() => {
     callbacksRef.current = { onDurationChange, onTimeUpdate, onEnded, onError };
+    accessRef.current = assetAccess;
   });
+
+  useEffect(() => {
+    if (!accessKey) return undefined;
+    const media = videoElRef.current;
+    if (!media) return undefined;
+
+    const { token, slug, assetId } = accessRef.current;
+    const controller = createPlaybackController({
+      media,
+      fetchAccess: () => api.requestLearningAssetAccess(token, slug, assetId),
+      onSwapStateChange: (isSwapping) => { swappingRef.current = isSwapping; },
+      onDenied: () => setNotice((n) => ({ key: accessKey, accessEnded: true, playBlocked: n.key === accessKey && n.playBlocked })),
+      onPlayBlocked: () => setNotice((n) => ({ key: accessKey, accessEnded: n.key === accessKey && n.accessEnded, playBlocked: true })),
+      onFatalError: () => {
+        setFallback({ messageKey: "unavailable", link: null });
+        callbacksRef.current.onError?.({ source: "native" });
+      },
+    });
+    controllerRef.current = controller;
+    controller.start();
+
+    return () => {
+      controller.dispose();
+      controllerRef.current = null;
+      swappingRef.current = false;
+    };
+  }, [accessKey]);
 
   useImperativeHandle(ref, () => ({
     play() {
@@ -82,12 +127,13 @@ const VideoPlayer = forwardRef(function VideoPlayer(
     },
     seekTo(seconds) {
       if (source.type === "youtube") playerRef.current?.seekTo?.(seconds, true);
+      else if (controllerRef.current) controllerRef.current.seekTo(seconds);
       else if (videoElRef.current) videoElRef.current.currentTime = seconds;
     },
     getCurrentTime() {
-      return source.type === "youtube"
-        ? (playerRef.current?.getCurrentTime?.() ?? 0)
-        : (videoElRef.current?.currentTime ?? 0);
+      if (source.type === "youtube") return playerRef.current?.getCurrentTime?.() ?? 0;
+      // While a source is being swapped the element momentarily reports 0; the controller keeps the real position.
+      return controllerRef.current?.getPosition() ?? videoElRef.current?.currentTime ?? 0;
     },
     getDuration() {
       return source.type === "youtube"
@@ -192,21 +238,60 @@ const VideoPlayer = forwardRef(function VideoPlayer(
     );
   }
 
-  return (
+  const showFallback = (messageKey) => {
+    controllerRef.current?.dispose();
+    setFallback({ messageKey, link: null });
+    onError?.({ source: "native" });
+  };
+
+  // The element handlers forward nothing while a source is being swapped: no progress, ended, duration or error
+  // can reach the caller from the element's momentary reset.
+  const video = (
     <video
       ref={videoElRef}
-      src={source.url}
+      {...(assetAccess ? {} : { src: source.url })}
       controls={controls}
       className={className}
-      style={style}
-      onLoadedMetadata={(e) => onDurationChange?.(e.target.duration)}
-      onTimeUpdate={(e) => onTimeUpdate?.(e.target.currentTime)}
-      onEnded={() => onEnded?.()}
+      style={assetAccess ? { ...style, width: "100%", height: "100%" } : style}
+      onLoadedMetadata={(e) => { if (!swappingRef.current) onDurationChange?.(e.target.duration); }}
+      onTimeUpdate={(e) => { if (!swappingRef.current) onTimeUpdate?.(e.target.currentTime); }}
+      onEnded={() => { if (!swappingRef.current) onEnded?.(); }}
       onError={() => {
-        setFallback({ messageKey: "unavailable", link: null });
-        onError?.({ source: "native" });
+        if (swappingRef.current) return;
+        if (controllerRef.current?.handleMediaError()) return; // the source expired and is being renewed
+        showFallback("unavailable");
       }}
     />
+  );
+
+  if (!assetAccess) return video;
+
+  return (
+    <div style={{ position: "relative", width: style?.width ?? "100%", height: style?.height ?? "100%" }}>
+      {video}
+      {playBlocked && (
+        <button
+          type="button"
+          className="lw-btn lw-btn--primary"
+          style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
+          onClick={() => {
+            setNotice((n) => ({ ...n, playBlocked: false }));
+            // A click is a user gesture, so this normally succeeds; if it still fails there is nothing more to offer.
+            Promise.resolve(videoElRef.current?.play?.()).catch(() => {});
+          }}
+        >
+          {t("videoPlayer.resume")}
+        </button>
+      )}
+      {accessEnded && (
+        <p
+          role="alert"
+          style={{ position: "absolute", left: 0, right: 0, bottom: 0, margin: 0, padding: "10px 14px", textAlign: "center", fontSize: "0.85rem", background: "rgba(0,0,0,0.72)", color: "#fff" }}
+        >
+          {t("videoPlayer.accessEnded")}
+        </p>
+      )}
+    </div>
   );
 });
 

@@ -18,7 +18,7 @@ namespace Platform.Api.Services;
 /// top of every read/mutate path here, the same lazy-promotion pattern
 /// already used elsewhere in this codebase (e.g. Invitation expiry).
 /// </summary>
-public class AssignmentService(PlatformDbContext db)
+public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess)
 {
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
@@ -337,27 +337,24 @@ public class AssignmentService(PlatformDbContext db)
         var ctx = await ResolveLearnerAsync(slug, caller, ct);
         if (ctx.Error is not null) return Fail<LearnerAssignmentDetailResponse>(ctx.Error.Value);
 
-        // WorkspaceId checked directly as defense-in-depth — safe without it
-        // too (a Membership from Workspace A can never hold an Enrollment
-        // against a Workspace B product, so IsActivelyEnrolledAsync below
-        // already rejects a cross-workspace guess), but every other service
-        // in this codebase scopes by WorkspaceId explicitly rather than
-        // relying solely on that invariant holding elsewhere.
-        var assignment = await db.Assignments
-            .FirstOrDefaultAsync(a => a.LearningActivityId == activityId && a.WorkspaceId == ctx.WorkspaceId, ct);
-        if (assignment is null) return Fail<LearnerAssignmentDetailResponse>((ProvisioningError.NotFound, "No such assignment."));
-
-        if (!await IsActivelyEnrolledAsync(assignment.LearningProductId, ctx.MembershipId, ct))
-            return Fail<LearnerAssignmentDetailResponse>((ProvisioningError.Forbidden, "You are not enrolled in this course."));
-
-        if (assignment.PromoteIfDue(DateTime.UtcNow)) await db.SaveChangesAsync(ct);
-        if (assignment.Status is AssignmentStatus.Draft or AssignmentStatus.Scheduled || !assignment.Visible)
-            return Fail<LearnerAssignmentDetailResponse>((ProvisioningError.NotFound, "No such assignment."));
+        // The assignment-visibility rule (exists in this workspace, learner actively enrolled,
+        // not Draft/Scheduled/hidden) lives in LearnerAccess so Learning Asset access evaluates
+        // the very same code rather than a copy of it.
+        var access = await learnerAccess.EvaluateAssignmentAccessAsync(ctx.WorkspaceId, ctx.MembershipId, activityId, ct);
+        if (access.Promoted) await db.SaveChangesAsync(ct);
+        if (access.Denied is { } denied) return Fail<LearnerAssignmentDetailResponse>(denied);
+        var assignment = access.Assignment!;
 
         var activity = await db.LearningActivities.AsNoTracking().FirstOrDefaultAsync(a => a.Id == activityId, ct);
         if (activity is null) return Fail<LearnerAssignmentDetailResponse>((ProvisioningError.NotFound, "No such learning activity."));
 
         var effectiveAssessmentId = await ResolveEffectiveAssessmentIdAsync(activity, ct);
+
+        // An archived file is never available to a learner (LearningAssetAccessPolicy), so the page stops offering it.
+        var activityFileAssetId = activity.ActivityFileAssetId;
+        if (activityFileAssetId is { } fileId
+            && !await db.LearningAssets.AsNoTracking().AnyAsync(a => a.Id == fileId && a.Status != LearningAssetStatus.Archived, ct))
+            activityFileAssetId = null;
 
         // Ordered by StartedAt, not AttemptNumber: ResetAttemptCountAsync
         // excludes a submission from the attempt count rather than
@@ -370,7 +367,7 @@ public class AssignmentService(PlatformDbContext db)
             .OrderByDescending(s => s.StartedAt).ToListAsync(ct);
 
         return ProvisioningResult<LearnerAssignmentDetailResponse>.Success(new LearnerAssignmentDetailResponse(
-            Describe(assignment), DescribeActivityForLearner(activity, effectiveAssessmentId), submissions.Select(DescribeLearnerSubmission).ToList()));
+            Describe(assignment), DescribeActivityForLearner(activity, effectiveAssessmentId, activityFileAssetId), submissions.Select(DescribeLearnerSubmission).ToList()));
     }
 
     /// <summary>INV-007/INV-002/INV-003. Resumes an already-in-progress attempt instead of starting a second one.</summary>
@@ -458,9 +455,8 @@ public class AssignmentService(PlatformDbContext db)
             .Where(e => e.LearningProductId == learningProductId && e.Status == EnrollmentStatus.Active)
             .Select(e => e.MembershipId).ToListAsync(ct);
 
-    private async Task<bool> IsActivelyEnrolledAsync(Guid learningProductId, Guid membershipId, CancellationToken ct) =>
-        await db.Enrollments.AsNoTracking()
-            .AnyAsync(e => e.LearningProductId == learningProductId && e.MembershipId == membershipId && e.Status == EnrollmentStatus.Active, ct);
+    private Task<bool> IsActivelyEnrolledAsync(Guid learningProductId, Guid membershipId, CancellationToken ct) =>
+        learnerAccess.IsActivelyEnrolledAsync(learningProductId, membershipId, ct);
 
     // ── Notifications (reuses the existing minimal Notification entity — same calling convention as AssessmentService.NotifyQuestionsUpdatedAsync) ──
 
@@ -494,8 +490,9 @@ public class AssignmentService(PlatformDbContext db)
         a.CreatedAt, a.UpdatedAt, a.PublishedAt, a.ClosedAt, a.ArchivedAt,
         a.PublicationBlocker());
 
-    private static LearningActivityForLearnerResponse DescribeActivityForLearner(LearningActivity a, Guid? effectiveAssessmentId) =>
-        new(a.Id, a.Type.ToString(), a.Title, a.Instructions, effectiveAssessmentId, a.ExternalUrl, a.ActivityFileAssetId, a.SubmissionMode.ToString());
+    private static LearningActivityForLearnerResponse DescribeActivityForLearner(
+        LearningActivity a, Guid? effectiveAssessmentId, Guid? activityFileAssetId) =>
+        new(a.Id, a.Type.ToString(), a.Title, a.Instructions, effectiveAssessmentId, a.ExternalUrl, activityFileAssetId, a.SubmissionMode.ToString());
 
     /// <summary>
     /// A Quiz/QuestionSet Learning Activity delivers its own Lesson
@@ -627,19 +624,8 @@ public class AssignmentService(PlatformDbContext db)
 
     private async Task<LearnerContext> ResolveLearnerAsync(string slug, Guid caller, CancellationToken ct)
     {
-        var normalised = slug.ToLowerInvariant().Trim();
-
-        var workspace = await db.Workspaces.AsNoTracking().FirstOrDefaultAsync(w => w.Slug == normalised, ct);
-        if (workspace is null) return new LearnerContext(Guid.Empty, Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
-
-        var member = await db.Memberships.Include(m => m.Roles).AsNoTracking()
-            .FirstOrDefaultAsync(m => m.WorkspaceId == workspace.Id && m.IdentityId == caller && m.Status == MembershipStatus.Active, ct);
-        if (member is null) return new LearnerContext(Guid.Empty, Guid.Empty, (ProvisioningError.NotFound, "No such workspace."));
-
-        if (!member.Roles.Any(r => r.Name == WorkspaceRoleName.Learner))
-            return new LearnerContext(workspace.Id, member.Id, (ProvisioningError.Forbidden, "Only a Learner in this workspace can access this."));
-
-        return new LearnerContext(workspace.Id, member.Id, null);
+        var resolved = await learnerAccess.ResolveLearnerAsync(slug, caller, ct);
+        return new LearnerContext(resolved.Workspace?.Id ?? Guid.Empty, resolved.MembershipId, resolved.Error);
     }
 
     private static ProvisioningResult<T> Fail<T>((ProvisioningError Error, string Message) e)

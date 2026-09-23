@@ -11,7 +11,7 @@ namespace Platform.Api.Services;
 /// </summary>
 public sealed class StoredObjectResult(
     ILearningAssetStorage storage, string objectKey, string contentType, string fileName,
-    long totalLength, string etag) : IActionResult
+    long totalLength, string etag, bool inline = false, bool emptyNotFound = false) : IActionResult
 {
     private const int CopyBufferSize = 81920;
 
@@ -50,7 +50,8 @@ public sealed class StoredObjectResult(
         {
             // Nothing has been written to the response yet, so this can still be a clean 404.
             response.StatusCode = StatusCodes.Status404NotFound;
-            await response.WriteAsJsonAsync(new { message = "No such learning asset." }, ct);
+            // The tokenized route answers every failure with the same empty 404, so nothing here can tell a caller more.
+            if (!emptyNotFound) await response.WriteAsJsonAsync(new { message = "No such learning asset." }, ct);
             return;
         }
 
@@ -62,7 +63,7 @@ public sealed class StoredObjectResult(
             response.Headers.AcceptRanges = "bytes";
             response.Headers.ETag = etag;
 
-            var disposition = new ContentDispositionHeaderValue("attachment");
+            var disposition = new ContentDispositionHeaderValue(inline ? "inline" : "attachment");
             disposition.SetHttpFileName(fileName);
             response.Headers.ContentDisposition = disposition.ToString();
 

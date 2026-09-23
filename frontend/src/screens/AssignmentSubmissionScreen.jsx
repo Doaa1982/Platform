@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderCircle, ArrowLeft, CheckCircle2, Paperclip, UploadCloud, X } from "lucide-react";
 import * as api from "../api/client";
+import AssetLink from "../components/AssetLink";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
@@ -138,9 +139,9 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
       )}
 
       {activity.activityFileAssetId && (
-        <a className="lw-assign__downloadlink" href={api.learningAssetDownloadUrl(session.token, slug, activity.activityFileAssetId)} target="_blank" rel="noreferrer">
+        <AssetLink className="lw-assign__downloadlink" token={session?.token} slug={slug} assetId={activity.activityFileAssetId}>
           <Paperclip size={13} /> {t("learnerAssignments.downloadActivityFile")}
-        </a>
+        </AssetLink>
       )}
 
       {!latest && (
@@ -204,9 +205,9 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
           <p>{t("learnerAssignments.awaitingReview")}</p>
           {latest.responseText && <p className="lw-assign__responsefull">{latest.responseText}</p>}
           {latest.responseLearningAssetId && (
-            <a className="lw-assign__downloadlink" href={api.learningAssetDownloadUrl(session.token, slug, latest.responseLearningAssetId)} target="_blank" rel="noreferrer">
+            <AssetLink className="lw-assign__downloadlink" token={session?.token} slug={slug} assetId={latest.responseLearningAssetId}>
               <Paperclip size={13} /> {t("learnerAssignments.downloadYourFile")}
-            </a>
+            </AssetLink>
           )}
         </div>
       )}
@@ -221,9 +222,9 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
           </span>
           {latest.feedback && <p className="lw-assign__responsefull">{latest.feedback}</p>}
           {latest.responseLearningAssetId && (
-            <a className="lw-assign__downloadlink" href={api.learningAssetDownloadUrl(session.token, slug, latest.responseLearningAssetId)} target="_blank" rel="noreferrer">
+            <AssetLink className="lw-assign__downloadlink" token={session?.token} slug={slug} assetId={latest.responseLearningAssetId}>
               <Paperclip size={13} /> {t("learnerAssignments.downloadYourFile")}
-            </a>
+            </AssetLink>
           )}
         </div>
       )}
