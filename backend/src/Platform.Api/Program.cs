@@ -183,7 +183,8 @@ else
 }
 // Asset-scoped tokens for browser-loaded asset URLs (see AssetAccessTokenService). The key is a dedicated
 // secret — validated here so a missing/short/placeholder/JWT-equal key stops startup outside Development.
-builder.Services.AddSingleton(AssetAccessOptions.Resolve(builder.Configuration, builder.Environment, jwtKey));
+var assetAccessOptions = AssetAccessOptions.Resolve(builder.Configuration, builder.Environment, jwtKey);
+builder.Services.AddSingleton(assetAccessOptions);
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AssetAccessTokenService>();
 builder.Services.AddScoped<LearnerAccess>();
@@ -473,6 +474,11 @@ if (!app.Environment.IsDevelopment() && !emailOptions.Enabled)
         "emails will only be logged, never actually sent. Every raw link still appears in the API " +
         "response for someone to paste and send manually, but nothing reaches a real inbox until " +
         "Email:Enabled and the SMTP settings are configured for this environment.");
+
+// TD-023 emergency lever: flip Storage:VideoDelivery to "Proxy" (no rebuild) if direct-to-R2
+// playback needs to be routed through this API instead, e.g. to sidestep a suspected Chrome/R2
+// QUIC stall. Logged once so the active mode is visible without reading config by hand.
+app.Logger.LogInformation("Video delivery mode: {VideoDelivery}", assetAccessOptions.VideoDelivery);
 
 // ── Map Aspire health & liveness endpoints ─────────────────────────────────────
 app.MapDefaultEndpoints();

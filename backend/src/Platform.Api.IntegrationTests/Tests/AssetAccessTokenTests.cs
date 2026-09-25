@@ -283,6 +283,45 @@ public class AssetAccessTokenTests
             Assert.Throws<InvalidOperationException>(() => AssetAccessOptions.Resolve(WithLifetime(seconds), new Env(env), JwtKey));
     }
 
+    // ── the video delivery switch (TD-023's emergency lever) ─────────────
+
+    private static IConfiguration WithVideoDelivery(string? value) =>
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [AssetAccessOptions.TokenKeyConfig] = GoodKey,
+            [AssetAccessOptions.VideoDeliveryConfig] = value,
+        }).Build();
+
+    [Fact]
+    public void VideoDelivery_DefaultsToPresigned_WhenNotConfigured()
+    {
+        Assert.Equal(VideoDeliveryMode.Presigned, AssetAccessOptions.Resolve(WithVideoDelivery(null), new Env("Production"), JwtKey).VideoDelivery);
+        Assert.Equal(VideoDeliveryMode.Presigned, AssetAccessOptions.Resolve(WithVideoDelivery(""), new Env("Production"), JwtKey).VideoDelivery);
+    }
+
+    [Theory]
+    [InlineData("Presigned", VideoDeliveryMode.Presigned)]
+    [InlineData("presigned", VideoDeliveryMode.Presigned)]
+    [InlineData("Proxy", VideoDeliveryMode.Proxy)]
+    [InlineData("PROXY", VideoDeliveryMode.Proxy)]
+    public void VideoDelivery_AcceptsEitherValue_CaseInsensitively(string configured, VideoDeliveryMode expected)
+    {
+        Assert.Equal(expected, AssetAccessOptions.Resolve(WithVideoDelivery(configured), new Env("Production"), JwtKey).VideoDelivery);
+    }
+
+    [Theory]
+    [InlineData("Banana")]
+    [InlineData("0")]  // Enum.TryParse would accept these as Presigned/Proxy/undefined —
+    [InlineData("1")]  // a typo must never silently pick a delivery mode
+    [InlineData("7")]
+    public void VideoDelivery_AnUnknownValue_StopsStartup(string configured)
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => AssetAccessOptions.Resolve(WithVideoDelivery(configured), new Env("Production"), JwtKey));
+
+        Assert.Contains(AssetAccessOptions.VideoDeliveryConfig, ex.Message);
+    }
+
     // ── helpers: re-derive the documented wire format independently of the service ──
 
     private static string Forge(byte[] key, Guid asset, Guid workspace, Guid user, byte operation, long expiresAt)

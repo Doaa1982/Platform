@@ -12,6 +12,7 @@ public sealed class AssetAccessOptions
 {
     public const string TokenKeyConfig = "Storage:AssetTokenKey";
     public const string PresignedLifetimeConfig = "Storage:PresignedReadLifetimeSeconds";
+    public const string VideoDeliveryConfig = "Storage:VideoDelivery";
     private const int DefaultPresignedSeconds = 3600;
     private const int ProductionMinimumPresignedSeconds = 300;
     private const int MaximumPresignedSeconds = 7 * 24 * 3600; // the longest a presigned URL can live
@@ -22,8 +23,19 @@ public sealed class AssetAccessOptions
     /// <summary>Images, PDFs, resources, activity and submission files.</summary>
     public TimeSpan AssetTokenLifetime { get; init; } = TimeSpan.FromMinutes(10);
 
-    /// <summary>Video served through the API proxy (the Local provider, and the fallback) — dev/test use.</summary>
+    /// <summary>
+    /// Video served through the API proxy: the Local provider's only option, the fallback when the storage
+    /// provider can't sign a URL, and production when <see cref="VideoDelivery"/> is <see cref="VideoDeliveryMode.Proxy"/>.
+    /// </summary>
     public TimeSpan VideoProxyTokenLifetime { get; init; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Which URL kind <c>/access</c> hands out for a video when the storage provider supports both: a direct
+    /// presigned URL (default — no bytes through this API), or the token + <c>/content</c> proxy (routes every
+    /// video byte through this server instead of straight to the storage edge). An operator-flippable emergency
+    /// lever for TD-023 (a suspected Chrome/R2 QUIC stall) — not a new default, and no rebuild needed to flip it.
+    /// </summary>
+    public VideoDeliveryMode VideoDelivery { get; init; } = VideoDeliveryMode.Presigned;
 
     /// <summary>
     /// How long a presigned R2 video URL lives. One hour by default. Shorter than five minutes exists only so
@@ -44,6 +56,7 @@ public sealed class AssetAccessOptions
     public static AssetAccessOptions Resolve(IConfiguration config, IHostEnvironment env, string jwtKey)
     {
         var presigned = ResolvePresignedLifetime(config, env);
+        var videoDelivery = ResolveVideoDelivery(config);
         var configured = config[TokenKeyConfig];
 
         if (string.IsNullOrWhiteSpace(configured))
@@ -52,7 +65,10 @@ public sealed class AssetAccessOptions
                 throw new InvalidOperationException(
                     $"{TokenKeyConfig} must be configured outside Development (a secret of at least {MinimumKeyBytes} bytes, " +
                     "different from Jwt:Key). Set it through your host's secret store or an environment variable.");
-            return new AssetAccessOptions { TokenKey = RandomNumberGenerator.GetBytes(48), PresignedReadLifetime = presigned };
+            return new AssetAccessOptions
+            {
+                TokenKey = RandomNumberGenerator.GetBytes(48), PresignedReadLifetime = presigned, VideoDelivery = videoDelivery,
+            };
         }
 
         var bytes = Encoding.UTF8.GetBytes(configured);
@@ -63,7 +79,7 @@ public sealed class AssetAccessOptions
         if (!env.IsDevelopment() && LooksLikeAPlaceholder(configured))
             throw new InvalidOperationException($"{TokenKeyConfig} is still a placeholder value. Configure a real secret for this environment.");
 
-        return new AssetAccessOptions { TokenKey = bytes, PresignedReadLifetime = presigned };
+        return new AssetAccessOptions { TokenKey = bytes, PresignedReadLifetime = presigned, VideoDelivery = videoDelivery };
     }
 
     /// <summary>Development and test hosts may shorten the presigned lifetime; anything else may not go under five minutes.</summary>
@@ -91,7 +107,24 @@ public sealed class AssetAccessOptions
     private static bool LooksLikeAPlaceholder(string key) =>
         KnownPlaceholders.Any(p => key.Contains(p, StringComparison.OrdinalIgnoreCase))
         || key.Distinct().Count() < 8; // "aaaaaaaa…", "12121212…"
+
+    private static VideoDeliveryMode ResolveVideoDelivery(IConfiguration config)
+    {
+        var raw = config[VideoDeliveryConfig];
+        if (string.IsNullOrWhiteSpace(raw)) return VideoDeliveryMode.Presigned;
+        // Names only: Enum.TryParse also accepts numbers ("1", "7"), which would silently pick a mode — or an
+        // undefined value that behaves like Proxy — from a typo. Only the two spelled-out names are valid.
+        if (!raw.Trim().All(char.IsDigit)
+            && Enum.TryParse<VideoDeliveryMode>(raw.Trim(), ignoreCase: true, out var mode)
+            && Enum.IsDefined(mode))
+            return mode;
+        throw new InvalidOperationException(
+            $"{VideoDeliveryConfig} is \"{raw}\" — must be \"Presigned\" or \"Proxy\".");
+    }
 }
+
+/// <summary>How <c>/access</c> hands out a video URL. See <see cref="AssetAccessOptions.VideoDelivery"/>.</summary>
+public enum VideoDeliveryMode { Presigned, Proxy }
 
 public enum AssetTokenOperation : byte { Read = 1 }
 

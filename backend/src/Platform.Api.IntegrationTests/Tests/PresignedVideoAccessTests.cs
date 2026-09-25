@@ -58,13 +58,15 @@ public sealed class PresignedVideoAccessTests(AssetAccessFixture fixture) : ICla
         }
     }
 
-    private (HttpClient Client, ConcurrentQueue<SignCall> Calls, ConcurrentQueue<string> Logs, IDisposable Host) SigningHost(string? lifetimeSeconds = null)
+    private (HttpClient Client, ConcurrentQueue<SignCall> Calls, ConcurrentQueue<string> Logs, IDisposable Host) SigningHost(
+        string? lifetimeSeconds = null, string? videoDelivery = null)
     {
         var calls = new ConcurrentQueue<SignCall>();
         var logs = new ConcurrentQueue<string>();
         var host = fixture.Host.WithWebHostBuilder(b =>
         {
             if (lifetimeSeconds is not null) b.UseSetting("Storage:PresignedReadLifetimeSeconds", lifetimeSeconds);
+            if (videoDelivery is not null) b.UseSetting("Storage:VideoDelivery", videoDelivery);
             b.UseSetting("Logging:LogLevel:Default", "Trace");
             b.ConfigureLogging(l => { l.AddProvider(new CapturingLoggerProvider(logs)); l.SetMinimumLevel(LogLevel.Trace); });
             b.ConfigureTestServices(s =>
@@ -197,6 +199,41 @@ public sealed class PresignedVideoAccessTests(AssetAccessFixture fixture) : ICla
         var json = (await res.Content.ReadFromJsonAsync<JsonObject>())!;
         Assert.Equal("proxy", json["kind"]!.GetValue<string>());
         Assert.InRange((json["expiresAt"]!.GetValue<DateTimeOffset>() - DateTimeOffset.UtcNow).TotalMinutes, 14, 15.1);
+    }
+
+    // ── Storage:VideoDelivery=Proxy — TD-023's emergency lever, flippable without a rebuild ──
+
+    [Fact]
+    public async Task WhenVideoDeliveryIsProxy_VideoNeverGetsSigned_EvenThoughTheProviderCanSign()
+    {
+        var (client, calls, _, host) = SigningHost(videoDelivery: "Proxy");
+        using var _ = host;
+
+        var res = await AccessAsync(client, await SessionAsync(client, W.EnrolledEmail), W.Slug, W.Video1);
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var json = (await res.Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Equal("proxy", json["kind"]!.GetValue<string>());
+        Assert.Contains("/content?t=v1.", json["url"]!.GetValue<string>());
+        Assert.Empty(calls); // the fake signer was never called — no presigned URL was created at all
+    }
+
+    [Fact]
+    public async Task WhenVideoDeliveryIsProxy_TheProxyUrlServesTheVideo_WithRangeSupport()
+    {
+        var (client, _, _, host) = SigningHost(videoDelivery: "Proxy");
+        using var _ = host;
+
+        var accessRes = await AccessAsync(client, await SessionAsync(client, W.EnrolledEmail), W.Slug, W.Video1);
+        var url = (await accessRes.Content.ReadFromJsonAsync<JsonObject>())!["url"]!.GetValue<string>();
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 3);
+        var res = await client.SendAsync(req);
+
+        Assert.Equal(HttpStatusCode.PartialContent, res.StatusCode);
+        Assert.NotNull(res.Content.Headers.ContentRange);
+        Assert.Equal("bytes", res.Headers.AcceptRanges.Single());
     }
 
     // ── a signed URL is a credential: never in a log ─────────────────────

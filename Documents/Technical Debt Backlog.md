@@ -979,6 +979,26 @@ investigation if the same pattern turns up elsewhere.
 capture or Chrome `net-internals` trace during a live repro), not an application code change,
 since R2 itself is responding correctly every time this was observed.
 
+**2026-09-24 update:** reproduced directly by a real student — a newly published lesson's
+video failed with the "video isn't available" fallback in Chrome, played fine in Safari on
+the same URL. Full server-side reproduction (DB state, authorization, the presigned URL, the
+R2 object's bytes/container/codec) came back completely healthy, consistent with this being
+the browser-side stall rather than a storage or authorization defect. An operator-controlled
+mitigation now exists: `Storage:VideoDelivery` (`Presigned` default / `Proxy`) lets video
+traffic be routed through the API's own `/content` proxy instead of direct-to-R2, without a
+rebuild, if this needs to be worked around in production before it's root-caused. See
+`Storage:VideoDelivery` in `Services/AssetAccessToken.cs` and `LearningAssetsController.Access`.
+
+**2026-09-25 update — developer-machine finding:** the developer's own "fails in Chrome, works
+in Safari" repro was traced to a malicious Chrome extension ("VPN-free.pro – Free Unlimited
+VPN", flagged by Chrome as malware). With it installed, even YouTube hung in normal Chrome
+windows while Incognito (extensions off) worked; removing it fixed Chrome entirely. Manual
+Chrome testing done in that profile is therefore not evidence of a platform defect. What
+remains open for TD-023: (1) the rare stall seen in clean Playwright browsers (no extensions),
+and (2) the student report of 2026-09-24 — still to be checked with Incognito on the student's
+device and an `ffprobe` codec check of that video (HEVC plays in Safari but often not Chrome).
+Going forward, do manual browser testing in Incognito or a clean profile.
+
 ---
 ## TD-024 — Product Draft/Archived status not enforced in shared learner access rule
 
@@ -1120,6 +1140,51 @@ build the GitHub Actions pipeline; set up SendGrid with domain verification;
 close out TD-001 and TD-028 (production secrets) as part of the same push.
 
 ---
+
+## TD-030 — Synchronized Transcript tab is a non-functional prototype, postponed out of V1
+
+**Raised:** 2026-09-24 (learner lesson page review)
+**Area:** Frontend — `LearnerLessonScreen.jsx`, learner-facing lesson screen
+**Severity:** Not a blocker — deliberately scoped out of V1, not a defect in a
+shipping feature
+**Status:** Deferred
+
+The "Synchronized Transcript" tab (waveform bar, word-chip transcript, "AI
+Synchronized" badge) looks like a karaoke-style synced transcript but isn't
+one:
+
+- No listener on the video's playback time anywhere in the file — words never
+  auto-highlight as the video plays, despite the "AI Synchronized" badge.
+- Clicking a word seeks the video to `idx * 2.2` seconds — a flat, made-up
+  per-word duration, not a real timestamp from the transcription provider.
+- When `lesson.transcript` is empty, the UI silently substitutes a hardcoded
+  Arabic fallback array (a specific demo transcript about calculating a
+  rectangle's area) instead of an honest empty state — misleading for any
+  other lesson.
+- The waveform bar is 40 hardcoded static bar heights, not derived from real
+  audio or actual playback progress.
+- Its `.speech-tabs`/`.speech-tab-btn` styling is a dark-mode "Speechmatics
+  demo" component (the only place in the codebase it's used outside its own
+  definition in `designSystem.css`) and doesn't match the light-themed lesson
+  page it's dropped into.
+
+Not needed for V1. Hidden behind a `SHOW_SYNCED_TRANSCRIPT = false` constant
+in `LearnerLessonScreen.jsx` rather than deleted, so the tab button and its
+content block are both gated off (`activeTab` can never reach `"transcript"`)
+but the code, including `transcriptWords`/`activeWordIndex` wiring, is intact
+for later.
+
+**Trigger:** synced transcript becomes a prioritized post-V1 feature.
+**Resolution sketch:** persist real per-word timestamps from the active
+transcription provider (Deepgram/Speechmatics both support word-level timing)
+instead of a flat transcript string; add a `timeupdate` listener on the video
+to drive `activeWordIndex` from real playback position; replace the hardcoded
+fallback array with an empty state when no transcript exists; derive the
+waveform from real audio data or drop it; restyle to the light lesson-page
+design language instead of the dark demo theme. Flip `SHOW_SYNCED_TRANSCRIPT`
+to `true` once done.
+
+---
 ## Log
 
 | Date | Change |
@@ -1157,3 +1222,5 @@ close out TD-001 and TD-028 (production secrets) as part of the same push.
 | 2026-09-22 | TD-021 raised — no URL-based routing; a full page reload from any deep screen (lesson, assignment, Content Studio product) loses navigation state and returns to the dashboard. Found via a student report on a lesson video. Fix requires real routing synced to screen/record state with restore-from-URL, and any restored deep link must re-run existing authorization (`LearningAssetAccessPolicy` and equivalent screen-level checks) rather than trusting the URL. |
 | 2026-09-22 | TD-022, TD-023 raised during the Phase 3 video-refresh Playwright investigation (Run 3/Run 4 failures). TD-022 (the `schedule()` gating defect): correctly diagnosed, not proven causal for the observed failure, ruled deferred pending its own trigger rather than fixed speculatively. TD-023 (the underlying Chrome/R2 stall): confirmed real, root cause not identified, already mitigated by the existing watchdog, ruled not a launch blocker at its estimated ~1-in-6 to ~1-in-12 rate. |
 | 2026-09-22 | TD-024 through TD-026 raised during the LearningAssetAccessPolicy Phase 2 build — product Draft/Archived status not enforced, unpublished-lesson activities visible via the assignment view, and Active-only activity-file enrollment inconsistent with video/resource access. All deliberately deferred pending product decisions. TD-027 raised — a throwaway diagnostic script left an orphaned R2 object after crashing before its own cleanup ran. TD-028 raised — `Storage__AssetTokenKey` and production R2 credentials have no value set yet (same trigger as TD-001). TD-029 raised — first production deployment: no hosting, CI/CD, domain, or email system exists yet; direction decided (Azure, SendGrid) but nothing provisioned. |
+| 2026-09-24 | TD-030 raised and immediately actioned — the learner lesson page's "Synchronized Transcript" tab turned out to be a non-functional prototype (no real per-word timestamps, no playback-time sync, a hardcoded demo transcript standing in for any lesson without one). Not needed for V1; hidden behind a `SHOW_SYNCED_TRANSCRIPT = false` constant in `LearnerLessonScreen.jsx` rather than deleted, so it can be finished and re-enabled later. |
+| 2026-09-24 | TD-023 reproduced live — a student's newly published lesson video failed in Chrome, played fine in Safari; full server-side reproduction found the asset, authorization, and R2 delivery all healthy, consistent with the already-logged browser-side stall rather than a new defect. Added `Storage:VideoDelivery` (`Presigned`/`Proxy`) as an operator-controlled, no-rebuild-needed switch to route video through the API's own `/content` proxy instead of direct-to-R2 if this needs a production workaround before it's root-caused. |

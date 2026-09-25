@@ -155,18 +155,18 @@ body {
   box-shadow: 0 0 14px rgba(0, 163, 191, 0.2);
 }
 
-/* Secondary Dark Ghost Variant */
+/* Secondary Ghost Variant — theme-aware, was hardcoded dark-only */
 .button-animated--ghost {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--speech-dark-ink);
-  border: 1px solid var(--speech-dark-border);
+  background: transparent;
+  color: var(--color-ink-soft);
+  border: 1px solid var(--color-border);
   box-shadow: none;
 }
 
 .button-animated--ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: #FFFFFF;
+  background: var(--color-surface-2);
+  border-color: var(--color-ink-soft);
+  color: var(--color-ink);
 }
 
 /* =========================================================================
@@ -222,8 +222,8 @@ body {
   align-items: center;
   gap: 8px;
   padding: 4px;
-  background: rgba(17, 24, 39, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
 }
 
@@ -233,7 +233,7 @@ body {
   gap: 7px;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--speech-dark-ink-soft);
+  color: var(--color-ink-soft);
   border-radius: 8px;
   padding: 7px 15px;
   font-family: 'Inter', sans-serif;
@@ -244,8 +244,8 @@ body {
 }
 
 .speech-tab-btn:hover {
-  color: var(--speech-dark-ink);
-  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-ink);
+  background: var(--color-surface);
 }
 
 .speech-tab-btn.is-active {

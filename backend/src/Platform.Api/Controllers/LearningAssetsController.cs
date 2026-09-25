@@ -85,9 +85,12 @@ public class LearningAssetsController(
 
         var asset = decision.Asset!;
 
-        // Video goes straight from the storage service to the browser when the provider can sign a URL. This is reached
-        // only after the policy above has said yes — no URL is created for anyone who was refused.
-        if (asset.Category == Platform.Domain.LearningAssetCategory.Video && storage.SupportsPresignedRead)
+        // Video goes straight from the storage service to the browser when the provider can sign a URL — unless
+        // Storage:VideoDelivery has been flipped to Proxy (TD-023's emergency lever: routes video bytes through
+        // this API instead of straight to the storage edge, no rebuild needed). This is reached only after the
+        // policy above has said yes — no URL is created for anyone who was refused.
+        if (asset.Category == Platform.Domain.LearningAssetCategory.Video && storage.SupportsPresignedRead
+            && assetOptions.VideoDelivery == VideoDeliveryMode.Presigned)
         {
             try
             {

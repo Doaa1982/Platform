@@ -31,6 +31,14 @@ const INLINE_RESOURCE_TYPES = new Set([
   "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
 ]);
 
+/**
+ * TD-030: not V1-ready — no real per-word timestamps (click-to-seek guesses
+ * 2.2s/word), no playback-time sync, a hardcoded demo transcript stands in
+ * for any lesson without a saved one. Code kept intact; flip to true once
+ * TD-030's resolution sketch is done. See Documents/Technical Debt Backlog.md.
+ */
+const SHOW_SYNCED_TRANSCRIPT = false;
+
 export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOpenAssistant, onOpenQuiz, onOpenContent, onOpenHomework, onOpenResources, onOpenAssignments }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
@@ -304,38 +312,26 @@ export default function LearnerLessonScreen({ lessonId, onBack, onProgress, onOp
               )}
             </div>
 
-            {/* Speechmatics Navigation & Tab Switcher */}
-            <div className="speech-tabs" style={{ marginTop: 14 }}>
-              <button
-                type="button"
-                className={`speech-tab-btn ${activeTab === "video" ? "is-active" : ""}`}
-                onClick={() => setActiveTab("video")}
-              >
-                <Play size={13} />
-                <span>Overview & Video</span>
-              </button>
-              <button
-                type="button"
-                className={`speech-tab-btn ${activeTab === "transcript" ? "is-active" : ""}`}
-                onClick={() => setActiveTab("transcript")}
-              >
-                <Subtitles size={13} />
-                <span>Synchronized Transcript</span>
-              </button>
-              {lesson.whatYoullLearn && (
+            {/* Synchronized Transcript toggle (TD-030, hidden for V1) is the only
+                real tab here — "Overview & Video" and "Objectives" never gated
+                any content (video and the objectives card already render
+                unconditionally below), so they were removed as dead buttons
+                rather than kept as a misleading switcher. */}
+            {SHOW_SYNCED_TRANSCRIPT && (
+              <div className="speech-tabs" style={{ marginTop: 14 }}>
                 <button
                   type="button"
-                  className={`speech-tab-btn ${activeTab === "objectives" ? "is-active" : ""}`}
-                  onClick={() => setActiveTab("objectives")}
+                  className={`speech-tab-btn ${activeTab === "transcript" ? "is-active" : ""}`}
+                  onClick={() => setActiveTab("transcript")}
                 >
-                  <Sparkles size={13} />
-                  <span>Objectives</span>
+                  <Subtitles size={13} />
+                  <span>Synchronized Transcript</span>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          {activeTab === "transcript" && (
+          {SHOW_SYNCED_TRANSCRIPT && activeTab === "transcript" && (
             <div className="lw-lesson-bodycard" style={{ marginBottom: 24 }}>
               {/* Waveform Visualizer Bar */}
               <div className="speech-waveform-container">
