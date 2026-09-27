@@ -118,8 +118,8 @@ else
 fi
 # Created separately: newer CLI versions only accept --database-name on create
 # for elastic clusters.
-if ! az postgres flexible-server db show -g "$RG" -s "$DB" -d "$DB_NAME" >/dev/null 2>&1; then
-  az postgres flexible-server db create -g "$RG" -s "$DB" -d "$DB_NAME" -o none
+if ! az postgres flexible-server db show -g "$RG" --server-name "$DB" --name "$DB_NAME" >/dev/null 2>&1; then
+  az postgres flexible-server db create -g "$RG" --server-name "$DB" --name "$DB_NAME" -o none
 fi
 ok "database '$DB_NAME'"
 DB_HOST=$(az postgres flexible-server show -g "$RG" -n "$DB" --query fullyQualifiedDomainName -o tsv)
