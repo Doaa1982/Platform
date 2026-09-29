@@ -477,7 +477,7 @@ mechanism and let the meanings stay distinct.
 **Raised:** 2026-08-05 (implementing Join Request rate limiting)
 **Area:** Platform.Api — `RateLimitPolicies.cs`; deployment configuration
 **Severity:** Low today, High the moment anything is deployed behind a proxy
-**Status:** Deferred (blocked on a deployment topology existing — same gate as TD-001)
+**Status:** Done (2026-09-29) — resolved for the Azure App Service pilot; see below
 
 `RateLimitPolicies` partitions its limiters by `context.Connection.RemoteIpAddress`, which
 is the address of the **immediately connecting peer** — not the end user, whenever anything
@@ -511,11 +511,33 @@ settled before a deployment target exists.
 would survive the proxy problem entirely, since it does not depend on network identity. It
 does not stop an attacker cycling through addresses, so it complements the IP limit rather
 than replacing it — but it is the part that keeps working when the network signal is
-untrustworthy.
+untrustworthy. Still not built; not needed to close this item, but worth revisiting if the
+deployment topology ever adds a second untrusted hop (see below).
 
-**Trigger:** the first deployment behind any reverse proxy, load balancer, or CDN — which is
-effectively all of them. Pair this with TD-001, since both are settled by the same decision
-about where and how the platform runs.
+**Resolved 2026-09-29, for the deployment topology this now actually has.** The pilot's
+Azure App Service (Linux) deployment was live-checked (not just reasoned about): filesystem
+app logging was temporarily set to Verbose and live logs tailed against real requests — no
+log line exposed the caller's IP at all, confirming `RateLimitPolicies` was partitioning
+against Azure's internal front-end address, i.e. the inverted-DoS failure described above was
+not theoretical, it was the live behaviour. `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` (set
+by `deploy/azure-pilot-setup.sh`) turned out to do nothing by itself here — that auto-wiring
+only exists for IIS-hosted apps (via `UseIISIntegration`); Microsoft's own docs say plainly
+there's no equivalent automatic configuration for Linux.
+
+Fixed with an explicit `app.UseForwardedHeaders(...)` as the very first middleware in
+`Program.cs`, processing `X-Forwarded-For`/`X-Forwarded-Proto` with `ForwardLimit = 1` and
+`KnownIPNetworks`/`KnownProxies` cleared. That "trust the one hop unconditionally" shape is
+exactly what the warning above calls out as unsafe *in general* — but here the one hop is
+guaranteed to be Azure App Service's own front-end, since the platform's sandboxing means
+nothing else can connect to the container directly. **This is deployment-topology-specific,
+not a general fix**: it would need `KnownProxies`/`KnownNetworks` reinstated (or removed
+entirely) the moment anything else — a CDN, an additional reverse proxy, a different host —
+sits in front of this API, since at that point the "one trusted hop" assumption stops
+holding. Re-open this item if that happens.
+
+**Trigger (if reopened):** any additional untrusted hop introduced in front of the API beyond
+Azure App Service's own front-end. Was previously paired with TD-001 (both blocked on a
+deployment topology existing); TD-001's own resolution is unaffected by this entry closing.
 
 ---
 
@@ -1224,3 +1246,5 @@ to `true` once done.
 | 2026-09-22 | TD-024 through TD-026 raised during the LearningAssetAccessPolicy Phase 2 build — product Draft/Archived status not enforced, unpublished-lesson activities visible via the assignment view, and Active-only activity-file enrollment inconsistent with video/resource access. All deliberately deferred pending product decisions. TD-027 raised — a throwaway diagnostic script left an orphaned R2 object after crashing before its own cleanup ran. TD-028 raised — `Storage__AssetTokenKey` and production R2 credentials have no value set yet (same trigger as TD-001). TD-029 raised — first production deployment: no hosting, CI/CD, domain, or email system exists yet; direction decided (Azure, SendGrid) but nothing provisioned. |
 | 2026-09-24 | TD-030 raised and immediately actioned — the learner lesson page's "Synchronized Transcript" tab turned out to be a non-functional prototype (no real per-word timestamps, no playback-time sync, a hardcoded demo transcript standing in for any lesson without one). Not needed for V1; hidden behind a `SHOW_SYNCED_TRANSCRIPT = false` constant in `LearnerLessonScreen.jsx` rather than deleted, so it can be finished and re-enabled later. |
 | 2026-09-24 | TD-023 reproduced live — a student's newly published lesson video failed in Chrome, played fine in Safari; full server-side reproduction found the asset, authorization, and R2 delivery all healthy, consistent with the already-logged browser-side stall rather than a new defect. Added `Storage:VideoDelivery` (`Presigned`/`Proxy`) as an operator-controlled, no-rebuild-needed switch to route video through the API's own `/content` proxy instead of direct-to-R2 if this needs a production workaround before it's root-caused. |
+| 2026-09-27 | First production deployment: Azure pilot (App Service Linux B1, PostgreSQL Flexible Server, GitHub Actions OIDC deploy) live on `platform-39bed.azurewebsites.net`, closing the "no hosting exists yet" half of TD-029/TD-001's trigger. |
+| 2026-09-29 | TD-012 closed for this deployment — live-verified on the Azure pilot that `RateLimitPolicies`' per-IP partitioning was seeing Azure's internal front-end address, not the caller's (no request log exposed a real client IP at all). Fixed with an explicit, deployment-topology-specific `UseForwardedHeaders` (`ForwardLimit = 1`, `KnownIPNetworks`/`KnownProxies` cleared) — safe because Azure App Service's sandboxing guarantees the one trusted hop; not safe as a general pattern if another proxy is ever added in front of this API. |

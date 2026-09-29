@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Platform.Api;
@@ -794,6 +795,41 @@ if (app.Environment.IsDevelopment())
                .WithTheme(ScalarTheme.Moon);
     });
 }
+
+// TD-012: on Azure App Service (Linux), Kestrel only ever sees a connection from Azure's own
+// front-end — never straight from the internet — so context.Connection.RemoteIpAddress is that
+// front-end's internal address, not the caller's, unless forwarded headers are processed. That
+// breaks RateLimitPolicies' per-IP partitioning below (UseRateLimiter): every caller collapses
+// into one shared bucket, which is not a weaker limit but an inverted one — legitimate users
+// throttle each other while an attacker is no more constrained than anyone else.
+//
+// ASPNETCORE_FORWARDEDHEADERS_ENABLED=true is already set on this app, but on Linux that env
+// var enables nothing by itself: the automatic wiring the name suggests only exists for
+// IIS-hosted apps (via UseIISIntegration); Microsoft's own docs say so explicitly for Linux/
+// non-IIS hosting. So this call is not making something implicit explicit — it's the only thing
+// that actually turns the env var's intent into behaviour here.
+//
+// ForwardLimit = 1 with KnownNetworks/KnownProxies cleared trusts exactly one hop's
+// X-Forwarded-For unconditionally, which the framework's own docs flag as unsafe in general
+// (X-Forwarded-For is attacker-controlled unless the immediate hop is trusted). It is safe
+// specifically on App Service: the platform's sandboxing means that one hop is always Azure's
+// own front-end — nothing else can connect to this container directly — so there is no
+// untrusted party able to supply that header. This would NOT be safe as-is behind a different
+// or additional reverse proxy; revisit if the deployment topology changes.
+//
+// Placed first, before anything else (matches Microsoft's own guidance): UseHttpsRedirection
+// below needs the real scheme via X-Forwarded-Proto too, or it loops forever redirecting an
+// already-HTTPS request that Kestrel sees as plain HTTP from the front-end.
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = 1,
+};
+// Only loopback proxies are trusted by default; cleared because the front-end proxy is trusted
+// here by explicit configuration (see above), not by matching a known address.
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
 
 // No global exception handler existed before this — an unhandled exception
 // fell through to Kestrel's own default behavior: no stack trace leak, but
