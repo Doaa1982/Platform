@@ -203,6 +203,10 @@ if [[ -z "$CLIENT_ID" ]]; then
   CLIENT_ID=$(az ad app create --display-name "$DEPLOY_APP_NAME" --query appId -o tsv)
 fi
 az ad sp show --id "$CLIENT_ID" >/dev/null 2>&1 || az ad sp create --id "$CLIENT_ID" -o none
+
+# Plain-name subject — GitHub's classic OIDC "sub" claim format. Harmless to keep even if this
+# org/repo sends the ID-qualified form instead (below): an unused federated credential whose
+# exact-match subject never occurs just sits idle.
 if ! az ad app federated-credential list --id "$CLIENT_ID" --query "[?name=='github-production']" -o tsv | grep -q .; then
   az ad app federated-credential create --id "$CLIENT_ID" --parameters "{
     \"name\": \"github-production\",
@@ -211,6 +215,42 @@ if ! az ad app federated-credential list --id "$CLIENT_ID" --query "[?name=='git
     \"audiences\": [\"api://AzureADTokenExchange\"]
   }" -o none
 fi
+
+# ID-qualified subject — this org/repo's OIDC token carries the owner/repo's IMMUTABLE numeric
+# IDs in the subject, not just their names: repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:...
+# (confirmed live: the plain-name credential alone got AADSTS700213 "no matching federated
+# identity record" on 2026-09-27). IDs are looked up at runtime, not hard-coded, so a repo
+# rename/transfer doesn't silently break this again.
+if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+  if IDS=$(gh api "repos/$REPO" --jq '.owner.id, .id' 2>&1); then
+    OWNER_ID=$(sed -n '1p' <<<"$IDS")
+    REPO_ID=$(sed -n '2p' <<<"$IDS")
+    REPO_OWNER="${REPO%%/*}"
+    REPO_NAME="${REPO##*/}"
+    ID_SUBJECT="repo:$REPO_OWNER@$OWNER_ID/$REPO_NAME@$REPO_ID:environment:production"
+    if ! az ad app federated-credential list --id "$CLIENT_ID" --query "[?name=='github-production-repo-id']" -o tsv | grep -q .; then
+      az ad app federated-credential create --id "$CLIENT_ID" --parameters "{
+        \"name\": \"github-production-repo-id\",
+        \"issuer\": \"https://token.actions.githubusercontent.com\",
+        \"subject\": \"$ID_SUBJECT\",
+        \"audiences\": [\"api://AzureADTokenExchange\"]
+      }" -o none
+    fi
+    ok "federated credentials (plain-name + ID-qualified)"
+  else
+    warn "couldn't look up $REPO's owner/repo IDs via 'gh api' — skipping the ID-qualified credential:"
+    warn "  $IDS"
+    warn "If the deploy workflow fails with AADSTS700213, get the IDs with:"
+    warn "  gh api repos/$REPO --jq '.owner.id, .id'"
+    warn "and add a federated credential with subject repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:production"
+  fi
+else
+  warn "gh CLI not logged in — could not derive the ID-qualified OIDC subject."
+  warn "If the deploy workflow fails with AADSTS700213, get owner/repo IDs with:"
+  warn "  gh api repos/$REPO --jq '.owner.id, .id'"
+  warn "and add a federated credential with subject repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:production"
+fi
+
 WEBAPP_ID=$(az webapp show -g "$RG" -n "$APP" --query id -o tsv)
 for i in 1 2 3 4 5 6; do   # a brand-new identity can take a minute to be visible
   if az role assignment create --assignee "$CLIENT_ID" --role "Website Contributor" --scope "$WEBAPP_ID" -o none 2>/dev/null; then
