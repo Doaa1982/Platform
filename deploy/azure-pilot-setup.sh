@@ -69,6 +69,12 @@ say "Secrets (input is hidden)"
 ask_secret R2_KEY_ID      "R2 production Access Key ID"
 ask_secret R2_SECRET      "R2 production Secret Access Key"
 ask_secret DEEPGRAM_KEY   "Deepgram API key"
+# Deepgram was the production default until 2026-09-14, when it turned out not to handle
+# mixed Arabic/English (code-switching) well; Transcription:Provider is now "Gemini" by
+# default (appsettings.Production.json). Deepgram's key is still collected and set so it
+# stays selectable as a no-rebuild rollback (Transcription:Provider back to "Deepgram"),
+# same reasoning TranscriptionOptions.cs documents for keeping Speechmatics selectable too.
+ask_secret GEMINI_TRANSCRIPTION_KEY "Gemini transcription API key (separate key/billing from the AI provider's Gemini key below — see GeminiTranscriptionOptions.cs)"
 echo "  AI provider for the pilot: 1) Gemini  2) Claude  3) OpenAI"
 read -r -p "  Choose [1]: " AI_CHOICE; AI_CHOICE="${AI_CHOICE:-1}"
 case "$AI_CHOICE" in
@@ -160,7 +166,8 @@ esac
 TMP=$(mktemp); chmod 600 "$TMP"; trap 'rm -f "$TMP"' EXIT
 DB_HOST="$DB_HOST" DB_NAME="$DB_NAME" DB_ADMIN="$DB_ADMIN" DB_PASSWORD="$DB_PASSWORD" \
 JWT_KEY="$JWT_KEY" ASSET_KEY="$ASSET_KEY" R2_KEY_ID="$R2_KEY_ID" R2_SECRET="$R2_SECRET" \
-DEEPGRAM_KEY="$DEEPGRAM_KEY" AI_PROVIDER="$AI_PROVIDER" AI_KEY_SETTING="$AI_KEY_SETTING" AI_KEY="$AI_KEY" \
+DEEPGRAM_KEY="$DEEPGRAM_KEY" GEMINI_TRANSCRIPTION_KEY="$GEMINI_TRANSCRIPTION_KEY" \
+AI_PROVIDER="$AI_PROVIDER" AI_KEY_SETTING="$AI_KEY_SETTING" AI_KEY="$AI_KEY" \
 APP_URL="$APP_URL" OP_EMAIL="$OP_EMAIL" OP_PASSWORD="$OP_PASSWORD" \
 python3 - "$TMP" <<'PY'
 # Values arrive through the environment, not string interpolation, so a secret
@@ -177,6 +184,11 @@ s = {
   "Storage__R2__AccessKeyId": e["R2_KEY_ID"],
   "Storage__R2__SecretAccessKey": e["R2_SECRET"],
   "Deepgram__ApiKey": e["DEEPGRAM_KEY"],
+  "GeminiTranscription__ApiKey": e["GEMINI_TRANSCRIPTION_KEY"],
+  # Matches appsettings.Production.json's default (decision made 2026-09-14: Deepgram
+  # struggled with mixed Arabic/English). Set explicitly, same as Storage__VideoDelivery
+  # below, so the active choice is visible/switchable as an app setting without redeploying.
+  "Transcription__Provider": "Gemini",
   "Ai__Provider": e["AI_PROVIDER"],
   e["AI_KEY_SETTING"]: e["AI_KEY"],
   # Pilot has no domain yet: Resend can't send from an unverified domain, so
