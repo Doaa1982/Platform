@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Platform.Api.IntegrationTests.Fixtures;
 using Platform.Api.Services;
 using Platform.Domain;
@@ -184,5 +186,62 @@ public class TranscriptionInputModeTests(PlatformApiTestFixture fixture) : IClas
         var workspaceId2 = await TestOnboarding.GetWorkspaceIdAsync(db2, slug);
         Assert.False(await db2.CreditLedgerEntries.AnyAsync(e =>
             e.WorkspaceId == workspaceId2 && e.EntryType == CreditLedgerEntryType.Consumption && e.SkillKey == AI.AiSkillKeys.GenerateTranscript));
+    }
+
+    // ── ffmpeg-unavailable fallback (AudioExtractor.IsAvailable == false) ───────────────
+
+    [Fact]
+    public async Task WhenFfmpegIsUnavailable_AnAudioRequestAgainstGemini_FallsBackToVideoLowRes()
+    {
+        using var host = fixture.WithWebHostBuilder(b => b
+            .UseSetting("Transcription:Provider", "Gemini")
+            .ConfigureTestServices(s =>
+            {
+                s.RemoveAll<AI.IAudioExtractor>();
+                s.AddSingleton<AI.IAudioExtractor, UnavailableAudioExtractor>();
+            }));
+        using var client = host.CreateClient();
+        var (token, slug, lessonId) = await SeedLessonWithVideoAsync(client, fixture, "tim-noffmpeg-gemini");
+
+        var response = await GenerateTranscriptAsync(client, token, slug, lessonId, "Audio");
+        Assert.Equal((int)HttpStatusCode.OK, response["status"]!.GetValue<int>());
+
+        var revision = await AwaitResolvedRevisionAsync(host.Services, lessonId);
+        Assert.Equal(TranscriptStatus.Ready, revision.TranscriptStatus);
+        // Requested Audio, but ffmpeg can't extract it — Gemini doesn't need local extraction
+        // for VideoLowRes, so it falls back there instead of failing outright.
+        Assert.Equal(TranscriptionInputMode.VideoLowRes, revision.TranscriptionInputMode);
+
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+        var workspaceId = await TestOnboarding.GetWorkspaceIdAsync(db, slug);
+        var charged = await db.CreditLedgerEntries.AsNoTracking()
+            .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.Consumption && e.SkillKey == AI.AiSkillKeys.GenerateTranscript)
+            .SingleAsync();
+        Assert.Equal(-120, charged.Amount); // fell back to VideoLowRes, so the multiplier price, not the base one
+    }
+
+    [Fact]
+    public async Task WhenFfmpegIsUnavailable_AnAudioRequestAgainstANonGeminiProvider_IsRefusedCleanly()
+    {
+        using var host = fixture.WithWebHostBuilder(b => b
+            .UseSetting("Transcription:Provider", "Deepgram")
+            .ConfigureTestServices(s =>
+            {
+                s.RemoveAll<AI.IAudioExtractor>();
+                s.AddSingleton<AI.IAudioExtractor, UnavailableAudioExtractor>();
+            }));
+        using var client = host.CreateClient();
+        var (token, slug, lessonId) = await SeedLessonWithVideoAsync(client, fixture, "tim-noffmpeg-deepgram");
+
+        var response = await GenerateTranscriptAsync(client, token, slug, lessonId, "Audio");
+
+        // Deepgram has no video-input fallback — refused up front (Conflict), not queued to fail later.
+        Assert.Equal((int)HttpStatusCode.Conflict, response["status"]!.GetValue<int>());
+
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+        var lesson = await db.Lessons.Include(l => l.Revisions).AsNoTracking().SingleAsync(l => l.Id == lessonId);
+        Assert.Equal(TranscriptStatus.None, lesson.CurrentRevision!.TranscriptStatus);
     }
 }

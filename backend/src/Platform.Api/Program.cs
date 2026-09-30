@@ -916,6 +916,13 @@ if (spaIndexPresent)
     });
 }
 
+// One-time ffmpeg availability probe (AudioExtractor.ProbeAsync) — logs a clear error now,
+// at startup, rather than leaving a missing/broken ffmpeg to surface only on a tutor's first
+// failed Audio-mode transcription. The result is cached and read later by
+// ContentStudioService.GenerateTranscriptAsync (Gemini falls back to VideoLowRes; every other
+// provider has no fallback and is refused up front instead).
+await app.Services.GetRequiredService<IAudioExtractor>().ProbeAsync();
+
 app.Run();
 
 /// <summary>

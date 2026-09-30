@@ -12,6 +12,10 @@ namespace Platform.Api.IntegrationTests.Fixtures;
 /// </summary>
 public class FakeAudioExtractor : IAudioExtractor
 {
+    public bool? IsAvailable => true; // never exercises the ffmpeg-unavailable fallback path in these tests
+
+    public Task<bool> ProbeAsync(CancellationToken ct = default) => Task.FromResult(true);
+
     public async Task<string> ExtractAsync(string sourcePath, CancellationToken ct)
     {
         var outputPath = Path.Combine(Path.GetTempPath(), $"fake-extracted-audio-{Guid.NewGuid():N}.tmp");

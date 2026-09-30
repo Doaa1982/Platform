@@ -24,6 +24,7 @@ namespace Platform.Api.Services;
 public class ContentStudioService(
     PlatformDbContext db, EntitlementResolutionService entitlements, ICreditLedgerService credits,
     TranscriptionQueue transcriptionQueue, ILearningAssetStorage assetStorage, TranscriptionOptions transcriptionOptions,
+    IAudioExtractor audioExtractor,
     TranscriptEnhancementQueue transcriptEnhancementQueue, TranscriptEnhancementOptions transcriptEnhancementOptions,
     GenerateLessonBodySkill generateLessonBody, GenerateWhatYoullLearnSkill generateWhatYoullLearn,
     GenerateLessonTitleSkill generateLessonTitle, GenerateLearningObjectivesSkill generateLearningObjectives,
@@ -924,9 +925,25 @@ public class ContentStudioService(
         // silently normalized down to Audio rather than rejected. The resolved LessonRevisionRow
         // (TranscriptInputMode) reflects whichever mode actually ran, so this is visible to the
         // tutor, not a silent switch.
-        var effectiveMode = requestedMode == TranscriptionInputMode.VideoLowRes
-            && transcriptionOptions.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase)
+        var isGemini = transcriptionOptions.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase);
+        var effectiveMode = requestedMode == TranscriptionInputMode.VideoLowRes && isGemini
             ? TranscriptionInputMode.VideoLowRes : TranscriptionInputMode.Audio;
+
+        // ffmpeg unavailable (AudioExtractor.ProbeAsync, run once at startup — IsAvailable is
+        // null only if that probe somehow hasn't run yet, treated as "assume available" rather
+        // than blocking speculatively) means an Audio-mode request can't actually be fulfilled.
+        // Gemini needs no local extraction for VideoLowRes, so a Gemini request falls back there
+        // instead of failing outright; every other provider has no such fallback (no video-input
+        // capability of its own), so that case is refused up front with a clear message instead
+        // of queuing a job a tutor would only see fail later as an opaque "Transcription failed."
+        if (effectiveMode == TranscriptionInputMode.Audio && audioExtractor.IsAvailable == false)
+        {
+            if (isGemini)
+                effectiveMode = TranscriptionInputMode.VideoLowRes;
+            else
+                return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
+                    "Transcription is temporarily unavailable on this server (a required component, FFmpeg, could not be found). Please contact support."));
+        }
 
         if (!await entitlements.HasEntitlementAsync(
                 ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),

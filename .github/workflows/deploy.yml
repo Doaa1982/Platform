@@ -86,6 +86,29 @@ jobs:
       - name: Publish API
         run: dotnet publish ${{ env.API_PROJECT }} -c Release -o publish
 
+      # Azure App Service (Linux)'s .NET runtime container has no system ffmpeg, and can't be
+      # customized to add one without switching to a custom container image. Rather than
+      # downloading it at app *runtime* (a moving target, and a startup-time dependency on an
+      # external host being up), a specific, version-pinned static build is downloaded and
+      # checksum-verified here at *build* time and published alongside the app instead —
+      # appsettings.Production.json's Transcription:FfmpegPath points at this exact path.
+      # Pin bumps: update both FFMPEG_URL and FFMPEG_SHA256 together, never one alone — an
+      # updated URL with a stale checksum would fail every build, which is the point of this
+      # check (a fresh checksum from an unreviewed source defeats the "pinned" part).
+      - name: Download and verify pinned ffmpeg (Linux x64 static build)
+        env:
+          FFMPEG_URL: https://johnvansickle.com/ffmpeg/old-releases/ffmpeg-6.0.1-amd64-static.tar.xz
+          FFMPEG_SHA256: 28268bf402f1083833ea269331587f60a242848880073be8016501d864bd07a5
+        run: |
+          curl -fsSL -o /tmp/ffmpeg.tar.xz "$FFMPEG_URL"
+          echo "$FFMPEG_SHA256  /tmp/ffmpeg.tar.xz" | sha256sum -c -
+          mkdir -p /tmp/ffmpeg-extract
+          tar -xf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg-extract --strip-components=1
+          mkdir -p publish/tools
+          cp /tmp/ffmpeg-extract/ffmpeg publish/tools/ffmpeg
+          chmod +x publish/tools/ffmpeg
+          publish/tools/ffmpeg -version
+
       - name: Check the SPA made it into the package
         run: test -f publish/wwwroot/index.html
 
@@ -111,6 +134,12 @@ jobs:
         with:
           name: platform-app
           path: publish
+
+      # Belt-and-suspenders: artifact upload/download round-trips have a history of not always
+      # preserving the Unix executable bit reliably — reassert it here rather than trust it
+      # survived, since a non-executable ffmpeg fails the same way a missing one does.
+      - name: Ensure the published ffmpeg is executable
+        run: chmod +x publish/tools/ffmpeg
 
       - uses: azure/login@v2
         with:
