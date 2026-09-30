@@ -2,6 +2,8 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Platform.Domain;
+
 namespace Platform.Api.AI;
 
 /// <summary>
@@ -24,7 +26,8 @@ public class FasterWhisperTranscriptionProvider(HttpClient http, FasterWhisperOp
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default)
+    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null,
+        TranscriptionInputMode inputMode = TranscriptionInputMode.Audio, CancellationToken ct = default)
     {
         // A tutor-supplied override always wins over the configured default —
         // see IAudioTranscriptionProvider.TranscribeAsync.

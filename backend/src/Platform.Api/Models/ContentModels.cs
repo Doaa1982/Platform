@@ -60,6 +60,8 @@ public record LessonRevisionRow(
     /// <summary>"None" | "Automatic" | "Manual" | "Imported" (TranscriptSource).</summary>
     string TranscriptSource,
     string? TranscriptError,
+    /// <summary>"Audio" | "VideoLowRes" (TranscriptionInputMode) — what the last-run/running transcription attempt actually used (a VideoLowRes request against a non-Gemini provider shows here as "Audio", the mode that actually ran). Null until a transcription has ever been attempted.</summary>
+    string? TranscriptInputMode,
     /// <summary>Short learner-facing "what you'll learn" preview, AI-drafted and tutor-editable. Null until set.</summary>
     string? WhatYoullLearn,
     /// <summary>Bloom's-taxonomy-style "Learners will be able to..." statements, AI-drafted and tutor-editable. Null until set.</summary>
@@ -132,7 +134,8 @@ public record SetVideoUrlRequest(string Url);
 /// so a tutor who already knows what language they taught in can pin it here instead of
 /// gambling on ALI. "en" or "ar" — any other value is rejected.
 /// </summary>
-public record GenerateTranscriptRequest(string? Language);
+/// <summary>InputMode: "Audio" (default, null also means Audio) | "VideoLowRes" — see TranscriptionInputMode.</summary>
+public record GenerateTranscriptRequest(string? Language, string? InputMode = null);
 
 /// <summary>Type is one of LearningActivityType's 14 names. AssessmentId only applies for Quiz/QuestionSet; ExternalUrl only for ExternalLearningTool — both ignored otherwise.</summary>
 public record SaveLearningActivityRequest(

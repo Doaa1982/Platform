@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Platform.Domain;
+
 namespace Platform.Api.AI;
 
 /// <summary>
@@ -34,7 +36,8 @@ public class LocalWhisperTranscriptionProvider(HttpClient http, LocalWhisperOpti
     // languageOverride is accepted for interface compliance but not forwarded — this provider's
     // local transcription service has no language-selection parameter of its own today (it
     // always auto-detects), unlike FasterWhisperTranscriptionProvider/SpeechmaticsTranscriptionProvider.
-    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default)
+    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null,
+        TranscriptionInputMode inputMode = TranscriptionInputMode.Audio, CancellationToken ct = default)
     {
         await using var fileStream = File.OpenRead(filePath);
         using var content = new MultipartFormDataContent();

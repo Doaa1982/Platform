@@ -95,6 +95,7 @@ public class TranscriptionBackgroundService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
         var provider = scope.ServiceProvider.GetRequiredService<IAudioTranscriptionProvider>();
+        var credits = scope.ServiceProvider.GetRequiredService<ICreditLedgerService>();
 
         TranscriptionResult? result = null;
         string? failure = null;
@@ -104,9 +105,14 @@ public class TranscriptionBackgroundService(
         // stored object itself is never touched here.
         string? downloadedFilePath = null;
         StorageTempFile? storedCopy = null;
+        // Only set when job.InputMode is Audio — the extracted audio track ContentStudioService.
+        // GenerateTranscriptAsync/BeginTranscription already committed to sending, regardless of
+        // which provider is active (see IAudioTranscriptionProvider.TranscribeAsync's remarks: a
+        // non-Gemini provider never sees the original video at all, only ever this).
+        string? extractedAudioPath = null;
         try
         {
-            string filePath;
+            string sourcePath;
             if (job.StorageObjectKey is not null)
             {
                 var storage = scope.ServiceProvider.GetRequiredService<ILearningAssetStorage>();
@@ -125,13 +131,54 @@ public class TranscriptionBackgroundService(
                             : "The lesson's video file could not be read from storage. Please try again in a few minutes.",
                         ex);
                 }
-                filePath = storedCopy.Path;
+                sourcePath = storedCopy.Path;
             }
             else
             {
-                filePath = downloadedFilePath = await DownloadToTempFileAsync(job.SourceUrl!, ct);
+                sourcePath = downloadedFilePath = await DownloadToTempFileAsync(job.SourceUrl!, ct);
             }
-            result = await provider.TranscribeAsync(filePath, job.FileName, job.Language, ct);
+
+            string filePath;
+            if (job.InputMode == TranscriptionInputMode.Audio)
+            {
+                var extractor = scope.ServiceProvider.GetRequiredService<IAudioExtractor>();
+                filePath = extractedAudioPath = await extractor.ExtractAsync(sourcePath, ct);
+            }
+            else
+            {
+                filePath = sourcePath; // VideoLowRes — the provider (Gemini, always, per the normalization above) looks at the picture too.
+            }
+
+            // The real, atomic charge happens here — right before the paid call, same
+            // "pre-check at request time, real debit inside the background job" shape
+            // TranscriptEnhancementJob/EnhanceTranscriptSkill already use (GenerateTranscriptAsync's
+            // own pre-check is a best-effort UX check only, not a reservation). Nothing was
+            // charged for extraction above, or for anything that failed before this point — a
+            // tutor is only ever charged for an attempt that actually reached the vendor.
+            var transcriptionOptions = scope.ServiceProvider.GetRequiredService<TranscriptionOptions>();
+            var amount = await ResolveChargeAsync(credits, job.InputMode, transcriptionOptions, ct);
+            // amount == 0 means GenerateTranscriptSkill isn't priced (no seed row) — treated as
+            // free rather than blocking every tutor over a missing seed, same "unpriced = free"
+            // convention GenerateTranscriptAsync's own pre-check already uses.
+            var debit = amount > 0
+                ? await credits.TryDebitExactAsync(job.WorkspaceId, AiSkillKeys.GenerateTranscript, amount, ct)
+                : new CreditDebitResult(Success: true, Cost: 0, RemainingBalance: 0, LedgerEntryId: null);
+            if (!debit.Success)
+            {
+                failure = $"This workspace doesn't have enough AI credits for this transcription ({amount} needed, {debit.RemainingBalance} available).";
+            }
+            else
+            {
+                try
+                {
+                    result = await provider.TranscribeAsync(filePath, job.FileName, job.Language, job.InputMode, ct);
+                }
+                catch
+                {
+                    if (debit.LedgerEntryId is { } id) await credits.RefundAsync(id, ct);
+                    throw;
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -160,7 +207,17 @@ public class TranscriptionBackgroundService(
                     logger.LogWarning(ex, "Failed to delete downloaded temp video file {FilePath}", downloadedFilePath);
                 }
             }
+
+            if (extractedAudioPath is not null)
+            {
+                try { File.Delete(extractedAudioPath); }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to delete extracted temp audio file {FilePath}", extractedAudioPath);
+                }
+            }
         }
+
 
         var lesson = await db.Lessons.Include(l => l.Revisions)
             .FirstOrDefaultAsync(l => l.Id == job.LessonId && l.WorkspaceId == job.WorkspaceId, ct);
@@ -211,6 +268,21 @@ public class TranscriptionBackgroundService(
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// GenerateTranscriptSkill's flat Audio price, times TranscriptionOptions.
+    /// VideoLowResCostMultiplier for VideoLowRes — computed live from current config rather than
+    /// a second seeded SkillCreditCost row, so tuning the multiplier takes effect on the very
+    /// next charge (see ICreditLedgerService.TryDebitExactAsync's remarks). Falls back to 0
+    /// credits (nothing charged) if GenerateTranscriptSkill somehow isn't priced at all — matches
+    /// GenerateTranscriptAsync's own pre-check, which treats "unpriced" as "free" rather than
+    /// blocking every tutor because a seed step didn't run.
+    /// </summary>
+    private static async Task<int> ResolveChargeAsync(ICreditLedgerService credits, TranscriptionInputMode inputMode, TranscriptionOptions transcriptionOptions, CancellationToken ct)
+    {
+        var baseCost = await credits.GetCurrentCostAsync(AiSkillKeys.GenerateTranscript, band: null, ct) ?? 0;
+        return inputMode == TranscriptionInputMode.VideoLowRes ? baseCost * transcriptionOptions.VideoLowResCostMultiplier : baseCost;
     }
 
     private async Task<string> DownloadToTempFileAsync(string url, CancellationToken ct)

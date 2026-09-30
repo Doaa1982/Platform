@@ -86,7 +86,17 @@ public class CreditLedgerService(PlatformDbContext db) : ICreditLedgerService
     {
         var cost = await ResolveCostAsync(skillKey, band, ct)
             ?? throw new InvalidOperationException($"No SkillCreditCost is priced for \"{skillKey}\" (band: {band?.ToString() ?? "flat"}).");
+        return await DebitCoreAsync(workspaceId, skillKey, cost, ct, idempotencyFingerprint);
+    }
 
+    public Task<CreditDebitResult> TryDebitExactAsync(Guid workspaceId, string skillKey, int amount, CancellationToken ct = default, string? idempotencyFingerprint = null)
+    {
+        if (amount <= 0) throw new ArgumentException("A debit amount must be positive.", nameof(amount));
+        return DebitCoreAsync(workspaceId, skillKey, amount, ct, idempotencyFingerprint);
+    }
+
+    private async Task<CreditDebitResult> DebitCoreAsync(Guid workspaceId, string skillKey, int cost, CancellationToken ct, string? idempotencyFingerprint)
+    {
         // PlatformDbContext is configured with EnableRetryOnFailure, which
         // registers a retrying execution strategy — that strategy forbids a
         // plain `BeginTransactionAsync` (a retried attempt could otherwise

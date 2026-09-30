@@ -59,6 +59,8 @@ public class LessonRevision
     /// <summary>Why the last transcription attempt failed, if TranscriptStatus is Failed. Null otherwise.</summary>
     public string? TranscriptError { get; private set; }
     public TranscriptSource TranscriptSource { get; private set; } = TranscriptSource.None;
+    /// <summary>Which input the transcription attempt that produced (or is producing, or last failed to produce) this transcript actually used — set by <see cref="BeginTranscription"/>, persists through Ready/Failed so the tutor can see what ran. Null until a transcription has ever been attempted.</summary>
+    public TranscriptionInputMode? TranscriptionInputMode { get; private set; }
     /// <summary>
     /// Identifies which background attempt is the current one while TranscriptStatus is
     /// Processing — set by <see cref="BeginTranscription"/>, checked by
@@ -289,6 +291,7 @@ public class LessonRevision
             TranscriptError = null;
             TranscriptChaptersJson = null;
             TranscriptSegmentsJson = null;
+            TranscriptionInputMode = null;
         }
         else
         {
@@ -298,6 +301,7 @@ public class LessonRevision
             TranscriptError = source.TranscriptError;
             TranscriptChaptersJson = source.TranscriptChaptersJson;
             TranscriptSegmentsJson = source.TranscriptSegmentsJson;
+            TranscriptionInputMode = source.TranscriptionInputMode;
         }
         TranscriptionJobId = null;
 
@@ -462,8 +466,8 @@ public class LessonRevision
     // should be able to transcribe a video that's already published and live,
     // not just while still drafting it.
 
-    /// <summary>Starts a transcription attempt. Refuses to start a second one while one is already running. Returns the new attempt's id, which the caller must carry through to <see cref="CompleteTranscription"/>/<see cref="FailTranscription"/> so a later, superseded attempt can't be mistaken for this one.</summary>
-    public Guid BeginTranscription()
+    /// <summary>Starts a transcription attempt using <paramref name="inputMode"/> (recorded immediately, not just on success, so a Failed attempt still shows what was tried). Refuses to start a second one while one is already running. Returns the new attempt's id, which the caller must carry through to <see cref="CompleteTranscription"/>/<see cref="FailTranscription"/> so a later, superseded attempt can't be mistaken for this one.</summary>
+    public Guid BeginTranscription(TranscriptionInputMode inputMode)
     {
         if (VideoAssetId is null && VideoUrl is null)
             throw new InvalidOperationException("This revision has no video to transcribe.");
@@ -473,6 +477,7 @@ public class LessonRevision
         TranscriptionJobId = Guid.NewGuid();
         TranscriptStatus = TranscriptStatus.Processing;
         TranscriptError = null;
+        TranscriptionInputMode = inputMode;
         UpdatedAt = DateTime.UtcNow;
         return TranscriptionJobId.Value;
     }
@@ -548,6 +553,7 @@ public class LessonRevision
         TranscriptSource = TranscriptSource.None;
         TranscriptError = null;
         TranscriptionJobId = null;
+        TranscriptionInputMode = null;
         // An enhancement is only ever meaningful relative to the raw transcript
         // it was produced from — once that transcript is gone, any enhanced
         // text (and any in-flight enhancement job, which would resolve against

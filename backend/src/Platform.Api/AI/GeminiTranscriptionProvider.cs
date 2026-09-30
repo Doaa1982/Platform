@@ -1,6 +1,8 @@
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Platform.Domain;
 
 namespace Platform.Api.AI;
 
@@ -20,7 +22,10 @@ namespace Platform.Api.AI;
 /// Gemini's resumable Files API and referenced by URI — Gemini caps inline
 /// requests at ~20MB, and lesson videos routinely exceed that.
 /// </summary>
-public class GeminiTranscriptionProvider(HttpClient http, GeminiTranscriptionOptions options) : IAudioTranscriptionProvider
+public class GeminiTranscriptionProvider(
+    HttpClient http, GeminiTranscriptionOptions options,
+    ILogger<GeminiTranscriptionProvider> logger, TimeProvider timeProvider)
+    : IAudioTranscriptionProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -33,7 +38,27 @@ public class GeminiTranscriptionProvider(HttpClient http, GeminiTranscriptionOpt
     private static readonly TimeSpan FileActivePollInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan FileActiveMaxWait = TimeSpan.FromMinutes(10);
 
-    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default)
+    /// <summary>
+    /// Gemini's video sampling defaults to 1 frame/sec; halved here for VideoLowRes — a
+    /// transcription call cares about what's on screen (slides, whiteboard text), not smooth
+    /// motion, so a coarser sample rate trades a little visual fidelity for materially fewer
+    /// video tokens. Paired with <see cref="LowMediaResolution"/> below.
+    /// </summary>
+    private const double LowResFps = 0.5;
+    private const string LowMediaResolution = "MEDIA_RESOLUTION_LOW";
+
+    /// <summary>
+    /// 429 (rate limit) and 503 (the vendor's own "high demand" response — seen live,
+    /// 2026-09-29) are both Google's documented "safe to retry after a delay" codes; nothing
+    /// else is retried here (a 4xx other than 429 means the request itself is wrong, retrying
+    /// it would just fail identically). This call is the only one of this provider's several
+    /// HTTP calls retried — see the class remarks on UploadAndAwaitActiveAsync's calls, which
+    /// are deliberately left unretried (upload/poll state can't be safely repeated blind).
+    /// </summary>
+    private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(120), TimeSpan.FromSeconds(240)];
+
+    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null,
+        TranscriptionInputMode inputMode = TranscriptionInputMode.Audio, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(
@@ -41,17 +66,18 @@ public class GeminiTranscriptionProvider(HttpClient http, GeminiTranscriptionOpt
 
         var mimeType = ResolveMimeType(fileName);
         var fileLength = new FileInfo(filePath).Length;
+        var lowRes = inputMode == TranscriptionInputMode.VideoLowRes;
 
         Part mediaPart;
         if (fileLength > InlineThresholdBytes)
         {
             var fileUri = await UploadAndAwaitActiveAsync(filePath, fileName, mimeType, fileLength, ct);
-            mediaPart = new Part(FileData: new FileData(mimeType, fileUri));
+            mediaPart = new Part(FileData: new FileData(mimeType, fileUri), VideoMetadata: lowRes ? new VideoMetadata(LowResFps) : null);
         }
         else
         {
             var bytes = await File.ReadAllBytesAsync(filePath, ct);
-            mediaPart = new Part(InlineData: new InlineData(mimeType, Convert.ToBase64String(bytes)));
+            mediaPart = new Part(InlineData: new InlineData(mimeType, Convert.ToBase64String(bytes)), VideoMetadata: lowRes ? new VideoMetadata(LowResFps) : null);
         }
 
         var language = languageOverride ?? options.Language;
@@ -59,30 +85,64 @@ public class GeminiTranscriptionProvider(HttpClient http, GeminiTranscriptionOpt
 
         var requestBody = new GenerateContentRequest(
             Contents: [new ContentBlock([promptPart, mediaPart])],
-            GenerationConfig: new GenerationConfig(0, MaxOutputTokens));
+            GenerationConfig: new GenerationConfig(0, MaxOutputTokens, lowRes ? LowMediaResolution : null));
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{options.Model}:generateContent")
-        {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Add("x-goog-api-key", options.ApiKey);
-
-        using var response = await http.SendAsync(request, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Gemini transcription call failed ({(int)response.StatusCode}): {body}");
-
-        var parsed = JsonSerializer.Deserialize<GenerateContentResponse>(body, JsonOptions)
-            ?? throw new InvalidOperationException("Gemini returned an empty response.");
+        var requestJson = JsonSerializer.Serialize(requestBody, JsonOptions);
+        var (parsed, usage) = await SendWithRetryAsync(requestJson, fileName, ct);
 
         var text = parsed.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault(p => p.Text is not null)?.Text;
         if (string.IsNullOrWhiteSpace(text))
             throw new InvalidOperationException(BuildEmptyTranscriptMessage(parsed));
 
+        if (usage is not null)
+            logger.LogInformation(
+                "Gemini transcription of {FileName} ({InputMode}): {PromptTokens} prompt + {OutputTokens} output = {TotalTokens} total tokens",
+                fileName, inputMode, usage.PromptTokenCount, usage.CandidatesTokenCount, usage.TotalTokenCount);
+
         // No real chapter/segment timing signal from a plain generateContent
         // call — same "empty, not an error" contract Deepgram's own
         // transcript-only path documents.
         return new TranscriptionResult(text.Trim(), [], []);
+    }
+
+    /// <summary>
+    /// The one HTTP call in this provider safe to retry blind (see the class-level remarks on
+    /// <see cref="RetryDelays"/>): a plain generateContent call has no server-side upload state
+    /// of its own to double-run, unlike <see cref="UploadAndAwaitActiveAsync"/>'s steps. Retries
+    /// only 429/503, waiting <see cref="RetryDelays"/> between attempts; any other failure, or
+    /// the last attempt's failure, throws immediately.
+    /// </summary>
+    private async Task<(GenerateContentResponse Parsed, UsageMetadata? Usage)> SendWithRetryAsync(string requestJson, string fileName, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{options.Model}:generateContent")
+            {
+                Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
+            };
+            request.Headers.Add("x-goog-api-key", options.ApiKey);
+
+            using var response = await http.SendAsync(request, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+
+            var retryable = response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable;
+            if (!response.IsSuccessStatusCode && retryable && attempt < RetryDelays.Length)
+            {
+                var delay = RetryDelays[attempt];
+                logger.LogWarning(
+                    "Gemini is busy transcribing {FileName} ({StatusCode}) — retrying in {DelaySeconds}s (attempt {NextAttempt} of {TotalAttempts})",
+                    fileName, (int)response.StatusCode, delay.TotalSeconds, attempt + 2, RetryDelays.Length + 1);
+                await Task.Delay(delay, timeProvider, ct);
+                continue;
+            }
+
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Gemini transcription call failed ({(int)response.StatusCode}): {body}");
+
+            var parsed = JsonSerializer.Deserialize<GenerateContentResponse>(body, JsonOptions)
+                ?? throw new InvalidOperationException("Gemini returned an empty response.");
+            return (parsed, parsed.UsageMetadata);
+        }
     }
 
     /// <summary>
@@ -218,14 +278,22 @@ public class GeminiTranscriptionProvider(HttpClient http, GeminiTranscriptionOpt
 
     private record GenerationConfig(
         [property: JsonPropertyName("temperature")] double Temperature,
-        [property: JsonPropertyName("maxOutputTokens")] int MaxOutputTokens);
+        [property: JsonPropertyName("maxOutputTokens")] int MaxOutputTokens,
+        /// <summary>
+        /// "MEDIA_RESOLUTION_LOW" for VideoLowRes, null (omitted) for Audio — null is
+        /// deliberate, not just "unset": an audio-only Part has no frames for this to apply
+        /// to, so there's nothing to ask Gemini to downsample.
+        /// </summary>
+        [property: JsonPropertyName("mediaResolution")] string? MediaResolution = null);
 
     private record ContentBlock([property: JsonPropertyName("parts")] Part[] Parts);
 
     private record Part(
         [property: JsonPropertyName("text")] string? Text = null,
         [property: JsonPropertyName("inline_data")] InlineData? InlineData = null,
-        [property: JsonPropertyName("file_data")] FileData? FileData = null);
+        [property: JsonPropertyName("file_data")] FileData? FileData = null,
+        /// <summary>Only set for VideoLowRes — see <see cref="VideoMetadata"/>.</summary>
+        [property: JsonPropertyName("video_metadata")] VideoMetadata? VideoMetadata = null);
 
     private record InlineData(
         [property: JsonPropertyName("mime_type")] string MimeType,
@@ -235,7 +303,27 @@ public class GeminiTranscriptionProvider(HttpClient http, GeminiTranscriptionOpt
         [property: JsonPropertyName("mime_type")] string MimeType,
         [property: JsonPropertyName("file_uri")] string FileUri);
 
-    private record GenerateContentResponse([property: JsonPropertyName("candidates")] List<ResponseCandidate>? Candidates);
+    /// <summary>
+    /// Gemini's per-video sampling controls — only <see cref="Fps"/> is used here, to sample
+    /// fewer frames than the 1/sec default (see <see cref="LowResFps"/>). Field name/shape
+    /// confirmed against Google's docs at implementation time, not against a live response
+    /// schema fetch — the real-lesson token-count comparison this feature shipped alongside is
+    /// what actually proves this field is doing something rather than being silently ignored;
+    /// re-check ai.google.dev/gemini-api/docs/video-understanding if that comparison shows no
+    /// token difference between Audio and VideoLowRes beyond what mediaResolution alone would
+    /// explain.
+    /// </summary>
+    private record VideoMetadata([property: JsonPropertyName("fps")] double Fps);
+
+    private record GenerateContentResponse(
+        [property: JsonPropertyName("candidates")] List<ResponseCandidate>? Candidates,
+        [property: JsonPropertyName("usageMetadata")] UsageMetadata? UsageMetadata = null);
+
+    /// <summary>Token accounting Gemini itself reports for this call — logged (not stored) purely for cost visibility, same spirit as TD-023's operator-facing logging.</summary>
+    private record UsageMetadata(
+        [property: JsonPropertyName("promptTokenCount")] int PromptTokenCount,
+        [property: JsonPropertyName("candidatesTokenCount")] int CandidatesTokenCount,
+        [property: JsonPropertyName("totalTokenCount")] int TotalTokenCount);
 
     private record ResponseCandidate(
         [property: JsonPropertyName("content")] ResponseContent? Content,

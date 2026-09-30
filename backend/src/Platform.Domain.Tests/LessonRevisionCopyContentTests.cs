@@ -14,7 +14,7 @@ public class LessonRevisionCopyContentTests
         var draft = lesson.DraftRevision!;
         draft.Edit("Fractions", "Some body content.", 30, LessonDeliveryMode.Recorded);
         draft.AttachVideo(Guid.NewGuid());
-        var jobId = draft.BeginTranscription();
+        var jobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
         draft.CompleteTranscription(jobId, "Full transcript text.", chaptersJson: "[{\"title\":\"Intro\"}]", segmentsJson: "[{\"text\":\"hi\"}]");
         draft.SetRequireQuizToComplete(true);
         lesson.PublishDraft();

@@ -64,6 +64,10 @@ public class PlatformApiTestFixture : WebApplicationFactory<Program>, IAsyncLife
         {
             services.RemoveAll<IAiModelProvider>();
             services.AddSingleton<IAiModelProvider, FakeAiModelProvider>();
+            services.RemoveAll<IAudioTranscriptionProvider>();
+            services.AddSingleton<IAudioTranscriptionProvider, FakeAudioTranscriptionProvider>();
+            services.RemoveAll<IAudioExtractor>();
+            services.AddSingleton<IAudioExtractor, FakeAudioExtractor>();
         });
     }
 }

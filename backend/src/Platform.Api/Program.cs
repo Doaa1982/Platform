@@ -295,6 +295,11 @@ builder.Services.AddHostedService<TranscriptEnhancementBackgroundService>();
 // doesn't do speech-to-text. Provider sits behind IAudioTranscriptionProvider
 // — same Transcription:Provider switch pattern as Ai:Provider above.
 var transcriptionOptions = builder.Configuration.GetSection(TranscriptionOptions.Section).Get<TranscriptionOptions>() ?? new TranscriptionOptions();
+// Registered so ContentStudioService (the credit pre-check) and TranscriptionBackgroundService
+// (the real charge, and deciding whether to extract audio) can both read the same live
+// VideoLowResCostMultiplier/Provider values, rather than each re-reading configuration.
+builder.Services.AddSingleton(transcriptionOptions);
+builder.Services.AddSingleton<IAudioExtractor, AudioExtractor>();
 if (transcriptionOptions.Provider.Equals("FasterWhisper", StringComparison.OrdinalIgnoreCase))
 {
     // Local model, no API key, no billing — runs entirely on the machine
@@ -609,6 +614,19 @@ app.MapDefaultEndpoints();
     if (!db.SkillCreditCosts.Any(c => c.SkillKey == AiSkillKeys.EnhanceTranscript))
     {
         db.SkillCreditCosts.Add(SkillCreditCost.Create(AiSkillKeys.EnhanceTranscript, null, 20));
+        // NEW price, not sourced from Documents/AICreditsCommercialContractAndImplementationPlan.md
+        // §A2 — transcription was never actually charged before this (GenerateTranscriptAsync/
+        // TranscriptionBackgroundService had no credit call at all). Estimated the same way §A2's
+        // own table was ($0.002/credit basis, ~4-5x margin), positioned between EnhanceTranscript
+        // (20 — operates on already-extracted text) and ExtractLessonContentFromResourceSkill's
+        // top tier (60 — "highest single-call cost in the system") — a full lesson video's audio
+        // is a materially larger single call than most skills here, but Audio mode's extracted-
+        // track-only input keeps it below that vision/document skill's worst case. VideoLowRes
+        // charges this times TranscriptionOptions.VideoLowResCostMultiplier (config, default 3),
+        // not a second seeded row — see AiSkillKeys.GenerateTranscript's remarks. Treat this as a
+        // shipped v1 estimate exactly as §A2 already says of its own table ("not settled truth"),
+        // due the same Phase 6 reconciliation correction as everything else in that table.
+        db.SkillCreditCosts.Add(SkillCreditCost.Create(AiSkillKeys.GenerateTranscript, null, 40));
         db.SaveChanges();
     }
 
