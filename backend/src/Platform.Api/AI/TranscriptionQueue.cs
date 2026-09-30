@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Platform.Domain;
 
 namespace Platform.Api.AI;
 
@@ -19,10 +20,19 @@ namespace Platform.Api.AI;
 /// (Automatic Language Identification for Speechmatics); a tutor-supplied
 /// "en"/"ar" pins it instead — added after ALI confidently mistranscribed a
 /// real, heavily code-switched lesson video entirely in the wrong language.
+/// <see cref="InputMode"/> is the EFFECTIVE mode ContentStudioService.
+/// GenerateTranscriptAsync already resolved (a non-Gemini provider always
+/// normalizes a VideoLowRes request down to Audio before this job is ever
+/// created) — the worker trusts it as-is. AI credits for this attempt are
+/// NOT charged yet when this job is created — same "real charge happens
+/// inside the background job" shape as TranscriptEnhancementJob/
+/// EnhanceTranscriptSkill: GenerateTranscriptAsync only pre-checks the
+/// balance (GetCurrentCostAsync), the actual debit happens in
+/// TranscriptionBackgroundService right before the provider call.
 /// </summary>
 public record TranscriptionJob(
     Guid WorkspaceId, Guid LessonId, Guid LessonRevisionId, string FileName, Guid JobId,
-    string? StorageObjectKey = null, string? SourceUrl = null, string? Language = null);
+    string? StorageObjectKey, string? SourceUrl, string? Language, TranscriptionInputMode InputMode);
 
 /// <summary>
 /// In-process work queue for transcription jobs (AI Video Transcript

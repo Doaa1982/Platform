@@ -230,7 +230,7 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     [HttpPost("transcript/generate")]
     public async Task<ActionResult<LessonDetailResponse>> GenerateTranscript(
         string slug, Guid lessonId, [FromBody] GenerateTranscriptRequest? request, CancellationToken ct)
-        => Run(await studio.GenerateTranscriptAsync(slug, Caller(), lessonId, request?.Language, ct));
+        => Run(await studio.GenerateTranscriptAsync(slug, Caller(), lessonId, request?.Language, request?.InputMode, ct));
 
     /// <summary>
     /// Starts a conservative AI enhancement pass over the open revision's

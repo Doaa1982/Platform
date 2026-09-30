@@ -1726,6 +1726,9 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   // background job, not this request.
   const transcriptStatus = revision?.transcriptStatus ?? "None";
   const transcriptSource = revision?.transcriptSource ?? "None";
+  // What the last-run/running attempt actually used — may differ from what was requested
+  // (a VideoLowRes request against a non-Gemini provider is normalized to Audio server-side).
+  const transcriptInputModeUsed = revision?.transcriptInputMode ?? null;
   const [transcriptError, setTranscriptError] = useState(null);
   const [startingTranscript, setStartingTranscript] = useState(false);
   // Automatic language detection has been observed to confidently pick the
@@ -1733,6 +1736,10 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   // Arabic, transcribed almost entirely in English) — letting the tutor pin
   // it here is more reliable than trusting the guess.
   const [transcriptLanguage, setTranscriptLanguage] = useState("auto");
+  // The tutor's per-transcription Audio/VideoLowRes choice — Audio by default (cheaper,
+  // faster, right for most lessons); VideoLowRes for a lesson where on-screen text/diagrams
+  // carry meaning the audio track alone would miss.
+  const [transcriptInputMode, setTranscriptInputMode] = useState("Audio");
 
   // AI Transcript Enhancement — a conservative, tutor-triggered ASR-error
   // correction pass over the already-Ready raw transcript above. Entirely
@@ -1761,7 +1768,7 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
     setTranscriptError(null);
     setStartingTranscript(true);
     try {
-      await api.generateLessonTranscript(session.token, slug, lesson.id, transcriptLanguage);
+      await api.generateLessonTranscript(session.token, slug, lesson.id, transcriptLanguage, transcriptInputMode);
       onChanged();
     } catch (e) {
       setTranscriptError(e.message);
@@ -1985,7 +1992,8 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                   Transcript
                   {transcriptSource !== "None" && (
                     <span className="muted" style={{ marginLeft: 8, fontWeight: "normal", fontSize: "0.75rem" }}>
-                      ({transcriptSource})
+                      ({transcriptSource}
+                      {transcriptInputModeUsed && `, ${t(transcriptInputModeUsed === "VideoLowRes" ? "studio.transcriptInputModeUsedVideoLowRes" : "studio.transcriptInputModeUsedAudio")}`})
                     </span>
                   )}
                 </span>
@@ -2014,6 +2022,27 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                   </span>
                 )}
               </summary>
+
+              {transcriptStatus !== "Processing" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "8px 0 4px" }}>
+                  {[
+                    { value: "Audio", label: "studio.transcriptInputModeAudio", hint: "studio.transcriptInputModeAudioHint" },
+                    { value: "VideoLowRes", label: "studio.transcriptInputModeVideoLowRes", hint: "studio.transcriptInputModeVideoLowResHint" },
+                  ].map(({ value, label, hint }) => (
+                    <label key={value} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: "0.8rem", cursor: startingTranscript ? "default" : "pointer" }}>
+                      <input
+                        type="radio" name={`transcriptInputMode-${lesson.id}`} value={value}
+                        checked={transcriptInputMode === value} disabled={startingTranscript}
+                        onChange={() => setTranscriptInputMode(value)}
+                      />
+                      <span>
+                        {t(label)}
+                        <span className="muted" style={{ marginLeft: 6, fontSize: "0.74rem" }}>— {t(hint)}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
               {transcriptStatus === "Failed" && (
                 <div style={{ marginTop: 8 }}>
                   <Message type="error">{revision.transcriptError ?? t("studio.transcriptFailed")}</Message>

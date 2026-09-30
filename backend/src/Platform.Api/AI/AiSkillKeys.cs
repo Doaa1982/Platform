@@ -24,4 +24,12 @@ public static class AiSkillKeys
     public const string GenerateProductDescription = "GenerateProductDescriptionSkill";
     public const string ExtractLessonContentFromResource = "ExtractLessonContentFromResourceSkill";
     public const string EnhanceTranscript = "EnhanceTranscriptSkill";
+
+    /// <summary>
+    /// Priced flat, for TranscriptionInputMode.Audio. VideoLowRes charges this price times
+    /// TranscriptionOptions.VideoLowResCostMultiplier — a live-computed amount, not a second
+    /// seeded SkillCreditCost row (see CreditLedgerService.TryDebitExactAsync) — under this
+    /// same SkillKey, so both modes' ledger entries stay attributable to one skill.
+    /// </summary>
+    public const string GenerateTranscript = "GenerateTranscriptSkill";
 }

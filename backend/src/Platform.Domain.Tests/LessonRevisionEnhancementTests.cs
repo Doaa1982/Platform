@@ -14,7 +14,7 @@ public class LessonRevisionEnhancementTests
         var lesson = Lesson.Create(Guid.NewGuid(), Guid.NewGuid(), "Fractions", Guid.NewGuid());
         var draft = lesson.DraftRevision!;
         draft.AttachVideo(Guid.NewGuid());
-        var jobId = draft.BeginTranscription();
+        var jobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
         draft.CompleteTranscription(jobId, transcript);
         return draft;
     }
@@ -145,7 +145,7 @@ public class LessonRevisionEnhancementTests
 
         // Tutor re-runs transcription (e.g. a corrected upload) — a fresh raw
         // transcript arrives, making the old enhancement stale.
-        var transcriptionJobId = draft.BeginTranscription();
+        var transcriptionJobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
         draft.CompleteTranscription(transcriptionJobId, "A completely different raw transcript.");
 
         Assert.Equal(EnhancementStatus.None, draft.EnhancementStatus);
@@ -189,7 +189,7 @@ public class LessonRevisionEnhancementTests
         var draft = lesson.DraftRevision!;
         draft.Edit("Fractions", "Some body content.", 30, LessonDeliveryMode.Recorded);
         draft.AttachVideo(Guid.NewGuid());
-        var jobId = draft.BeginTranscription();
+        var jobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
         draft.CompleteTranscription(jobId, "Raw text.");
         var enhJobId = draft.BeginEnhancement();
         draft.CompleteEnhancement(enhJobId, "Enhanced text.", requiresReview: false,
@@ -213,7 +213,7 @@ public class LessonRevisionEnhancementTests
         var draft = lesson.DraftRevision!;
         draft.Edit("Fractions", "Some body content.", 30, LessonDeliveryMode.Recorded);
         draft.AttachVideo(Guid.NewGuid());
-        var jobId = draft.BeginTranscription();
+        var jobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
         draft.CompleteTranscription(jobId, "Raw text.");
         draft.BeginEnhancement(); // left Processing, never completed
         lesson.PublishDraft();

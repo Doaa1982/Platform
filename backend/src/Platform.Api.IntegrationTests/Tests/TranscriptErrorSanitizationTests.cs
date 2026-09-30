@@ -88,13 +88,14 @@ public class TranscriptErrorSanitizationTests
                 var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
                 var lesson = await db.Lessons.Include(l => l.Revisions).SingleAsync(l => l.Id == w.DraftLessonId);
                 var revision = lesson.DraftRevision!;
-                jobId = revision.BeginTranscription();
+                jobId = revision.BeginTranscription(TranscriptionInputMode.Audio);
                 revisionId = revision.Id;
                 await db.SaveChangesAsync();
             }
 
             host.Services.GetRequiredService<TranscriptionQueue>().Enqueue(new TranscriptionJob(
-                w.WorkspaceId, w.DraftLessonId, revisionId, "video3.mp4", jobId, StorageObjectKey: Key));
+                w.WorkspaceId, w.DraftLessonId, revisionId, "video3.mp4", jobId,
+                StorageObjectKey: Key, SourceUrl: null, Language: null, InputMode: TranscriptionInputMode.Audio));
 
             for (var i = 0; i < 200; i++)
             {

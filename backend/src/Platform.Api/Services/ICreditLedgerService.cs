@@ -62,6 +62,21 @@ public interface ICreditLedgerService
     /// </summary>
     Task<CreditDebitResult> TryDebitAsync(Guid workspaceId, string skillKey, int? band, CancellationToken ct = default, string? idempotencyFingerprint = null);
 
+    /// <summary>
+    /// Same atomic check-then-debit machinery as <see cref="TryDebitAsync"/> (advisory lock,
+    /// idempotency window, single transaction) — but for a caller that already knows the exact
+    /// amount to charge, rather than one resolved from <see cref="Platform.Domain.SkillCreditCost"/>
+    /// by (skillKey, band). Exists for a price that's computed live from config instead of a
+    /// versioned seeded row — e.g. transcription's VideoLowRes mode, priced as
+    /// GenerateTranscriptSkill's flat Audio price times TranscriptionOptions.
+    /// VideoLowResCostMultiplier, so tuning that multiplier takes effect on the very next
+    /// charge instead of needing a new SkillCreditCost row every time it's adjusted. The
+    /// resulting CreditLedgerEntry is tagged with <paramref name="skillKey"/> exactly like
+    /// TryDebitAsync's — this is a different way to arrive at the amount, not a different kind
+    /// of charge.
+    /// </summary>
+    Task<CreditDebitResult> TryDebitExactAsync(Guid workspaceId, string skillKey, int amount, CancellationToken ct = default, string? idempotencyFingerprint = null);
+
     /// <summary>Writes a compensating Refund entry for a prior Consumption entry — used when the provider call after a successful debit still fails.</summary>
     Task RefundAsync(Guid ledgerEntryId, CancellationToken ct = default);
 

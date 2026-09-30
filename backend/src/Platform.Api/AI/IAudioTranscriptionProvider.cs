@@ -1,3 +1,5 @@
+using Platform.Domain;
+
 namespace Platform.Api.AI;
 
 /// <summary>
@@ -50,6 +52,13 @@ public interface IAudioTranscriptionProvider
     /// this one job — a tutor-supplied override, since automatic detection has
     /// been observed to confidently pick the wrong language on real, heavily
     /// code-switched lesson audio.
+    /// <paramref name="inputMode"/>: only <see cref="GeminiTranscriptionProvider"/> reads this
+    /// (it decides whether the caller is handing it an already-audio-only file to listen to, or
+    /// the full video to also look at, at reduced resolution/fps) — every other provider here
+    /// always receives an audio-only <paramref name="filePath"/> regardless of this value
+    /// (TranscriptionBackgroundService only extracts-or-doesn't before the call; it never sends
+    /// a full video file to a provider that has no video-input concept of its own).
     /// </summary>
-    Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default);
+    Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null,
+        TranscriptionInputMode inputMode = TranscriptionInputMode.Audio, CancellationToken ct = default);
 }

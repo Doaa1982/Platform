@@ -23,7 +23,8 @@ namespace Platform.Api.Services;
 /// </summary>
 public class ContentStudioService(
     PlatformDbContext db, EntitlementResolutionService entitlements, ICreditLedgerService credits,
-    TranscriptionQueue transcriptionQueue, ILearningAssetStorage assetStorage,
+    TranscriptionQueue transcriptionQueue, ILearningAssetStorage assetStorage, TranscriptionOptions transcriptionOptions,
+    IAudioExtractor audioExtractor,
     TranscriptEnhancementQueue transcriptEnhancementQueue, TranscriptEnhancementOptions transcriptEnhancementOptions,
     GenerateLessonBodySkill generateLessonBody, GenerateWhatYoullLearnSkill generateWhatYoullLearn,
     GenerateLessonTitleSkill generateLessonTitle, GenerateLearningObjectivesSkill generateLearningObjectives,
@@ -187,7 +188,8 @@ public class ContentStudioService(
                 r.VideoAssetId,
                 r.VideoAssetId is { } videoId && assets.TryGetValue(videoId, out var video) ? LearningAssetService.Describe(video) : null,
                 r.VideoUrl, a?.Questions.Count ?? 0, submissionCount,
-                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptSource.ToString(), r.TranscriptError, r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework,
+                r.Transcript, r.TranscriptStatus.ToString(), r.TranscriptSource.ToString(), r.TranscriptError, r.TranscriptionInputMode?.ToString(),
+                r.WhatYoullLearn, r.LearningObjectives, r.Glossary, r.Homework,
                 r.Resources.OrderBy(res => res.Position).Where(res => assets.ContainsKey(res.LearningAssetId))
                     .Select(res => new LessonResourceRow(res.Id, LearningAssetService.Describe(assets[res.LearningAssetId]), res.VisibleToLearners)).ToList(),
                 r.RequireQuizToComplete,
@@ -900,8 +902,10 @@ public class ContentStudioService(
     /// lesson video entirely in the wrong language — the tutor who spoke it is the more reliable
     /// source of truth than a guess.
     /// </summary>
+    private static readonly string[] SupportedTranscriptionInputModes = ["Audio", "VideoLowRes"];
+
     public async Task<ProvisioningResult<LessonDetailResponse>> GenerateTranscriptAsync(
-        string slug, Guid caller, Guid lessonId, string? language, CancellationToken ct = default)
+        string slug, Guid caller, Guid lessonId, string? language, string? inputMode, CancellationToken ct = default)
     {
         var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
@@ -909,6 +913,37 @@ public class ContentStudioService(
         if (language is not null && !SupportedTranscriptionLanguages.Contains(language, StringComparer.OrdinalIgnoreCase))
             return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
                 $"\"{language}\" isn't a supported transcription language. Use one of: {string.Join(", ", SupportedTranscriptionLanguages)}."));
+
+        if (inputMode is not null && !SupportedTranscriptionInputModes.Contains(inputMode, StringComparer.OrdinalIgnoreCase))
+            return Fail<LessonDetailResponse>((ProvisioningError.Invalid,
+                $"\"{inputMode}\" isn't a supported transcription mode. Use one of: {string.Join(", ", SupportedTranscriptionInputModes)}."));
+
+        var requestedMode = inputMode is not null && inputMode.Equals("VideoLowRes", StringComparison.OrdinalIgnoreCase)
+            ? TranscriptionInputMode.VideoLowRes : TranscriptionInputMode.Audio;
+        // Only Gemini reads a video's picture at all (native audio/video understanding) — every
+        // other provider here is audio-only ASR, so a VideoLowRes request against one of them is
+        // silently normalized down to Audio rather than rejected. The resolved LessonRevisionRow
+        // (TranscriptInputMode) reflects whichever mode actually ran, so this is visible to the
+        // tutor, not a silent switch.
+        var isGemini = transcriptionOptions.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase);
+        var effectiveMode = requestedMode == TranscriptionInputMode.VideoLowRes && isGemini
+            ? TranscriptionInputMode.VideoLowRes : TranscriptionInputMode.Audio;
+
+        // ffmpeg unavailable (AudioExtractor.ProbeAsync, run once at startup — IsAvailable is
+        // null only if that probe somehow hasn't run yet, treated as "assume available" rather
+        // than blocking speculatively) means an Audio-mode request can't actually be fulfilled.
+        // Gemini needs no local extraction for VideoLowRes, so a Gemini request falls back there
+        // instead of failing outright; every other provider has no such fallback (no video-input
+        // capability of its own), so that case is refused up front with a clear message instead
+        // of queuing a job a tutor would only see fail later as an opaque "Transcription failed."
+        if (effectiveMode == TranscriptionInputMode.Audio && audioExtractor.IsAvailable == false)
+        {
+            if (isGemini)
+                effectiveMode = TranscriptionInputMode.VideoLowRes;
+            else
+                return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
+                    "Transcription is temporarily unavailable on this server (a required component, FFmpeg, could not be found). Please contact support."));
+        }
 
         if (!await entitlements.HasEntitlementAsync(
                 ctx.Workspace!.Id, EntitlementResolutionService.AiKey(CapabilityDomain.Learning),
@@ -963,8 +998,25 @@ public class ContentStudioService(
             return Fail<LessonDetailResponse>((ProvisioningError.Conflict, "This revision has no video to transcribe yet."));
         }
 
+        // Best-effort pre-check only, not a reservation — the real, atomic charge happens inside
+        // TranscriptionBackgroundService right before the provider call, same shape
+        // EnhanceTranscriptAsync already uses for its own background AI job (see that method's
+        // own remarks on why: without this, a workspace out of credits would still get an
+        // immediate "Processing" response and only discover the failure, with no
+        // credits_exhausted structure for the frontend, once the job actually ran).
+        var transcriptCost = await credits.GetCurrentCostAsync(AiSkillKeys.GenerateTranscript, band: null, ct);
+        if (transcriptCost is not null)
+        {
+            var amount = effectiveMode == TranscriptionInputMode.VideoLowRes
+                ? transcriptCost.Value * transcriptionOptions.VideoLowResCostMultiplier : transcriptCost.Value;
+            var balance = await credits.GetBalanceAsync(ctx.Workspace!.Id, ct);
+            if (balance < amount)
+                return ProvisioningResult<LessonDetailResponse>.FailCreditsExhausted(
+                    $"Transcription needs {amount} AI credits; this workspace has {balance}.", amount, balance);
+        }
+
         Guid jobId;
-        try { jobId = revision.BeginTranscription(); }
+        try { jobId = revision.BeginTranscription(effectiveMode); }
         catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
 
         await db.SaveChangesAsync(ct);
@@ -972,7 +1024,7 @@ public class ContentStudioService(
         var languageOverride = language is null || language.Equals("auto", StringComparison.OrdinalIgnoreCase)
             ? null : language.ToLowerInvariant();
         var job = new TranscriptionJob(ctx.Workspace!.Id, lessonId, revision.Id, fileNameForJob, jobId,
-            objectKeyForJob, sourceUrlForJob, languageOverride);
+            objectKeyForJob, sourceUrlForJob, languageOverride, effectiveMode);
 
         transcriptionQueue.Enqueue(job);
 

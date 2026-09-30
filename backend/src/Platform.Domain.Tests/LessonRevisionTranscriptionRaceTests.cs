@@ -26,7 +26,7 @@ public class LessonRevisionTranscriptionRaceTests
     public void CompleteTranscription_WithTheCurrentJobId_Succeeds()
     {
         var draft = NewDraftWithVideo();
-        var jobId = draft.BeginTranscription();
+        var jobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
 
         var applied = draft.CompleteTranscription(jobId, "Transcript text.");
 
@@ -40,7 +40,7 @@ public class LessonRevisionTranscriptionRaceTests
     public void FailTranscription_WithTheCurrentJobId_Succeeds()
     {
         var draft = NewDraftWithVideo();
-        var jobId = draft.BeginTranscription();
+        var jobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
 
         var applied = draft.FailTranscription(jobId, "Provider timed out.");
 
@@ -54,14 +54,14 @@ public class LessonRevisionTranscriptionRaceTests
     public void CompleteTranscription_WithAStaleJobId_IsIgnoredAndDoesNotTouchTheCurrentAttempt()
     {
         var draft = NewDraftWithVideo();
-        var staleJobId = draft.BeginTranscription();
+        var staleJobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
 
         // The video is replaced while the first job is still in flight —
         // AttachVideo clears the transcript back to None (also abandoning
         // staleJobId), matching what a tutor swapping the video mid-generation
         // actually does.
         draft.AttachVideo(Guid.NewGuid());
-        var currentJobId = draft.BeginTranscription();
+        var currentJobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
 
         // The abandoned job's result arrives late.
         var applied = draft.CompleteTranscription(staleJobId, "Wrong video's transcript.");
@@ -76,10 +76,10 @@ public class LessonRevisionTranscriptionRaceTests
     public void FailTranscription_WithAStaleJobId_DoesNotFailTheCurrentAttempt()
     {
         var draft = NewDraftWithVideo();
-        var staleJobId = draft.BeginTranscription();
+        var staleJobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
 
         draft.AttachVideo(Guid.NewGuid());
-        var currentJobId = draft.BeginTranscription();
+        var currentJobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
 
         var applied = draft.FailTranscription(staleJobId, "Wrong video's failure.");
 
@@ -93,7 +93,7 @@ public class LessonRevisionTranscriptionRaceTests
     public void CompleteTranscription_AfterAlreadyResolved_IsIgnored()
     {
         var draft = NewDraftWithVideo();
-        var jobId = draft.BeginTranscription();
+        var jobId = draft.BeginTranscription(TranscriptionInputMode.Audio);
         draft.CompleteTranscription(jobId, "First result.");
 
         // The same job somehow reports a second time (e.g. a duplicate
@@ -111,7 +111,7 @@ public class LessonRevisionTranscriptionRaceTests
         var draft = lesson.DraftRevision!;
         draft.Edit("Fractions", "Some body content.", 30, LessonDeliveryMode.Recorded);
         draft.AttachVideo(Guid.NewGuid());
-        draft.BeginTranscription();
+        draft.BeginTranscription(TranscriptionInputMode.Audio);
         lesson.PublishDraft();
         var published = lesson.CurrentRevision!;
 

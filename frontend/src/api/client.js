@@ -692,10 +692,16 @@ export function changeAssignmentVisibility(token, slug, lessonId, activityId, vi
  * provider's own automatic language detection; "en"/"ar" pins it, for a
  * tutor who already knows what language they taught in and doesn't want to
  * risk a wrong automatic guess.
+ * `inputMode` is optional — null/"Audio" (the default) sends only the audio
+ * track; "VideoLowRes" also sends the video itself (Gemini only — every
+ * other provider always uses Audio regardless of this value) for a lesson
+ * whose slides/whiteboard carry meaning the audio alone would miss. Costs
+ * more AI credits than Audio — see LessonRevisionRow.TranscriptInputMode for
+ * what actually ran, which can differ from what was requested.
  */
-export function generateLessonTranscript(token, slug, lessonId, language = null) {
+export function generateLessonTranscript(token, slug, lessonId, language = null, inputMode = null) {
   return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/transcript/generate`, {
-    method: "POST", token, body: { language },
+    method: "POST", token, body: { language, inputMode },
   });
 }
 

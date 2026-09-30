@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Platform.Domain;
+
 namespace Platform.Api.AI;
 
 /// <summary>
@@ -23,7 +25,8 @@ public class DeepgramTranscriptionProvider(HttpClient http, DeepgramOptions opti
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null, CancellationToken ct = default)
+    public async Task<TranscriptionResult> TranscribeAsync(string filePath, string fileName, string? languageOverride = null,
+        TranscriptionInputMode inputMode = TranscriptionInputMode.Audio, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey))
             throw new InvalidOperationException(

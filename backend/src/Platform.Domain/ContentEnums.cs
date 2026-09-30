@@ -61,6 +61,20 @@ public enum TranscriptStatus { None, Processing, Ready, Failed }
 public enum TranscriptSource { None, Automatic, Manual, Imported }
 
 /// <summary>
+/// What was actually sent to the transcription provider for one attempt — a
+/// tutor's per-transcription choice, alongside the language override.
+/// <see cref="Audio"/> (default): only the audio track (extracted with
+/// FFmpeg — see AudioExtractor), regardless of provider. <see cref="VideoLowRes"/>:
+/// the video itself, at reduced media resolution/frame rate — Gemini only
+/// (native audio/video understanding, the only provider here that can
+/// actually read the picture); every other provider always uses Audio
+/// regardless of what was requested, since none of them do anything with a
+/// video frame. Costs more in AI credits than Audio (a video call is a
+/// materially larger request) — see TranscriptionOptions.VideoLowResCostMultiplier.
+/// </summary>
+public enum TranscriptionInputMode { Audio, VideoLowRes }
+
+/// <summary>
 /// Where a Lesson Revision's AI transcript enhancement stands. Independent of
 /// <see cref="TranscriptStatus"/> — the raw transcript can be Ready while its
 /// enhancement is None, Processing, Failed, or successfully Ready/ReviewRequired.
