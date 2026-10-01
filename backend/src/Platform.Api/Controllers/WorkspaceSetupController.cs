@@ -41,6 +41,12 @@ public class WorkspaceSetupController(WorkspaceSetupService setup) : ControllerB
         string slug, [FromBody] SetJoinRequestsRequest request, CancellationToken ct)
         => Run(await setup.SetAcceptsJoinRequestsAsync(slug, Caller(), request.Accepts, ct));
 
+    /// <summary>PUT /language — the default language for emails this Workspace sends ("en"/"ar", or null for English).</summary>
+    [HttpPut("language")]
+    public async Task<ActionResult<WorkspaceSetupResponse>> SetDefaultLanguage(
+        string slug, [FromBody] SetDefaultLanguageRequest request, CancellationToken ct)
+        => Run(await setup.SetDefaultLanguageAsync(slug, Caller(), request.Language, ct));
+
     /// <summary>PUT /branding — logo, welcome message and course categories.</summary>
     [HttpPut("branding")]
     public async Task<ActionResult<WorkspaceSetupResponse>> UpdateBranding(

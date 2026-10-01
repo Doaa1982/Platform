@@ -1,3 +1,4 @@
+using Platform.Api.Email;
 using Microsoft.EntityFrameworkCore;
 using Platform.Api.Models;
 using Platform.Domain;
@@ -23,7 +24,7 @@ namespace Platform.Api.Services;
 /// </summary>
 public class JoinRequestService(
     PlatformDbContext db, WorkspaceMemberService members,
-    IConfiguration config, IInvitationDelivery delivery, EmailOptions email)
+    IConfiguration config, TransactionalEmails emails, EmailOptions email)
 {
     /// <summary>Who may review. Same authority that manages members and setup.</summary>
     private static readonly WorkspaceRoleName[] ReviewerRoles =
@@ -144,8 +145,8 @@ public class JoinRequestService(
 
         // Best-effort: the link is also returned directly below, so delivery
         // failure here does not strand the requester the way a lost email would.
-        await delivery.SendJoinRequestReceiptAsync(
-            joinRequest.Email, workspace.Name, AbsoluteLinkFor(rawToken), joinRequest.TokenExpiresAt!.Value, ct);
+        await emails.SendJoinRequestReceiptAsync(
+            joinRequest.Email, joinRequest.FullName, workspace.Id, AbsoluteLinkFor(rawToken), joinRequest.TokenExpiresAt!.Value, ct);
 
         return ProvisioningResult<JoinRequestReceipt>.Success(
             new JoinRequestReceipt(joinRequest.Id, joinRequest.Status.ToString(), LinkFor(rawToken)));

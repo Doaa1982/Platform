@@ -10,6 +10,7 @@ import { useLanguage } from "../i18n/useLanguage";
 import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 import AdminCatalogSection from "./AdminCatalogSection";
 import AdminEntitlementOverridesSection from "./AdminEntitlementOverridesSection";
+import AdminEmailPreviewsSection from "./AdminEmailPreviewsSection";
 import Message from "../components/Message";
 import PaginationControls, { PAGINATION_CONTROLS_CSS } from "../components/PaginationControls";
 import { usePagination } from "../hooks/usePagination";
@@ -214,6 +215,10 @@ export default function AdminScreen() {
                 className={tab === "overrides" ? "is-active" : ""} onClick={() => setTab("overrides")}>
           {t("admin.tabOverrides")}
         </button>
+        <button type="button" role="tab" aria-selected={tab === "emails"}
+                className={tab === "emails" ? "is-active" : ""} onClick={() => setTab("emails")}>
+          {t("admin.tabEmails")}
+        </button>
       </div>
 
       {error && <Message type="error">{error}</Message>}
@@ -221,6 +226,7 @@ export default function AdminScreen() {
 
       {tab === "catalog" && <AdminCatalogSection />}
       {tab === "overrides" && <AdminEntitlementOverridesSection />}
+      {tab === "emails" && <AdminEmailPreviewsSection />}
 
       {/* Both triggered from the always-visible header button/Applications-tab
           buttons, so rendered unconditionally rather than gated to one tab —

@@ -1,3 +1,4 @@
+using Platform.Api.Email;
 using Microsoft.EntityFrameworkCore;
 using Platform.Api.Models;
 using Platform.Domain;
@@ -48,7 +49,7 @@ public record ProvisioningResult<T>(
 public class ProvisioningService(
     PlatformDbContext db,
     IConfiguration config,
-    IInvitationDelivery delivery,
+    TransactionalEmails emails,
     EmailOptions email,
     CommercialSubscriptionService subscriptions)
 {
@@ -69,11 +70,17 @@ public class ProvisioningService(
     /// and the admin still has the link to send by hand.
     /// </summary>
     private async Task<InvitationIssuedResponse> DeliverAsync(
-        Invitation invitation, string rawToken, string workspaceName, CancellationToken ct)
+        Invitation invitation, string rawToken, CancellationToken ct)
     {
-        var outcome = await delivery.SendInvitationAsync(
-            invitation.Email, workspaceName, invitation.IntendedRole.ToString(),
-            AbsoluteLinkFor(rawToken), invitation.ExpiresAt, ct);
+        // Provisioning invites a workspace's Owner, but Resend can target any Invitation —
+        // a member invitation resent from here still reads as the workspace inviting them.
+        var outcome = invitation.IntendedRole == WorkspaceRoleName.Owner
+            ? await emails.SendOwnerInvitationAsync(
+                invitation.Email, invitation.WorkspaceId, invitation.IntendedRole,
+                AbsoluteLinkFor(rawToken), invitation.ExpiresAt, ct)
+            : await emails.SendWorkspaceInvitationAsync(
+                invitation.Email, invitation.WorkspaceId, invitation.IntendedRole, invitation.IssuedBy,
+                AbsoluteLinkFor(rawToken), invitation.ExpiresAt, ct);
 
         return new InvitationIssuedResponse(
             InvitationId:    invitation.Id,
@@ -190,7 +197,7 @@ public class ProvisioningService(
         await db.SaveChangesAsync(ct);
 
         return ProvisioningResult<InvitationIssuedResponse>.Success(
-            await DeliverAsync(invitation, rawToken, workspace.Name, ct));
+            await DeliverAsync(invitation, rawToken, ct));
     }
 
     // ── Admin: resend / cancel ───────────────────────────────────────────────
@@ -215,13 +222,8 @@ public class ProvisioningService(
         var rawToken = invitation.Resend(ValidFor);
         await db.SaveChangesAsync(ct);
 
-        var workspaceName = await db.Workspaces
-            .Where(w => w.Id == invitation.WorkspaceId)
-            .Select(w => w.Name)
-            .FirstOrDefaultAsync(ct) ?? "your workspace";
-
         return ProvisioningResult<InvitationIssuedResponse>.Success(
-            await DeliverAsync(invitation, rawToken, workspaceName, ct));
+            await DeliverAsync(invitation, rawToken, ct));
     }
 
     public async Task<ProvisioningResult<bool>> CancelAsync(Guid invitationId, CancellationToken ct = default)

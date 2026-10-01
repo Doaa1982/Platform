@@ -54,6 +54,7 @@ public class WorkspaceSetupService(
             Status:              w.Status.ToString(),
             CanManage:           canManage,
             AcceptsJoinRequests: w.AcceptsJoinRequests,
+            DefaultLanguage:     w.DefaultLanguage,
             Completeness:        completeness,
             NextTransition:      next,
             Blocker:             blocker,
@@ -152,6 +153,21 @@ public class WorkspaceSetupService(
             return ProvisioningResult<WorkspaceSetupResponse>.Fail(error.Value.Error, error.Value.Message);
 
         workspace!.SetAcceptsJoinRequests(accepts);
+        await db.SaveChangesAsync(ct);
+
+        return ProvisioningResult<WorkspaceSetupResponse>.Success(Describe(workspace, canManage));
+    }
+
+    /// <summary>The language emails go out in to someone this Workspace contacts who has no preference of their own yet.</summary>
+    public async Task<ProvisioningResult<WorkspaceSetupResponse>> SetDefaultLanguageAsync(
+        string slug, Guid callerIdentityId, string? language, CancellationToken ct = default)
+    {
+        var (workspace, canManage, error) = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (error is not null)
+            return ProvisioningResult<WorkspaceSetupResponse>.Fail(error.Value.Error, error.Value.Message);
+
+        try { workspace!.SetDefaultLanguage(language); }
+        catch (ArgumentException ex) { return Fail(ex.Message, ProvisioningError.Invalid); }
         await db.SaveChangesAsync(ct);
 
         return ProvisioningResult<WorkspaceSetupResponse>.Success(Describe(workspace, canManage));

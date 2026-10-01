@@ -1,3 +1,4 @@
+import { STORAGE_KEY as LANGUAGE_STORAGE_KEY } from "../i18n/languageStore";
 /* =========================================================================
    API CLIENT — the only place that talks to Platform.Api.
 
@@ -62,12 +63,28 @@ export function clearSession() {
 
 /* ── Requests ─────────────────────────────────────────────────────────────── */
 
+/**
+ * The language chosen in the app (LanguageContext persists it under this key), sent as
+ * Accept-Language so an email the server sends to *this* person — a password reset, a signup or
+ * join-request receipt — arrives in the language they're using. Empty when nothing is chosen, so
+ * the browser's own Accept-Language applies.
+ */
+function uiLanguageHeader() {
+  try {
+    const lang = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return lang === "en" || lang === "ar" ? { "Accept-Language": lang } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function request(path, { method = "GET", body, token } = {}) {
   let response;
   try {
     response = await fetch(`/api${path}`, {
       method,
       headers: {
+        ...uiLanguageHeader(),
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
@@ -1479,4 +1496,26 @@ export function publishPackVersion(token, packId, versionId) {
 /** POST /api/admin/catalog/packs/{id}/retire */
 export function retirePack(token, packId) {
   return request(`/admin/catalog/packs/${packId}/retire`, { method: "POST", token });
+}
+
+/* ── Language & email ─────────────────────────────────────────────────────── */
+
+/** PUT /api/me/language — remember the app language for emails sent to this person. */
+export function setMyLanguage(token, language) {
+  return request("/me/language", { method: "PUT", token, body: { language } });
+}
+
+/** PUT /api/workspaces/{slug}/setup/language — default language for this workspace's emails. */
+export function setWorkspaceDefaultLanguage(token, slug, language) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/setup/language`, { method: "PUT", token, body: { language } });
+}
+
+/** GET /api/admin/email-previews — every email template (operators only). */
+export function getEmailPreviews(token) {
+  return request("/admin/email-previews", { token });
+}
+
+/** GET /api/admin/email-previews/{template}?language= — one template rendered with sample data. */
+export function getEmailPreview(token, template, language) {
+  return request(`/admin/email-previews/${encodeURIComponent(template)}?language=${encodeURIComponent(language)}`, { token });
 }

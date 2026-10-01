@@ -52,6 +52,27 @@ public class MeController(PlatformDbContext db, WorkspaceAccessService access) :
     }
 
     /// <summary>
+    /// PUT /api/me/language — remembers the language this person chose in the app ("en"/"ar"), so
+    /// emails sent to them later (password reset, invitations) arrive in it.
+    /// </summary>
+    [HttpPut("language")]
+    public async Task<IActionResult> SetLanguage([FromBody] SetMyLanguageRequest request, CancellationToken ct)
+    {
+        if (!TryGetIdentityId(out var identityId))
+            return Unauthorized(new { message = "Token does not carry a valid identity." });
+
+        var identity = await db.Identities.FirstOrDefaultAsync(i => i.Id == identityId, ct);
+        if (identity is null || identity.Status != Domain.IdentityStatus.Active)
+            return Unauthorized(new { message = "This account is not active." });
+
+        try { identity.SetPreferredLanguage(request.Language); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    /// <summary>
     /// GET /api/me/workspaces/{slug}
     /// The roles this Identity actively holds in one Workspace — the per-request
     /// role resolution that replaces a role claim in the token.
@@ -89,3 +110,5 @@ public class MeController(PlatformDbContext db, WorkspaceAccessService access) :
         return Guid.TryParse(raw, out identityId);
     }
 }
+
+public record SetMyLanguageRequest(string? Language);

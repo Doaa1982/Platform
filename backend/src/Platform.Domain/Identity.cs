@@ -43,6 +43,9 @@ public class Identity
     /// </summary>
     public int TokenVersion { get; private set; }
 
+    /// <summary>"en"/"ar" — the language this person last chose in the app, used for emails sent to them. Null until they choose.</summary>
+    public string? PreferredLanguage { get; private set; }
+
     // Required by EF Core — not for application use
     private Identity() { }
 
@@ -85,6 +88,8 @@ public class Identity
 
     /// <summary>Ends every currently valid access token for this Identity — see <see cref="TokenVersion"/>.</summary>
     public void InvalidateSessions() => TokenVersion++;
+
+    public void SetPreferredLanguage(string? language) => PreferredLanguage = SupportedLanguage.Require(language);
 
     /// <summary>
     /// Suspends the Identity. IdentityStatus → Suspended.
