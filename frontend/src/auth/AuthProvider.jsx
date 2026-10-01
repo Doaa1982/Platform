@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "../api/client";
 import { AuthContext } from "./authContext";
 import { rolesMatchSide } from "./sides";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    AUTH PROVIDER — holds the signed-in Identity and the Workspaces it reaches.
@@ -53,6 +54,16 @@ export function AuthProvider({ side, children }) {
 
     return () => { cancelled = true; };
   }, [session]);
+
+  /* Remember the app language server-side, so emails sent to this person later (a password
+     reset, an invitation to another workspace) arrive in it. Best-effort: a failure here only
+     means an email might fall back to the workspace's language. */
+  const { lang } = useLanguage();
+  const token = session?.token;
+  useEffect(() => {
+    if (status !== "authenticated" || !token) return;
+    api.setMyLanguage(token, lang).catch(() => {});
+  }, [status, token, lang]);
 
   /**
    * Takes on a session obtained somewhere other than the sign-in form —

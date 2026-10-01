@@ -1,3 +1,4 @@
+using Platform.Api.Email;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Platform.Api.Models;
@@ -27,7 +28,7 @@ namespace Platform.Api.Services;
 public class WorkspaceMemberService(
     PlatformDbContext db,
     IConfiguration config,
-    IInvitationDelivery delivery,
+    TransactionalEmails emails,
     EmailOptions email,
     EntitlementResolutionService entitlements)
 {
@@ -256,7 +257,7 @@ public class WorkspaceMemberService(
         db.Invitations.Add(invitation);
         await db.SaveChangesAsync(ct);
 
-        var outcome = await SendInvitationEmailAsync(invitation, rawToken, workspace.Name, ct);
+        var outcome = await SendInvitationEmailAsync(invitation, rawToken, ct);
 
         return ProvisioningResult<InvitationIssuedResponse>.Success(new InvitationIssuedResponse(
             InvitationId:    invitation.Id,
@@ -434,7 +435,7 @@ public class WorkspaceMemberService(
             await deliveryThrottle.WaitAsync(ct);
             try
             {
-                var outcome = await SendInvitationEmailAsync(p.Invitation, p.RawToken, workspace.Name, ct);
+                var outcome = await SendInvitationEmailAsync(p.Invitation, p.RawToken, ct);
                 return new BulkInvitationRecipientResult(
                     p.Invitation.Email, "issued", null, p.Invitation.Id, $"/invite/{p.RawToken}",
                     outcome.Delivered, outcome.Detail);
@@ -490,7 +491,7 @@ public class WorkspaceMemberService(
         var rawToken = invitation.Resend(ValidFor);
         await db.SaveChangesAsync(ct);
 
-        var outcome = await SendInvitationEmailAsync(invitation, rawToken, workspace.Name, ct);
+        var outcome = await SendInvitationEmailAsync(invitation, rawToken, ct);
 
         return ProvisioningResult<InvitationIssuedResponse>.Success(new InvitationIssuedResponse(
             InvitationId:    invitation.Id,
@@ -631,9 +632,9 @@ public class WorkspaceMemberService(
     }
 
     private Task<DeliveryOutcome> SendInvitationEmailAsync(
-        Invitation invitation, string rawToken, string workspaceName, CancellationToken ct) =>
-        delivery.SendInvitationAsync(
-            invitation.Email, workspaceName, invitation.IntendedRole.ToString(),
+        Invitation invitation, string rawToken, CancellationToken ct) =>
+        emails.SendWorkspaceInvitationAsync(
+            invitation.Email, invitation.WorkspaceId, invitation.IntendedRole, invitation.IssuedBy,
             AbsoluteLink(rawToken), invitation.ExpiresAt, ct);
 
     private string AbsoluteLink(string rawToken) =>

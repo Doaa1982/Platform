@@ -1,3 +1,4 @@
+using Platform.Api.Email;
 using Microsoft.EntityFrameworkCore;
 using Platform.Api.Models;
 using Platform.Domain;
@@ -17,7 +18,7 @@ namespace Platform.Api.Services;
 public class SignupRequestService(
     PlatformDbContext db,
     IConfiguration config,
-    IInvitationDelivery delivery,
+    TransactionalEmails emails,
     EmailOptions email)
 {
     /// <summary>
@@ -64,12 +65,9 @@ public class SignupRequestService(
         db.SignupRequests.Add(signup);
         await db.SaveChangesAsync(ct);
 
-        // Reuses the invitation delivery channel — this is a platform-level
-        // notification for the same reason an invitation is (BA-005): no
-        // Workspace, and therefore no Workspace community, exists yet.
-        var outcome = await delivery.SendInvitationAsync(
-            signup.Email, "your Platform application", "Tutor",
-            AbsoluteLinkFor(rawToken), signup.SubmittedAt.AddDays(365), ct);
+        // A platform-level notification (BA-005): no Workspace exists yet.
+        var outcome = await emails.SendSignupReceivedAsync(
+            signup.Email, signup.FullName, AbsoluteLinkFor(rawToken), signup.TokenExpiresAt, ct);
 
         return ProvisioningResult<SignupSubmittedResponse>.Success(
             new SignupSubmittedResponse(signup.Id, LinkFor(rawToken), outcome.Delivered));

@@ -89,6 +89,8 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Status)
                   .HasConversion<string>()
                   .HasMaxLength(32);
+
+            entity.Property(e => e.PreferredLanguage).HasMaxLength(8);
         });
 
         modelBuilder.Entity<Workspace>(entity =>
@@ -130,6 +132,7 @@ public class PlatformDbContext : DbContext
             // Branding — reference-by-identifier, same convention as OwnerMembershipId above.
             entity.Property(e => e.LogoAssetId);
             entity.Property(e => e.WelcomeMessage).HasMaxLength(2048);
+            entity.Property(e => e.DefaultLanguage).HasMaxLength(8);
             entity.PrimitiveCollection(e => e.CourseCategories);
         });
 

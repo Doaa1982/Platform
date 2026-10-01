@@ -1,3 +1,4 @@
+using Platform.Api.Email;
 using Microsoft.EntityFrameworkCore;
 using Platform.Api.Models;
 using Platform.Domain;
@@ -24,7 +25,7 @@ namespace Platform.Api.Services;
 public class PasswordResetService(
     PlatformDbContext db,
     IConfiguration config,
-    IPasswordResetDelivery delivery,
+    TransactionalEmails emails,
     EmailOptions email)
 {
     /// <summary>
@@ -92,8 +93,7 @@ public class PasswordResetService(
         // reset already exists and is valid regardless of whether the email
         // actually left the building. There is no admin console to fall back
         // to here, so failure is only ever visible in the server log.
-        await delivery.SendPasswordResetAsync(
-            identity.Email, identity.FullName, AbsoluteLinkFor(rawToken), reset.ExpiresAt, ct);
+        await emails.SendPasswordResetAsync(identity, AbsoluteLinkFor(rawToken), reset.ExpiresAt, ct);
 
         return new ForgotPasswordResponse(GenericMessage);
     }

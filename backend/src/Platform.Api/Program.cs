@@ -1,3 +1,4 @@
+using Platform.Api.Email;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -443,28 +444,23 @@ builder.Services.AddPlatformRateLimiting(builder.Configuration);
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<PasswordResetService>();
 
-// ── Invitation delivery ────────────────────────────────────────────────────────
-// A platform-level notification, not a Communication Context message: an
-// invitation goes out before a Workspace has any community (BA-005).
+// ── Email ────────────────────────────────────────────────────────────────────
+// Every email goes through TransactionalEmails (Email/): one branded layout, the recipient's
+// language, and one transport. With Email:Enabled false nothing is sent and callers are told so
+// — links are never written to the log instead.
 var emailOptions = builder.Configuration.GetSection(EmailOptions.Section).Get<EmailOptions>()
                    ?? new EmailOptions();
 builder.Services.AddSingleton(emailOptions);
+builder.Services.AddSingleton(builder.Configuration.GetSection(EmailBrandingOptions.Section).Get<EmailBrandingOptions>()
+                              ?? new EmailBrandingOptions());
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IRequestLanguage, HttpRequestLanguage>();
+builder.Services.AddScoped<TransactionalEmails>();
 
 if (emailOptions.Enabled)
-    builder.Services.AddScoped<IInvitationDelivery, SmtpInvitationDelivery>();
+    builder.Services.AddScoped<IEmailDelivery, SmtpEmailDelivery>();
 else
-    // Logs the link and reports honestly that nothing was sent, so the console
-    // tells the admin to deliver it by hand rather than implying mail is coming.
-    builder.Services.AddScoped<IInvitationDelivery, LoggingInvitationDelivery>();
-
-// ── Password reset delivery ─────────────────────────────────────────────────
-// Its own interface and its own copy (PasswordResetDelivery.cs), sharing only
-// EmailOptions/the SMTP settings with invitation delivery above — see that
-// file's remarks for why the message itself is never reused.
-if (emailOptions.Enabled)
-    builder.Services.AddScoped<IPasswordResetDelivery, SmtpPasswordResetDelivery>();
-else
-    builder.Services.AddScoped<IPasswordResetDelivery, LoggingPasswordResetDelivery>();
+    builder.Services.AddScoped<IEmailDelivery, DisabledEmailDelivery>();
 
 var app = builder.Build();
 

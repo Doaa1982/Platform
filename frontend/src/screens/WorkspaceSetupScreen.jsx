@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LANGUAGES } from "../i18n/languageStore";
 import {
   LoaderCircle, AlertCircle, Check, Circle, Minus, ArrowRight, Globe, Lock,
   Sparkles, Image as ImageIcon, X,
@@ -243,6 +244,22 @@ export default function WorkspaceSetupScreen() {
           )}
         </div>
       )}
+
+      {/* ── Email language — for invitees and others with no language of their own yet ── */}
+      <h2 className="lw-sectiontitle">{t("setup.emailLanguageTitle")}</h2>
+      <div className="lw-setup__identity">
+        <label className="lw-setup__langfield">
+          <span>{t("setup.emailLanguageLabel")}</span>
+          <select
+            value={setup.defaultLanguage ?? "en"}
+            disabled={!setup.canManage || busy}
+            onChange={(e) => act(() => api.setWorkspaceDefaultLanguage(session.token, slug, e.target.value), t("setup.toastEmailLanguageSaved"))}
+          >
+            {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.nativeLabel}</option>)}
+          </select>
+        </label>
+        <p className="lw-setup__note" style={{ margin: 0 }}>{t("setup.emailLanguageHint")}</p>
+      </div>
 
       {!setup.canManage && <Notice tone="readonly">{t("setup.readonlyNote")}</Notice>}
 
@@ -660,4 +677,6 @@ const CSS = `
   .lw-setup__spin { animation: lwSetupSpin 0.9s linear infinite; }
   @keyframes lwSetupSpin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .lw-setup__spin { animation: none; } }
+  .lw-setup__langfield { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--ink-soft); }
+  .lw-setup__langfield select { font-size: 0.9rem; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--surface); color: var(--ink); max-width: 220px; }
 `;

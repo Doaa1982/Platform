@@ -74,6 +74,9 @@ public class Workspace
     /// <summary>Shown to a Learner meeting this Workspace for the first time (e.g. the Join Request page) — distinct from Description, which is a listing blurb, not a greeting.</summary>
     public string? WelcomeMessage { get; private set; }
 
+    /// <summary>"en"/"ar" — the language for emails to someone this Workspace contacts who has no language preference of their own yet (e.g. a new invitee). Null means English.</summary>
+    public string? DefaultLanguage { get; private set; }
+
     /// <summary>A curated set of subject areas this academy teaches — display/marketing metadata, independent of any one Learning Product's own Category.</summary>
     public IReadOnlyCollection<string> CourseCategories => _courseCategories.AsReadOnly();
 
@@ -140,6 +143,9 @@ public class Workspace
     /// Private, it simply cannot be found yet.
     /// </summary>
     public void SetAcceptsJoinRequests(bool accepts) => AcceptsJoinRequests = accepts;
+
+    /// <summary>Independent of the lifecycle, like SetAcceptsJoinRequests.</summary>
+    public void SetDefaultLanguage(string? language) => DefaultLanguage = SupportedLanguage.Require(language);
 
     /// <summary>
     /// UpdateWorkspaceBranding. Independent of the lifecycle, same reasoning

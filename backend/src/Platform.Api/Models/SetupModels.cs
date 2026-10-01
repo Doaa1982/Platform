@@ -21,6 +21,8 @@ public record WorkspaceSetupResponse(
     /// Off by default; independent of the lifecycle.
     /// </summary>
     bool AcceptsJoinRequests,
+    /// <summary>"en"/"ar" — language for emails to people with no preference of their own. Null means English.</summary>
+    string? DefaultLanguage,
     SetupCompleteness Completeness,
     /// <summary>The single transition available now, or null when there is none.</summary>
     string? NextTransition,
@@ -31,6 +33,8 @@ public record WorkspaceSetupResponse(
     IReadOnlyList<string> CourseCategories);
 
 /// <summary>Amend the Workspace's public-facing profile — logo, welcome message and taught subject areas.</summary>
+public record SetDefaultLanguageRequest(string? Language);
+
 public record UpdateWorkspaceBrandingRequest(Guid? LogoAssetId, string? WelcomeMessage, IReadOnlyList<string>? CourseCategories);
 
 /// <summary>What a tutor has already typed into the branding form, for the AI to draft a listing description from.</summary>
