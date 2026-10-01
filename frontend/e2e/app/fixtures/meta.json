@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-10-01T13:11:04.383Z",
+  "sessions": {
+    "owner": {
+      "token": "audit-replay",
+      "expiresAt": "2026-10-01T21:11:02.983563Z",
+      "fullName": "محمد علي"
+    },
+    "learner": {
+      "token": "audit-replay",
+      "expiresAt": "2026-10-01T21:11:04.219618Z",
+      "fullName": "سارة أحمد"
+    },
+    "admin": {
+      "token": "audit-replay",
+      "expiresAt": "2026-10-02T13:11:04.382Z",
+      "fullName": "Admin"
+    }
+  }
+}

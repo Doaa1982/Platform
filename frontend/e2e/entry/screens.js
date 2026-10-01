@@ -8,6 +8,12 @@
    `act` drives the page into a state reachable only by interaction.
    ========================================================================= */
 
+import fs from "node:fs";
+import path from "node:path";
+
+// The real plan catalog, recorded by e2e/app/record.mjs, so the landing page's plan cards are audited too.
+const PLANS = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "fixtures/catalog-plans.json"), "utf8"));
+
 const inDays = (d) => new Date(Date.now() + d * 86_400_000).toISOString();
 const SUBMITTED = "2026-09-28T10:00:00Z";
 
@@ -50,7 +56,7 @@ const join = (extra) => ({
 const notFound = (prefix) => ({ [prefix]: { status: 404, json: { message: "Not found (server English, must not be shown)." } } });
 
 export const SCREENS = [
-  { id: "landing", name: "Landing", route: "/", roles: "Visitor", api: { "GET /api/catalog/plans": { json: [] } } },
+  { id: "landing", name: "Landing (with plan cards)", route: "/", roles: "Visitor", api: { "GET /api/catalog/plans": { json: PLANS } } },
 
   { id: "login-tutor", name: "Sign in (tutor)", route: "/teach", roles: "Tutor, owner" },
   { id: "login-student", name: "Sign in (student)", route: "/learn", roles: "Student" },
