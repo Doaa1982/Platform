@@ -4,6 +4,7 @@ import {
   LoaderCircle, Crown, UploadCloud, Download, Search,
   PauseCircle, PlayCircle, UserX, UserCheck, Plus, X, RefreshCw,
   ChevronLeft, ChevronRight, Mail, Inbox, GraduationCap, Users,
+  Copy, Check, QrCode, Printer, MessageCircle,
 } from "lucide-react";
 import QRCode from "qrcode";
 import * as api from "../api/client";
@@ -12,6 +13,7 @@ import { useLanguage } from "../i18n/useLanguage";
 import { useTheme } from "../theme/useTheme";
 import Message from "../components/Message";
 import Notice from "../components/Notice";
+import Modal, { MODAL_CSS } from "../components/Modal";
 
 /* =========================================================================
    MEMBERS SCREEN — the tutor's own member management.
@@ -900,6 +902,7 @@ function BulkInviteResult({ result, onDismiss }) {
               <div className="lw-members__name">{r.email}</div>
               {r.reason && <div className="lw-members__email">{r.reason}</div>}
             </div>
+            {r.outcome === "issued" && r.invitationLink && <InviteLinkActions path={r.invitationLink} email={r.email} />}
             <span className={`lw-members__status ${r.outcome === "issued" ? "is-active" : "is-suspended"}`}>
               {r.outcome === "issued" ? t("members.bulkOutcomeIssued") : t("members.bulkOutcomeSkipped")}
             </span>
@@ -907,6 +910,98 @@ function BulkInviteResult({ result, onDismiss }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * The invitation link is only ever shown here, right after issuing — the raw token can't be
+ * recovered later. With email off (or for anyone easier to reach on WhatsApp or in person), the
+ * tutor copies it, or shows a QR code they can download, print, or send. The QR is generated in
+ * the browser; the link never goes to a third-party QR service.
+ */
+export function InviteLinkActions({ path, email }) {
+  const { t } = useLanguage();
+  const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const link = `${window.location.origin}${path}`;
+
+  return (
+    <span className="lw-members__invitelink">
+      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(link);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1800);
+        } catch {
+          setCopied(false);
+        }
+      }}>
+        {copied ? <><Check size={13} /> {t("members.inviteCopied")}</> : <><Copy size={13} /> {t("members.inviteCopyLink")}</>}
+      </button>
+      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={() => setShowQr(true)}>
+        <QrCode size={13} /> {t("members.inviteShowQr")}
+      </button>
+      {showQr && <InviteQrModal link={link} email={email} onClose={() => setShowQr(false)} />}
+    </span>
+  );
+}
+
+function InviteQrModal({ link, email, onClose }) {
+  const { t } = useLanguage();
+  const [dataUrl, setDataUrl] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(link, { width: 512, margin: 2 })
+      .then((url) => { if (!cancelled) setDataUrl(url); })
+      .catch(() => { if (!cancelled) setDataUrl(null); });
+    return () => { cancelled = true; };
+  }, [link]);
+
+  /* Prints just the QR and who it's for, from a throwaway iframe — no pop-up window to be
+     blocked, and built with DOM APIs rather than an HTML string so the email can't inject markup. */
+  function print() {
+    const frame = document.createElement("iframe");
+    frame.style.cssText = "position:fixed;width:0;height:0;border:0;";
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    doc.body.style.cssText = "font-family:system-ui,sans-serif;text-align:center;padding:48px;";
+    const img = doc.createElement("img");
+    img.style.cssText = "width:320px;height:320px;";
+    const caption = doc.createElement("p");
+    caption.textContent = t("members.inviteQrPrintCaption", { email });
+    doc.body.append(img, caption);
+    img.onload = () => {
+      frame.contentWindow.print();
+      setTimeout(() => frame.remove(), 1000);
+    };
+    img.src = dataUrl;
+  }
+
+  const whatsappHref = `https://wa.me/?text=${encodeURIComponent(`${t("members.inviteWhatsappMessage")} ${link}`)}`;
+
+  return (
+    <Modal onClose={onClose} closeLabel={t("members.inviteQrClose")} panelClassName="lw-members__qrmodal">
+      <style>{MODAL_CSS}</style>
+      <h2 className="lw-modal__title">{t("members.inviteQrTitle")}</h2>
+      <p className="lw-members__qrfor" dir="auto">{email}</p>
+      <div className="lw-members__qrimage">
+        {dataUrl ? <img src={dataUrl} width={240} height={240} alt={t("members.inviteQrAlt", { email })} /> : <LoaderCircle size={20} className="lw-members__spin" />}
+      </div>
+      <p className="lw-members__qrhint">{t("members.inviteQrHint")}</p>
+      <div className="lw-members__qractions">
+        <a className={`lw-btn lw-btn--ghost lw-btn--sm ${dataUrl ? "" : "is-disabled"}`} href={dataUrl ?? undefined}
+           download={`invitation-${email.replace(/[^a-z0-9@._-]/gi, "_")}.png`} aria-disabled={!dataUrl}>
+          <Download size={14} /> {t("members.inviteQrDownload")}
+        </a>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={!dataUrl} onClick={print}>
+          <Printer size={14} /> {t("members.inviteQrPrint")}
+        </button>
+        <a className="lw-btn lw-btn--accent lw-btn--sm" href={whatsappHref} target="_blank" rel="noopener noreferrer">
+          <MessageCircle size={14} /> {t("members.inviteQrWhatsapp")}
+        </a>
+      </div>
+    </Modal>
   );
 }
 
@@ -1242,6 +1337,15 @@ const CSS = `
   }
   .lw-members__joinreqtitle { font-weight: 600; font-size: 0.95rem; }
   .lw-members__joinreq p { font-size: 0.83rem; color: var(--ink-soft); margin: 4px 0 0; max-width: 58ch; line-height: 1.55; }
+  .lw-members__invitelink { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-inline-end: 8px; }
+  .lw-members__qrmodal { max-width: 380px; text-align: center; }
+  .lw-members__qrfor { margin: 0 0 12px; color: var(--ink-soft); font-size: 0.85rem; word-break: break-all; }
+  .lw-members__qrimage { display: flex; justify-content: center; align-items: center; min-height: 240px; }
+  .lw-members__qrimage img { background: #fff; border-radius: 10px; border: 1px solid var(--line); padding: 8px; }
+  .lw-members__qrhint { font-size: 0.8rem; color: var(--ink-soft); margin: 12px 0; }
+  .lw-members__qractions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .lw-members__qractions a { text-decoration: none; }
+  .lw-members__qractions .is-disabled { pointer-events: none; opacity: 0.5; }
   .lw-members__joinqr {
     display: flex; align-items: center; gap: 14px;
     width: 100%; padding-top: 14px; margin-top: 4px;
