@@ -23,7 +23,11 @@ public record SignupStatusResponse(
     string Status,
     string Headline,
     string Detail,
-    DateTime SubmittedAt);
+    DateTime SubmittedAt,
+    /// <summary>Approved and a workspace already provisioned — the applicant should look for their invitation. Lets a client word the state in its own language instead of showing Headline/Detail (English).</summary>
+    bool WorkspaceReady = false,
+    /// <summary>The reviewer's own words, only when they chose to share them with the applicant. Written by a person, so shown as-is (not translated).</summary>
+    string? RejectionReason = null);
 
 /// <summary>One row of the Platform Administrator's application queue.</summary>
 public record SignupRequestRow(

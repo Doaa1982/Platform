@@ -62,7 +62,8 @@ export const TUTOR_DARK = {
   "--ink": "#F8FAFC", "--ink-soft": "#94A3B8", "--accent": "#00A3BF",
   "--accent-2": "#38BDF8", "--line": "rgba(255,255,255,0.08)", "--danger": "#F43F5E",
   "--success": "#10B981",
-  "--on-accent": "#FFFFFF",
+  // #FFFFFF on #00A3BF is ~3:1 (fails WCAG AA); the dark ink already used for --on-accent-2 clears ~7:1.
+  "--on-accent": "#070A11",
   "--on-accent-2": "#070A11",
   "--nav-bg": "#070A11", "--nav-text": "#F8FAFC",
   "--bar-bg": "#0B0F17", "--bar-ink": "#F8FAFC", "--bar-line": "rgba(255,255,255,0.08)",
@@ -101,7 +102,8 @@ export const STUDENT_DARK = {
   "--accent": "#00A3BF",
   "--accent-2": "#38BDF8", "--line": "rgba(255,255,255,0.08)", "--danger": "#F43F5E",
   "--success": "#10B981",
-  "--on-accent": "#FFFFFF",
+  // #FFFFFF on #00A3BF is ~3:1 (fails WCAG AA); the dark ink already used for --on-accent-2 clears ~7:1.
+  "--on-accent": "#070A11",
   "--on-accent-2": "#070A11",
   "--nav-bg": "#070A11", "--nav-text": "#F8FAFC",
   "--bar-bg": "#0B0F17", "--bar-ink": "#F8FAFC", "--bar-line": "rgba(255,255,255,0.08)",

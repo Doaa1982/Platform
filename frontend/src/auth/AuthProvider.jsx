@@ -23,6 +23,9 @@ export function AuthProvider({ side, children }) {
   const [chosenSlug, setChosenSlug] = useState(null);
   const [status, setStatus] = useState(() => (api.loadSession() ? "loading" : "anonymous"));
   const [error, setError] = useState(null);
+  // True when a stored session was rejected (expired or revoked), so the sign-in screen can say
+  // why it's showing instead of silently looking like a fresh visit. Cleared by any new session.
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   /* Load the profile behind the current token. A token the API no longer
      accepts (expired, revoked, signing key rotated) must end the session
@@ -43,6 +46,7 @@ export function AuthProvider({ side, children }) {
         if (cancelled) return;
         if (err.status === 401) {
           api.clearSession();
+          setSessionExpired(true);
           setSession(null);
           setMe(null);
           setStatus("anonymous");
@@ -84,6 +88,7 @@ export function AuthProvider({ side, children }) {
     setMe(null);              // the previous person's profile must not linger
     setChosenSlug(null);      // nor their workspace choice
     setStatus("loading");
+    setSessionExpired(false);
     setSession(next);         // triggers the profile fetch above
   }, []);
 
@@ -152,6 +157,7 @@ export function AuthProvider({ side, children }) {
     return {
       status,
       error,
+      sessionExpired,
       session,
       me,
       side,
@@ -169,7 +175,7 @@ export function AuthProvider({ side, children }) {
       signIn,
       signOut,
     };
-  }, [status, error, session, me, side, chosenSlug, adoptSession, refreshProfile, signIn, signOut]);
+  }, [status, error, sessionExpired, session, me, side, chosenSlug, adoptSession, refreshProfile, signIn, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

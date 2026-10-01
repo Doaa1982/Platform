@@ -90,7 +90,9 @@ public class SignupRequestService(
             Status:      signup.Status.ToString(),
             Headline:    headline,
             Detail:      detail,
-            SubmittedAt: signup.SubmittedAt));
+            SubmittedAt: signup.SubmittedAt,
+            WorkspaceReady: signup.Status == SignupRequestStatus.Approved && signup.ProvisionedWorkspaceId is not null,
+            RejectionReason: signup.Status == SignupRequestStatus.Rejected && signup.RejectionReasonVisible ? signup.RejectionReason : null));
     }
 
     /// <summary>The applicant-facing wording from §7.1, "What the Prospective Tutor Sees".</summary>

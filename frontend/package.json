@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:unit": "node --test \"src/**/*.test.js\"",
     "test": "vitest run",
-    "test:e2e": "node e2e/run.mjs"
+    "test:e2e": "node e2e/run.mjs",
+    "test:entry": "vite build && playwright test -c playwright.entry.config.js"
   },
   "dependencies": {
     "lucide-react": "^1.28.0",
@@ -21,6 +22,7 @@
     "usehooks-ts": "^3.1.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.63.0",
     "@testing-library/dom": "10.4.2",

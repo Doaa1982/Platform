@@ -7,6 +7,29 @@
  */
 
 const en = {
+  entry: {
+    brandName: "Teach Tandem",
+    homeLink: "Teach Tandem home",
+    takingYouIn: "Taking you to your workspace…",
+    restoringSession: "Restoring your session…",
+    sessionErrorTitle: "We couldn't load your account",
+    sessionErrorBody: "Something went wrong on our side or with the connection. Sign in again to continue.",
+    backToSignIn: "Back to sign in",
+    notFoundTitle: "We can't find that page",
+    notFoundBody: "The link may be mistyped or out of date.",
+    goHome: "Go to the home page",
+  },
+
+  errors: {
+    network: "We couldn't reach the server. Check your connection and try again.",
+    rateLimited: "Too many attempts. Please wait a minute and try again.",
+    signedOut: "You need to sign in again.",
+    forbidden: "You don't have access to this.",
+    notFound: "We couldn't find what you were looking for.",
+    server: "Something went wrong on our side. Please try again in a moment.",
+    generic: "Something went wrong. Please try again.",
+  },
+
   sides: {
     teach: {
       label: "Teaching",
@@ -69,6 +92,7 @@ const en = {
   },
 
   login: {
+    sessionExpired: "Your session ended. Please sign in again.",
     notWhatYouWanted: "Not what you wanted?",
     email: "Email",
     emailPlaceholder: "you@example.com",
@@ -85,6 +109,7 @@ const en = {
   },
 
   apply: {
+    errAlreadyApplied: "There's already an application in progress for this email. Check the link we sent you.",
     errBothRequired: "Fill in your name and email before sending — both are required.",
     resultTitle: "Application received",
     resultLead: "We'll review your application and get back to you. You won't pay anything yet — that only happens if we approve you.",
@@ -121,6 +146,10 @@ const en = {
   },
 
   invite: {
+    cantOpenBody: "This invitation link has expired, been used already, or been cancelled.",
+    errMissing: "Fill in your name and password to continue.",
+    errWrongPassword: "That password isn't right for this account.",
+    lead: "You're invited as {role}, using {email}.",
     cantOpenTitle: "This invitation can't be opened",
     cantOpenHint: "Invitation links expire, and the person who sent it can also cancel it. Ask them for a new one.",
     checking: "Checking your invitation…",
@@ -154,6 +183,8 @@ const en = {
   },
 
   resetPassword: {
+    cantOpenBody: "This reset link has expired or has already been used.",
+    lead: "Choose a new password for {email}.",
     cantOpenTitle: "This link can't be opened",
     cantOpenHint: "Password reset links expire after a while and can only be used once. Request a fresh one from the sign-in screen.",
     checking: "Checking your link…",
@@ -170,6 +201,8 @@ const en = {
   },
 
   join: {
+    errAlreadyConnected: "You're already a member, have an open invitation, or have already asked to join this workspace.",
+    linkBadBody: "This join link doesn't lead to a workspace.",
     linkBadTitle: "This link doesn't work",
     linkBadHint: "Academies are reached through their own link. If yours isn't working, ask whoever shared it with you.",
     loading: "Loading…",
@@ -194,6 +227,15 @@ const en = {
   },
 
   signupStatus: {
+    invalidBody: "This link isn't valid or has expired.",
+    underReviewTitle: "Your application is under review",
+    underReviewBody: "We'll email you once a decision has been made.",
+    approvedTitle: "Your application has been approved",
+    approvedBody: "We're setting up your workspace and will email you as soon as it's ready.",
+    readyTitle: "Your workspace is ready",
+    readyBody: "Check your email for an invitation to it. Opening the invitation creates your account and hands the workspace to you.",
+    rejectedTitle: "Thank you for applying",
+    rejectedBody: "After review, we're not able to approve your application at this time.",
     invalidTitle: "This link isn't valid",
     checking: "Checking your application…",
     eyebrow: "Your application",
@@ -203,6 +245,16 @@ const en = {
   },
 
   joinStatus: {
+    errAlreadyDecided: "This request has already been decided, so it can't be cancelled.",
+    invalidBody: "This link isn't valid or has expired.",
+    submittedTitle: "Your request is waiting for a decision",
+    submittedBody: "You'll be notified once the workspace has decided.",
+    approvedTitle: "Your request was approved",
+    approvedBody: "Check your email for an invitation. Accepting it creates your account and your membership.",
+    declinedTitle: "Your request wasn't approved",
+    declinedBody: "This workspace decided not to approve your request at this time.",
+    cancelledTitle: "You cancelled this request",
+    cancelledBody: "No decision was made. You're welcome to ask again.",
     invalidTitle: "This link isn't valid",
     checking: "Checking your request…",
     eyebrow: "Your join request",
@@ -217,6 +269,9 @@ const en = {
   },
 
   picker: {
+    emptyOtherBodyOne: "You're a member of 1 workspace on the {side} side.",
+    emptyOtherBodyMany: "You're a member of {count} workspaces on the {side} side.",
+    roleSeparator: ", ",
     blockedPending: "Invitation not accepted yet",
     blockedSuspended: "Access suspended",
     blockedArchived: "Archived",
@@ -1661,6 +1716,29 @@ const en = {
 };
 
 const ar = {
+  entry: {
+    brandName: "Teach Tandem",
+    homeLink: "الصفحة الرئيسية لـ Teach Tandem",
+    takingYouIn: "جارٍ نقلك إلى مساحة العمل…",
+    restoringSession: "جارٍ استعادة جلستك…",
+    sessionErrorTitle: "تعذّر تحميل حسابك",
+    sessionErrorBody: "حدث خطأ من جهتنا أو في الاتصال. سجّل الدخول مرة أخرى للمتابعة.",
+    backToSignIn: "العودة إلى تسجيل الدخول",
+    notFoundTitle: "تعذّر العثور على هذه الصفحة",
+    notFoundBody: "ربما يكون الرابط مكتوبًا بشكل خاطئ أو قديمًا.",
+    goHome: "الانتقال إلى الصفحة الرئيسية",
+  },
+
+  errors: {
+    network: "تعذّر الوصول إلى الخادم. تحقق من اتصالك وحاول مرة أخرى.",
+    rateLimited: "محاولات كثيرة جدًا. يُرجى الانتظار دقيقة ثم المحاولة مرة أخرى.",
+    signedOut: "يجب عليك تسجيل الدخول مرة أخرى.",
+    forbidden: "ليس لديك صلاحية الوصول إلى هذا.",
+    notFound: "لم نتمكن من العثور على ما تبحث عنه.",
+    server: "حدث خطأ من جهتنا. يُرجى المحاولة مرة أخرى بعد قليل.",
+    generic: "حدث خطأ ما. يُرجى المحاولة مرة أخرى.",
+  },
+
   sides: {
     teach: {
       label: "التدريس",
@@ -1723,6 +1801,7 @@ const ar = {
   },
 
   login: {
+    sessionExpired: "انتهت جلستك. يُرجى تسجيل الدخول مرة أخرى.",
     notWhatYouWanted: "لست تبحث عن هذا؟",
     email: "البريد الإلكتروني",
     emailPlaceholder: "you@example.com",
@@ -1739,6 +1818,7 @@ const ar = {
   },
 
   apply: {
+    errAlreadyApplied: "يوجد طلب قيد المراجعة بالفعل لهذا البريد الإلكتروني. راجع الرابط الذي أرسلناه إليك.",
     errBothRequired: "املأ اسمك وبريدك الإلكتروني قبل الإرسال — كلاهما مطلوب.",
     resultTitle: "تم استلام طلبك",
     resultLead: "سنراجع طلبك ونعود إليك بالرد. لن تدفع شيئًا الآن — الدفع يكون فقط بعد الموافقة على طلبك.",
@@ -1775,6 +1855,10 @@ const ar = {
   },
 
   invite: {
+    cantOpenBody: "انتهت صلاحية رابط الدعوة هذا، أو تم استخدامه بالفعل، أو تم إلغاؤه.",
+    errMissing: "أدخل اسمك وكلمة المرور للمتابعة.",
+    errWrongPassword: "كلمة المرور غير صحيحة لهذا الحساب.",
+    lead: "أنت مدعو بدور {role} باستخدام {email}.",
     cantOpenTitle: "تعذّر فتح هذه الدعوة",
     cantOpenHint: "روابط الدعوة تنتهي صلاحيتها، ويمكن لمن أرسلها إلغاؤها أيضًا. اطلب منه رابطًا جديدًا.",
     checking: "جارٍ التحقق من دعوتك…",
@@ -1808,6 +1892,8 @@ const ar = {
   },
 
   resetPassword: {
+    cantOpenBody: "انتهت صلاحية رابط إعادة التعيين هذا أو تم استخدامه بالفعل.",
+    lead: "اختر كلمة مرور جديدة لـ {email}.",
     cantOpenTitle: "تعذّر فتح هذا الرابط",
     cantOpenHint: "روابط إعادة تعيين كلمة المرور تنتهي صلاحيتها بعد فترة، ولا يمكن استخدامها إلا مرة واحدة. اطلب رابطًا جديدًا من شاشة تسجيل الدخول.",
     checking: "جارٍ التحقق من الرابط…",
@@ -1824,6 +1910,8 @@ const ar = {
   },
 
   join: {
+    errAlreadyConnected: "أنت عضو بالفعل، أو لديك دعوة مفتوحة، أو سبق أن طلبت الانضمام إلى مساحة العمل هذه.",
+    linkBadBody: "رابط الانضمام هذا لا يقود إلى مساحة عمل.",
     linkBadTitle: "هذا الرابط لا يعمل",
     linkBadHint: "يتم الوصول إلى الأكاديميات عبر رابطها الخاص. إذا كان رابطك لا يعمل، اسأل من شاركه معك.",
     loading: "جارٍ التحميل…",
@@ -1848,6 +1936,15 @@ const ar = {
   },
 
   signupStatus: {
+    invalidBody: "هذا الرابط غير صالح أو انتهت صلاحيته.",
+    underReviewTitle: "طلبك قيد المراجعة",
+    underReviewBody: "سنرسل إليك بريدًا إلكترونيًا عند اتخاذ القرار.",
+    approvedTitle: "تمت الموافقة على طلبك",
+    approvedBody: "نقوم بإعداد مساحة العمل الخاصة بك وسنراسلك فور جاهزيتها.",
+    readyTitle: "مساحة العمل الخاصة بك جاهزة",
+    readyBody: "تحقق من بريدك الإلكتروني بحثًا عن دعوة إليها. فتح الدعوة ينشئ حسابك ويسلّمك مساحة العمل.",
+    rejectedTitle: "شكرًا لتقديمك",
+    rejectedBody: "بعد المراجعة، لا يمكننا الموافقة على طلبك في الوقت الحالي.",
     invalidTitle: "هذا الرابط غير صالح",
     checking: "جارٍ التحقق من طلبك…",
     eyebrow: "طلبك",
@@ -1857,6 +1954,16 @@ const ar = {
   },
 
   joinStatus: {
+    errAlreadyDecided: "تم البت في هذا الطلب بالفعل، لذا لا يمكن إلغاؤه.",
+    invalidBody: "هذا الرابط غير صالح أو انتهت صلاحيته.",
+    submittedTitle: "طلبك بانتظار القرار",
+    submittedBody: "سيتم إخطارك عندما تتخذ مساحة العمل قرارها.",
+    approvedTitle: "تمت الموافقة على طلبك",
+    approvedBody: "تحقق من بريدك الإلكتروني بحثًا عن دعوة. قبولها ينشئ حسابك وعضويتك.",
+    declinedTitle: "لم تتم الموافقة على طلبك",
+    declinedBody: "قررت مساحة العمل عدم الموافقة على طلبك في الوقت الحالي.",
+    cancelledTitle: "لقد ألغيت هذا الطلب",
+    cancelledBody: "لم يُتخذ أي قرار. يمكنك تقديم طلب جديد في أي وقت.",
     invalidTitle: "هذا الرابط غير صالح",
     checking: "جارٍ التحقق من طلبك…",
     eyebrow: "طلب انضمامك",
@@ -1871,6 +1978,9 @@ const ar = {
   },
 
   picker: {
+    emptyOtherBodyOne: "أنت عضو في مساحة عمل واحدة في جانب {side}.",
+    emptyOtherBodyMany: "أنت عضو في {count} من مساحات العمل في جانب {side}.",
+    roleSeparator: "، ",
     blockedPending: "لم تُقبل الدعوة بعد",
     blockedSuspended: "الوصول موقوف",
     blockedArchived: "مؤرشف",

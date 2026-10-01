@@ -11,6 +11,7 @@ import ResetPasswordScreen from "./screens/ResetPasswordScreen";
 import JoinRequestStatusScreen from "./screens/JoinRequestStatusScreen";
 import AuthGate from "./AuthGate";
 import AdminGate from "./AdminGate";
+import NotFoundScreen from "./screens/NotFoundScreen";
 
 /* =========================================================================
    APP ROOT — routing sits above the auth provider.
@@ -26,6 +27,7 @@ import AdminGate from "./AdminGate";
      /join-requests/status/{token}   a requester checking on (or cancelling) their own request
      /forgot-password/{side}   requesting a password reset link
      /reset-password/{token}   redeeming one
+     anything else    not found
 
    There is deliberately no route that lists workspaces. Discovery happens
    entirely off-platform, permanently (Join Request BA-007, ADR-EA-002): a
@@ -130,6 +132,14 @@ export default function AppRoot() {
   }
 
   const side = sideFromPath(pathname);
+  if (!side && path !== "/") {
+    return (
+      <AuthProvider side={null}>
+        <NotFoundScreen onHome={() => navigate("/")} />
+      </AuthProvider>
+    );
+  }
+
   if (!side) {
     // The root decides for itself whether the visitor is already known
     return (

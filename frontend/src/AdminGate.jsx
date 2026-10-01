@@ -1,5 +1,6 @@
-import { LoaderCircle, AlertCircle } from "lucide-react";
 import { useAuth } from "./auth/authContext";
+import { EntryError, EntryLoading } from "./components/EntryShell";
+import { useLanguage } from "./i18n/useLanguage";
 import AdminLogin from "./screens/AdminLogin";
 import AdminScreen from "./screens/AdminScreen";
 
@@ -16,56 +17,19 @@ import AdminScreen from "./screens/AdminScreen";
    ========================================================================= */
 
 export default function AdminGate({ navigate }) {
-  const { status, error, signOut } = useAuth();
+  const { status, signOut } = useAuth();
+  const { t } = useLanguage();
 
-  if (status === "loading") {
-    return (
-      <Splash>
-        <LoaderCircle size={22} className="pl-asplash__spin" aria-hidden="true" />
-        <p>Restoring your session…</p>
-      </Splash>
-    );
-  }
+  if (status === "loading") return <EntryLoading label={t("entry.restoringSession")} />;
 
+  // The profile couldn't be loaded for a reason other than an expired session (the API is
+  // down, a network failure) — the raw error is English developer text, so it isn't shown.
   if (status === "error") {
-    return (
-      <Splash>
-        <AlertCircle size={22} aria-hidden="true" />
-        <p>{error}</p>
-        <button className="pl-asplash__btn" onClick={signOut}>Back to sign in</button>
-      </Splash>
-    );
+    return <EntryError title={t("entry.sessionErrorTitle")} lead={t("entry.sessionErrorBody")}
+                       actionLabel={t("entry.backToSignIn")} onAction={signOut} />;
   }
 
   if (status === "anonymous") return <AdminLogin onBack={() => navigate("/")} />;
 
   return <AdminScreen />;
 }
-
-function Splash({ children }) {
-  return (
-    <div className="pl-asplash" role="status">
-      <style>{CSS}</style>
-      {children}
-    </div>
-  );
-}
-
-const CSS = `
-  .pl-asplash {
-    min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 14px;
-    background: #131619; color: #949AA5;
-    font-family: 'Karla', system-ui, sans-serif; font-size: 0.92rem;
-    padding: 24px; text-align: center;
-  }
-  .pl-asplash p { margin: 0; max-width: 40ch; }
-  .pl-asplash__spin { animation: plASpin 0.9s linear infinite; }
-  @keyframes plASpin { to { transform: rotate(360deg); } }
-  .pl-asplash__btn {
-    font-family: inherit; font-size: 0.88rem; font-weight: 600;
-    color: #0B1220; background: #4C8DFF; border: none;
-    border-radius: 9px; padding: 9px 18px; cursor: pointer;
-  }
-  @media (prefers-reduced-motion: reduce) { .pl-asplash__spin { animation: none; } }
-`;

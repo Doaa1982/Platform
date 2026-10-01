@@ -12,6 +12,8 @@ import AdminCatalogSection from "./AdminCatalogSection";
 import AdminEntitlementOverridesSection from "./AdminEntitlementOverridesSection";
 import AdminEmailPreviewsSection from "./AdminEmailPreviewsSection";
 import Message from "../components/Message";
+import EntryShell, { EntryCard } from "../components/EntryShell";
+import { isolate } from "../i18n/format";
 import PaginationControls, { PAGINATION_CONTROLS_CSS } from "../components/PaginationControls";
 import { usePagination } from "../hooks/usePagination";
 
@@ -144,14 +146,14 @@ export default function AdminScreen() {
 
   if (denied) {
     return (
-      <Shell>
-        <div className="pl-admin__denied">
-          <ShieldAlert size={28} aria-hidden="true" />
-          <h1>{t("admin.notAdminTitle")}</h1>
-          <p>{t("admin.notAdminBody", { email: me?.email })}</p>
-          <button className="pl-admin__btn" onClick={signOut}>{t("admin.signOut")}</button>
-        </div>
-      </Shell>
+      <EntryShell>
+        <EntryCard icon={ShieldAlert} tone="bad" title={t("admin.notAdminTitle")}
+                   lead={t("admin.notAdminBody", { email: isolate(me?.email ?? "") })}>
+          <div className="lw-entry__actions">
+            <button type="button" className="lw-btn lw-btn--accent" onClick={signOut}>{t("admin.signOut")}</button>
+          </div>
+        </EntryCard>
+      </EntryShell>
     );
   }
 

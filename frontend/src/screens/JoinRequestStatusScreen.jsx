@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle, AlertCircle, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { AlertCircle, Clock, CheckCircle2, XCircle, Undo2 } from "lucide-react";
 import * as api from "../api/client";
-import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
-import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
-import Message from "../components/Message";
+import EntryShell, { EntryCard, EntryFacts, EntryLoading } from "../components/EntryShell";
+import { apiErrorMessage } from "../i18n/apiErrors";
+import { formatDate } from "../i18n/format";
 
 /* =========================================================================
    JOIN REQUEST STATUS — /join-requests/status/{token}
@@ -18,18 +18,20 @@ import Message from "../components/Message";
    endpoint were added).
    ========================================================================= */
 
+/* Wording is chosen from the status and rendered through translations — the API's
+   Headline/Detail are English-only (same reasoning as SignupStatusScreen). */
 const LOOK = {
-  Submitted: { icon: Clock, tone: "wait" },
-  Approved:  { icon: CheckCircle2, tone: "good" },
-  Declined:  { icon: XCircle, tone: "done" },
-  Cancelled: { icon: XCircle, tone: "done" },
+  Submitted: { icon: Clock,        tone: "info",  key: "submitted" },
+  Approved:  { icon: CheckCircle2, tone: "good",  key: "approved" },
+  Declined:  { icon: XCircle,      tone: "muted", key: "declined" },
+  Cancelled: { icon: Undo2,        tone: "muted", key: "cancelled" },
 };
 
 export default function JoinRequestStatusScreen({ token }) {
-  useFonts();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   const [status, setStatus] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [error, setError] = useState(null);
   const [cancelling, setCancelling] = useState(false);
 
@@ -37,7 +39,7 @@ export default function JoinRequestStatusScreen({ token }) {
     let cancelled = false;
     api.getJoinRequestStatus(token)
       .then((s) => { if (!cancelled) setStatus(s); })
-      .catch((e) => { if (!cancelled) setError(e.message); });
+      .catch((e) => { if (!cancelled) setLoadError(e); });
     return () => { cancelled = true; };
   }, [token]);
 
@@ -47,130 +49,47 @@ export default function JoinRequestStatusScreen({ token }) {
     setError(null);
     try {
       await api.cancelJoinRequest(token);
-      setStatus((s) => ({ ...s, status: "Cancelled", headline: t("joinStatus.cancelledHeadline"), detail: t("joinStatus.cancelledDetail") }));
+      setStatus((s) => ({ ...s, status: "Cancelled" }));
     } catch (e) {
-      setError(e.message);
+      setError(apiErrorMessage(t, e, { 409: "joinStatus.errAlreadyDecided" }));
     } finally {
       setCancelling(false);
     }
   }
 
-  if (error && !status) {
+  if (loadError && !status) {
     return (
-      <Shell>
-        <div className="pl-stat__card is-bad">
-          <div className="pl-stat__mark" aria-hidden="true"><AlertCircle size={22} /></div>
-          <h1>{t("joinStatus.invalidTitle")}</h1>
-          <p className="pl-stat__lead">{error}</p>
-        </div>
-      </Shell>
+      <EntryShell>
+        <EntryCard icon={AlertCircle} tone="bad" title={t("joinStatus.invalidTitle")}
+                   lead={apiErrorMessage(t, loadError, { 404: "joinStatus.invalidBody" })} />
+      </EntryShell>
     );
   }
 
-  if (!status) {
-    return (
-      <Shell>
-        <div className="pl-stat__card">
-          <LoaderCircle size={22} className="pl-stat__spin" aria-hidden="true" />
-          <p className="pl-stat__muted">{t("joinStatus.checking")}</p>
-        </div>
-      </Shell>
-    );
-  }
+  if (!status) return <EntryLoading label={t("joinStatus.checking")} />;
 
-  const look = LOOK[status.status] ?? { icon: Clock, tone: "wait" };
-  const Icon = look.icon;
+  const look = LOOK[status.status] ?? LOOK.Submitted;
 
   return (
-    <Shell>
-      <div className={`pl-stat__card is-${look.tone}`}>
-        <div className="pl-stat__mark" aria-hidden="true"><Icon size={22} /></div>
-        <div className="pl-stat__eyebrow">{t("joinStatus.eyebrow")}</div>
-        <h1>{status.headline}</h1>
-        <p className="pl-stat__lead">{status.detail}</p>
+    <EntryShell>
+      <EntryCard icon={look.icon} tone={look.tone} eyebrow={t("joinStatus.eyebrow")}
+                 title={t(`joinStatus.${look.key}Title`)} lead={t(`joinStatus.${look.key}Body`)}>
+        {error && <div className="lw-entry__alert lw-entry__alert--bad" role="alert">{error}</div>}
 
-        {error && <Message type="error">{error}</Message>}
-
-        <dl className="pl-stat__meta">
-          <div><dt>{t("joinStatus.name")}</dt><dd>{status.fullName}</dd></div>
-          <div><dt>{t("joinStatus.email")}</dt><dd>{status.email}</dd></div>
-          <div><dt>{t("joinStatus.asked")}</dt><dd>{new Date(status.submittedAt).toLocaleDateString()}</dd></div>
-        </dl>
+        <EntryFacts items={[
+          { label: t("joinStatus.name"), value: status.fullName },
+          { label: t("joinStatus.email"), value: status.email },
+          { label: t("joinStatus.asked"), value: formatDate(lang, status.submittedAt) },
+        ]} />
 
         {status.status === "Submitted" && (
-          <button className="pl-stat__cancel" disabled={cancelling} onClick={handleCancelRequest}>
-            {cancelling ? t("joinStatus.cancelling") : t("joinStatus.cancel")}
-          </button>
+          <div className="lw-entry__actions">
+            <button type="button" className="lw-btn" disabled={cancelling} onClick={handleCancelRequest}>
+              {cancelling ? t("joinStatus.cancelling") : t("joinStatus.cancel")}
+            </button>
+          </div>
         )}
-      </div>
-    </Shell>
+      </EntryCard>
+    </EntryShell>
   );
 }
-
-function Shell({ children }) {
-  return (
-    <div className="pl-stat">
-      <style>{CSS}</style>
-      <div className="pl-stat__langtoggle"><LanguageToggle /></div>
-      {children}
-    </div>
-  );
-}
-
-const CSS = `
-  .pl-stat {
-    --ink: #F2F5FA; --ink-soft: #98A2B5; --accent: #5B8DEF;
-    font-family: 'Karla', system-ui, sans-serif; color: var(--ink);
-    background: #0B0F16; min-height: 100vh; position: relative;
-    display: flex; align-items: center; justify-content: center; padding: 40px 22px;
-  }
-  .pl-stat *, .pl-stat *::before, .pl-stat *::after { box-sizing: border-box; }
-  .pl-stat__langtoggle { position: absolute; top: 20px; inset-inline-end: 20px; }
-
-  .pl-stat__card {
-    width: 100%; max-width: 440px; text-align: center;
-    background: #12171F; border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 16px; padding: 34px 30px;
-  }
-  .pl-stat__mark {
-    width: 48px; height: 48px; border-radius: 13px; margin: 0 auto 16px;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(91,141,239,0.16); color: var(--accent);
-  }
-  .is-good .pl-stat__mark { background: rgba(127,211,184,0.16); color: #7FD3B8; }
-  .is-warn .pl-stat__mark { background: rgba(224,168,62,0.16); color: #E0A83E; }
-  .is-done .pl-stat__mark { background: rgba(255,255,255,0.07); color: var(--ink-soft); }
-  .is-bad .pl-stat__mark { background: rgba(192,57,43,0.16); color: #E0685A; }
-
-  .pl-stat__eyebrow {
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
-    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 8px;
-  }
-  .pl-stat h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.4rem; font-weight: 600; margin: 0 0 10px; line-height: 1.25; }
-  .pl-stat__lead { color: var(--ink-soft); font-size: 0.9rem; line-height: 1.65; margin: 0; }
-
-  .pl-stat__meta {
-    display: flex; justify-content: center; gap: 22px; flex-wrap: wrap;
-    margin: 26px 0 0; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.08);
-  }
-  .pl-stat__meta div { text-align: start; }
-  .pl-stat__meta dt {
-    font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
-    letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 3px;
-  }
-  .pl-stat__meta dd { margin: 0; font-size: 0.84rem; }
-
-  .pl-stat__muted { color: var(--ink-soft); font-size: 0.88rem; margin: 12px 0 0; }
-  .pl-stat__spin { animation: plStatSpin 0.9s linear infinite; }
-  @keyframes plStatSpin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .pl-stat__spin { animation: none; } }
-
-  .pl-stat__cancel {
-    margin-top: 22px; font-family: 'Karla', system-ui, sans-serif; font-size: 0.85rem;
-    color: #E0A83E; background: transparent; border: 1px solid rgba(224,168,62,0.4);
-    border-radius: 8px; padding: 8px 16px; cursor: pointer;
-  }
-  .pl-stat__cancel:disabled { opacity: 0.6; cursor: default; }
-
-  ${LANGUAGE_TOGGLE_CSS}
-`;
