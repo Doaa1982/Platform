@@ -20,8 +20,8 @@ public class TranscriptEnhancementValidatorTests
     [Fact]
     public void ASafeCorrectionWithNoContentChange_PassesCleanly()
     {
-        const string raw = "SPEAKER: S1\nكان عندي رون بتقول ايه B1 plus B2 equals 26.";
-        const string enhanced = "SPEAKER: S1\nكان عندي رون بتقول Area of Trapezium B1 plus B2 equals 26.";
+        const string raw = "S1: كان عندي رون بتقول ايه B1 plus B2 equals 26.";
+        const string enhanced = "S1: كان عندي رون بتقول Area of Trapezium B1 plus B2 equals 26.";
         var result = new TranscriptEnhancementLlmResult(enhanced, Segments: [], ReviewItems: [], AllTrue());
 
         var outcome = TranscriptEnhancementValidator.Validate(raw, result);
@@ -33,8 +33,8 @@ public class TranscriptEnhancementValidatorTests
     [Fact]
     public void AChangedNumber_IsDetectedAndRequiresReview()
     {
-        const string raw = "SPEAKER: S1\nThe answer equals 26.";
-        const string enhanced = "SPEAKER: S1\nThe answer equals 62."; // transposed digits — a real, dangerous ASR "fix"
+        const string raw = "S1: The answer equals 26.";
+        const string enhanced = "S1: The answer equals 62."; // transposed digits — a real, dangerous ASR "fix"
         var result = new TranscriptEnhancementLlmResult(enhanced, Segments: [], ReviewItems: [], AllTrue());
 
         var outcome = TranscriptEnhancementValidator.Validate(raw, result);
@@ -48,8 +48,8 @@ public class TranscriptEnhancementValidatorTests
     {
         // "26" appears twice in raw, once in enhanced — a naive "does the
         // token still appear somewhere" check would miss this.
-        const string raw = "SPEAKER: S1\n26. Two D. I. 26.";
-        const string enhanced = "SPEAKER: S1\n26. Two D. I.";
+        const string raw = "S1: 26. Two D. I. 26.";
+        const string enhanced = "S1: 26. Two D. I.";
         var result = new TranscriptEnhancementLlmResult(enhanced, Segments: [], ReviewItems: [], AllTrue());
 
         var outcome = TranscriptEnhancementValidator.Validate(raw, result);
@@ -60,8 +60,8 @@ public class TranscriptEnhancementValidatorTests
     [Fact]
     public void AChangedVariableLabel_IsDetectedAndRequiresReview()
     {
-        const string raw = "SPEAKER: S1\nWe need B1 and B2 to find the height.";
-        const string enhanced = "SPEAKER: S1\nWe need B1 and B3 to find the height."; // B2 silently became B3
+        const string raw = "S1: We need B1 and B2 to find the height.";
+        const string enhanced = "S1: We need B1 and B3 to find the height."; // B2 silently became B3
         var result = new TranscriptEnhancementLlmResult(enhanced, Segments: [], ReviewItems: [], AllTrue());
 
         var outcome = TranscriptEnhancementValidator.Validate(raw, result);
@@ -73,8 +73,8 @@ public class TranscriptEnhancementValidatorTests
     [Fact]
     public void ModelSelfReportedPreservationFailure_RequiresReviewEvenWithNoTokenMismatch()
     {
-        const string raw = "SPEAKER: S1\nSome careful methodology explanation here in full.";
-        const string enhanced = "SPEAKER: S1\nSome careful methodology explanation here in full.";
+        const string raw = "S1: Some careful methodology explanation here in full.";
+        const string enhanced = "S1: Some careful methodology explanation here in full.";
         var checks = AllTrue() with { MethodologyPreserved = false };
         var result = new TranscriptEnhancementLlmResult(enhanced, Segments: [], ReviewItems: [], checks);
 
@@ -87,8 +87,8 @@ public class TranscriptEnhancementValidatorTests
     [Fact]
     public void AModelFlaggedReviewItem_RequiresReviewEvenWhenPreservationChecksAllPass()
     {
-        const string raw = "SPEAKER: S1\nAn uncertain word right here in this sentence.";
-        const string enhanced = "SPEAKER: S1\nAn uncertain word right here in this sentence.";
+        const string raw = "S1: An uncertain word right here in this sentence.";
+        const string enhanced = "S1: An uncertain word right here in this sentence.";
         var reviewItems = new List<TranscriptEnhancementReviewItem>
         {
             new("1", "Possibly mis-heard technical term", "right here", "Low confidence — kept original wording."),
@@ -104,8 +104,8 @@ public class TranscriptEnhancementValidatorTests
     [Fact]
     public void ASegmentMarkedRequiresReview_PropagatesToTheOverallResult()
     {
-        const string raw = "SPEAKER: S1\nFirst sentence. Second sentence.";
-        const string enhanced = "SPEAKER: S1\nFirst sentence. Second sentence.";
+        const string raw = "S1: First sentence. Second sentence.";
+        const string enhanced = "S1: First sentence. Second sentence.";
         var segments = new List<TranscriptEnhancementSegment>
         {
             new("1", null, null, "S1", "First sentence.", "First sentence.", "unchanged", "high", null, RequiresReview: false),
@@ -122,8 +122,8 @@ public class TranscriptEnhancementValidatorTests
     [Fact]
     public void SummarizedOutput_IsDetectedByLengthRatioAndRequiresReview()
     {
-        const string raw = "SPEAKER: S1\nThis is a fairly long raw transcript with a great deal of spoken instructional content that goes on for quite a while covering many small steps in detail.";
-        const string enhanced = "SPEAKER: S1\nShort summary.";
+        const string raw = "S1: This is a fairly long raw transcript with a great deal of spoken instructional content that goes on for quite a while covering many small steps in detail.";
+        const string enhanced = "S1: Short summary.";
         var result = new TranscriptEnhancementLlmResult(enhanced, Segments: [], ReviewItems: [], AllTrue());
 
         var outcome = TranscriptEnhancementValidator.Validate(raw, result);
@@ -135,8 +135,8 @@ public class TranscriptEnhancementValidatorTests
     [Fact]
     public void MissingPreservationChecksObject_RequiresReview()
     {
-        const string raw = "SPEAKER: S1\nSome text.";
-        const string enhanced = "SPEAKER: S1\nSome text.";
+        const string raw = "S1: Some text.";
+        const string enhanced = "S1: Some text.";
         var result = new TranscriptEnhancementLlmResult(enhanced, Segments: [], ReviewItems: [], PreservationChecks: null);
 
         var outcome = TranscriptEnhancementValidator.Validate(raw, result);

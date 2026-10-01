@@ -102,7 +102,7 @@ public class GeminiTranscriptionProvider(
         // No real chapter/segment timing signal from a plain generateContent
         // call — same "empty, not an error" contract Deepgram's own
         // transcript-only path documents.
-        return new TranscriptionResult(text.Trim(), [], []);
+        return new TranscriptionResult(SpeakerLabelFormatter.Normalize(text.Trim()), [], []);
     }
 
     /// <summary>
@@ -146,12 +146,14 @@ public class GeminiTranscriptionProvider(
     }
 
     /// <summary>
-    /// Same inline-label convention ("SPEAKER: S1") Deepgram/Speechmatics
-    /// transcripts already use, so every downstream text-based AI skill
-    /// reading LessonRevision.Transcript keeps seeing the same shape
-    /// regardless of which provider produced it. Deliberately conservative —
-    /// this is a transcription prompt, not a correction/summarization one
-    /// (that pass, if wanted, is the separate "Enhance Transcript" feature).
+    /// Same inline-label convention ("S1: ") Deepgram/Speechmatics transcripts are normalized to
+    /// (see <see cref="SpeakerLabelFormatter"/>), so every downstream text-based AI skill reading
+    /// LessonRevision.Transcript keeps seeing the same shape regardless of which provider produced
+    /// it. An LLM prompt is not a hard format guarantee the way Deepgram's own code-built label is
+    /// — <see cref="SpeakerLabelFormatter.Normalize"/> is applied to this provider's output too
+    /// (see the call site below) as a safety net, not relied on alone. Deliberately conservative —
+    /// this is a transcription prompt, not a correction/summarization one (that pass, if wanted,
+    /// is the separate "Enhance Transcript" feature).
     /// </summary>
     private static string BuildPrompt(string language)
     {
@@ -163,9 +165,9 @@ public class GeminiTranscriptionProvider(
                languageHint + "\n\n" +
                "Rules:\n" +
                "- Transcribe exactly what is said. Do not summarize, shorten, paraphrase, correct grammar, or skip any portion, no matter how long the file is.\n" +
-               "- Identify distinct speakers and label each turn on its own line as \"SPEAKER: S1\", \"SPEAKER: S2\", etc. (a new label only when the speaker actually changes).\n" +
+               "- Identify distinct speakers and label each turn on its own line as \"S1: \", \"S2: \", etc. (a new label only when the speaker actually changes) — e.g. \"S1: Hello there.\"\n" +
                "- Preserve numbers, variable names, formulas, units, and any code-switched English technical terms exactly as spoken.\n" +
-               "- Do not add any commentary, headers, timestamps, or notes of your own — output only the transcript itself in the SPEAKER-labeled format above.\n" +
+               "- Do not add any commentary, headers, timestamps, or notes of your own — output only the transcript itself in the labeled format above.\n" +
                "- If a short stretch is truly inaudible, write \"[inaudible]\" there instead of guessing.";
     }
 

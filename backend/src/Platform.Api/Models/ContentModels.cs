@@ -137,6 +137,16 @@ public record SetVideoUrlRequest(string Url);
 /// <summary>InputMode: "Audio" (default, null also means Audio) | "VideoLowRes" — see TranscriptionInputMode.</summary>
 public record GenerateTranscriptRequest(string? Language, string? InputMode = null);
 
+/// <summary>
+/// What generating a transcript currently costs, in AI credits — read live off
+/// SkillCreditCost/TranscriptionOptions.VideoLowResCostMultiplier (the same values
+/// ContentStudioService.GenerateTranscriptAsync charges) rather than hard-coded in the UI, so a
+/// pricing change takes effect for the tutor-facing hint without a frontend deploy. Either field
+/// is null only if GenerateTranscriptSkill has no seeded price at all (not expected in practice
+/// — Program.cs always seeds one — but the lookup is nullable, so this stays honest about it).
+/// </summary>
+public record TranscriptionCostResponse(int? AudioCredits, int? VideoLowResCredits);
+
 /// <summary>Type is one of LearningActivityType's 14 names. AssessmentId only applies for Quiz/QuestionSet; ExternalUrl only for ExternalLearningTool — both ignored otherwise.</summary>
 public record SaveLearningActivityRequest(
     string Type, string Title, string? Instructions, Guid? AssessmentId = null, string? ExternalUrl = null,

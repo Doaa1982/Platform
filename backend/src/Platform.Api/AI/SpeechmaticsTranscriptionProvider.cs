@@ -61,7 +61,12 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
         // FetchChaptersAsync). Chapters remain the accurate-timestamp source
         // for this provider; an empty segments list is the documented,
         // normal case (see TranscriptSegment).
-        return new TranscriptionResult(text, chapters, []);
+        //
+        // Speechmatics' own "speaker" diarization labels this plain-text fetch returns don't
+        // match the canonical "S1: " shape (seen as "SPEAKER: S1:"/"SPEAKER_S1:" variants) —
+        // SpeakerLabelFormatter.Normalize rewrites them so every downstream reader of
+        // LessonRevision.Transcript sees the same label shape regardless of provider.
+        return new TranscriptionResult(SpeakerLabelFormatter.Normalize(text), chapters, []);
     }
 
     private async Task<string> SubmitJobAsync(string filePath, string fileName, string? languageOverride, CancellationToken ct)
@@ -78,9 +83,10 @@ public class SpeechmaticsTranscriptionProvider(HttpClient http, SpeechmaticsOpti
             // own Auto Chapters docs recommend it for better chapter quality
             // — not because this platform does anything with speaker labels
             // itself. Side effect worth knowing: the plain-text transcript
-            // this job returns will now be prefixed per line with "SPEAKER
-            // S1:" (single-speaker lesson videos get one consistent label),
-            // which flows into every text-based skill reading
+            // this job returns will now be prefixed per line with a speaker
+            // label (normalized to "S1: " — see SpeakerLabelFormatter;
+            // single-speaker lesson videos get one consistent label), which
+            // flows into every text-based skill reading
             // LessonRevision.Transcript (body drafting, "what you'll learn",
             // the duration-based question fallback). Harmless for a single
             // tutor speaking, but worth remembering if multi-speaker lesson

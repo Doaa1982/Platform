@@ -34,9 +34,9 @@ public class EnhanceTranscriptSkill(AiOrchestrator orchestrator)
 
         You are given:
         - The raw ASR transcript, exactly as produced by the speech-to-text
-          provider. It may contain "SPEAKER: S1" / "SPEAKER: S2" lines marking
-          speaker turns — these are real structural markers, not part of the
-          spoken content.
+          provider. It may contain "S1: " / "S2: " lines marking speaker
+          turns — these are real structural markers, not part of the spoken
+          content.
         - Lesson context (subject/course, topic, learning objectives,
           terminology, description) — background only, to help resolve a
           clearly-garbled ASR mistake. It is never a license to add content,
@@ -65,9 +65,9 @@ public class EnhanceTranscriptSkill(AiOrchestrator orchestrator)
            transcript into English. Preserve the code-switching pattern exactly
            as it occurs — an English word embedded in an Arabic sentence stays
            an English word in the same position.
-        7. Preserve every "SPEAKER: S1" / "SPEAKER: S2" style label exactly,
-           in the same position, for the same speaker. Never merge, split, add,
-           or remove a speaker turn.
+        7. Preserve every "S1: " / "S2: " style label exactly, in the same
+           position, for the same speaker. Never merge, split, add, or remove
+           a speaker turn.
         8. Correct ONLY obvious ASR errors — a real word rendered as
            gibberish, an English technical term phonetically transliterated
            into Arabic script when it should have stayed English (or vice
