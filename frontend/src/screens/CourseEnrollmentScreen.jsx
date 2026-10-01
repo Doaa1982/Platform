@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { formatDateActive } from "../i18n/format";
 import { LoaderCircle, RefreshCw, UserX, X } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -88,7 +89,7 @@ export default function CourseEnrollmentScreen() {
         {products.length === 0 ? (
           <span className="lw-enroll__nocourses">{t("enrollment.noCourses")}</span>
         ) : (
-          <select value={productId} onChange={(e) => setProductId(e.target.value)}>
+          <select value={productId} onChange={(e) => setProductId(e.target.value)} aria-label={t("enrollment.courseLabel")}>
             {products.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
           </select>
         )}
@@ -125,7 +126,7 @@ export default function CourseEnrollmentScreen() {
                     <div className="lw-enroll__who">
                       <div className="lw-enroll__name">{m.fullName}</div>
                       <div className="lw-enroll__email">{m.email}</div>
-                      <div className="lw-enroll__date">{t("enrollment.enrolledOn", { date: new Date(m.enrolledAt).toLocaleDateString() })}</div>
+                      <div className="lw-enroll__date">{t("enrollment.enrolledOn", { date: formatDateActive(m.enrolledAt) })}</div>
                     </div>
                     {roster.canManage && (
                       <button type="button" disabled={busy} onClick={() => {
@@ -152,7 +153,7 @@ export default function CourseEnrollmentScreen() {
                     <div className="lw-enroll__who">
                       <div className="lw-enroll__name">{i.email}</div>
                       <div className="lw-enroll__date">
-                        {t("members.invitedAs", { role: humanise(t, i.intendedRole), date: new Date(i.expiresAt).toLocaleDateString() })}
+                        {t("members.invitedAs", { role: humanise(t, i.intendedRole), date: formatDateActive(i.expiresAt) })}
                       </div>
                     </div>
                     <span className={`lw-enroll__status is-${i.status.toLowerCase()}`}>{statusLabel(t, i.status)}</span>
@@ -235,7 +236,7 @@ const CSS = `
   .lw-enroll__avatar {
     width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    background: var(--accent-2); color: #fff; font-weight: 700; font-size: 0.9rem; text-transform: uppercase;
+    background: var(--accent-2); color: var(--on-accent, #fff); font-weight: 700; font-size: 0.9rem; text-transform: uppercase;
   }
   .lw-enroll__who { flex: 1; min-width: 160px; }
   .lw-enroll__name { font-weight: 600; font-size: 0.93rem; overflow-wrap: anywhere; }

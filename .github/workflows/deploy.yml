@@ -58,6 +58,18 @@ jobs:
         working-directory: frontend
         run: npx vitest run
 
+      # Every screen — entry screens (sign in, apply, invitations, password reset, ...) and every
+      # owner/learner/admin screen inside the app — x EN/AR x light/dark: axe (WCAG 2.1 AA, incl.
+      # contrast) must be clean and no English may remain on an Arabic screen. API responses are
+      # stubbed/replayed from recordings, so this needs only a browser, not the backend.
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Screen audit (language, theme, accessibility)
+        working-directory: frontend
+        run: npm run test:audit
+
       # `npm run lint` currently reports 14 pre-existing errors; add it here
       # once those are cleared so it can gate deploys.
 

@@ -196,7 +196,7 @@ const CSS = `
     background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color: var(--accent);
   }
   .lw-ai__bubblerow.is-user .lw-ai__avatar {
-    background: var(--accent); color: #fff;
+    background: var(--accent); color: var(--on-accent, #fff);
   }
   .lw-ai__bubble {
     background: var(--surface-2); color: var(--ink); border: 1px solid var(--line);
@@ -205,7 +205,7 @@ const CSS = `
     box-shadow: 0 2px 6px rgba(0,0,0,0.02);
   }
   .lw-ai__bubble.is-user {
-    background: var(--accent); color: #fff; border-color: var(--accent);
+    background: var(--accent); color: var(--on-accent, #fff); border-color: var(--accent);
     border-radius: 14px 14px 4px 14px;
     box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent);
   }

@@ -1,4 +1,5 @@
 import { useLanguage } from "../i18n/useLanguage";
+import { money, gb, catalogName } from "../i18n/format";
 import { domainLabel, levelLabel, aiLabel, aiLevelForProfile, packGrants, fmtDate } from "../i18n/subscriptionLabels";
 
 /* =========================================================================
@@ -25,12 +26,12 @@ export default function CurrentPlanCard({ plan, packs, subscription, children })
   return (
     <div className="lw-plancards__current">
       <div className="lw-plancards__currenthead">
-        <span className="lw-plancards__currentname">{plan?.name ?? subscription.planCode}</span>
+        <span className="lw-plancards__currentname">{plan ? catalogName(t, plan) : subscription.planCode}</span>
         {plan && (
           <span className="lw-plancards__currentprice">
             {price === 0
               ? t("subscription.free")
-              : <>{price} {plan.currency}
+              : <>{money(price, plan.currency)}
                   <span>{subscription.billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</span>
                 </>}
           </span>
@@ -45,9 +46,9 @@ export default function CurrentPlanCard({ plan, packs, subscription, children })
           {ownedPacks.map((pack) => (
             <li className="lw-plancards__addon" key={pack.code}>
               <div className="lw-plancards__addonhead">
-                <span className="lw-plancards__addonname">{pack.name}</span>
+                <span className="lw-plancards__addonname">{catalogName(t, pack)}</span>
                 <span className="lw-plancards__addonprice">
-                  +{pack.monthlyPrice} {pack.currency}<span>{t("subscription.perMonth")}</span>
+                  +{money(pack.monthlyPrice, pack.currency)}<span>{t("subscription.perMonth")}</span>
                 </span>
               </div>
               <ul className="lw-plancards__addongrants">
@@ -75,13 +76,13 @@ export default function CurrentPlanCard({ plan, packs, subscription, children })
                 {pack.extraVideoStorageGb > 0 && (
                   <li>
                     <span>{t("subscription.videoStorage")}</span>
-                    <strong>+{pack.extraVideoStorageGb} GB</strong>
+                    <strong>+{gb(pack.extraVideoStorageGb)}</strong>
                   </li>
                 )}
                 {pack.extraResourceStorageGb > 0 && (
                   <li>
                     <span>{t("subscription.resourceStorage")}</span>
-                    <strong>+{pack.extraResourceStorageGb} GB</strong>
+                    <strong>+{gb(pack.extraResourceStorageGb)}</strong>
                   </li>
                 )}
               </ul>

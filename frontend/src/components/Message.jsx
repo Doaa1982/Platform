@@ -27,7 +27,7 @@ const VISIBLE_MS = 4200;
 const FADE_MS = 300;
 
 const BASE_STYLE = {
-  position: "fixed", top: 20, right: 20, zIndex: 9999,
+  position: "fixed", top: 20, insetInlineEnd: 20, zIndex: 9999,
   display: "flex", alignItems: "center", gap: 9,
   maxWidth: 360, borderRadius: 10, borderWidth: 1, borderStyle: "solid",
   padding: "12px 15px", fontSize: "0.87rem", lineHeight: 1.4,

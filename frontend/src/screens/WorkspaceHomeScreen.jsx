@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDateActive } from "../i18n/format";
 import {
   LoaderCircle, ArrowRight, Check, Circle,
   Users, UserPlus, Inbox, Rocket, Globe, Lock,
@@ -297,7 +298,7 @@ function RecentActivity({ requests, invitations, onNavigate, t }) {
     })),
     ...invitations.map((i) => ({
       key: `inv-${i.id}`, icon: UserPlus, color: CARD_COLORS.invites.icon,
-      text: `${i.email} · ${t("members.invitedAs", { role: humanise(t, i.intendedRole), date: new Date(i.expiresAt).toLocaleDateString() })}`,
+      text: `${i.email} · ${t("members.invitedAs", { role: humanise(t, i.intendedRole), date: formatDateActive(i.expiresAt) })}`,
     })),
   ].slice(0, 5);
 

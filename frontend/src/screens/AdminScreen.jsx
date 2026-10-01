@@ -5,13 +5,13 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
-import { useFonts } from "../hooks/useFonts";
 import { useLanguage } from "../i18n/useLanguage";
-import LanguageToggle, { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 import AdminCatalogSection from "./AdminCatalogSection";
 import AdminEntitlementOverridesSection from "./AdminEntitlementOverridesSection";
 import AdminEmailPreviewsSection from "./AdminEmailPreviewsSection";
 import Message from "../components/Message";
+import EntryShell, { EntryCard } from "../components/EntryShell";
+import { catalogName, formatDateActive, isolate, num, roleLabel } from "../i18n/format";
 import PaginationControls, { PAGINATION_CONTROLS_CSS } from "../components/PaginationControls";
 import { usePagination } from "../hooks/usePagination";
 
@@ -34,8 +34,11 @@ const NEEDS_ACTION = new Set(["Awaiting Invitation", "Invitation Expired"]);
 /** Application statuses still waiting on a reviewer's decision (§7.1). */
 const AWAITING = new Set(["Submitted", "UnderReview"]);
 
-function humanStatus(status) {
-  return status.replace(/([a-z])([A-Z])/g, "$1 $2");
+/** A status value from the API ("UnderReview", "Awaiting Invitation") in the reader's language. */
+function statusLabel(t, status) {
+  const key = `adminStatus.${String(status ?? "").replace(/\s+/g, "")}`;
+  const label = t(key);
+  return label !== key ? label : String(status ?? "").replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 /** Subscription statuses needing operator attention (§9's ordering convention, applied to the commercial domain too). */
@@ -55,7 +58,6 @@ const INVOICE_STATUS_KEY = {
 const invoiceStatusLabel = (t, s) => t(INVOICE_STATUS_KEY[s] ?? "") || s;
 
 export default function AdminScreen() {
-  useFonts();
   const { session, me, signOut } = useAuth();
   const { t } = useLanguage();
 
@@ -144,14 +146,14 @@ export default function AdminScreen() {
 
   if (denied) {
     return (
-      <Shell>
-        <div className="pl-admin__denied">
-          <ShieldAlert size={28} aria-hidden="true" />
-          <h1>{t("admin.notAdminTitle")}</h1>
-          <p>{t("admin.notAdminBody", { email: me?.email })}</p>
-          <button className="pl-admin__btn" onClick={signOut}>{t("admin.signOut")}</button>
-        </div>
-      </Shell>
+      <EntryShell>
+        <EntryCard icon={ShieldAlert} tone="bad" title={t("admin.notAdminTitle")}
+                   lead={t("admin.notAdminBody", { email: isolate(me?.email ?? "") })}>
+          <div className="lw-entry__actions">
+            <button type="button" className="lw-btn lw-btn--accent" onClick={signOut}>{t("admin.signOut")}</button>
+          </div>
+        </EntryCard>
+      </EntryShell>
     );
   }
 
@@ -269,7 +271,7 @@ export default function AdminScreen() {
                 </div>
                 <div className="pl-admin__appstate">
                   <span className={`pl-admin__pill ${AWAITING.has(a.status) ? "is-warn" : a.status === "Approved" ? "is-ok" : ""}`}>
-                    {humanStatus(a.status)}
+                    {statusLabel(t, a.status)}
                   </span>
                 </div>
                 <div className="pl-admin__actions">
@@ -344,10 +346,10 @@ export default function AdminScreen() {
                     <span className="pl-admin__wsname">{r.name}</span>
                     <span className="pl-admin__slug">/{r.slug}</span>
                   </td>
-                  <td><span className="pl-admin__pill">{r.workspaceStatus}</span></td>
+                  <td><span className="pl-admin__pill">{statusLabel(t, r.workspaceStatus)}</span></td>
                   <td>
                     <span className={`pl-admin__pill ${NEEDS_ACTION.has(r.provisioningStatus) ? "is-warn" : "is-ok"}`}>
-                      {r.provisioningStatus}
+                      {statusLabel(t, r.provisioningStatus)}
                     </span>
                   </td>
                   <td>{r.memberCount}</td>
@@ -356,7 +358,7 @@ export default function AdminScreen() {
                       <span className="pl-admin__inv">
                         {r.invitation.email}
                         <span className="pl-admin__invmeta">
-                          {r.invitation.intendedRole} · {r.invitation.status}
+                          {roleLabel(t, r.invitation.intendedRole)} · {statusLabel(t, r.invitation.status)}
                         </span>
                       </span>
                     ) : <span className="pl-admin__muted">—</span>}
@@ -460,10 +462,10 @@ export default function AdminScreen() {
                       <span className="pl-admin__slug">/{s.workspaceSlug}</span>
                     </td>
                     <td>
-                      {s.planCode}
+                      {catalogName(t, { code: s.planCode, name: s.planCode })}
                       {s.pendingPlanCode && (
                         <span className="pl-admin__pendingchange">
-                          {t("admin.pendingChangeTo", { plan: s.pendingPlanCode, date: s.pendingChangeEffectiveDate ? new Date(s.pendingChangeEffectiveDate).toLocaleDateString() : "" })}
+                          {t("admin.pendingChangeTo", { plan: catalogName(t, { code: s.pendingPlanCode, name: s.pendingPlanCode }), date: s.pendingChangeEffectiveDate ? formatDateActive(s.pendingChangeEffectiveDate) : "" })}
                         </span>
                       )}
                     </td>
@@ -481,7 +483,7 @@ export default function AdminScreen() {
                             {invoiceStatusLabel(t, s.currentInvoiceStatus)}
                           </span>
                           <span className="pl-admin__invmeta">
-                            {s.currentInvoiceTotal} · {s.currentInvoiceDueDate ? new Date(s.currentInvoiceDueDate).toLocaleDateString() : ""}
+                            {num(s.currentInvoiceTotal)} · {s.currentInvoiceDueDate ? formatDateActive(s.currentInvoiceDueDate) : ""}
                           </span>
                         </span>
                       ) : <span className="pl-admin__muted">{t("admin.noInvoice")}</span>}
@@ -721,38 +723,36 @@ function IssuedLink({ issued, onDismiss }) {
 
 function Shell({ children }) {
   return (
-    <div className="pl-admin">
-      <style>{CSS}</style>
-      <div className="pl-admin__langtoggle"><LanguageToggle /></div>
-      <div className="pl-admin__inner">{children}</div>
-    </div>
+    <EntryShell wide>
+      <div className="pl-admin">
+        <style>{CSS}</style>
+        <div className="pl-admin__inner">{children}</div>
+      </div>
+    </EntryShell>
   );
 }
 
 const CSS = `
   .pl-admin {
-    --ink: #E8EAED; --ink-soft: #949AA5; --line: #2A2F36;
-    --surface: #1B1F24; --bg: #131619; --accent: #4C8DFF;
-    --warn: #E0A83E; --ok: #4FBF8B; --danger: #E0615A;
-    font-family: 'Karla', system-ui, sans-serif;
-    background: var(--bg); color: var(--ink); min-height: 100vh; padding: 32px 26px 64px; position: relative;
+    /* Rendered inside EntryShell, so every token below is the app's own palette (light or dark). */
+    --warn: var(--accent-2); --ok: var(--success);
+    font-family: var(--font-body); color: var(--ink); position: relative; text-align: start;
   }
   .pl-admin *, .pl-admin *::before, .pl-admin *::after { box-sizing: border-box; }
   .pl-admin__inner { max-width: 1080px; margin: 0 auto; }
-  .pl-admin__langtoggle { position: absolute; top: 20px; inset-inline-end: 26px; z-index: 3; }
 
   /* UIC-004: the page's own header (eyebrow + h1) is centered; its actions
      sit in their own row underneath rather than beside it. */
   .pl-admin__head { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 24px; }
   .pl-admin__headtitle { text-align: center; }
-  .pl-admin__eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
-  .pl-admin h1 { font-family: 'Fraunces', Georgia, serif; font-size: 1.8rem; font-weight: 600; margin: 0; }
+  .pl-admin__eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .pl-admin h1 { font-family: var(--font-display); font-size: 1.8rem; font-weight: 600; margin: 0; }
   .pl-admin__headactions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
   .pl-admin__btn {
     display: inline-flex; align-items: center; gap: 6px;
     font-family: inherit; font-size: 0.85rem; font-weight: 600;
-    background: var(--accent); color: #0B1220; border: none; border-radius: 8px;
+    background: var(--accent); color: var(--on-accent); border: none; border-radius: 8px;
     padding: 8px 14px; cursor: pointer;
   }
   .pl-admin__btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -762,7 +762,7 @@ const CSS = `
     background: transparent; color: var(--ink-soft);
     border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer;
   }
-  .pl-admin__ghost:hover { color: var(--ink); border-color: #3C434C; }
+  .pl-admin__ghost:hover { color: var(--ink); border-color: var(--accent); }
 
 
   .pl-admin__form { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
@@ -772,7 +772,7 @@ const CSS = `
   .pl-admin__form label > span:first-child { font-size: 0.8rem; font-weight: 600; padding-top: 9px; white-space: nowrap; }
   .pl-admin__form input {
     width: 100%; font-family: inherit; font-size: 0.9rem;
-    background: #0F1215; color: var(--ink); border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
     border-radius: 8px; padding: 9px 11px;
   }
   .pl-admin__form input:focus-visible { outline: none; border-color: var(--accent); }
@@ -781,23 +781,23 @@ const CSS = `
 
   .pl-admin__issued {
     display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap;
-    background: rgba(76,141,255,0.1); border: 1px solid rgba(76,141,255,0.4);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
     border-radius: 12px; padding: 16px 18px; margin-bottom: 20px;
   }
   .pl-admin__issued p { font-size: 0.83rem; color: var(--ink-soft); margin: 6px 0 10px; max-width: 62ch; line-height: 1.55; }
   .pl-admin__issued code {
-    display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem;
-    background: #0F1215; border: 1px solid var(--line); border-radius: 7px;
+    display: block; font-family: var(--font-mono); font-size: 0.78rem;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 7px;
     padding: 9px 11px; word-break: break-all; color: var(--accent);
   }
-  .pl-admin__issued.is-undelivered { background: rgba(224,168,62,0.1); border-color: rgba(224,168,62,0.45); }
+  .pl-admin__issued.is-undelivered { background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
   .pl-admin__issued.is-undelivered code { color: var(--warn); }
   .pl-admin__why { color: var(--warn); font-size: 0.8rem; }
   .pl-admin__issuedactions { display: flex; gap: 8px; flex-shrink: 0; }
 
   .pl-admin__apps { margin-bottom: 26px; }
   .pl-admin__h2 {
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    font-family: var(--font-mono); font-size: 11px;
     letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500;
     color: var(--ink-soft); margin: 0 0 10px;
   }
@@ -807,7 +807,7 @@ const CSS = `
     background: var(--surface); border: 1px solid var(--line);
     border-radius: 11px; padding: 14px 16px;
   }
-  .pl-admin__app.is-attention { border-color: rgba(224,168,62,0.4); background: rgba(224,168,62,0.05); }
+  .pl-admin__app.is-attention { border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 5%, var(--surface)); }
   .pl-admin__appwho { flex: 1; min-width: 200px; }
   .pl-admin__appwho strong { display: block; font-size: 0.93rem; }
   .pl-admin__appwho span { display: block; font-size: 0.79rem; color: var(--ink-soft); margin-top: 2px; }
@@ -817,13 +817,13 @@ const CSS = `
   .pl-admin__tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
   .pl-admin__table { width: 100%; border-collapse: collapse; font-size: 0.87rem; min-width: 860px; }
   .pl-admin__table th {
-    text-align: start; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+    text-align: start; font-family: var(--font-mono); font-size: 10.5px;
     letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft);
     font-weight: 500; padding: 11px 14px; background: var(--surface); border-bottom: 1px solid var(--line);
   }
   .pl-admin__table td { padding: 13px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   .pl-admin__table tr:last-child td { border-bottom: none; }
-  .pl-admin__table tr.is-attention { background: rgba(224,168,62,0.06); }
+  .pl-admin__table tr.is-attention { background: color-mix(in srgb, var(--warn) 6%, var(--surface)); }
 
   .pl-admin__overrideslead { color: var(--ink-soft); font-size: 0.85rem; line-height: 1.6; margin: 0 0 16px; max-width: 70ch; }
   .pl-admin__overrideswspicker { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; color: var(--ink-soft); max-width: 360px; margin-bottom: 18px; }
@@ -841,16 +841,16 @@ const CSS = `
   .pl-admin__overridesempty { color: var(--ink-soft); font-size: 0.85rem; }
 
   .pl-admin__wsname { display: block; font-weight: 600; }
-  .pl-admin__slug { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  .pl-admin__slug { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
   .pl-admin__pill {
-    display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
-    background: #262B31; color: var(--ink-soft); border-radius: 20px; padding: 3px 9px;
+    display: inline-block; font-family: var(--font-mono); font-size: 10.5px;
+    background: var(--surface-2); color: var(--ink-soft); border-radius: 20px; padding: 3px 9px;
   }
-  .pl-admin__pill.is-warn { background: rgba(224,168,62,0.16); color: var(--warn); }
-  .pl-admin__pill.is-ok { background: rgba(79,191,139,0.14); color: var(--ok); }
-  .pl-admin__pill.is-danger { background: rgba(224,97,90,0.16); color: var(--danger); }
+  .pl-admin__pill.is-warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--ink); }
+  .pl-admin__pill.is-ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ink); }
+  .pl-admin__pill.is-danger { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--ink); }
   .pl-admin__inv { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; font-size: 0.84rem; }
-  .pl-admin__invmeta { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-soft); margin-top: 2px; }
+  .pl-admin__invmeta { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-soft); margin-top: 2px; }
   .pl-admin__muted { color: var(--ink-soft); }
 
   .pl-admin__subs { margin-top: 30px; }
@@ -858,7 +858,7 @@ const CSS = `
   .pl-admin__subshead .pl-admin__h2 { margin: 0; }
   .pl-admin__noteinput {
     font-family: inherit; font-size: 11.5px; width: 150px;
-    background: #0F1215; color: var(--ink); border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
     border-radius: 6px; padding: 4px 8px;
   }
   .pl-admin__terminalnote { font-size: 10.5px; max-width: 22ch; line-height: 1.4; }
@@ -871,7 +871,7 @@ const CSS = `
     background: transparent; color: var(--ink-soft);
     border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer;
   }
-  .pl-admin__actions button:hover:not(:disabled) { color: var(--ink); border-color: #3C434C; }
+  .pl-admin__actions button:hover:not(:disabled) { color: var(--ink); border-color: var(--accent); }
   .pl-admin__actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .pl-admin__loading, .pl-admin__empty {
@@ -906,11 +906,11 @@ const CSS = `
     padding: 9px 14px; cursor: pointer; margin-bottom: -1px;
   }
   .pl-admin__tabs button.is-active { color: var(--ink); border-bottom-color: var(--accent); }
-  .pl-admin__tabs button:hover:not(.is-active) { color: var(--ink); background: var(--surface-2, rgba(255,255,255,0.06)); }
+  .pl-admin__tabs button:hover:not(.is-active) { color: var(--ink); background: var(--surface-2, rgba(128,128,128,0.12)); }
   .pl-admin__tabbadge {
     display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px;
     margin-inline-start: 6px; padding: 0 5px; border-radius: 999px;
-    background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
+    background: var(--danger); color: var(--bg); font-size: 10px; font-weight: 700; line-height: 1;
   }
 
   /* ── Catalog ──────────────────────────────────────────────────────────── */
@@ -932,12 +932,12 @@ const CSS = `
 
   .pl-admin__draftbanner {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    background: rgba(76,141,255,0.1); border: 1px solid rgba(76,141,255,0.35);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
     border-radius: 8px; padding: 8px 10px; font-size: 0.78rem; color: var(--accent); margin-bottom: 8px;
   }
   .pl-admin__draftbanner button {
     display: inline-flex; align-items: center; gap: 4px; font-family: inherit; font-size: 11px;
-    background: var(--accent); color: #0B1220; border: none; border-radius: 6px; padding: 4px 9px; cursor: pointer;
+    background: var(--accent); color: var(--on-accent); border: none; border-radius: 6px; padding: 4px 9px; cursor: pointer;
   }
   .pl-admin__draftbanner button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -952,14 +952,13 @@ const CSS = `
   }
   .pl-admin__panelclose { position: absolute; top: 16px; inset-inline-end: 16px; background: transparent; border: none; cursor: pointer; color: var(--ink-soft); }
   .pl-admin__panelclose:hover { color: var(--ink); }
-  .pl-admin__panelh2 { margin: 2px 0 18px; text-align: center; font-family: 'Fraunces', Georgia, serif; }
+  .pl-admin__panelh2 { margin: 2px 0 18px; text-align: center; font-family: var(--font-display); }
   .pl-admin__panel .pl-admin__formrow { row-gap: 12px; }
   .pl-admin__panel select {
     width: 100%; font-family: inherit; font-size: 0.9rem;
-    background: #0F1215; color: var(--ink); border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
     border-radius: 8px; padding: 9px 11px;
   }
 
-  ${LANGUAGE_TOGGLE_CSS}
   ${PAGINATION_CONTROLS_CSS}
 `;

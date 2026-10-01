@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { Info } from "lucide-react";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
    INFO TIP — the shared way to explain what a field or option means.
@@ -30,6 +31,7 @@ const BUBBLE_STYLE = {
 
 /** A small "i" affordance next to a label; hover or focus it to read `text`. */
 export default function InfoTip({ text }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const id = useId();
   if (!text) return null;
@@ -42,7 +44,7 @@ export default function InfoTip({ text }) {
     >
       <button
         type="button" style={TRIGGER_STYLE}
-        aria-describedby={open ? id : undefined} aria-label="More information"
+        aria-describedby={open ? id : undefined} aria-label={t("infoTip.label")}
         onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
       >
         <Info size={10} />

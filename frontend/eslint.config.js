@@ -20,7 +20,7 @@ export default defineConfig([
   },
   {
     // Node-side tooling: the browser-test runner and the tool configs.
-    files: ['e2e/**/*.{js,mjs}', 'playwright.config.js', 'vitest.config.js', 'vite.config.js'],
+    files: ['e2e/**/*.{js,mjs}', 'playwright.config.js', 'playwright.audit.config.js', 'vitest.config.js', 'vite.config.js'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 ])

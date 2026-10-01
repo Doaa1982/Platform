@@ -11,7 +11,7 @@ import { LANGUAGES } from "./languageStore";
  * it wrapping onto two rows.
  */
 export default function LanguageToggle({ className = "", compact = false }) {
-  const { lang, setLang } = useLanguage();
+  const { lang, setLang, t } = useLanguage();
 
   if (compact) {
     const current = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES[0];
@@ -31,7 +31,7 @@ export default function LanguageToggle({ className = "", compact = false }) {
   }
 
   return (
-    <div className={`lw-langtoggle ${className}`} role="group" aria-label="Language">
+    <div className={`lw-langtoggle ${className}`} role="group" aria-label={t("languageToggle.label")}>
       <Languages size={13} className="lw-langtoggle__icon" aria-hidden="true" />
       {LANGUAGES.map((l) => (
         <button
@@ -51,8 +51,8 @@ export default function LanguageToggle({ className = "", compact = false }) {
 export const LANGUAGE_TOGGLE_CSS = `
   .lw-langtoggle { display: inline-flex; align-items: center; gap: 2px; background: var(--surface-2, #F0EFEA); border-radius: 20px; padding: 3px; }
   .lw-langtoggle__icon { margin-inline-start: 6px; margin-inline-end: 2px; color: var(--ink-soft, #6A7383); flex-shrink: 0; }
-  .lw-langtoggle__btn { font-family: inherit; font-size: 11px; font-weight: 600; border: 1px solid var(--line, #E1DED7); background: transparent; color: var(--ink-soft, #6A7383); border-radius: 16px; padding: 4px 10px; cursor: pointer; transition: all .15s; }
-  .lw-langtoggle__btn.is-active { background: var(--accent, #2D5BD1); color: #fff; }
+  .lw-langtoggle__btn { font-family: inherit; font-size: 11px; font-weight: 600; border: 1px solid var(--line, #E1DED7); background: transparent; color: color-mix(in srgb, var(--ink-soft, #6A7383) 70%, var(--ink, #1B2430)); border-radius: 16px; padding: 4px 10px; cursor: pointer; transition: all .15s; }
+  .lw-langtoggle__btn.is-active { background: var(--accent, #2D5BD1); color: var(--on-accent, #fff); }
   .lw-langtoggle__btn:hover:not(.is-active) { color: var(--ink, #1B2430); background: var(--surface-2, rgba(128,128,128,0.12)); }
 
   button.lw-langtoggle--compact {

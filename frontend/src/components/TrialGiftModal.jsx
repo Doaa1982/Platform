@@ -1,4 +1,5 @@
 import Modal from "./Modal";
+import { num } from "../i18n/format";
 import { useLanguage } from "../i18n/useLanguage";
 
 /* =========================================================================
@@ -16,7 +17,7 @@ export default function TrialGiftModal({ trialRemaining, onDismiss }) {
   return (
     <Modal onClose={onDismiss} closeLabel={t("subscription.trialGiftModalCta")}>
       <h2 className="lw-modal__title">{t("subscription.trialGiftModalTitle")}</h2>
-      <p>{t("subscription.trialGiftModalBody", { trial: Number(trialRemaining).toLocaleString() })}</p>
+      <p>{t("subscription.trialGiftModalBody", { trial: num(trialRemaining) })}</p>
       <div className="lw-modal__actions">
         <button type="button" className="lw-btn lw-btn--accent" onClick={onDismiss}>
           {t("subscription.trialGiftModalCta")}

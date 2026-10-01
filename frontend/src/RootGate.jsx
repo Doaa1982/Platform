@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import { LoaderCircle } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { sidesForRoles } from "./auth/sides";
 import LandingScreen from "./screens/LandingScreen";
+import { EntryLoading } from "./components/EntryShell";
+import { useLanguage } from "./i18n/useLanguage";
 
 /* =========================================================================
    ROOT GATE — who is standing at "/".
@@ -22,6 +23,7 @@ import LandingScreen from "./screens/LandingScreen";
 
 export default function RootGate({ navigate }) {
   const { status, workspaces } = useAuth();
+  const { t } = useLanguage();
 
   const active = workspaces.filter((w) => w.membershipStatus === "Active");
 
@@ -50,13 +52,7 @@ export default function RootGate({ navigate }) {
   }, [status, workspaces, navigate]);
 
   if (status === "loading" || (status === "authenticated" && active.length > 0)) {
-    return (
-      <div className="pl-rootgate" role="status">
-        <style>{CSS}</style>
-        <LoaderCircle size={22} className="pl-rootgate__spin" aria-hidden="true" />
-        <p>Taking you to your workspace…</p>
-      </div>
-    );
+    return <EntryLoading label={t("entry.takingYouIn")} />;
   }
 
   return (
@@ -66,16 +62,3 @@ export default function RootGate({ navigate }) {
     />
   );
 }
-
-const CSS = `
-  .pl-rootgate {
-    min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 14px;
-    background: #0B0F16; color: #98A2B5;
-    font-family: 'Karla', system-ui, sans-serif; font-size: 0.92rem;
-  }
-  .pl-rootgate p { margin: 0; }
-  .pl-rootgate__spin { animation: plRootSpin 0.9s linear infinite; }
-  @keyframes plRootSpin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .pl-rootgate__spin { animation: none; } }
-`;
