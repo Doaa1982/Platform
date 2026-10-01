@@ -221,6 +221,24 @@ public class TranscriptionInputModeTests(PlatformApiTestFixture fixture) : IClas
         Assert.Equal(-120, charged.Amount); // fell back to VideoLowRes, so the multiplier price, not the base one
     }
 
+    // ── transcript/cost: the panel's "40 / 120 credits" hint, read live off config ──────
+
+    [Fact]
+    public async Task TranscriptCost_Reports_The_Base_Price_And_The_VideoLowRes_Multiplier_Live_From_Config()
+    {
+        var client = fixture.CreateClient();
+        var (token, slug, lessonId) = await SeedLessonWithVideoAsync(client, fixture, "tim-cost");
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/workspaces/{slug}/lessons/{lessonId}/transcript/cost");
+        req.Headers.Authorization = new("Bearer", token);
+        var res = await client.SendAsync(req);
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal(40, body!["audioCredits"]!.GetValue<int>());
+        Assert.Equal(120, body["videoLowResCredits"]!.GetValue<int>()); // 40 base * default VideoLowResCostMultiplier (3)
+    }
+
     [Fact]
     public async Task WhenFfmpegIsUnavailable_AnAudioRequestAgainstANonGeminiProvider_IsRefusedCleanly()
     {
