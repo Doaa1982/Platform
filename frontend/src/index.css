@@ -72,12 +72,12 @@ body {
   letter-spacing: normal !important;
 }
 
+/* Full width: the app and entry screens lay out their own content columns.
+   (The Vite template's 1126px column and 1px side border used to frame every
+   screen, showing as faint vertical lines in dark mode.) */
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
+  width: 100%;
   text-align: center;
-  border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
   flex-direction: column;
