@@ -47,7 +47,7 @@ export default function ForgotPasswordScreen({ onBack }) {
   }
 
   const back = (
-    <button type="button" className="lw-entry__link" style={{ marginTop: 20 }} onClick={onBack}>
+    <button type="button" className="lw-entry__link lw-entry__back" onClick={onBack}>
       <ArrowLeft size={13} className="lw-flip" aria-hidden="true" /> {t("forgotPassword.backToSignIn")}
     </button>
   );

@@ -77,6 +77,14 @@ const en = {
     switchWorkspace: "Switch workspace", signOut: "Sign out", myAccount: "My account",
   },
 
+  languageToggle: {
+    label: "Language",
+  },
+
+  infoTip: {
+    label: "More information",
+  },
+
   themeToggle: {
     switchToLight: "Switch to light mode", switchToDark: "Switch to dark mode", groupLabel: "Theme",
   },
@@ -1784,6 +1792,14 @@ const ar = {
 
   accountbar: {
     switchWorkspace: "تبديل مساحة العمل", signOut: "تسجيل الخروج", myAccount: "حسابي",
+  },
+
+  languageToggle: {
+    label: "اللغة",
+  },
+
+  infoTip: {
+    label: "مزيد من المعلومات",
   },
 
   themeToggle: {

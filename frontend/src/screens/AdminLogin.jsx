@@ -69,7 +69,7 @@ export default function AdminLogin({ onBack }) {
           </button>
         </form>
 
-        <button type="button" className="lw-entry__link" style={{ marginTop: 18 }} onClick={onBack}>
+        <button type="button" className="lw-entry__link lw-entry__back" onClick={onBack}>
           <ArrowLeft size={13} className="lw-flip" aria-hidden="true" /> {t("apply.back")}
         </button>
 

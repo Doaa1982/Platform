@@ -1,6 +1,7 @@
 import { LANGUAGE_TOGGLE_CSS } from "../i18n/LanguageToggle";
 import { THEME_TOGGLE_CSS } from "../theme/ThemeToggle";
 import { MODAL_CSS } from "../components/Modal";
+import { PLAN_PICKER_CARDS_CSS } from "../components/PlanPickerCards";
 import { ACCOUNTBAR_COMPACT_PX, NAV_BREAKPOINT_PX } from "./breakpoints";
 
 /* =========================================================================
@@ -768,4 +769,50 @@ export const APP_CSS = `
   /* Arabic: letter-spacing breaks letter joining and the mono font has no Arabic glyphs,
      so small-caps-style labels switch to the body font with normal spacing. */
   :lang(ar) .lw-eyebrow, :lang(ar) .lw-card__eyebrow { font-family: var(--font-body); letter-spacing: 0; text-transform: none; font-size: 12.5px; font-weight: 600; }
+
+  .lw-entry__link--end { align-self: flex-end; }
+  .lw-entry__back { margin-top: 18px; }
+  .lw-entry__note--top { margin: 0 0 6px; }
+
+  /* ── Landing page (screens/LandingScreen.jsx) ─────────────────────────── */
+  .lw-land { display: flex; flex-direction: column; gap: 48px; }
+  .lw-land__hero { text-align: center; display: flex; flex-direction: column; align-items: center; padding-top: 24px; }
+  .lw-land__title { font-family: var(--font-display); font-size: clamp(2rem, 5vw, 3.1rem); line-height: 1.15; margin: 6px 0 18px; }
+  .lw-land__accent { color: var(--accent); }
+  .lw-land__claims { display: grid; min-height: 1.6em; margin-bottom: 8px; color: var(--ink-soft); font-size: 1.05rem; }
+  .lw-land__claim { grid-area: 1 / 1; opacity: 0; transition: opacity .4s ease; }
+  .lw-land__claim.is-active { opacity: 1; }
+  .lw-land__claim.is-ghost { visibility: hidden; }
+  .lw-land__points { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; padding: 0; margin: 22px 0 0; color: var(--ink-soft); font-size: 0.9rem; }
+  .lw-land__points li { display: inline-flex; align-items: center; gap: 6px; }
+  .lw-land__points svg { color: var(--success); }
+  .lw-land__plans { text-align: center; }
+  .lw-land__plantitle { font-family: var(--font-display); font-size: 1.6rem; margin: 0 0 8px; }
+  .lw-land__foot { text-align: center; color: var(--ink-soft); font-size: 0.82rem; padding-bottom: 8px; }
+
+  .lw-prev { max-width: 760px; margin: 0 auto; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: 0 18px 40px color-mix(in srgb, var(--ink) 12%, transparent); }
+  .lw-prev__bar { display: flex; gap: 6px; padding: 10px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  .lw-prev__bar span { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .lw-prev__body { display: grid; grid-template-columns: 170px 1fr; min-height: 230px; }
+  .lw-prev__side { background: var(--nav-bg); padding: 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .lw-prev__mark { width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--accent); margin-bottom: 6px; }
+  .lw-prev__side .lw-prev__line { background: color-mix(in srgb, var(--nav-text) 30%, transparent); }
+  .lw-prev__nav { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .lw-prev__nav span { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--nav-text) 18%, transparent); }
+  .lw-prev__nav span.is-active { background: var(--accent); }
+  .lw-prev__main { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .lw-prev__line { height: 8px; border-radius: 4px; background: var(--surface-2); }
+  .lw-prev__line.is-tall { height: 14px; }
+  .is-w40 { width: 40%; } .is-w50 { width: 50%; } .is-w70 { width: 70%; }
+  .lw-prev__cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .lw-prev__card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .lw-prev__cover { height: 54px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+  .lw-prev__cover.is-c1 { background: color-mix(in srgb, var(--accent-2) 24%, var(--surface)); }
+  .lw-prev__cover.is-c2 { background: color-mix(in srgb, var(--success) 22%, var(--surface)); }
+  .lw-prev__progress { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+  .lw-prev__progress i { display: block; height: 100%; background: var(--accent); }
+  @media (max-width: 640px) { .lw-prev__body { grid-template-columns: 1fr; } .lw-prev__side { display: none; } .lw-prev__cards { grid-template-columns: 1fr 1fr; } }
+  @media (prefers-reduced-motion: reduce) { .lw-land__claim { transition: none; } }
+  .lw-prev__progress .is-p38 { width: 38%; } .lw-prev__progress .is-p64 { width: 64%; } .lw-prev__progress .is-p82 { width: 82%; }
+  ${PLAN_PICKER_CARDS_CSS}
 `;

@@ -84,7 +84,7 @@ export default function LoginScreen({ side, onBack, onForgotPassword }) {
             </span>
           </EntryField>
 
-          <button type="button" className="lw-entry__link" style={{ alignSelf: "flex-end" }} onClick={onForgotPassword} disabled={submitting}>
+          <button type="button" className="lw-entry__link lw-entry__link--end" onClick={onForgotPassword} disabled={submitting}>
             {t("login.forgotPassword")}
           </button>
 
@@ -95,7 +95,7 @@ export default function LoginScreen({ side, onBack, onForgotPassword }) {
           </button>
         </form>
 
-        <button type="button" className="lw-entry__link" style={{ marginTop: 18 }} onClick={onBack}>
+        <button type="button" className="lw-entry__link lw-entry__back" onClick={onBack}>
           <ArrowLeft size={13} className="lw-flip" aria-hidden="true" /> {t("login.notWhatYouWanted")}
         </button>
 

@@ -43,7 +43,7 @@ export default function WorkspacePicker({ side, onSwitchSide }) {
       <section className="lw-card lw-entry__card lw-entry__card--start">
         <div className="lw-entry__row">
           <div>
-            <p className="lw-entry__note" style={{ margin: "0 0 6px" }}>{t("picker.signedInAs", { side: sideLabel, email: isolate(me?.email ?? "") })}</p>
+            <p className="lw-entry__note lw-entry__note--top">{t("picker.signedInAs", { side: sideLabel, email: isolate(me?.email ?? "") })}</p>
             <h1 className="lw-entry__title">{t("picker.title")}</h1>
           </div>
           <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={signOut}>

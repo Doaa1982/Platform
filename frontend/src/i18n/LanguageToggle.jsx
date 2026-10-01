@@ -11,7 +11,7 @@ import { LANGUAGES } from "./languageStore";
  * it wrapping onto two rows.
  */
 export default function LanguageToggle({ className = "", compact = false }) {
-  const { lang, setLang } = useLanguage();
+  const { lang, setLang, t } = useLanguage();
 
   if (compact) {
     const current = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES[0];
@@ -31,7 +31,7 @@ export default function LanguageToggle({ className = "", compact = false }) {
   }
 
   return (
-    <div className={`lw-langtoggle ${className}`} role="group" aria-label="Language">
+    <div className={`lw-langtoggle ${className}`} role="group" aria-label={t("languageToggle.label")}>
       <Languages size={13} className="lw-langtoggle__icon" aria-hidden="true" />
       {LANGUAGES.map((l) => (
         <button
