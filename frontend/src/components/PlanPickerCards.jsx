@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { catalogName, gb, money, num } from "../i18n/format";
 import { ArrowRight, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "../i18n/useLanguage";
 import {
@@ -77,11 +78,11 @@ export default function PlanPickerCards({
         <div className="lw-plancards__grid">
           {plans.map((plan) => (
             <div className="lw-plancards__card" key={plan.code}>
-              <div className="lw-plancards__name">{plan.name}</div>
+              <div className="lw-plancards__name">{catalogName(t, plan)}</div>
               <div className="lw-plancards__price">
                 {(billingCycle === "Annual" ? plan.annualPrice : plan.monthlyPrice) === 0
                   ? t("subscription.free")
-                  : <>{billingCycle === "Annual" ? plan.annualPrice : plan.monthlyPrice} {plan.currency}
+                  : <>{money(billingCycle === "Annual" ? plan.annualPrice : plan.monthlyPrice, plan.currency)}
                       <span>{billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</span>
                     </>}
               </div>
@@ -111,7 +112,7 @@ export default function PlanPickerCards({
                     {capacityUncapped(plan) && <em className="lw-plancards__aitag">{t("subscription.capacityUncapped")}</em>}
                   </strong>
                 </li>
-                <li><span>{t("subscription.aiCredits")}</span><strong>{plan.aiCreditsIncluded.toLocaleString()}</strong></li>
+                <li><span>{t("subscription.aiCredits")}</span><strong>{num(plan.aiCreditsIncluded)}</strong></li>
                 {ENTITLEMENT_DOMAINS.map((domain) => {
                   const level = planProfileForDomain(plan, domain);
                   return (
@@ -150,9 +151,9 @@ export default function PlanPickerCards({
               return (
                 <li className="lw-plancards__addon" key={pack.code}>
                   <div className="lw-plancards__addonhead">
-                    <span className="lw-plancards__addonname">{pack.name}</span>
+                    <span className="lw-plancards__addonname">{catalogName(t, pack)}</span>
                     <span className="lw-plancards__addonprice">
-                      +{pack.monthlyPrice} {pack.currency}<span>{t("subscription.perMonth")}</span>
+                      +{money(pack.monthlyPrice, pack.currency)}<span>{t("subscription.perMonth")}</span>
                     </span>
                   </div>
                   <ul className="lw-plancards__addongrants">
@@ -180,13 +181,13 @@ export default function PlanPickerCards({
                     {pack.extraVideoStorageGb > 0 && (
                       <li>
                         <span>{t("subscription.videoStorage")}</span>
-                        <strong>+{pack.extraVideoStorageGb} GB</strong>
+                        <strong>+{gb(pack.extraVideoStorageGb)}</strong>
                       </li>
                     )}
                     {pack.extraResourceStorageGb > 0 && (
                       <li>
                         <span>{t("subscription.resourceStorage")}</span>
-                        <strong>+{pack.extraResourceStorageGb} GB</strong>
+                        <strong>+{gb(pack.extraResourceStorageGb)}</strong>
                       </li>
                     )}
                   </ul>
@@ -303,7 +304,7 @@ function PlanCarouselGrid({
         <ChevronLeft size={18} aria-hidden="true" />
       </button>
 
-      <div className="lw-plancards__carotrack" ref={trackRef} role="listbox" tabIndex={0}
+      <div className="lw-plancards__carotrack" ref={trackRef} role="region" aria-roledescription={t("subscription.carousel")} tabIndex={0}
            aria-label={t("subscription.pickTitle")} onKeyDown={onKeyDown} onScroll={handleScroll}
            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={endDrag} onMouseLeave={endDrag}>
         {plans.map((plan, i) => {
@@ -316,13 +317,14 @@ function PlanCarouselGrid({
             <div key={plan.code} ref={(el) => { cardRefs.current[i] = el; }}
                  className={`lw-plancards__carocard${focused ? " is-focused" : ""}`}
                  style={{ "--caro-a": gradA, "--caro-b": gradB, "--caro-dist": dist }}
-                 role="option" aria-selected={focused} onClick={() => onCardClick(i)}>
+                 role="group" aria-roledescription={t("subscription.slide")} aria-label={catalogName(t, plan)}
+                 aria-current={focused ? "true" : undefined} onClick={() => onCardClick(i)}>
               <div className="lw-plancards__carobadge">
                 {isFree ? (
                   <span className="lw-plancards__carobadgefree">{t("subscription.free")}</span>
                 ) : (
                   <>
-                    <span className="lw-plancards__carobadgeprice">{price}<small>{plan.currency}</small></span>
+                    <span className="lw-plancards__carobadgeprice">{money(price, plan.currency)}</span>
                     <span className="lw-plancards__carobadgeperiod">
                       {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}
                     </span>
@@ -331,7 +333,7 @@ function PlanCarouselGrid({
               </div>
 
               <div className="lw-plancards__carobody">
-                <div className="lw-plancards__caroname">{plan.name}</div>
+                <div className="lw-plancards__caroname">{catalogName(t, plan)}</div>
                 <div className="lw-plancards__carodivider" />
 
                 <ul className="lw-plancards__carofeatures">
@@ -357,7 +359,7 @@ function PlanCarouselGrid({
                     </strong></span>
                   </li>
                   <li><span className="lw-plancards__carocheck"><Check size={11} aria-hidden="true" /></span>
-                    <span>{t("subscription.aiCredits")}: <strong>{plan.aiCreditsIncluded.toLocaleString()}</strong></span>
+                    <span>{t("subscription.aiCredits")}: <strong>{num(plan.aiCreditsIncluded)}</strong></span>
                   </li>
                   {ENTITLEMENT_DOMAINS.map((domain) => {
                     const level = planProfileForDomain(plan, domain);
@@ -429,7 +431,7 @@ export const PLAN_PICKER_CARDS_CSS = `
     border: 1px solid var(--line); background: transparent; padding: 6px 16px; border-radius: 999px;
     font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; color: var(--ink-soft); cursor: pointer;
   }
-  .lw-plancards__cycle button.is-active { background: var(--accent); color: #fff; }
+  .lw-plancards__cycle button.is-active { background: var(--accent); color: var(--on-accent, #fff); }
   .lw-plancards__cycle button:hover:not(.is-active), .lw-plancards__cycle button:focus-visible:not(.is-active) { background: var(--surface-2, rgba(0,0,0,0.05)); }
 
   .lw-plancards__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
@@ -471,7 +473,8 @@ export const PLAN_PICKER_CARDS_CSS = `
     scroll-snap-align: center; flex: 0 0 auto; width: clamp(210px, 22vw, 300px);
     display: flex; flex-direction: column; align-items: center;
     border-radius: var(--radius); overflow: visible; user-select: none; cursor: pointer;
-    transform: scale(calc(1 - var(--caro-dist) * 0.12)); opacity: calc(1 - var(--caro-dist) * 0.3);
+    /* Scale + desaturate only: fading with opacity took the side cards' text below WCAG AA contrast. */
+    transform: scale(calc(1 - var(--caro-dist) * 0.12));
     filter: saturate(calc(1 - var(--caro-dist) * 0.35));
     transition: transform 0.25s ease, opacity 0.25s ease, filter 0.25s ease, box-shadow 0.25s ease;
   }

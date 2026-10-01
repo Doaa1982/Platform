@@ -23,7 +23,15 @@ describe("translations", () => {
   });
 
   it("both languages use the same {placeholders} for each key", () => {
-    const mismatched = [...en.keys()].filter((k) => ar.has(k) && placeholders(en.get(k)).join() !== placeholders(ar.get(k)).join());
+    // Plural forms (format.js plural()) may drop {count} where the word itself carries the number
+    // — Arabic "وحدة واحدة", "وحدتان" — but may never introduce a placeholder the other lacks.
+    const isPluralForm = (k) => /_(zero|one|two|few|many|other)$/.test(k);
+    const subset = (a, b) => a.every((x) => b.includes(x));
+    const mismatched = [...en.keys()].filter((k) => {
+      if (!ar.has(k)) return false;
+      const [e, a] = [placeholders(en.get(k)), placeholders(ar.get(k))];
+      return isPluralForm(k) ? !subset(a, e) : e.join() !== a.join();
+    });
     expect(mismatched).toEqual([]);
   });
 });

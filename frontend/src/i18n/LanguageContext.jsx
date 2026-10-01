@@ -31,7 +31,10 @@ export function LanguageProvider({ children }) {
     if (node == null) node = parts.reduce((acc, p) => acc?.[p], translations.en);
     if (typeof node !== "string") return key;
     if (!vars) return node;
-    return Object.keys(vars).reduce((s, k) => s.replaceAll(`{${k}}`, vars[k]), node);
+    // Every interpolated value is bidi-isolated (U+2068…U+2069): a Latin email inside an Arabic
+    // sentence, or an Arabic academy name inside an English one, can then never pull the
+    // sentence's punctuation to the wrong side. Invisible, and harmless when doubled.
+    return Object.keys(vars).reduce((s, k) => s.replaceAll(`{${k}}`, `\u2068${vars[k]}\u2069`), node);
   }, [lang]);
 
   const value = useMemo(

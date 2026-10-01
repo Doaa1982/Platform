@@ -16,10 +16,11 @@ const WIDTHS = { desktop: 680, mobile: 375 };
  */
 export default function AdminEmailPreviewsSection() {
   const { session } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [templates, setTemplates] = useState(null);
   const [template, setTemplate] = useState(null);
-  const [language, setLanguage] = useState("en");
+  // Starts in the reader's own language; the EN/AR switch still previews either.
+  const [language, setLanguage] = useState(lang);
   const [width, setWidth] = useState("desktop");
   const [format, setFormat] = useState("html");
   const [preview, setPreview] = useState(null);
@@ -68,7 +69,7 @@ export default function AdminEmailPreviewsSection() {
         <Segmented value={width} onChange={setWidth}
           options={[{ value: "desktop", label: t("admin.emailPreviewsDesktop") }, { value: "mobile", label: t("admin.emailPreviewsMobile") }]} />
         <Segmented value={format} onChange={setFormat}
-          options={[{ value: "html", label: "HTML" }, { value: "text", label: t("admin.emailPreviewsPlainText") }]} />
+          options={[{ value: "html", label: t("admin.emailPreviewsFormatted") }, { value: "text", label: t("admin.emailPreviewsPlainText") }]} />
       </div>
 
       {error && <Message type="error">{error}</Message>}
@@ -109,19 +110,19 @@ function Segmented({ value, onChange, options }) {
 
 const CSS = `
   .pl-emailpreview { display: flex; flex-direction: column; gap: 14px; }
-  .pl-emailpreview__intro { margin: 0; color: var(--pl-ink-soft, #6A7383); font-size: 0.85rem; }
+  .pl-emailpreview__intro { margin: 0; color: var(--ink-soft); font-size: 0.85rem; }
   .pl-emailpreview__loading { padding: 24px; }
   .pl-emailpreview__controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
   .pl-emailpreview__controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; }
-  .pl-emailpreview__controls select { padding: 7px 10px; border-radius: 8px; border: 1px solid #D5DAE1; font-size: 0.88rem; }
-  .pl-emailpreview__seg { display: inline-flex; border: 1px solid #D5DAE1; border-radius: 8px; overflow: hidden; }
-  .pl-emailpreview__seg button { border: 0; background: #fff; padding: 7px 12px; font-size: 0.82rem; cursor: pointer; }
-  .pl-emailpreview__seg button + button { border-inline-start: 1px solid #D5DAE1; }
-  .pl-emailpreview__seg button.is-active { background: #1B2430; color: #fff; }
+  .pl-emailpreview__controls select { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 0.88rem; }
+  .pl-emailpreview__seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .pl-emailpreview__seg button { border: 0; background: var(--surface); color: var(--ink); padding: 7px 12px; font-size: 0.82rem; cursor: pointer; }
+  .pl-emailpreview__seg button + button { border-inline-start: 1px solid var(--line); }
+  .pl-emailpreview__seg button.is-active { background: var(--accent); color: var(--on-accent); }
   .pl-emailpreview__meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 0.85rem; }
-  .pl-emailpreview__meta dt { color: #6A7383; }
+  .pl-emailpreview__meta dt { color: var(--ink-soft); }
   .pl-emailpreview__meta dd { margin: 0; font-weight: 600; }
-  .pl-emailpreview__frame { max-width: 100%; border: 1px solid #D5DAE1; border-radius: 10px; overflow: hidden; background: #fff; }
+  .pl-emailpreview__frame { max-width: 100%; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
   .pl-emailpreview__frame iframe { display: block; width: 100%; height: 760px; border: 0; }
   .pl-emailpreview__frame pre { margin: 0; padding: 16px; white-space: pre-wrap; font-size: 0.82rem; line-height: 1.5; }
 `;

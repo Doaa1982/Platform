@@ -35,6 +35,7 @@ import LearnerAssignmentsScreen from "./screens/LearnerAssignmentsScreen";
 import AssignmentSubmissionScreen from "./screens/AssignmentSubmissionScreen";
 import * as api from "./api/client";
 import { paletteFor } from "./theme/palettes";
+import { formatDateActive, roleLabel } from "./i18n/format";
 import { APP_CSS } from "./styles/appCss";
 import { ACCOUNTBAR_COMPACT_PX, NAV_BREAKPOINT_PX } from "./styles/breakpoints";
 import { useAssetUrl } from "./hooks/useAssetUrl";
@@ -230,7 +231,7 @@ function NotificationBell() {
                   <li key={n.id} className={n.readAt ? "" : "is-unread"} onClick={() => handleItemClick(n)}>
                     <strong>{n.title}</strong>
                     <p>{n.message}</p>
-                    <span className="lw-notifbell__time">{new Date(n.createdAt).toLocaleDateString()}</span>
+                    <span className="lw-notifbell__time">{formatDateActive(n.createdAt)}</span>
                   </li>
                 ))}
               </ul>
@@ -282,7 +283,7 @@ function AccountBar({ role, screen, onNavigate, aiLabel, onToggleNav }) {
           {!compact && (
             <span className="lw-accountbar__roles">
               {workspace.roles.map((r) => (
-                <span className="lw-accountbar__role" key={r}>{r.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>
+                <span className="lw-accountbar__role" key={r}>{roleLabel(t, r)}</span>
               ))}
             </span>
           )}
@@ -383,6 +384,7 @@ function LearnerTopNav({ screen, onNavigate, aiLabel, compact }) {
           <button
             key={it.id}
             className={`lw-accountbar__navlink ${screen === it.id ? "is-active" : ""}`}
+            data-nav-id={it.id}
             onClick={() => onNavigate(it.id)}
             aria-label={label}
           >
@@ -392,6 +394,7 @@ function LearnerTopNav({ screen, onNavigate, aiLabel, compact }) {
       })}
       <span className="lw-accountbar__more">
         <button
+          data-nav-more=""
           className={`lw-accountbar__navlink ${moreActive ? "is-active" : ""}`}
           onClick={() => setMoreOpen((v) => !v)}
         >
@@ -405,6 +408,7 @@ function LearnerTopNav({ screen, onNavigate, aiLabel, compact }) {
                 <button
                   key={it.id}
                   className={`lw-accountbar__moreitem ${screen === it.id ? "is-active" : ""}`}
+                  data-nav-id={it.id}
                   onClick={() => { onNavigate(it.id); setMoreOpen(false); }}
                 >
                   <it.icon size={14} /> {it.labelKey === "__AI__" ? aiLabel : t(it.labelKey)}
@@ -516,8 +520,8 @@ function Nav({ c, screen, setScreen, personName, personRole, open }) {
       <div className="lw-nav__brand">
         <BrandMark c={c} size={34} />
         <div>
-          <div className="lw-nav__name">{c.name}</div>
-          <div className="lw-nav__tagline">{c.tagline}</div>
+          <div className="lw-nav__name" dir="auto">{c.name}</div>
+          <div className="lw-nav__tagline" dir="auto">{c.tagline}</div>
         </div>
       </div>
       <div className="lw-nav__items">
@@ -527,6 +531,7 @@ function Nav({ c, screen, setScreen, personName, personRole, open }) {
           ) : (
             <button
               key={it.id}
+              data-nav-id={it.id}
               className={`lw-nav__item ${screen === it.id ? "is-active" : ""}`}
               onClick={() => setScreen(it.id)}
             >
@@ -848,8 +853,8 @@ export default function App() {
      they actually hold here — not a fixture "Mentor" or "Instructor". */
   const personName = me?.fullName ?? "";
   const personRole = (workspace.roles ?? [])
-    .map((r) => r.replace(/([a-z])([A-Z])/g, "$1 $2"))
-    .join(", ") || "Member";
+    .map((r) => roleLabel(t, r))
+    .join(t("picker.roleSeparator")) || t("roles.member");
 
   useEffect(() => {
     setLearnerScreen("dashboard"); setOwnerScreen("overview"); setStudioProductId(null);

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { formatDateActive } from "../i18n/format";
 import { LoaderCircle, ArrowLeft, Award, ClipboardCheck } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -216,7 +217,7 @@ function AssessmentDetail({ assessmentId, slug, token, onBack }) {
                       <span className={`lw-assess__pill ${s.passed ? "is-published" : "is-failed"}`}>{s.passed ? t("assessOverview.passed") : t("assessOverview.notYetPassing")}</span>
                       {s.isOverridden && <div className="lw-assess__submeta">{t("assessOverview.overridden")}{s.overrideNote ? `: ${s.overrideNote}` : ""}</div>}
                     </td>
-                    <td>{new Date(s.submittedAt).toLocaleDateString()}</td>
+                    <td>{formatDateActive(s.submittedAt)}</td>
                     <td>
                       {overridingId !== s.submissionId && (
                         <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => startOverride(s)}>

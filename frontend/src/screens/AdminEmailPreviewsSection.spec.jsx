@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-vi.mock("../i18n/useLanguage", () => ({ useLanguage: () => ({ t: (key) => key }) }));
+vi.mock("../i18n/useLanguage", () => ({ useLanguage: () => ({ t: (key) => key, lang: "en" }) }));
 vi.mock("../auth/authContext", () => ({ useAuth: () => ({ session: { token: "T" } }) }));
 vi.mock("../api/client", async (importOriginal) => ({
   ...(await importOriginal()),

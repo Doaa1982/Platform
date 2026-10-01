@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { gb, money } from "../i18n/format";
 import { LoaderCircle, Plus, X, Send, Archive, Pencil } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -192,8 +193,8 @@ function ProductCard({ product: p, busy, t, onNewVersion, onEdit, onPublish, onR
 
       {v ? (
         <div className="pl-admin__proplist">
-          <span>{t("subscription.perMonth")}</span><span>{v.monthlyPrice} {v.currency}</span>
-          <span>{t("subscription.perYear")}</span><span>{v.annualPrice} {v.currency}</span>
+          <span>{t("subscription.perMonth")}</span><span>{money(v.monthlyPrice, v.currency)}</span>
+          <span>{t("subscription.perYear")}</span><span>{money(v.annualPrice, v.currency)}</span>
           <span>{t("subscription.tutorCapacity")}</span>
           <span>{capacityValue(p, v.tutorCapacityBase, v.tutorCapacityMax)}{capacityUncapped(p) ? ` (${t("admin.capacityUncapped")})` : ""}</span>
           <span>{t("subscription.learnerCapacity")}</span>
@@ -387,7 +388,7 @@ function PackCard({ pack: p, busy, t, onNewVersion, onEdit, onPublish, onRetire 
 
       {v ? (
         <div className="pl-admin__proplist">
-          <span>{t("subscription.perMonth")}</span><span>{v.monthlyPrice} {v.currency}</span>
+          <span>{t("subscription.perMonth")}</span><span>{money(v.monthlyPrice, v.currency)}</span>
           {DOMAINS.map((d) => {
             const key = `${d.charAt(0).toLowerCase()}${d.slice(1)}Grant`;
             return v[key] ? (
@@ -399,8 +400,8 @@ function PackCard({ pack: p, busy, t, onNewVersion, onEdit, onPublish, onRetire 
           })}
           {v.extraTutorCapacity > 0 && (<><span>{t("subscription.tutorCapacity")}</span><span>+{v.extraTutorCapacity}</span></>)}
           {v.extraLearnerCapacity > 0 && (<><span>{t("subscription.learnerCapacity")}</span><span>+{v.extraLearnerCapacity}</span></>)}
-          {v.extraVideoStorageGb > 0 && (<><span>{t("subscription.videoStorage")}</span><span>+{v.extraVideoStorageGb}GB</span></>)}
-          {v.extraResourceStorageGb > 0 && (<><span>{t("subscription.resourceStorage")}</span><span>+{v.extraResourceStorageGb}GB</span></>)}
+          {v.extraVideoStorageGb > 0 && (<><span>{t("subscription.videoStorage")}</span><span>+{gb(v.extraVideoStorageGb)}</span></>)}
+          {v.extraResourceStorageGb > 0 && (<><span>{t("subscription.resourceStorage")}</span><span>+{gb(v.extraResourceStorageGb)}</span></>)}
           {v.requiresDomain && (<><span>{t("admin.requires")}</span><span>{domainLabel(t, v.requiresDomain)} ≥ {levelLabel(t, v.requiresMinLevel)}</span></>)}
         </div>
       ) : <p className="pl-admin__muted">{t("admin.noPublishedVersion")}</p>}

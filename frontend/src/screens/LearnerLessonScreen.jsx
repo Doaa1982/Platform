@@ -626,13 +626,13 @@ const CSS = `
   }
   .lw-lesson-statuspill--done {
     background: color-mix(in srgb, var(--success, #1E7D61) 14%, var(--surface));
-    color: var(--success, #1E7D61);
+    color: color-mix(in srgb, var(--success, #1E7D61) 70%, var(--ink));
     border: 1px solid color-mix(in srgb, var(--success, #1E7D61) 30%, transparent);
     box-shadow: 0 1px 4px rgba(30,125,97,0.12);
   }
   .lw-lesson-statuspill--active {
     background: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
-    color: var(--accent-2);
+    color: color-mix(in srgb, var(--accent-2) 75%, var(--ink));
     border: 1px solid color-mix(in srgb, var(--accent-2) 25%, transparent);
   }
   .lw-lesson-statuspulse {
@@ -690,7 +690,7 @@ const CSS = `
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--accent);
+    color: color-mix(in srgb, var(--accent) 75%, var(--ink));
     background: color-mix(in srgb, var(--accent) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
     padding: 3px 10px;
@@ -1239,7 +1239,7 @@ const CSS = `
     border-radius: var(--radius, 12px);
     background: color-mix(in srgb, var(--success, #1E7D61) 10%, var(--surface));
     border: 1px solid color-mix(in srgb, var(--success, #1E7D61) 25%, var(--line));
-    color: var(--success, #1E7D61);
+    color: color-mix(in srgb, var(--success, #1E7D61) 70%, var(--ink));
     font-size: 0.92rem;
     font-weight: 600;
     margin-top: 24px;

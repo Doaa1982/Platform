@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatDateActive } from "../i18n/format";
 import { Toaster, toast } from "sonner";
 import {
   LoaderCircle, Crown, UploadCloud, Download, Search,
@@ -228,7 +229,8 @@ export default function MembersScreen({ initialTab }) {
       <h1>{t("members.title")}</h1>
       <p className="lw-sub">{t("members.lead", { workspace: data.workspaceName })}</p>
 
-      <div className="lw-members__tabs" role="tablist">
+      <div className="lw-members__tabs">
+        <div className="lw-members__tablist" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "current"}
                 className={tab === "current" ? "is-active" : ""} onClick={() => setTab("current")}>
           {t("members.tabCurrent")}
@@ -247,6 +249,7 @@ export default function MembersScreen({ initialTab }) {
                 className={tab === "join" ? "is-active" : ""} onClick={() => setTab("join")}>
           {t("members.tabJoinLink")}
         </button>
+        </div>
         <button type="button" className="lw-members__tabsrefresh" onClick={load} disabled={busy} aria-label={t("members.refresh")}>
           <RefreshCw size={13} />
         </button>
@@ -496,7 +499,7 @@ export default function MembersScreen({ initialTab }) {
                     <div className="lw-members__who">
                       <div className="lw-members__name">{i.email}</div>
                       <div className="lw-members__email">
-                        {t("members.invitedAs", { role: humanise(t, i.intendedRole), date: new Date(i.expiresAt).toLocaleDateString() })}
+                        {t("members.invitedAs", { role: humanise(t, i.intendedRole), date: formatDateActive(i.expiresAt) })}
                       </div>
                       {i.intendedLearningProductTitle && (
                         <div className="lw-members__course">{t("members.invitedCourse", { course: i.intendedLearningProductTitle })}</div>
@@ -1083,6 +1086,7 @@ const CSS = `
 
   /* ── Tabs ─────────────────────────────────────────────────────────────── */
   .lw-members__tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .lw-members__tablist { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .lw-members__tabs button {
     font-family: inherit; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft);
     background: transparent; border: 1px solid var(--line); border-radius: 6px; border-bottom: 2px solid transparent;
@@ -1127,7 +1131,7 @@ const CSS = `
     background: var(--bg); border: none; padding: 7px 12px; cursor: pointer;
   }
   .lw-members__modetoggle button + button { border-inline-start: 1px solid var(--line); }
-  .lw-members__modetoggle button.is-active { background: var(--accent); color: #fff; }
+  .lw-members__modetoggle button.is-active { background: var(--accent); color: var(--on-accent, #fff); }
 
   .lw-members__enroll { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
   .lw-members__radio {
@@ -1211,7 +1215,7 @@ const CSS = `
   .lw-members__avatar {
     width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    background: var(--accent); color: #fff;
+    background: var(--accent); color: var(--on-accent, #fff);
     font-family: var(--font-display); font-weight: 700; font-size: 1.05rem;
     box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 30%, transparent);
   }
@@ -1227,7 +1231,7 @@ const CSS = `
   .lw-members__owner {
     display: inline-flex; align-items: center; gap: 4px;
     font-family: var(--font-mono); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-    background: var(--accent-2); color: #fff; border-radius: 20px; padding: 2px 8px;
+    background: var(--accent-2); color: var(--on-accent-2, #fff); border-radius: 20px; padding: 2px 8px;
   }
   .lw-members__email { font-size: 0.82rem; color: var(--ink-soft); margin-top: 3px; overflow-wrap: anywhere; }
   .lw-members__course {
@@ -1269,7 +1273,7 @@ const CSS = `
     border-radius: 20px; padding: 4px 10px;
     background: var(--surface-2); color: var(--ink-soft);
   }
-  .lw-members__status.is-active { background: color-mix(in srgb, var(--accent-2) 18%, transparent); color: var(--accent-2); }
+  .lw-members__status.is-active { background: color-mix(in srgb, var(--accent-2) 18%, transparent); color: var(--ink); }
   .lw-members__status.is-suspended, .lw-members__status.is-pending, .lw-members__status.is-expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
 
   .lw-members__actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }

@@ -1,3 +1,4 @@
+import { formatDateActive, num, quantity } from "./format";
 /** Shared plan/entitlement label helpers — used by SubscriptionScreen (Billing)
  * and WorkspaceHomeScreen (the plans comparison shown on the portal home),
  * so the two stay in lock-step rather than drifting into two label sets. */
@@ -26,8 +27,7 @@ export const FREE_PLAN_CODE = "solo-free";
  * paid plan the Max column is inert (kept equal to Base by the catalog seed),
  * so only Base is shown — appending `unit` (e.g. "GB") when given. */
 export function capacityValue(plan, base, max, unit = "") {
-  const suffix = unit ? ` ${unit}` : "";
-  return plan.code === FREE_PLAN_CODE && max > base ? `${base}–${max}${suffix}` : `${base}${suffix}`;
+  return plan.code === FREE_PLAN_CODE && max > base ? `${num(base)}–${quantity(max, unit)}` : quantity(base, unit);
 }
 
 /** Whether this plan-card row should carry the "no cap" hint — true for every paid plan. */
@@ -61,4 +61,4 @@ export function packGrants(pack) {
     .sort((a, b) => ENTITLEMENT_DOMAINS.indexOf(a.domain) - ENTITLEMENT_DOMAINS.indexOf(b.domain));
 }
 
-export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : "");
+export const fmtDate = (d) => (d ? formatDateActive(d) : "");

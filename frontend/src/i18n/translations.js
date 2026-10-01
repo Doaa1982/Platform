@@ -7,6 +7,44 @@
  */
 
 const en = {
+  adminStatus: {
+    Submitted: "Submitted",
+    UnderReview: "Under review",
+    Approved: "Approved",
+    Rejected: "Rejected",
+    AwaitingInvitation: "Awaiting invitation",
+    InvitationSent: "Invitation sent",
+    InvitationExpired: "Invitation expired",
+    Provisioned: "Provisioned",
+    Created: "Created",
+    Configuring: "Configuring",
+    Private: "Private",
+    Published: "Published",
+    Active: "Active",
+    Suspended: "Suspended",
+    Archived: "Archived",
+    Deleted: "Deleted",
+    Sent: "Sent",
+    Accepted: "Accepted",
+    Expired: "Expired",
+    Cancelled: "Cancelled",
+  },
+
+  catalog: {
+    "solo-free": "Solo Free",
+    "solo-essential": "Solo Essential",
+    "solo-professional": "Solo Professional",
+    "solo-ai-plus": "Solo AI+",
+    "AiAssessment": "AI Assessment",
+    "AiMentor": "AI Mentor",
+    "AiAuthor": "AI Author",
+    "ExtraStudents": "Extra Students",
+    "ExtraStorage": "Extra Storage",
+    "Collaboration": "Collaboration",
+    "CollaborationPlus": "Collaboration+",
+    "Branding": "Branding",
+  },
+
   entry: {
     brandName: "Teach Tandem",
     homeLink: "Teach Tandem home",
@@ -408,6 +446,7 @@ const en = {
     Owner: "Owner", Administrator: "Administrator", Teacher: "Teacher",
     AssistantTeacher: "Assistant Teacher", Learner: "Learner", Parent: "Parent",
     FinanceManager: "Finance Manager",
+    member: "Member",
   },
 
   members: {
@@ -1078,6 +1117,14 @@ const en = {
   },
 
   learnerHome: {
+    subtitle: "Track your progress, resume your lessons, and reach your learning goals.",
+    statActive: "Active",
+    noteEnrolled: "Courses you're enrolled in",
+    noteCompleted: "Completed curriculum",
+    noteCheckpoints: "All finished checkpoints",
+    noteTime: "Total study time",
+    notePassed: "Passing submissions recorded",
+    noteCertificates: "Verified credentials",
     loading: "Loading…",
     zeroMin: "0 min",
     min: "min",
@@ -1098,6 +1145,20 @@ const en = {
   },
 
   learnerCourses: {
+    units_zero: "{count} units",
+    units_one: "{count} unit",
+    units_two: "{count} units",
+    units_few: "{count} units",
+    units_many: "{count} units",
+    units_other: "{count} units",
+    lessons_zero: "{count} lessons",
+    lessons_one: "{count} lesson",
+    lessons_two: "{count} lessons",
+    lessons_few: "{count} lessons",
+    lessons_many: "{count} lessons",
+    lessons_other: "{count} lessons",
+    enrolledBadge: "Enrolled",
+    exploreCourse: "Explore course",
     loading: "Loading…",
     eyebrowCourses: "Courses",
     learnTitle: "What do you want to learn?",
@@ -1238,6 +1299,7 @@ const en = {
     emailPreviewsDesktop: "Desktop",
     emailPreviewsMobile: "Mobile",
     emailPreviewsPlainText: "Plain text",
+    emailPreviewsFormatted: "Formatted",
     emailPreviewsFrom: "From",
     emailPreviewsReplyTo: "Reply-To",
     emailPreviewsSubject: "Subject",
@@ -1343,6 +1405,8 @@ const en = {
   },
 
   subscription: {
+    carousel: "carousel",
+    slide: "slide",
     eyebrow: "Subscription & Billing",
     title: "Your plan",
     lead: "What {workspace} pays this platform. This is separate from what {workspace} charges its own students.",
@@ -1414,7 +1478,7 @@ const en = {
     accessUntilLabel: "Access until",
     accessContinuesUntil: "Access continues until {date}",
 
-    invoiceAwaiting: "There's an invoice for {amount} {currency} waiting to be confirmed (due {date}). You pay this outside the platform — a platform administrator will confirm it once your payment is received.",
+    invoiceAwaiting: "There's an invoice for {amount} waiting to be confirmed (due {date}). You pay this outside the platform — a platform administrator will confirm it once your payment is received.",
     invoiceOverdue: "This invoice is now overdue (it was due {date}). If you think this is a mistake, contact us. A platform administrator needs to confirm your payment before it affects your access.",
 
     entitlementsTitle: "What this plan grants",
@@ -1480,7 +1544,7 @@ const en = {
     toastPendingChangeCancelled: "Scheduled plan change cancelled.",
     toastRequestedChangeCancelled: "Request cancelled.",
     confirmCancelPurchase: "Cancel this pending credit purchase request?",
-    toastChangeRequested: "Requested {plan} — a prorated invoice of {amount} {currency} is awaiting confirmation.",
+    toastChangeRequested: "Requested {plan} — a prorated invoice of {amount} is awaiting confirmation.",
     toastAddOnsRequested: "Add-ons requested — a prorated invoice is awaiting confirmation.",
     toastAddOnsUpdatedScheduled: "Add-ons will update at the end of your current billing period.",
     toastPurchaseRequested: "Purchase requested — you'll see your credits once payment is confirmed.",
@@ -1724,6 +1788,44 @@ const en = {
 };
 
 const ar = {
+  adminStatus: {
+    Submitted: "مُقدَّم",
+    UnderReview: "قيد المراجعة",
+    Approved: "مقبول",
+    Rejected: "مرفوض",
+    AwaitingInvitation: "بانتظار الدعوة",
+    InvitationSent: "أُرسلت الدعوة",
+    InvitationExpired: "انتهت صلاحية الدعوة",
+    Provisioned: "تم الإنشاء",
+    Created: "تم الإنشاء",
+    Configuring: "قيد الإعداد",
+    Private: "خاصة",
+    Published: "منشورة",
+    Active: "نشطة",
+    Suspended: "موقوفة",
+    Archived: "مؤرشفة",
+    Deleted: "محذوفة",
+    Sent: "مُرسلة",
+    Accepted: "مقبولة",
+    Expired: "منتهية",
+    Cancelled: "ملغاة",
+  },
+
+  catalog: {
+    "solo-free": "الباقة المجانية",
+    "solo-essential": "الباقة الأساسية",
+    "solo-professional": "الباقة الاحترافية",
+    "solo-ai-plus": "باقة الذكاء الاصطناعي+",
+    "AiAssessment": "التقييم بالذكاء الاصطناعي",
+    "AiMentor": "المرشد الذكي",
+    "AiAuthor": "المؤلف الذكي",
+    "ExtraStudents": "طلاب إضافيون",
+    "ExtraStorage": "مساحة تخزين إضافية",
+    "Collaboration": "التعاون",
+    "CollaborationPlus": "التعاون+",
+    "Branding": "الهوية البصرية",
+  },
+
   entry: {
     brandName: "Teach Tandem",
     homeLink: "الصفحة الرئيسية لـ Teach Tandem",
@@ -2125,6 +2227,7 @@ const ar = {
     Owner: "المالك", Administrator: "المسؤول", Teacher: "المعلم",
     AssistantTeacher: "المعلم المساعد", Learner: "المتعلم", Parent: "ولي الأمر",
     FinanceManager: "مدير الشؤون المالية",
+    member: "عضو",
   },
 
   members: {
@@ -2795,6 +2898,14 @@ const ar = {
   },
 
   learnerHome: {
+    subtitle: "تابع تقدّمك، وأكمل دروسك، وحقق أهدافك التعليمية.",
+    statActive: "نشط",
+    noteEnrolled: "الدورات المسجّل فيها",
+    noteCompleted: "منهج مكتمل",
+    noteCheckpoints: "كل نقاط التحقق المنجزة",
+    noteTime: "إجمالي وقت الدراسة",
+    notePassed: "تسليمات ناجحة مسجّلة",
+    noteCertificates: "شهادات موثّقة",
     loading: "جارٍ التحميل…",
     zeroMin: "0 د",
     min: "د",
@@ -2815,6 +2926,20 @@ const ar = {
   },
 
   learnerCourses: {
+    units_zero: "لا وحدات",
+    units_one: "وحدة واحدة",
+    units_two: "وحدتان",
+    units_few: "{count} وحدات",
+    units_many: "{count} وحدة",
+    units_other: "{count} وحدة",
+    lessons_zero: "لا دروس",
+    lessons_one: "درس واحد",
+    lessons_two: "درسان",
+    lessons_few: "{count} دروس",
+    lessons_many: "{count} درسًا",
+    lessons_other: "{count} درس",
+    enrolledBadge: "مسجّل",
+    exploreCourse: "استكشف الدورة",
     loading: "جارٍ التحميل…",
     eyebrowCourses: "الدورات",
     learnTitle: "ماذا تريد أن تتعلّم؟",
@@ -2955,6 +3080,7 @@ const ar = {
     emailPreviewsDesktop: "سطح المكتب",
     emailPreviewsMobile: "الجوال",
     emailPreviewsPlainText: "نص عادي",
+    emailPreviewsFormatted: "منسّق",
     emailPreviewsFrom: "من",
     emailPreviewsReplyTo: "الرد إلى",
     emailPreviewsSubject: "الموضوع",
@@ -3060,6 +3186,8 @@ const ar = {
   },
 
   subscription: {
+    carousel: "عرض متتابع",
+    slide: "شريحة",
     eyebrow: "الاشتراك والفوترة",
     title: "خطتك",
     lead: "ما تدفعه {workspace} لهذه المنصة. هذا منفصل تمامًا عمّا تتقاضاه {workspace} من طلابها.",
@@ -3097,7 +3225,7 @@ const ar = {
 
     levelFoundation: "أساسي",
     levelProfessional: "احترافي",
-    levelAiPlus: "AI+",
+    levelAiPlus: "ذكاء اصطناعي+",
 
     aiManual: "يدوي",
     aiAssist: "مساعدة",
@@ -3131,7 +3259,7 @@ const ar = {
     accessUntilLabel: "الوصول حتى",
     accessContinuesUntil: "يستمر الوصول حتى {date}",
 
-    invoiceAwaiting: "هناك فاتورة بقيمة {amount} {currency} بانتظار التأكيد (تاريخ استحقاقها {date}). تدفع قيمتها خارج المنصة — وسيؤكدها مسؤول المنصة بمجرد استلام دفعتك.",
+    invoiceAwaiting: "هناك فاتورة بقيمة {amount} بانتظار التأكيد (تاريخ استحقاقها {date}). تدفع قيمتها خارج المنصة — وسيؤكدها مسؤول المنصة بمجرد استلام دفعتك.",
     invoiceOverdue: "تجاوزت هذه الفاتورة تاريخ استحقاقها ({date}). إذا كنت تعتقد أن هذا خطأ، تواصل معنا. يحتاج مسؤول المنصة إلى تأكيد دفعتك قبل أن يتأثر وصولك.",
 
     entitlementsTitle: "ما تمنحه هذه الخطة",
@@ -3197,7 +3325,7 @@ const ar = {
     toastPendingChangeCancelled: "تم إلغاء تغيير الخطة المجدول.",
     toastRequestedChangeCancelled: "تم إلغاء الطلب.",
     confirmCancelPurchase: "هل تريد إلغاء طلب شراء الأرصدة المعلّق هذا؟",
-    toastChangeRequested: "تم طلب {plan} — بانتظار تأكيد فاتورة متناسبة بقيمة {amount} {currency}.",
+    toastChangeRequested: "تم طلب {plan} — بانتظار تأكيد فاتورة متناسبة بقيمة {amount}.",
     toastAddOnsRequested: "تم طلب الإضافات — بانتظار تأكيد فاتورة متناسبة.",
     toastAddOnsUpdatedScheduled: "سيتم تحديث الإضافات في نهاية دورة الفوترة الحالية.",
     toastPurchaseRequested: "تم تقديم طلب الشراء — سيظهر الرصيد بعد تأكيد الدفع.",
