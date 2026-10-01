@@ -348,6 +348,7 @@ export const APP_CSS = `
   .lw-lessonnav__lessontitle { flex: 1; font-size: 0.84rem; line-height: 1.4; color: var(--ink); }
   .lw-lessonnav__lessonrow.is-active .lw-lessonnav__lessontitle { color: color-mix(in srgb, var(--accent) 75%, var(--ink)); }
   .lw-lessonnav__lessonmins { font-family: var(--font-mono, monospace); font-size: 10.5px; color: var(--ink-soft); }
+  .lw-lessonnav__lessonrow.is-active .lw-lessonnav__lessonmins { color: var(--ink); }
 
   .lw-btn { font-family: var(--font-body); font-weight: 600; font-size: 0.85rem; border-radius: var(--radius-sm); padding: 10px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: transform .12s, box-shadow .12s; }
   .lw-btn:hover { transform: translateY(-1px); }
