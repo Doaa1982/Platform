@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatDateActive, num } from "../i18n/format";
 import {
   LoaderCircle, AlertCircle, Plus, ArrowLeft, X, Trash2, Eye,
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
@@ -2117,7 +2118,7 @@ export function VideoSection({ lesson, editable, hasDraft, deliveryMode, publish
                       <p className="muted" style={{ fontSize: "0.72rem", margin: "4px 0 8px" }}>
                         {t("studio.enhanceTranscriptMetadata", {
                           model: revision.enhancementModel ?? "?",
-                          date: revision.enhancementCompletedAt ? new Date(revision.enhancementCompletedAt).toLocaleString() : "?",
+                          date: revision.enhancementCompletedAt ? formatDateActive(revision.enhancementCompletedAt, { dateStyle: "medium", timeStyle: "short" }) : "?",
                         })}
                       </p>
 
@@ -2172,7 +2173,7 @@ export function VideoSection({ lesson, editable, hasDraft, deliveryMode, publish
                         <span className="lw-transcriptcard__title">{t(label)}</span>
                         <span className="lw-transcriptcard__hint">{t(hint)}</span>
                         {cost != null && (
-                          <span className="lw-transcriptcard__cost">{cost.toLocaleString()} {t("subscription.aiCreditsUnit")}</span>
+                          <span className="lw-transcriptcard__cost">{num(cost)} {t("subscription.aiCreditsUnit")}</span>
                         )}
                       </button>
                     ))}
@@ -4251,11 +4252,11 @@ const CSS = `
 
   .lw-studio__pill {
     font-family: var(--font-mono); font-size: 10px; border-radius: 20px; padding: 3px 9px;
-    background: var(--surface-2); color: var(--ink-soft); white-space: nowrap;
+    background: var(--surface-2); color: var(--ink); white-space: nowrap;
   }
-  .lw-studio__pill.is-published { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
-  .lw-studio__pill.is-draftopen { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-  .lw-studio__pill.is-none { background: var(--surface-2); color: var(--ink-soft); }
+  .lw-studio__pill.is-published { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--ink); }
+  .lw-studio__pill.is-draftopen { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--ink); }
+  .lw-studio__pill.is-none { background: var(--surface-2); color: var(--ink); }
 
   .lw-studio__bar { display: flex; gap: 8px; margin: 4px 0 14px; }
   .lw-studio__blocker {

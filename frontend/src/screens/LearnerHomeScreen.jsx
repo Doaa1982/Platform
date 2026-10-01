@@ -85,7 +85,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
             {firstName ? t("home.welcomeNamed", { name: firstName }) : t("home.welcome")}
           </h1>
           <p className="lw-db-subtitle">
-            Track your progress, resume your lessons, and achieve your learning goals.
+            {t("learnerHome.subtitle")}
           </p>
         </div>
       </div>
@@ -169,7 +169,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
               <span className="lw-db-staticon">
                 <BookOpen size={18} />
               </span>
-              <span className="lw-db-stattrend">Active</span>
+              <span className="lw-db-stattrend">{t("learnerHome.statActive")}</span>
             </div>
             <div className="lw-db-statcard__val">
               {stats.enrolledProductsCount}
@@ -178,7 +178,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
               {t("learnerHome.enrolledCourses")}
             </div>
             <div className="lw-db-statcard__note">
-              Courses currently enrolled
+              {t("learnerHome.noteEnrolled")}
             </div>
           </div>
 
@@ -210,7 +210,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
                 <div className="lw-db-statprogress__fill" style={{ width: `${courseCompletionPercent}%` }} />
               </div>
             ) : (
-              <div className="lw-db-statcard__note">Completed curriculum</div>
+              <div className="lw-db-statcard__note">{t("learnerHome.noteCompleted")}</div>
             )}
           </div>
 
@@ -242,7 +242,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
                 <div className="lw-db-statprogress__fill" style={{ width: `${lessonCompletionPercent}%` }} />
               </div>
             ) : (
-              <div className="lw-db-statcard__note">All finished checkpoints</div>
+              <div className="lw-db-statcard__note">{t("learnerHome.noteCheckpoints")}</div>
             )}
           </div>
 
@@ -260,7 +260,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
               {t("learnerHome.timeInvested")}
             </div>
             <div className="lw-db-statcard__note">
-              Total interactive study time
+              {t("learnerHome.noteTime")}
             </div>
           </div>
 
@@ -278,7 +278,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
               {t("learnerHome.assessmentsPassed")}
             </div>
             <div className="lw-db-statcard__note">
-              Passing submissions recorded
+              {t("learnerHome.notePassed")}
             </div>
           </div>
 
@@ -295,7 +295,7 @@ export default function LearnerHomeScreen({ onContinueLesson }) {
               {t("learnerHome.certificates")}
             </div>
             <div className="lw-db-statcard__note">
-              Verified credentials
+              {t("learnerHome.noteCertificates")}
             </div>
           </div>
         </div>
@@ -343,7 +343,7 @@ const CSS = `
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--accent);
+    color: color-mix(in srgb, var(--accent) 75%, var(--ink)); /* plain accent on its own tint is under 4.5:1 */
     background: color-mix(in srgb, var(--accent) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
     padding: 3px 10px;
@@ -612,13 +612,13 @@ const CSS = `
   .lw-db-stattrend {
     font-size: 11px;
     font-weight: 600;
-    color: var(--ink-soft);
+    color: var(--ink);
     background: var(--surface-2, rgba(0,0,0,0.04));
     padding: 3px 8px;
     border-radius: 9999px;
   }
   .lw-db-stattrend--pct {
-    color: var(--success, #1E7D61);
+    color: color-mix(in srgb, var(--success, #1E7D61) 70%, var(--ink));
     background: color-mix(in srgb, var(--success, #1E7D61) 12%, transparent);
   }
 
@@ -628,7 +628,7 @@ const CSS = `
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--ink-soft);
+    color: var(--ink);
     background: var(--surface-2, rgba(0,0,0,0.04));
     padding: 2px 7px;
     border-radius: 6px;
@@ -676,9 +676,11 @@ const CSS = `
     background: linear-gradient(90deg, var(--accent-2), var(--accent));
   }
 
+  /* Muted by surface, not opacity: opacity took its text below WCAG AA contrast. */
   .lw-db-statcard.is-placeholder {
-    opacity: 0.8;
+    background: var(--surface-2);
   }
+  .lw-db-statcard.is-placeholder .lw-db-statcard__note { color: var(--ink); }
 
   @media (max-width: 860px) {
     .lw-db-statsgrid {

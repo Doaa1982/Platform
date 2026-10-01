@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatDateActive } from "../i18n/format";
 import { LoaderCircle, ArrowLeft, CheckCircle2, Paperclip, UploadCloud, X } from "lucide-react";
 import * as api from "../api/client";
 import AssetLink from "../components/AssetLink";
@@ -126,7 +127,7 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
       <div className="lw-eyebrow">{t(`studio.activityType.${activity.type}`)}</div>
       <h1>{activity.title}</h1>
       <p className="lw-sub">
-        {assignment.dueAt ? t("learnerAssignments.dueLabel", { date: new Date(assignment.dueAt).toLocaleString() }) : t("learnerAssignments.noDueDate")}
+        {assignment.dueAt ? t("learnerAssignments.dueLabel", { date: formatDateActive(assignment.dueAt, { dateStyle: "medium", timeStyle: "short" }) }) : t("learnerAssignments.noDueDate")}
       </p>
 
       {error && <Message type="error">{error}</Message>}

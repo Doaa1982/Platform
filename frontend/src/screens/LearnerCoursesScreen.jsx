@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { plural } from "../i18n/format";
 import {
-  LoaderCircle, ArrowLeft, BookOpen, CheckCircle2, PlayCircle, Lock,
-} from "lucide-react";
+  LoaderCircle, ArrowLeft, BookOpen, CheckCircle2, PlayCircle, Lock, Clock } from "lucide-react";
 import * as api from "../api/client";
 import AssetImage from "../components/AssetImage";
 import { useAuth } from "../auth/authContext";
@@ -96,7 +96,7 @@ function ProductPicker({ onSelect }) {
               )}
               {p.isEnrolled && (
                 <span className="lw-course-enrolledbadge">
-                  <CheckCircle2 size={12} /> Enrolled
+                  <CheckCircle2 size={12} /> {t("learnerCourses.enrolledBadge")}
                 </span>
               )}
             </div>
@@ -144,7 +144,7 @@ function ProductPicker({ onSelect }) {
                     <span className="lw-course-emptynote">{t("learnerCourses.nothingInsideYet")}</span>
                   ) : (
                     <span className="lw-course-btn lw-course-btn--open">
-                      <span>Explore Course</span>
+                      <span>{t("learnerCourses.exploreCourse")}</span>
                       <PlayCircle size={15} />
                     </span>
                   )}
@@ -211,11 +211,11 @@ function CurriculumView({ productId, onBack, onOpenLesson }) {
         <div className="lw-curriculum-stats">
           <div className="lw-curriculum-stat">
             <BookOpen size={16} />
-            <span>{data.units.length} {data.units.length === 1 ? "Unit" : "Units"}</span>
+            <span>{plural(t, "learnerCourses.units", data.units.length)}</span>
           </div>
           <div className="lw-curriculum-stat">
             <PlayCircle size={16} />
-            <span>{allLessons.length} {allLessons.length === 1 ? "Lesson" : "Lessons"}</span>
+            <span>{plural(t, "learnerCourses.lessons", allLessons.length)}</span>
           </div>
           {totalMins > 0 && (
             <div className="lw-curriculum-stat">
@@ -384,7 +384,7 @@ const CSS = `
     font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.18s ease;
   }
   .lw-course-btn--open {
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface)); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface)); color: color-mix(in srgb, var(--accent) 75%, var(--ink));
     border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
   }
   .lw-course-card:hover .lw-course-btn--open {
@@ -395,7 +395,7 @@ const CSS = `
     box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
   }
   .lw-course-pendingtag {
-    font-size: 11px; font-weight: 600; color: var(--accent-2);
+    font-size: 11px; font-weight: 600; color: color-mix(in srgb, var(--accent-2) 75%, var(--ink));
     background: color-mix(in srgb, var(--accent-2) 12%, transparent); padding: 4px 10px; border-radius: 9999px;
   }
   .lw-course-emptynote { font-size: 0.8rem; color: var(--ink-soft); font-style: italic; }
@@ -412,10 +412,10 @@ const CSS = `
   }
   .lw-curriculum-stat {
     display: inline-flex; align-items: center; gap: 6px; font-size: 0.86rem; font-weight: 500;
-    color: var(--ink-soft); background: var(--surface-2, rgba(0,0,0,0.03)); padding: 5px 12px; border-radius: 9999px;
+    color: var(--ink); background: var(--surface-2, rgba(0,0,0,0.03)); padding: 5px 12px; border-radius: 9999px;
   }
   .lw-curriculum-stat--progress {
-    color: var(--success, #1E7D61); background: color-mix(in srgb, var(--success, #1E7D61) 12%, transparent); font-weight: 600;
+    color: color-mix(in srgb, var(--success, #1E7D61) 70%, var(--ink)); background: color-mix(in srgb, var(--success, #1E7D61) 12%, transparent); font-weight: 600;
   }
   .lw-learn__seqhint {
     display: inline-flex; align-items: center; gap: 6px;

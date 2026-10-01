@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { catalogName, gb, money, num, quantity } from "../i18n/format";
 import { LoaderCircle, ArrowLeft, Zap } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -140,7 +141,7 @@ export default function SubscriptionScreen() {
       <style>{CSS}</style>
 
       <div className="lw-eyebrow">{t("subscription.eyebrow")}</div>
-      <h1>{showPicker ? t("subscription.title") : (currentPlan?.name ?? subscription.planCode)}</h1>
+      <h1>{showPicker ? t("subscription.title") : (currentPlan ? catalogName(t, currentPlan) : subscription.planCode)}</h1>
       <p className="lw-sub">
         {t(showPicker ? "subscription.pickLead" : "subscription.lead", { workspace: workspace?.name ?? "" })}
       </p>
@@ -213,8 +214,8 @@ export function PlansScreen() {
             .then((r) => {
               if (r) {
                 setSuccess(t("subscription.toastChangeRequested", {
-                  plan: plans.find((p) => p.code === planCode)?.name ?? planCode,
-                  amount: r.currentInvoiceAmount ?? 0, currency: r.currentInvoiceCurrency ?? "",
+                  plan: catalogName(t, plans.find((p) => p.code === planCode)) || planCode,
+                  amount: money(r.currentInvoiceAmount ?? 0, r.currentInvoiceCurrency || "USD"),
                 }));
               }
               return r;
@@ -295,7 +296,7 @@ export function AiCreditsScreen() {
 
       {pendingOrder && (
         <div className="lw-bill__notice lw-bill__cancellednotice">
-          <p>{t("subscription.creditsRequestedNotice", { amount: Number(pendingOrder.creditAmount).toLocaleString() })}</p>
+          <p>{t("subscription.creditsRequestedNotice", { amount: num(pendingOrder.creditAmount) })}</p>
           <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancelPurchase}>
             {t("subscription.cancelRequestAction")}
           </button>
@@ -317,8 +318,8 @@ export function AiCreditsScreen() {
                   className={`lw-bill__pack lw-bill__pack--credit ${(!hasAiDomain || pendingOrder) ? "is-disabled" : ""}`}
                   disabled={busy || !hasAiDomain || !!pendingOrder} onClick={() => setBuyingCredits(tier)}>
             <Zap size={15} aria-hidden="true" />
-            <span className="lw-bill__packname">{Number(tier.creditAmount).toLocaleString()} {t("subscription.aiCreditsUnit")}</span>
-            <span className="lw-bill__packprice">{tier.price} {tier.currency}</span>
+            <span className="lw-bill__packname">{num(tier.creditAmount)} {t("subscription.aiCreditsUnit")}</span>
+            <span className="lw-bill__packprice">{money(tier.price, tier.currency)}</span>
           </button>
         ))}
       </div>
@@ -362,7 +363,7 @@ function CreditHistoryModal({ purchases, onClose }) {
             <tbody>
               {purchases.map((p) => (
                 <tr key={p.id}>
-                  <td>{Number(p.creditAmount).toLocaleString()} {t("subscription.aiCreditsUnit")}</td>
+                  <td>{num(p.creditAmount)} {t("subscription.aiCreditsUnit")}</td>
                   <td>{p.priceAmount} {p.priceCurrency}</td>
                   <td>{fmtDate(p.createdAt)}</td>
                   <td><span className={`lw-bill__pill is-${p.status.toLowerCase()}`}>{purchaseStatusLabel(t, p.status)}</span></td>
@@ -431,7 +432,7 @@ function ConfigureModal({ plan, packs, billingCycle, busy, onClose, onConfirm })
   return (
     <Modal onClose={onClose} closeLabel={t("subscription.close")}>
       <div className="lw-eyebrow">{t("subscription.configureTitle", { plan: plan.name })}</div>
-      <h2 className="lw-modal__title">{plan.name}</h2>
+      <h2 className="lw-modal__title">{catalogName(t, plan)}</h2>
 
       <div className="lw-bill__packlist">
         {packs.map((pack) => {
@@ -441,8 +442,8 @@ function ConfigureModal({ plan, packs, billingCycle, busy, onClose, onConfirm })
             <label key={pack.code} className={`lw-bill__pack ${unmet ? "is-disabled" : ""}`}>
               <input type="checkbox" checked={selected.includes(pack.code)} disabled={busy || unmet}
                      onChange={() => togglePack(pack.code)} />
-              <span className="lw-bill__packname">{pack.name}</span>
-              <span className="lw-bill__packprice">+{packPrice(pack)} {pack.currency}</span>
+              <span className="lw-bill__packname">{catalogName(t, pack)}</span>
+              <span className="lw-bill__packprice">+{money(packPrice(pack), pack.currency)}</span>
               {req && (
                 <span className="lw-bill__packnote">
                   {t("subscription.packRequires", { domain: domainLabel(t, req.domain), level: levelLabel(t, req.level) })}
@@ -458,7 +459,7 @@ function ConfigureModal({ plan, packs, billingCycle, busy, onClose, onConfirm })
         <strong>
           {total === 0
             ? t("subscription.free")
-            : <>{total} {plan.currency} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}
+            : <>{money(total, plan.currency)} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}
         </strong>
       </div>
 
@@ -492,8 +493,7 @@ function hasAnyAiDomain(subscription) {
  * (tutor/learner seats, video/resource storage) — just the total otherwise. */
 function capacityCell(ent, unit = "") {
   if (!ent?.value) return "—";
-  const suffix = unit ? ` ${unit}` : "";
-  return ent.usedAmount != null ? `${ent.usedAmount}/${ent.value}${suffix}` : `${ent.value}${suffix}`;
+  return ent.usedAmount != null ? `${num(ent.usedAmount)}/${quantity(ent.value, unit)}` : quantity(ent.value, unit);
 }
 
 /** What a pack actually grants, as plain-text pieces — "Learning: AI+ (Co-Pilot)",
@@ -504,8 +504,8 @@ function packBenefits(t, pack) {
     `${domainLabel(t, domain)}: ${levelLabel(t, level)} (${aiLabel(t, aiLevelForProfile(level))})`);
   if (pack.extraTutorCapacity > 0) parts.push(`+${pack.extraTutorCapacity} ${t("subscription.tutorCapacity")}`);
   if (pack.extraLearnerCapacity > 0) parts.push(`+${pack.extraLearnerCapacity} ${t("subscription.learnerCapacity")}`);
-  if (pack.extraVideoStorageGb > 0) parts.push(`+${pack.extraVideoStorageGb}GB ${t("subscription.videoStorage")}`);
-  if (pack.extraResourceStorageGb > 0) parts.push(`+${pack.extraResourceStorageGb}GB ${t("subscription.resourceStorage")}`);
+  if (pack.extraVideoStorageGb > 0) parts.push(`+${gb(pack.extraVideoStorageGb)} ${t("subscription.videoStorage")}`);
+  if (pack.extraResourceStorageGb > 0) parts.push(`+${gb(pack.extraResourceStorageGb)} ${t("subscription.resourceStorage")}`);
   return parts;
 }
 
@@ -527,7 +527,7 @@ function BillingOverview({
     ? (plans.find((p) => p.code === subscription.requestedPlanCode)?.name ?? subscription.requestedPlanCode)
     : null;
   const requestedPackNames = (subscription.requestedPackCodes ?? [])
-    .map((code) => packs.find((p) => p.code === code)?.name).filter(Boolean);
+    .map((code) => catalogName(t, packs?.find((p) => p.code === code))).filter(Boolean);
 
   // SUB-004: a Cancelled subscription keeps its License Active until
   // cancellationEffectiveDate — Licensing's licenseStatus is the
@@ -612,8 +612,7 @@ function BillingOverview({
           {subscription.currentInvoiceStatus === "Overdue"
             ? t("subscription.invoiceOverdue", { date: fmtDate(subscription.currentInvoiceDueDate) })
             : t("subscription.invoiceAwaiting", {
-                amount: subscription.currentInvoiceAmount ?? "",
-                currency: subscription.currentInvoiceCurrency ?? "",
+                amount: money(subscription.currentInvoiceAmount ?? 0, subscription.currentInvoiceCurrency || "USD"),
                 date: fmtDate(subscription.currentInvoiceDueDate),
               })}
         </div>
@@ -663,17 +662,17 @@ function BillingOverview({
             </tr>
             <tr>
               <th scope="row">{t("subscription.aiCredits")}</th>
-              <td>{aiCredits ? Number(aiCredits).toLocaleString() : "—"}</td>
+              <td>{aiCredits ? num(aiCredits) : "—"}</td>
             </tr>
             <tr>
               <th scope="row">
                 {t("subscription.aiCreditsRemaining")}
                 {subscription.aiCreditsTrialRemaining > 0 && (
-                  <InfoTip text={t("subscription.aiCreditsTrialBreakdown", { trial: Number(subscription.aiCreditsTrialRemaining).toLocaleString() })} />
+                  <InfoTip text={t("subscription.aiCreditsTrialBreakdown", { trial: num(subscription.aiCreditsTrialRemaining) })} />
                 )}
               </th>
               <td>
-                {Number(subscription.aiCreditsRemaining ?? 0).toLocaleString()}
+                {num(subscription.aiCreditsRemaining ?? 0)}
                 {!hasAiDomain && subscription.aiCreditsRemaining > 0 && (
                   <span className="lw-bill__creditsunusable"> — {t("subscription.creditsUnusableInline")}</span>
                 )}
@@ -724,7 +723,7 @@ function PlansAndAddOns({
     ? (plans.find((p) => p.code === subscription.requestedPlanCode)?.name ?? subscription.requestedPlanCode)
     : null;
   const requestedPackNames = (subscription.requestedPackCodes ?? [])
-    .map((code) => packs.find((p) => p.code === code)?.name).filter(Boolean);
+    .map((code) => catalogName(t, packs?.find((p) => p.code === code))).filter(Boolean);
 
   return (
     <div>
@@ -817,8 +816,8 @@ function AddOnsTab({ plan, packs, billingCycle, currentPackCodes, busy, disabled
             <label key={pack.code} className={`lw-bill__pack ${unmet ? "is-disabled" : ""}`}>
               <input type="checkbox" checked={selected.includes(pack.code)} disabled={busy || disabled || unmet}
                      onChange={() => togglePack(pack.code)} />
-              <span className="lw-bill__packname">{pack.name}</span>
-              <span className="lw-bill__packprice">+{packPrice(pack)} {pack.currency}</span>
+              <span className="lw-bill__packname">{catalogName(t, pack)}</span>
+              <span className="lw-bill__packprice">+{money(packPrice(pack), pack.currency)}</span>
               {benefits.length > 0 && (
                 <span className="lw-bill__packbenefits">{t("subscription.packBenefitsLabel")}: {benefits.join(" · ")}</span>
               )}
@@ -838,18 +837,18 @@ function AddOnsTab({ plan, packs, billingCycle, currentPackCodes, busy, disabled
       <div className="lw-bill__totalbreakdown">
         <div className="lw-bill__total lw-bill__total--line">
           <span>{t("subscription.planLabel")}</span>
-          <span>{basePrice === 0 ? t("subscription.free") : <>{basePrice} {plan.currency} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}</span>
+          <span>{basePrice === 0 ? t("subscription.free") : <>{money(basePrice, plan.currency)} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}</span>
         </div>
         <div className="lw-bill__total lw-bill__total--line">
           <span>{t("subscription.addOns")}</span>
-          <span>{addOnsPrice === 0 ? t("subscription.addOnsNone") : <>+{addOnsPrice} {plan.currency}</>}</span>
+          <span>{addOnsPrice === 0 ? t("subscription.addOnsNone") : <>+{money(addOnsPrice, plan.currency)}</>}</span>
         </div>
         <div className="lw-bill__total">
           <span>{t("subscription.totalPrice")}</span>
           <strong>
             {total === 0
               ? t("subscription.free")
-              : <>{total} {plan.currency} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}
+              : <>{money(total, plan.currency)} {billingCycle === "Annual" ? t("subscription.perYear") : t("subscription.perMonth")}</>}
           </strong>
         </div>
       </div>
@@ -900,9 +899,9 @@ function historyChangeSummary(t, e) {
   if (e.learnerCapacityBefore !== e.learnerCapacityAfter)
     parts.push(`${t("subscription.learnerCapacity")}: ${e.learnerCapacityBefore} → ${e.learnerCapacityAfter}`);
   if (e.videoStorageGbBefore !== e.videoStorageGbAfter)
-    parts.push(`${t("subscription.videoStorage")}: ${e.videoStorageGbBefore}GB → ${e.videoStorageGbAfter}GB`);
+    parts.push(`${t("subscription.videoStorage")}: ${gb(e.videoStorageGbBefore)} → ${gb(e.videoStorageGbAfter)}`);
   if (e.resourceStorageGbBefore !== e.resourceStorageGbAfter)
-    parts.push(`${t("subscription.resourceStorage")}: ${e.resourceStorageGbBefore}GB → ${e.resourceStorageGbAfter}GB`);
+    parts.push(`${t("subscription.resourceStorage")}: ${gb(e.resourceStorageGbBefore)} → ${gb(e.resourceStorageGbAfter)}`);
   if (e.aiCreditsIncludedBefore !== e.aiCreditsIncludedAfter)
     parts.push(`${t("subscription.aiCredits")}: ${e.aiCreditsIncludedBefore} → ${e.aiCreditsIncludedAfter}`);
   return parts.join(" · ");
@@ -970,12 +969,12 @@ function BuyCreditsConfirmModal({ tier, busy, onClose, onConfirm }) {
   return (
     <Modal onClose={onClose} closeLabel={t("subscription.close")}>
       <div className="lw-eyebrow">{t("subscription.buyCreditsTitle")}</div>
-      <h2 className="lw-modal__title">{Number(tier.creditAmount).toLocaleString()} {t("subscription.aiCreditsUnit")}</h2>
+      <h2 className="lw-modal__title">{num(tier.creditAmount)} {t("subscription.aiCreditsUnit")}</h2>
       <p className="lw-bill__changenote">{t("subscription.buyCreditsConfirmNote")}</p>
 
       <div className="lw-bill__total">
         <span>{t("subscription.totalPrice")}</span>
-        <strong>{tier.price} {tier.currency}</strong>
+        <strong>{money(tier.price, tier.currency)}</strong>
       </div>
 
       <div className="lw-modal__actions">
@@ -1008,7 +1007,7 @@ function UpgradeConfirmModal({ plan, currentPlan, busy, isAnnual, onClose, onCon
       )}
       <div className="lw-bill__total">
         <span>{t("subscription.totalPrice")}</span>
-        <strong>{price} {plan.currency} {isAnnual ? t("subscription.perYear") : t("subscription.perMonth")}</strong>
+        <strong>{money(price, plan.currency)} {isAnnual ? t("subscription.perYear") : t("subscription.perMonth")}</strong>
       </div>
       <div className="lw-bill__wizardactions">
         <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onClose}>{t("subscription.notNow")}</button>
@@ -1030,7 +1029,7 @@ function DowngradeConfirmModal({ plan, currentPlan, subscription, packs, busy, i
   // almost always exceed, so packsForDowngrade() drops every pack once the
   // target is Free — surfaced here so that isn't a silent surprise.
   const droppedPackNames = plan.code === FREE_PLAN_CODE
-    ? (subscription.selectedPackCodes ?? []).map((code) => packs?.find((p) => p.code === code)?.name).filter(Boolean)
+    ? (subscription.selectedPackCodes ?? []).map((code) => catalogName(t, packs?.find((p) => p.code === code))).filter(Boolean)
     : [];
 
   return (
@@ -1052,7 +1051,7 @@ function DowngradeConfirmModal({ plan, currentPlan, subscription, packs, busy, i
       <p className="lw-bill__changenote">{t("subscription.downgradeEffective", { date: fmtDate(subscription.currentPeriodEnd) })}</p>
       <div className="lw-bill__total">
         <span>{t("subscription.totalPrice")}</span>
-        <strong>{price} {plan.currency} {isAnnual ? t("subscription.perYear") : t("subscription.perMonth")}</strong>
+        <strong>{money(price, plan.currency)} {isAnnual ? t("subscription.perYear") : t("subscription.perMonth")}</strong>
       </div>
       <div className="lw-bill__wizardactions">
         <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onClose}>{t("subscription.keepCurrentPlan")}</button>
@@ -1123,10 +1122,10 @@ const CSS = `
 
   .lw-bill__pill {
     font-family: var(--font-mono); font-size: 11px; border-radius: 20px; padding: 4px 11px;
-    background: var(--surface-2); color: var(--ink-soft); display: inline-block; margin-bottom: 14px;
+    background: var(--surface-2); color: var(--ink); display: inline-block; margin-bottom: 14px;
   }
-  .lw-bill__pill.is-active { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
-  .lw-bill__pill.is-pastdue, .lw-bill__pill.is-grace { background: color-mix(in srgb, #E0A83E 20%, transparent); color: #A67519; }
+  .lw-bill__pill.is-active { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--ink); }
+  .lw-bill__pill.is-pastdue, .lw-bill__pill.is-grace { background: color-mix(in srgb, var(--accent-2) 20%, transparent); color: var(--ink); }
   .lw-bill__pill.is-suspended { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
   .lw-bill__pill.is-paid { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
   .lw-bill__pill.is-pending { background: color-mix(in srgb, #E0A83E 20%, transparent); color: #A67519; }
@@ -1196,7 +1195,7 @@ const CSS = `
     border: 1px solid transparent; background: transparent; padding: 7px 18px; border-radius: 999px;
     font-family: var(--font-body); font-size: 0.84rem; font-weight: 600; color: var(--ink-soft); cursor: pointer;
   }
-  .lw-bill__tabs button.is-active { background: var(--accent); color: #fff; }
+  .lw-bill__tabs button.is-active { background: var(--accent); color: var(--on-accent, #fff); }
   .lw-bill__tabs button:hover:not(.is-active), .lw-bill__tabs button:focus-visible:not(.is-active) { background: var(--surface-2, rgba(0,0,0,0.05)); }
   .lw-bill__tabpanel { max-width: 640px; }
   .lw-bill__tabpanel--wide { max-width: none; width: 100%; }

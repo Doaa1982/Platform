@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { formatDateActive } from "../i18n/format";
 import { LoaderCircle, ArrowLeft, ClipboardCheck, RotateCcw, Paperclip } from "lucide-react";
 import * as api from "../api/client";
 import AssetLink from "../components/AssetLink";
@@ -87,7 +88,7 @@ function OverviewTable({ slug, token, onSelect, t }) {
                 <td className="lw-assign__nowrap">{r.lessonTitle}</td>
                 <td className="lw-assign__nowrap">{r.activityTitle}<div className="lw-assign__submeta">{t(`studio.activityType.${r.activityType}`)}</div></td>
                 <td className="lw-assign__nowrap"><span className={`lw-assign__pill is-${r.status.toLowerCase()}`}>{r.status}</span></td>
-                <td className="lw-assign__nowrap">{r.dueAt ? new Date(r.dueAt).toLocaleDateString() : "—"}</td>
+                <td className="lw-assign__nowrap">{r.dueAt ? formatDateActive(r.dueAt) : "—"}</td>
                 <td className="lw-assign__nowrap">{r.recipientCount}</td>
                 <td className="lw-assign__nowrap">{r.submittedCount}</td>
               </tr>

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { AXE_TAGS, leftoverLatin } from "../lib/audit.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { SCREENS, SESSION_KEY } from "./screens.js";
@@ -19,13 +20,13 @@ import { SCREENS, SESSION_KEY } from "./screens.js";
 const SHOTS = path.resolve(import.meta.dirname, "../.output/entry-shots");
 const DEVICES = { desktop: { width: 1280, height: 860 }, mobile: { width: 390, height: 844 } };
 
-// Latin text that is legitimately on an Arabic page: the brand, and the fixtures' own user data.
-const ALLOWED_LATIN = [
-  "Teach Tandem", "English", "Al Noor Academy", "Bright Minds Tutoring", "Science Club", "Old Academy", "Omar Hassan",
+// Latin data on an Arabic entry page, beyond what the shared check always allows: the fixtures'
+// own workspace names/descriptions, and a workspace's initial on its card.
+const DATA = [
+  "Al Noor Academy", "Bright Minds Tutoring", "Science Club", "Old Academy", "Omar Hassan",
   "Math and Arabic for grades 7 to 9, taught live and recorded.", "QR",
-  /[\w.+-]+@[\w.-]+\.\w+/g,                // emails
-  /https?:\/\/\S+|\/apply\/status\/\S+/g,  // links shown for copying
-  /[A-Z]{1,3}\b/g,                         // a workspace's initial on its card
+  /\/apply\/status\/\S+/g,
+  /[A-Z]{1,3}\b/g,
 ];
 
 async function installApi(page, screen, unexpected) {
@@ -59,11 +60,6 @@ async function open(page, screen, lang, theme) {
   if (screen.act) await screen.act(page);
 }
 
-function leftoverLatin(text) {
-  let rest = text;
-  for (const allowed of ALLOWED_LATIN) rest = typeof allowed === "string" ? rest.split(allowed).join(" ") : rest.replace(allowed, " ");
-  return [...new Set(rest.match(/[A-Za-z]{2,}/g) ?? [])];
-}
 
 for (const screen of SCREENS) {
   for (const lang of ["en", "ar"]) {
@@ -80,20 +76,20 @@ for (const screen of SCREENS) {
         await expect(root).toHaveAttribute("lang", lang);
         await expect(root).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
 
-        const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+        const axe = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
         const violations = axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
         expect(violations, "axe found accessibility/contrast problems").toEqual([]);
 
         if (lang === "ar") {
           const text = await page.locator("body").innerText();
-          expect(leftoverLatin(text), "English text left on an Arabic screen").toEqual([]);
+          expect(leftoverLatin(text, DATA), "English text left on an Arabic screen").toEqual([]);
         }
 
         const dir = path.join(SHOTS, screen.id);
         fs.mkdirSync(dir, { recursive: true });
         await page.screenshot({ path: path.join(dir, `${lang}-${theme}-desktop.png`), fullPage: true });
         await page.setViewportSize(DEVICES.mobile);
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(400); // let layout settle at the new width before the mobile shot
         await page.screenshot({ path: path.join(dir, `${lang}-${theme}-mobile.png`), fullPage: true });
       });
     }

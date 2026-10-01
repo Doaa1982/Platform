@@ -32,7 +32,7 @@ export const APP_CSS = `
   .lw-accountbar__spacer { flex: 1; }
   .lw-accountbar button {
     display: inline-flex; align-items: center; gap: 6px;
-    background: transparent; border: 1px solid var(--bar-line); color: var(--ink-soft);
+    background: transparent; border: 1px solid var(--bar-line); color: color-mix(in srgb, var(--ink-soft) 70%, var(--ink));
     border-radius: 9999px; padding: 5px 12px; font-family: var(--font-body); font-size: 11.5px; font-weight: 500;
     cursor: pointer; transition: all .18s cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -49,7 +49,7 @@ export const APP_CSS = `
   .lw-accountmenu__avatar {
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     width: 22px; height: 22px; border-radius: 50%;
-    background: var(--accent); color: #fff;
+    background: var(--accent); color: var(--on-accent, #fff);
     font-family: var(--font-body); font-weight: 700; font-size: 0.75rem;
   }
   .lw-accountmenu__avatar--lg { width: 36px; height: 36px; font-size: 0.95rem; }
@@ -87,7 +87,7 @@ export const APP_CSS = `
     background: var(--surface-2, rgba(0,0,0,0.05)); color: var(--bar-ink);
   }
   .lw-accountbar .lw-accountbar__navlink.is-active {
-    color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    color: color-mix(in srgb, var(--accent) 75%, var(--ink)); border-color: color-mix(in srgb, var(--accent) 30%, transparent);
     background: color-mix(in srgb, var(--accent) 10%, var(--bar-bg)); font-weight: 600;
   }
   .lw-accountbar__more { position: relative; }
@@ -221,7 +221,8 @@ export const APP_CSS = `
   .lw-nav__name { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; line-height: 1.25; letter-spacing: 0.1px; }
   .lw-nav__tagline { font-size: 10.5px; opacity: 0.6; margin-top: 2px; }
   .lw-nav__items { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
-  .lw-nav__divider { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.45; padding: 12px 12px 4px; }
+  /* Mixed toward the nav background instead of opacity: 0.45 opacity fell below WCAG AA contrast. */
+  .lw-nav__divider { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: color-mix(in srgb, var(--nav-text) 72%, var(--nav-bg)); padding: 12px 12px 4px; }
   .lw-nav__item { display: flex; align-items: center; gap: 9px; background: transparent; border: none; color: var(--nav-text); opacity: 0.72; padding: 8px 12px; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 0.84rem; cursor: pointer; text-align: start; transition: all .15s; }
   .lw-nav__item:hover { opacity: 1; background: rgba(255,255,255,0.06); }
   .lw-nav__item.is-active { opacity: 1; background: var(--accent); color: var(--on-accent, #fff); }
@@ -245,10 +246,13 @@ export const APP_CSS = `
     .lw-nav {
       position: fixed; top: 0; bottom: 0; inset-inline-start: 0; z-index: 50;
       transform: translateX(-100%); transition: transform .25s ease;
-      box-shadow: 4px 0 24px rgba(0,0,0,0.28);
     }
     [dir="rtl"] .lw-nav { transform: translateX(100%); }
-    .lw-nav.is-open { transform: translateX(0); }
+    /* Shadow only while open: on the closed, off-screen drawer it bled ~20px into view as a dark
+       strip along the screen edge. Cast toward the content side in either direction. */
+    .lw-nav.is-open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.28); }
+    [dir="rtl"] .lw-nav.is-open { box-shadow: -4px 0 24px rgba(0,0,0,0.28); }
+    @media (prefers-reduced-motion: reduce) { .lw-nav { transition: none; } }
     .lw-content { padding: 20px 18px 40px; }
     /* The margin rule (.lw-content::before, desktop default 34px) sits inside
        this narrower padding otherwise, putting it mid-content instead of in
@@ -342,7 +346,7 @@ export const APP_CSS = `
   .lw-lessonnav__lessonrow svg.is-ready { color: var(--ink-soft); }
   .lw-lessonnav__lessonrow.is-locked { cursor: not-allowed; opacity: 0.5; }
   .lw-lessonnav__lessontitle { flex: 1; font-size: 0.84rem; line-height: 1.4; color: var(--ink); }
-  .lw-lessonnav__lessonrow.is-active .lw-lessonnav__lessontitle { color: var(--accent); }
+  .lw-lessonnav__lessonrow.is-active .lw-lessonnav__lessontitle { color: color-mix(in srgb, var(--accent) 75%, var(--ink)); }
   .lw-lessonnav__lessonmins { font-family: var(--font-mono, monospace); font-size: 10.5px; color: var(--ink-soft); }
 
   .lw-btn { font-family: var(--font-body); font-weight: 600; font-size: 0.85rem; border-radius: var(--radius-sm); padding: 10px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: transform .12s, box-shadow .12s; }
@@ -766,9 +770,17 @@ export const APP_CSS = `
   .lw-entry__empty h2 { color: var(--ink); font-size: 1.05rem; margin: 4px 0 0; }
   .lw-entry__empty p { margin: 0 0 6px; line-height: 1.55; }
 
-  /* Arabic: letter-spacing breaks letter joining and the mono font has no Arabic glyphs,
-     so small-caps-style labels switch to the body font with normal spacing. */
-  :lang(ar) .lw-eyebrow, :lang(ar) .lw-card__eyebrow { font-family: var(--font-body); letter-spacing: 0; text-transform: none; font-size: 12.5px; font-weight: 600; }
+  /* Arabic. The mono font has no Arabic glyphs, and the small uppercase letter-spaced label
+     style built on it (nav section dividers, tags, eyebrows, role badges, table headers) breaks
+     Arabic letter joining and shrinks it below legibility. Under Arabic, "mono" is the body font
+     — !important so it beats the palette's inline --font-mono — and those labels get a readable
+     size. (index.css already resets letter-spacing under RTL.) */
+  :lang(ar).lw-root, :lang(ar) .lw-root { --font-mono: var(--font-body) !important; }
+  :lang(ar) .lw-eyebrow, :lang(ar) .lw-card__eyebrow, :lang(ar) .lw-nav__divider, :lang(ar) .lw-tag,
+  :lang(ar) .lw-accountbar__role, :lang(ar) .lw-accountbar__side, :lang(ar) .lw-table__row--head,
+  :lang(ar) .lw-notifbell__head {
+    text-transform: none; font-size: 12px; font-weight: 600;
+  }
 
   .lw-entry__link--end { align-self: flex-end; }
   .lw-entry__back { margin-top: 18px; }
@@ -815,4 +827,8 @@ export const APP_CSS = `
   @media (prefers-reduced-motion: reduce) { .lw-land__claim { transition: none; } }
   .lw-prev__progress .is-p38 { width: 38%; } .lw-prev__progress .is-p64 { width: 64%; } .lw-prev__progress .is-p82 { width: 82%; }
   ${PLAN_PICKER_CARDS_CSS}
+
+  /* Addresses, slugs and other technical tokens are always left-to-right Latin text; isolated
+     so a leading "/" doesn't hop to the other end inside Arabic text. */
+  .lw-root code, .lw-root kbd, .pl-admin__slug { direction: ltr; unicode-bidi: isolate; }
 `;

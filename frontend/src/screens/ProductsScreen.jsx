@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { languageName } from "../i18n/format";
 import {
   LoaderCircle, Plus, RefreshCw, Send, Undo2,
   Globe, Archive, Pencil, BookOpen, Layers, X, Sparkles, Image as ImageIcon,
@@ -243,7 +244,7 @@ export default function ProductsScreen({ onOpenStudio }) {
                   {p.defaultLanguage && (
                     <>
                       <span className="lw-prod__proplabel">🌐 {t("products.language")}</span>
-                      <span className="lw-prod__propvalue">{p.defaultLanguage}</span>
+                      <span className="lw-prod__propvalue">{languageName(p.defaultLanguage)}</span>
                     </>
                   )}
 

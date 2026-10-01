@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDateActive } from "../i18n/format";
 import { LoaderCircle, Plus, X } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -193,7 +194,7 @@ export default function AdminEntitlementOverridesSection() {
                     <td><code>{o.entitlementKey}</code></td>
                     <td>{o.value}</td>
                     <td>{o.reason}</td>
-                    <td>{o.effectiveUntil ? new Date(o.effectiveUntil).toLocaleDateString() : t("admin.overrideNoExpiry")}</td>
+                    <td>{o.effectiveUntil ? formatDateActive(o.effectiveUntil) : t("admin.overrideNoExpiry")}</td>
                     <td>{o.status}</td>
                     <td>
                       {o.status === "Active" && (

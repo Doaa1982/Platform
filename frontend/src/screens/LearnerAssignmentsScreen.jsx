@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDateActive } from "../i18n/format";
 import { LoaderCircle, ListChecks, Lock, CheckCircle2, ArrowRight } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
@@ -66,7 +67,7 @@ export default function LearnerAssignmentsScreen({ onOpenAssignment }) {
                   <span className="lw-lassign__lesson">{r.lessonTitle}</span>
                   <StatusPill status={r.learnerStatus} t={t} />
                   {r.dueAt && r.learnerStatus !== "Completed" && (
-                    <span className="lw-lassign__due">{t("learnerAssignments.dueLabel", { date: new Date(r.dueAt).toLocaleDateString() })}</span>
+                    <span className="lw-lassign__due">{t("learnerAssignments.dueLabel", { date: formatDateActive(r.dueAt) })}</span>
                   )}
                 </div>
                 {!locked && <ArrowRight size={14} className="lw-lassign__rowarrow" />}
