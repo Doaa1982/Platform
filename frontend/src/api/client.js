@@ -706,6 +706,16 @@ export function generateLessonTranscript(token, slug, lessonId, language = null,
 }
 
 /**
+ * GET .../lessons/{lessonId}/transcript/cost — current AI-credit cost of each transcription
+ * mode ({ audioCredits, videoLowResCredits }), read live off server config rather than
+ * hard-coded in the UI. Not lesson-specific (same price for every lesson), but served on this
+ * route to reuse the same workspace-membership check every other lesson endpoint goes through.
+ */
+export function getTranscriptionCost(token, slug, lessonId) {
+  return request(`/workspaces/${encodeURIComponent(slug)}/lessons/${lessonId}/transcript/cost`, { token });
+}
+
+/**
  * POST .../lessons/{lessonId}/transcript/enhance — starts a conservative AI
  * enhancement pass (ASR-error correction only) over the open revision's
  * already-Ready raw transcript. The raw transcript itself is never touched.
