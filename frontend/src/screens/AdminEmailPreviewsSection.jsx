@@ -76,9 +76,9 @@ export default function AdminEmailPreviewsSection() {
       {preview && (
         <>
           <dl className="pl-emailpreview__meta">
-            <dt>{t("admin.emailPreviewsFrom")}</dt><dd dir="auto">{preview.fromDisplayName}</dd>
+            <dt>{t("admin.emailPreviewsFrom")}</dt><dd><bdi>{preview.fromDisplayName}</bdi></dd>
             {preview.replyTo && <><dt>{t("admin.emailPreviewsReplyTo")}</dt><dd>{preview.replyTo}</dd></>}
-            <dt>{t("admin.emailPreviewsSubject")}</dt><dd dir="auto">{preview.subject}</dd>
+            <dt>{t("admin.emailPreviewsSubject")}</dt><dd><bdi>{preview.subject}</bdi></dd>
             <dt>{t("admin.emailPreviewsRecipient")}</dt><dd>{t(`admin.emailRecipient${preview.template}`)}</dd>
           </dl>
           <div className="pl-emailpreview__frame" style={{ width: WIDTHS[width] }}>
