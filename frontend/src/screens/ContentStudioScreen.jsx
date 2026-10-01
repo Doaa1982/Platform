@@ -4,7 +4,7 @@ import {
   Globe, Undo2, Archive, Layers, FileText, Pencil, Check, BookOpen,
   UploadCloud, Sparkles, Bot, PlayCircle, Link as LinkIcon, ChevronUp, ChevronDown,
   ClipboardCheck, Paperclip, Download, ClipboardList, SlidersHorizontal, Target,
-  ListChecks, Send, CalendarClock, RotateCcw,
+  ListChecks, Send, CalendarClock, RotateCcw, Mic, MonitorPlay,
 } from "lucide-react";
 import * as api from "../api/client";
 import AssetImage from "../components/AssetImage";
@@ -1701,7 +1701,10 @@ function EnhancementReviewItems({ json, t }) {
   );
 }
 
-function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempted, onChanged, onDurationKnown, onRequestNewVersion, transcript, setTranscript }) {
+// Exported (alongside the screen's default export) so the transcript panel — its biggest, most
+// independently-testable piece — can be rendered and tested directly, the same way VideoPlayer
+// is tested standalone, rather than through the whole Content Studio screen.
+export function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempted, onChanged, onDurationKnown, onRequestNewVersion, transcript, setTranscript }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -1740,6 +1743,27 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   // faster, right for most lessons); VideoLowRes for a lesson where on-screen text/diagrams
   // carry meaning the audio track alone would miss.
   const [transcriptInputMode, setTranscriptInputMode] = useState("Audio");
+  // Each mode's current AI-credit cost, fetched once (best-effort — the create button still
+  // works if this never resolves, it just shows no cost hint). Not reset when the mode changes;
+  // the same two numbers price both cards regardless of which one is currently selected.
+  const [transcriptCost, setTranscriptCost] = useState(null);
+  // Shows the mode/language cards + Create button. Always true while no Ready transcript exists
+  // yet (None/Processing/Failed); for an already-Ready transcript, only the tutor's own "Redo"
+  // click sets this — reset to false on a successful (re)generation request (see
+  // handleGenerateTranscript), left true on a failed one so the form stays up to retry/adjust.
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  // Whether the raw transcript box itself is shown once a transcript is Ready — collapsed by
+  // default behind "Edit" so the ready state reads as a short summary, not a wall of text.
+  const [editingTranscript, setEditingTranscript] = useState(false);
+
+  useEffect(() => {
+    if (!hasVideo || !editable) return;
+    let cancelled = false;
+    api.getTranscriptionCost(session.token, slug, lesson.id)
+      .then((res) => { if (!cancelled) setTranscriptCost(res); })
+      .catch(() => {}); // best-effort hint only — never blocks transcript creation
+    return () => { cancelled = true; };
+  }, [hasVideo, editable, slug, lesson.id, session?.token]);
 
   // AI Transcript Enhancement — a conservative, tutor-triggered ASR-error
   // correction pass over the already-Ready raw transcript above. Entirely
@@ -1769,9 +1793,13 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
     setStartingTranscript(true);
     try {
       await api.generateLessonTranscript(session.token, slug, lesson.id, transcriptLanguage, transcriptInputMode);
+      // Status flips to Processing immediately, which already keeps the create form visible
+      // (see showCreateForm's own remarks) — this just lets it collapse back once Ready, instead
+      // of staying forced-open from an earlier "Redo" click.
+      setShowCreateForm(false);
       onChanged();
     } catch (e) {
-      setTranscriptError(e.message);
+      setTranscriptError(e.message); // form stays visible (showCreateForm untouched) so the tutor can retry
     } finally {
       setStartingTranscript(false);
     }
@@ -1848,6 +1876,24 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
   // deliberately doesn't reuse LiveSession's "recording" framing (title,
   // hint copy): a reading lesson never expects a recording of anything.
   const videoOptional = isLive || isReading;
+
+  const transcriptIsReady = transcriptStatus === "Ready";
+  // The create form (mode cards + language + button) shows whenever there's no Ready transcript
+  // yet, or the tutor explicitly asked to redo one (showCreateForm) — see that state's own remarks.
+  const showTranscriptForm = !transcriptIsReady || showCreateForm;
+  const transcriptModeLabel = transcriptInputModeUsed
+    ? t(transcriptInputModeUsed === "VideoLowRes" ? "studio.transcriptInputModeUsedVideoLowRes" : "studio.transcriptInputModeUsedAudio")
+    : null;
+  // Best-effort only: the language actually used isn't persisted server-side (unlike the mode
+  // above), so this reflects transcriptLanguage's current value — accurate for the transcript
+  // that was just created this session, reset to "Auto-detect" on a fresh page load.
+  const transcriptLanguageLabel = {
+    auto: t("studio.transcriptLanguageAuto"), ar: t("studio.transcriptLanguageArabic"), en: t("studio.transcriptLanguageEnglish"),
+  }[transcriptLanguage];
+  const transcriptModeCards = [
+    { value: "Audio", Icon: Mic, label: "studio.transcriptInputModeAudio", hint: "studio.transcriptInputModeAudioHint", cost: transcriptCost?.audioCredits },
+    { value: "VideoLowRes", Icon: MonitorPlay, label: "studio.transcriptInputModeVideoLowRes", hint: "studio.transcriptInputModeVideoLowResHint", cost: transcriptCost?.videoLowResCredits },
+  ];
 
   return (
     <div className="lw-studio__section">
@@ -1986,105 +2032,40 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
           {transcriptError && <Message type="error">{transcriptError}</Message>}
 
           {editable ? (
-            <details open>
-              <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span>
-                  Transcript
-                  {transcriptSource !== "None" && (
-                    <span className="muted" style={{ marginLeft: 8, fontWeight: "normal", fontSize: "0.75rem" }}>
-                      ({transcriptSource}
-                      {transcriptInputModeUsed && `, ${t(transcriptInputModeUsed === "VideoLowRes" ? "studio.transcriptInputModeUsedVideoLowRes" : "studio.transcriptInputModeUsedAudio")}`})
-                    </span>
-                  )}
-                </span>
-                {transcriptStatus !== "Processing" && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <select
-                      value={transcriptLanguage}
-                      disabled={startingTranscript || !hasVideo}
-                      onChange={(e) => setTranscriptLanguage(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      title={t("studio.transcriptLanguageHint")}
-                      style={{ fontSize: "0.78rem", padding: "3px 6px" }}
-                    >
-                      <option value="auto">{t("studio.transcriptLanguageAuto")}</option>
-                      <option value="ar">{t("studio.transcriptLanguageArabic")}</option>
-                      <option value="en">{t("studio.transcriptLanguageEnglish")}</option>
-                    </select>
-                    <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={startingTranscript || !hasVideo} onClick={(e) => { e.preventDefault(); handleGenerateTranscript(); }} title={!hasVideo ? "Upload a video first" : ""}>
-                      {startingTranscript ? <LoaderCircle size={13} className="lw-studio__spin" /> : <Sparkles size={13} />} {t(transcriptStatus === "Failed" ? "studio.retryTranscript" : "studio.generateTranscript")}
-                    </button>
-                  </span>
-                )}
-                {transcriptStatus === "Processing" && (
-                  <span className="muted" style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: 4 }}>
-                    <LoaderCircle size={13} className="lw-studio__spin" /> {t("studio.transcriptProcessing")}
-                  </span>
-                )}
-              </summary>
-
-              {transcriptStatus !== "Processing" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "8px 0 4px" }}>
-                  {[
-                    { value: "Audio", label: "studio.transcriptInputModeAudio", hint: "studio.transcriptInputModeAudioHint" },
-                    { value: "VideoLowRes", label: "studio.transcriptInputModeVideoLowRes", hint: "studio.transcriptInputModeVideoLowResHint" },
-                  ].map(({ value, label, hint }) => (
-                    <label key={value} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: "0.8rem", cursor: startingTranscript ? "default" : "pointer" }}>
-                      <input
-                        type="radio" name={`transcriptInputMode-${lesson.id}`} value={value}
-                        checked={transcriptInputMode === value} disabled={startingTranscript}
-                        onChange={() => setTranscriptInputMode(value)}
-                      />
-                      <span>
-                        {t(label)}
-                        <span className="muted" style={{ marginLeft: 6, fontSize: "0.74rem" }}>— {t(hint)}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-              {transcriptStatus === "Failed" && (
-                <div style={{ marginTop: 8 }}>
-                  <Message type="error">{revision.transcriptError ?? t("studio.transcriptFailed")}</Message>
-                </div>
-              )}
-              <textarea
-                rows={8}
-                value={transcript}
-                onChange={(e) => setTranscript(e.target.value)}
-                disabled={transcriptStatus === "Processing"}
-                placeholder="Enter or edit the lesson transcript here..."
-                style={{ width: "100%", marginTop: 8, fontFamily: "monospace", fontSize: "13px" }}
-              />
-
-              {enhanceError && <Message type="error">{enhanceError}</Message>}
-
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.8rem" }}>
-                    <Sparkles size={13} />
-                    <strong>{t("studio.enhanceTranscriptLabel")}</strong>
-                    <EnhancementStatusBadge status={enhancementStatus} t={t} />
-                  </span>
-
-                  {!confirmingEnhance ? (
-                    <button
-                      className="lw-btn lw-btn--ghost lw-btn--xs"
-                      disabled={transcriptStatus !== "Ready" || startingEnhancement || enhancementStatus === "Processing"}
-                      onClick={() => setConfirmingEnhance(true)}
-                      title={transcriptStatus !== "Ready" ? t("studio.enhanceTranscriptNeedsRawTranscript") : ""}
-                    >
-                      {enhancementStatus === "Processing" ? (
-                        <><LoaderCircle size={13} className="lw-studio__spin" /> {t("studio.enhanceTranscriptEnhancing")}</>
-                      ) : (
-                        <>
-                          <Sparkles size={13} />{" "}
-                          {t(enhancementStatus === "None" ? "studio.enhanceTranscriptEnhance" : "studio.enhanceTranscriptEnhanceAgain")}
-                        </>
+            <div className="lw-transcriptpanel">
+              {transcriptIsReady && !showCreateForm && (
+                <div className="lw-transcriptready">
+                  <div className="lw-transcriptready__row">
+                    <span className="lw-transcriptready__title">
+                      {t("studio.transcriptLabel")}
+                      <Check size={14} className="lw-transcriptready__check" />
+                      {t("studio.transcriptReadyLabel")}
+                      {(transcriptModeLabel || transcriptLanguageLabel) && (
+                        <span className="muted lw-transcriptready__meta">
+                          {" · "}{[transcriptModeLabel, transcriptLanguageLabel].filter(Boolean).join(" · ")}
+                        </span>
                       )}
-                    </button>
-                  ) : (
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    </span>
+                    <span className="lw-transcriptready__actions">
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={() => setEditingTranscript((v) => !v)}>
+                        <Pencil size={13} /> {t("studio.transcriptEdit")}
+                      </button>
+                      <button
+                        type="button" className="lw-btn lw-btn--ghost lw-btn--xs"
+                        disabled={startingEnhancement || enhancementStatus === "Processing"}
+                        onClick={() => setConfirmingEnhance(true)}
+                      >
+                        {enhancementStatus === "Processing" ? <LoaderCircle size={13} className="lw-studio__spin" /> : <Sparkles size={13} />}
+                        {" "}{t("studio.transcriptImproveWithAi")} <EnhancementStatusBadge status={enhancementStatus} t={t} />
+                      </button>
+                      <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={() => setShowCreateForm(true)}>
+                        <RotateCcw size={13} /> {t("studio.transcriptRedo")}
+                      </button>
+                    </span>
+                  </div>
+
+                  {confirmingEnhance && (
+                    <div className="lw-transcriptready__confirm">
                       <span className="muted" style={{ fontSize: "0.78rem" }}>{t("studio.enhanceTranscriptConfirm")}</span>
                       <button className="lw-btn lw-btn--primary lw-btn--xs" disabled={startingEnhancement} onClick={handleEnhanceTranscript}>
                         {startingEnhancement ? <LoaderCircle size={13} className="lw-studio__spin" /> : t("studio.enhanceTranscriptConfirmYes")}
@@ -2092,75 +2073,155 @@ function VideoSection({ lesson, editable, hasDraft, deliveryMode, publishAttempt
                       <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={startingEnhancement} onClick={() => setConfirmingEnhance(false)}>
                         {t("studio.enhanceTranscriptConfirmNo")}
                       </button>
-                    </span>
-                  )}
-                </div>
-
-                {enhancementStatus === "Failed" && (
-                  <div style={{ marginTop: 8 }}>
-                    <Message type="error">{revision.enhancementError ?? t("studio.enhanceTranscriptFailedMessage")}</Message>
-                  </div>
-                )}
-
-                {(enhancementStatus === "Ready" || enhancementStatus === "ReviewRequired") && revision.enhancedTranscript && (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, marginBottom: 6 }}>
-                      {["raw", "enhanced", "compare"].map((view) => (
-                        <button
-                          key={view}
-                          className={`lw-btn lw-btn--xs ${transcriptView === view ? "lw-btn--primary" : "lw-btn--ghost"}`}
-                          onClick={() => setTranscriptView(view)}
-                        >
-                          {t(`studio.enhanceTranscriptView${view[0].toUpperCase()}${view.slice(1)}`)}
-                        </button>
-                      ))}
                     </div>
+                  )}
 
-                    {enhancementStatus === "ReviewRequired" && (
-                      <div style={{ background: "#F0C040", color: "#4A3A00", borderRadius: 8, padding: "8px 12px", marginBottom: 8, fontSize: "0.8rem" }}>
-                        {t("studio.enhanceTranscriptReviewRequired")}
-                        <EnhancementReviewItems json={revision.enhancementReviewItemsJson} t={t} />
+                  {editingTranscript && (
+                    <textarea
+                      rows={12}
+                      dir="auto"
+                      value={transcript}
+                      onChange={(e) => setTranscript(e.target.value)}
+                      placeholder={t("studio.transcriptPlaceholder")}
+                      className="lw-transcriptbox"
+                    />
+                  )}
+
+                  {enhanceError && <Message type="error">{enhanceError}</Message>}
+
+                  {enhancementStatus === "Failed" && (
+                    <Message type="error">{revision.enhancementError ?? t("studio.enhanceTranscriptFailedMessage")}</Message>
+                  )}
+
+                  {(enhancementStatus === "Ready" || enhancementStatus === "ReviewRequired") && revision.enhancedTranscript && (
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, marginBottom: 6 }}>
+                        {["raw", "enhanced", "compare"].map((view) => (
+                          <button
+                            key={view}
+                            className={`lw-btn lw-btn--xs ${transcriptView === view ? "lw-btn--primary" : "lw-btn--ghost"}`}
+                            onClick={() => setTranscriptView(view)}
+                          >
+                            {t(`studio.enhanceTranscriptView${view[0].toUpperCase()}${view.slice(1)}`)}
+                          </button>
+                        ))}
                       </div>
-                    )}
 
-                    <p className="muted" style={{ fontSize: "0.72rem", margin: "4px 0 8px" }}>
-                      {t("studio.enhanceTranscriptMetadata", {
-                        model: revision.enhancementModel ?? "?",
-                        date: revision.enhancementCompletedAt ? new Date(revision.enhancementCompletedAt).toLocaleString() : "?",
-                      })}
-                    </p>
-
-                    {transcriptView === "enhanced" && (
-                      <div>
-                        <span className="lw-tag" style={{ fontSize: "0.7rem" }}>{t("studio.enhanceTranscriptAiTag")}</span>
-                        <textarea
-                          readOnly rows={8} value={revision.enhancedTranscript}
-                          style={{ width: "100%", marginTop: 6, fontFamily: "monospace", fontSize: "13px", background: "var(--surface-2, #f4f4f2)" }}
-                        />
-                      </div>
-                    )}
-
-                    {transcriptView === "compare" && (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <div>
-                          <p className="muted" style={{ fontSize: "0.72rem", margin: "0 0 4px" }}>{t("studio.enhanceTranscriptViewRaw")}</p>
-                          <textarea readOnly rows={10} value={transcript} style={{ width: "100%", fontFamily: "monospace", fontSize: "12px" }} />
+                      {enhancementStatus === "ReviewRequired" && (
+                        <div style={{ background: "#F0C040", color: "#4A3A00", borderRadius: 8, padding: "8px 12px", marginBottom: 8, fontSize: "0.8rem" }}>
+                          {t("studio.enhanceTranscriptReviewRequired")}
+                          <EnhancementReviewItems json={revision.enhancementReviewItemsJson} t={t} />
                         </div>
+                      )}
+
+                      <p className="muted" style={{ fontSize: "0.72rem", margin: "4px 0 8px" }}>
+                        {t("studio.enhanceTranscriptMetadata", {
+                          model: revision.enhancementModel ?? "?",
+                          date: revision.enhancementCompletedAt ? new Date(revision.enhancementCompletedAt).toLocaleString() : "?",
+                        })}
+                      </p>
+
+                      {transcriptView === "enhanced" && (
                         <div>
-                          <p className="muted" style={{ fontSize: "0.72rem", margin: "0 0 4px" }}>
-                            {t("studio.enhanceTranscriptAiTag")}
-                          </p>
+                          <span className="lw-tag" style={{ fontSize: "0.7rem" }}>{t("studio.enhanceTranscriptAiTag")}</span>
                           <textarea
-                            readOnly rows={10} value={revision.enhancedTranscript}
-                            style={{ width: "100%", fontFamily: "monospace", fontSize: "12px", background: "var(--surface-2, #f4f4f2)" }}
+                            readOnly rows={8} dir="auto" value={revision.enhancedTranscript}
+                            className="lw-transcriptbox" style={{ marginTop: 6, background: "var(--surface-2, #f4f4f2)" }}
                           />
                         </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </details>
+                      )}
+
+                      {transcriptView === "compare" && (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          <div>
+                            <p className="muted" style={{ fontSize: "0.72rem", margin: "0 0 4px" }}>{t("studio.enhanceTranscriptViewRaw")}</p>
+                            <textarea readOnly rows={10} dir="auto" value={transcript} className="lw-transcriptbox" style={{ fontSize: "12px" }} />
+                          </div>
+                          <div>
+                            <p className="muted" style={{ fontSize: "0.72rem", margin: "0 0 4px" }}>
+                              {t("studio.enhanceTranscriptAiTag")}
+                            </p>
+                            <textarea
+                              readOnly rows={10} dir="auto" value={revision.enhancedTranscript}
+                              className="lw-transcriptbox" style={{ fontSize: "12px", background: "var(--surface-2, #f4f4f2)" }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {showTranscriptForm && (
+                <div className="lw-transcriptcreate">
+                  {transcriptIsReady && showCreateForm && (
+                    <p className="muted lw-transcriptcreate__warning">{t("studio.transcriptRedoWarning")}</p>
+                  )}
+
+                  <div className="lw-transcriptcards">
+                    {transcriptModeCards.map(({ value, Icon, label, hint, cost }) => (
+                      <button
+                        key={value} type="button"
+                        className={`lw-transcriptcard${transcriptInputMode === value ? " lw-transcriptcard--selected" : ""}`}
+                        aria-pressed={transcriptInputMode === value}
+                        disabled={startingTranscript || transcriptStatus === "Processing"}
+                        onClick={() => setTranscriptInputMode(value)}
+                      >
+                        <Icon size={18} className="lw-transcriptcard__icon" />
+                        <span className="lw-transcriptcard__title">{t(label)}</span>
+                        <span className="lw-transcriptcard__hint">{t(hint)}</span>
+                        {cost != null && (
+                          <span className="lw-transcriptcard__cost">{cost.toLocaleString()} {t("subscription.aiCreditsUnit")}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="lw-transcriptcreate__row">
+                    <label className="lw-transcriptcreate__lang">
+                      <span>{t("studio.transcriptLanguageLabel")}</span>
+                      <select
+                        value={transcriptLanguage}
+                        disabled={startingTranscript || transcriptStatus === "Processing"}
+                        onChange={(e) => setTranscriptLanguage(e.target.value)}
+                        title={t("studio.transcriptLanguageHint")}
+                      >
+                        <option value="auto">{t("studio.transcriptLanguageAuto")}</option>
+                        <option value="ar">{t("studio.transcriptLanguageArabic")}</option>
+                        <option value="en">{t("studio.transcriptLanguageEnglish")}</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button" className="lw-btn lw-btn--accent lw-btn--sm"
+                      disabled={startingTranscript || transcriptStatus === "Processing" || !hasVideo}
+                      onClick={handleGenerateTranscript}
+                      title={!hasVideo ? "Upload a video first" : ""}
+                    >
+                      {(startingTranscript || transcriptStatus === "Processing") ? (
+                        <><LoaderCircle size={13} className="lw-studio__spin" /> {t("studio.transcriptCreating")}</>
+                      ) : (
+                        <><Sparkles size={13} /> {t(transcriptStatus === "Failed" ? "studio.retryTranscript" : "studio.generateTranscript")}</>
+                      )}
+                    </button>
+                  </div>
+
+                  {transcriptStatus === "Failed" && (
+                    <Message type="error">{revision.transcriptError ?? t("studio.transcriptFailed")}</Message>
+                  )}
+
+                  <textarea
+                    rows={12}
+                    dir="auto"
+                    value={transcript}
+                    onChange={(e) => setTranscript(e.target.value)}
+                    disabled={transcriptStatus === "Processing"}
+                    placeholder={t("studio.transcriptPlaceholder")}
+                    className="lw-transcriptbox"
+                  />
+                </div>
+              )}
+            </div>
           ) : (
             <>
               {transcriptStatus === "None" && <span className="muted">{t("studio.transcriptNone")}</span>}

@@ -1665,6 +1665,38 @@ const CSS = `
   .lw-videosource { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
   .lw-tag--source { background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color: var(--accent); margin-inline-start: 6px; }
 
+  .lw-transcriptpanel { display: flex; flex-direction: column; gap: 12px; }
+  .lw-transcriptbox { width: 100%; font-family: var(--font-mono, monospace); font-size: 13px; resize: vertical; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); color: var(--ink); }
+
+  .lw-transcriptready { display: flex; flex-direction: column; gap: 8px; }
+  .lw-transcriptready__row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .lw-transcriptready__title { font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+  .lw-transcriptready__check { color: var(--accent-2, var(--accent)); }
+  .lw-transcriptready__meta { font-weight: normal; font-size: 0.75rem; }
+  .lw-transcriptready__actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .lw-transcriptready__confirm { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  .lw-transcriptcreate { display: flex; flex-direction: column; gap: 10px; }
+  .lw-transcriptcreate__warning { font-size: 0.78rem; margin: 0; }
+  .lw-transcriptcreate__row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+  .lw-transcriptcreate__lang { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; }
+  .lw-transcriptcreate__lang select { font-size: 0.82rem; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+
+  .lw-transcriptcards { display: flex; gap: 10px; flex-wrap: wrap; }
+  .lw-transcriptcard {
+    flex: 1 1 220px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: start;
+    padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); background: var(--surface);
+    color: var(--ink); cursor: pointer; font-family: var(--font-body); transition: border-color .12s, background-color .12s;
+  }
+  .lw-transcriptcard:hover:not(:disabled) { border-color: var(--accent); }
+  .lw-transcriptcard--selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+  .lw-transcriptcard:disabled { opacity: 0.6; cursor: default; }
+  .lw-transcriptcard__icon { color: var(--accent); }
+  .lw-transcriptcard__title { font-weight: 600; font-size: 0.85rem; }
+  .lw-transcriptcard__hint { font-size: 0.76rem; color: var(--ink-soft); }
+  .lw-transcriptcard__cost { font-size: 0.72rem; color: var(--ink-soft); margin-top: 2px; }
+  @media (max-width: 520px) { .lw-transcriptcards { flex-direction: column; } .lw-transcriptcard { flex: 1 1 auto; } }
+
   .lw-principle { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2); border-radius: var(--radius-sm); padding: 13px 16px; font-size: 0.85rem; color: var(--ink-soft); margin-top: 20px; }
   .lw-principle strong { color: var(--ink); }
 

@@ -112,46 +112,38 @@ public class DeepgramTranscriptionProvider(HttpClient http, DeepgramOptions opti
     }
 
     /// <summary>
-    /// Reconstructs a "SPEAKER: S1" / "SPEAKER: S2" labeled transcript from
-    /// Deepgram's <c>utterances</c> array — same inline-label convention
-    /// SpeechmaticsTranscriptionProvider's transcript already used (see its
-    /// own doc comment on why diarization is requested), so every text-based
-    /// AI skill reading LessonRevision.Transcript keeps seeing the same shape
-    /// regardless of which provider produced it.
+    /// Reconstructs an "S1: " / "S2: " labeled transcript (see
+    /// <see cref="SpeakerLabelFormatter"/> for the canonical shape every provider's output is
+    /// normalized to) from Deepgram's <c>utterances</c> array, one speaker turn per line.
     ///
     /// Deepgram's <c>words[].speaker</c> is the lower-level signal utterances
     /// are already built from — walking it directly would mean re-deriving
     /// sentence/pause boundaries ourselves. utterances=true asks Deepgram to
     /// do that grouping, so this only needs to re-group ADJACENT utterances
     /// that share a speaker (Deepgram can still split one speaker's turn into
-    /// several short utterances at natural pauses) to avoid a "SPEAKER: S1"
-    /// header before every single sentence.
+    /// several short utterances at natural pauses) to avoid a new label
+    /// before every single sentence.
     /// </summary>
     private static string? BuildLabeledTranscript(List<DeepgramUtterance>? utterances)
     {
         if (utterances is not { Count: > 0 }) return null;
 
-        var sb = new StringBuilder();
-        int? currentSpeaker = null;
+        var turns = new List<(int Speaker, StringBuilder Text)>();
         foreach (var utterance in utterances)
         {
             var text = utterance.Transcript?.Trim();
             if (string.IsNullOrEmpty(text)) continue;
 
-            if (utterance.Speaker != currentSpeaker)
-            {
-                if (currentSpeaker is not null) sb.Append('\n');
-                sb.Append("SPEAKER: S").Append((utterance.Speaker ?? 0) + 1).Append('\n');
-                currentSpeaker = utterance.Speaker;
-            }
+            var speaker = utterance.Speaker ?? 0;
+            if (turns.Count > 0 && turns[^1].Speaker == speaker)
+                turns[^1].Text.Append(' ').Append(text);
             else
-            {
-                sb.Append(' ');
-            }
-            sb.Append(text);
+                turns.Add((speaker, new StringBuilder(text)));
         }
 
-        return sb.Length > 0 ? sb.ToString() : null;
+        return turns.Count > 0
+            ? string.Join('\n', turns.Select(turn => $"S{turn.Speaker + 1}: {turn.Text}"))
+            : null;
     }
 
     /// <summary>Deepgram accepts many audio/video containers directly (like Speechmatics does with mp4) — matches ContentStudioService.SupportedTranscriptionExtensions.</summary>

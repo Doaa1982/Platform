@@ -904,6 +904,24 @@ public class ContentStudioService(
     /// </summary>
     private static readonly string[] SupportedTranscriptionInputModes = ["Audio", "VideoLowRes"];
 
+    /// <summary>
+    /// Read-only — lets the transcript panel show each mode's credit cost before the tutor
+    /// commits to one, without duplicating GenerateTranscriptAsync's own pricing math (which
+    /// stays the sole source of truth for what actually gets charged; this can go briefly stale
+    /// relative to it under a concurrent price change, same best-effort caveat
+    /// ICreditLedgerService.GetCurrentCostAsync's own remarks describe).
+    /// </summary>
+    public async Task<ProvisioningResult<TranscriptionCostResponse>> GetTranscriptionCostAsync(
+        string slug, Guid caller, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<TranscriptionCostResponse>(ctx.Error.Value);
+
+        var audioCost = await credits.GetCurrentCostAsync(AiSkillKeys.GenerateTranscript, band: null, ct);
+        var videoLowResCost = audioCost is { } cost ? cost * transcriptionOptions.VideoLowResCostMultiplier : (int?)null;
+        return ProvisioningResult<TranscriptionCostResponse>.Success(new TranscriptionCostResponse(audioCost, videoLowResCost));
+    }
+
     public async Task<ProvisioningResult<LessonDetailResponse>> GenerateTranscriptAsync(
         string slug, Guid caller, Guid lessonId, string? language, string? inputMode, CancellationToken ct = default)
     {

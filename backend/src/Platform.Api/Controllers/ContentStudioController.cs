@@ -232,6 +232,12 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
         string slug, Guid lessonId, [FromBody] GenerateTranscriptRequest? request, CancellationToken ct)
         => Run(await studio.GenerateTranscriptAsync(slug, Caller(), lessonId, request?.Language, request?.InputMode, ct));
 
+    /// <summary>Current AI-credit cost of each transcription mode — read live off config so the panel's cost hint can never drift from what generating actually charges. Not lesson-specific (same price for every lesson), but kept on this route for the same auth/workspace-membership check every other lesson endpoint already goes through.</summary>
+    [HttpGet("transcript/cost")]
+    public async Task<ActionResult<TranscriptionCostResponse>> GetTranscriptionCost(
+        string slug, Guid lessonId, CancellationToken ct)
+        => Run(await studio.GetTranscriptionCostAsync(slug, Caller(), ct));
+
     /// <summary>
     /// Starts a conservative AI enhancement pass over the open revision's
     /// already-Ready raw transcript — ASR-error correction only, the raw
