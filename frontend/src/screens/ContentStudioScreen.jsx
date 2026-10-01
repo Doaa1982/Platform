@@ -2082,7 +2082,7 @@ export function VideoSection({ lesson, editable, hasDraft, deliveryMode, publish
                       dir="auto"
                       value={transcript}
                       onChange={(e) => setTranscript(e.target.value)}
-                      placeholder="Enter or edit the lesson transcript here..."
+                      placeholder={t("studio.transcriptPlaceholder")}
                       className="lw-transcriptbox"
                     />
                   )}
@@ -2216,7 +2216,7 @@ export function VideoSection({ lesson, editable, hasDraft, deliveryMode, publish
                     value={transcript}
                     onChange={(e) => setTranscript(e.target.value)}
                     disabled={transcriptStatus === "Processing"}
-                    placeholder="Enter or edit the lesson transcript here..."
+                    placeholder={t("studio.transcriptPlaceholder")}
                     className="lw-transcriptbox"
                   />
                 </div>
