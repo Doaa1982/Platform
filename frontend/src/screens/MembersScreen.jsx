@@ -8,6 +8,7 @@ import {
   Copy, Check, QrCode, Printer, MessageCircle,
 } from "lucide-react";
 import QRCode from "qrcode";
+import { joinPath, joinUrl } from "../utils/joinUrl";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
@@ -113,8 +114,7 @@ export default function MembersScreen({ initialTab }) {
   useEffect(() => {
     if (!setup?.acceptsJoinRequests || !setup?.slug) return;
     let cancelled = false;
-    const joinUrl = `${window.location.origin}/join/${setup.slug}`;
-    QRCode.toDataURL(joinUrl, { width: 176, margin: 1 })
+    QRCode.toDataURL(joinUrl(setup.slug), { width: 176, margin: 1 })
       .then((url) => { if (!cancelled) setQrDataUrl(url); })
       .catch(() => { if (!cancelled) setQrDataUrl(null); });
     return () => { cancelled = true; setQrDataUrl(null); };
@@ -577,10 +577,10 @@ export default function MembersScreen({ initialTab }) {
 
           {qrDataUrl && (
             <div className="lw-members__joinqr">
-              <img src={qrDataUrl} width={88} height={88} alt={`QR code linking to /join/${setup.slug}`} />
+              <img src={qrDataUrl} width={88} height={88} alt={`QR code linking to ${joinPath(setup.slug)}`} />
               <div>
                 <div className="lw-members__joinqrlabel">{t("members.scanToJoin")}</div>
-                <code>{`${window.location.origin}/join/${setup.slug}`}</code>
+                <code>{joinUrl(setup.slug)}</code>
               </div>
             </div>
           )}
