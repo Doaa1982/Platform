@@ -6,6 +6,7 @@ import {
   BookOpen, Wand2, Award, Receipt, CalendarDays, Clock, Copy,
 } from "lucide-react";
 import * as api from "../api/client";
+import { joinPath, joinUrl } from "../utils/joinUrl";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
@@ -222,15 +223,15 @@ function LiveClock({ lang }) {
   );
 }
 
-// Folds the plain "Reachable at /slug" line into the live banner itself,
-// as a clickable link plus a one-tap copy of the full URL — the address is
-// most useful exactly where a tutor is told they're open for enrolment.
-function LiveBanner({ setup, t }) {
+// Folds the workspace's public join link into the live banner itself, as a
+// clickable link plus a one-tap copy of the full URL — the address is most
+// useful exactly where a tutor is told they're open for enrolment.
+export function LiveBanner({ setup, t }) {
   const [copied, setCopied] = useState(false);
-  const path = `/${setup.slug}`;
+  const path = joinPath(setup.slug);
 
   function copyLink() {
-    navigator.clipboard.writeText(`${window.location.origin}${path}`).then(() => {
+    navigator.clipboard.writeText(joinUrl(setup.slug)).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     });

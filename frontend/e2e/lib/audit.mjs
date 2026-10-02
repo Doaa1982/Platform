@@ -6,6 +6,16 @@ import AxeBuilder from "@axe-core/playwright";
 
 export const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
+/** How a screen can end up light or dark: following the OS (nothing stored), or the in-app toggle
+ *  (a stored choice) overriding an OS set the other way. The two "toggle" modes are the ones that
+ *  catch a style keyed to prefers-color-scheme instead of html[data-theme]. */
+export const THEME_MODES = [
+  { id: "os-light", os: "light", stored: null, theme: "light" },
+  { id: "os-dark", os: "dark", stored: null, theme: "dark" },
+  { id: "toggle-dark", os: "light", stored: "dark", theme: "dark" },
+  { id: "toggle-light", os: "dark", stored: "light", theme: "light" },
+];
+
 /** Latin text that may legitimately appear on an Arabic screen: the brand, the switcher's own
  *  "English", emails, URLs/slugs, and short codes the caller passes (e.g. a workspace's initial). */
 const ALWAYS_ALLOWED = [

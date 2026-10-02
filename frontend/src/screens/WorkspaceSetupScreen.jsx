@@ -5,6 +5,7 @@ import {
   Sparkles, Image as ImageIcon, X,
 } from "lucide-react";
 import * as api from "../api/client";
+import { joinPath } from "../utils/joinUrl";
 import AssetImage from "../components/AssetImage";
 import { useAssetUrl } from "../hooks/useAssetUrl";
 import { useAuth } from "../auth/authContext";
@@ -188,7 +189,7 @@ export default function WorkspaceSetupScreen() {
       ) : (
         <div className="lw-setup__identity">
           <Field label={t("setup.nameLabel")} value={setup.name} />
-          <Field label={t("setup.publicIdLabel")} value={`/${setup.slug}`} mono />
+          <Field label={t("setup.publicIdLabel")} value={joinPath(setup.slug)} mono />
           <Field label={t("setup.descriptionLabel")} value={setup.description || t("setup.notSet")} muted={!setup.description} />
           {setup.canManage && (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" onClick={() => setEditing(true)}>{t("setup.edit")}</button>

@@ -3,12 +3,12 @@ import AxeBuilder from "@axe-core/playwright";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AXE_TAGS, leftoverLatin } from "../lib/audit.mjs";
+import { AXE_TAGS, THEME_MODES, leftoverLatin } from "../lib/audit.mjs";
 import { APP_SCREENS, ROLE_ENTRY, SLUG, walk, TIPS_KEY, DISMISSED_TIPS } from "./screens.js";
 
 /* =========================================================================
    In-app audit: every screen in screens.js (owner, learner, admin) × EN/AR ×
-   light/dark, replaying API traffic recorded from a real seeded backend
+   the four theme modes in THEME_MODES, replaying API traffic recorded from a real seeded backend
    (record.mjs) — so it needs no backend and sees real response shapes.
 
    Same bar as the entry-screen audit: axe (WCAG 2.1 A/AA incl. contrast)
@@ -58,21 +58,21 @@ async function replay(context, role, unexpected, baseURL) {
 
 for (const screen of APP_SCREENS) {
   for (const lang of ["en", "ar"]) {
-    for (const theme of ["light", "dark"]) {
-      test(`${screen.id} · ${lang} · ${theme}`, async ({ browser, baseURL }) => {
-        const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 860 }, colorScheme: theme, reducedMotion: "reduce" });
+    for (const mode of THEME_MODES) {
+      test(`${screen.id} · ${lang} · ${mode.id}`, async ({ browser, baseURL }) => {
+        const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 860 }, colorScheme: mode.os, reducedMotion: "reduce" });
         const unexpected = [];
         await replay(context, screen.role, unexpected, baseURL);
         const page = await context.newPage();
         await page.clock.setFixedTime(new Date(META.recordedAt));
-        await page.addInitScript(([session, lang, theme, key, tips]) => {
+        await page.addInitScript(([session, lang, stored, key, tips]) => {
           try { // also runs in the email previews' sandboxed iframe, where storage is off-limits
             localStorage.setItem("platform.session", session);
             localStorage.setItem("platform.lang", lang);
-            localStorage.setItem("platform.theme", theme);
+            if (stored) localStorage.setItem("platform.theme", stored);
             localStorage.setItem(key, tips);
           } catch { /* sandboxed frame */ }
-        }, [JSON.stringify(META.sessions[screen.role]), lang, theme, TIPS_KEY, JSON.stringify(DISMISSED_TIPS)]);
+        }, [JSON.stringify(META.sessions[screen.role]), lang, mode.stored, TIPS_KEY, JSON.stringify(DISMISSED_TIPS)]);
 
         await page.goto(ROLE_ENTRY[screen.role]);
         await page.waitForLoadState("networkidle");
@@ -82,6 +82,7 @@ for (const screen of APP_SCREENS) {
 
         await expect(page.locator("html")).toHaveAttribute("lang", lang);
         await expect(page.locator("html")).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+        await expect(page.locator("html")).toHaveAttribute("data-theme", mode.theme);
 
         // The email previews render whole emails in a sandboxed iframe; those are audited by the
         // backend's own email tests, not here.
@@ -96,12 +97,47 @@ for (const screen of APP_SCREENS) {
 
         const dir = path.join(SHOTS, screen.id);
         fs.mkdirSync(dir, { recursive: true });
-        await page.screenshot({ path: path.join(dir, `${lang}-${theme}-desktop.png`), fullPage: true });
+        await page.screenshot({ path: path.join(dir, `${lang}-${mode.id}-desktop.png`), fullPage: true });
         await page.setViewportSize({ width: 390, height: 844 });
         await page.waitForTimeout(400); // let layout settle at the new width before the mobile shot
-        await page.screenshot({ path: path.join(dir, `${lang}-${theme}-mobile.png`), fullPage: true });
+        await page.screenshot({ path: path.join(dir, `${lang}-${mode.id}-mobile.png`), fullPage: true });
         await context.close();
       });
     }
   }
 }
+
+// The Overview's live banner is how a tutor shares their enrolment link — it once pointed at
+// /{slug}, a route that doesn't exist. Its link, its copied text and where it actually lands.
+test("overview enrolment link opens the public join page, not 404", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 860 } });
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(baseURL).origin });
+  const unexpected = [];
+  await replay(context, "owner", unexpected, baseURL);
+  // The join page's own lookup isn't part of the owner's recording.
+  await context.route(`**/api/workspaces/${SLUG}/join`, (route) =>
+    route.fulfill({ json: { workspaceName: "أكاديمية النور", description: null, acceptingRequests: true } }));
+  const page = await context.newPage();
+  await page.clock.setFixedTime(new Date(META.recordedAt));
+  await page.addInitScript(([session, key, tips]) => {
+    localStorage.setItem("platform.session", session);
+    localStorage.setItem("platform.lang", "en");
+    localStorage.setItem(key, tips);
+  }, [JSON.stringify(META.sessions.owner), TIPS_KEY, JSON.stringify(DISMISSED_TIPS)]);
+  await page.goto(ROLE_ENTRY.owner);
+  await page.waitForLoadState("networkidle");
+
+  const expected = `${new URL(baseURL).origin}/join/${SLUG}`;
+  const link = page.locator(".lw-home__livelink a");
+  await expect(link).toHaveAttribute("href", `/join/${SLUG}`);
+  await page.locator(".lw-home__livecopy").click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expected);
+
+  const [joinPage] = await Promise.all([context.waitForEvent("page"), link.click()]);
+  await joinPage.waitForLoadState("networkidle");
+  expect(joinPage.url()).toBe(expected);
+  await expect(joinPage.locator("form.lw-entry__form")).toBeVisible();
+  await expect(joinPage.getByText("أكاديمية النور")).toBeVisible();
+  expect(unexpected).toEqual([]);
+  await context.close();
+});
