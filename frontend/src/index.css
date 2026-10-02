@@ -1,25 +1,12 @@
+/* Global base styles. Colors never come from here: they're the app's tokens
+   (theme/palettes.js), set on .lw-root and switched by html[data-theme] — not
+   by prefers-color-scheme, which would ignore the in-app light/dark toggle.
+   (This file used to carry the Vite starter's own color variables, switched
+   only by the OS setting: with the toggle on dark and the OS on light, every
+   heading rendered near-black on the dark background.) */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
+  font: 18px/145% system-ui, 'Segoe UI', Roboto, sans-serif;
   letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -30,25 +17,11 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
+/* Native controls and scrollbars follow the app's theme, not the OS's. Until
+   ThemeProvider has set data-theme, they follow the OS like the app does. */
+:root:not([data-theme]) { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 body {
   margin: 0;
@@ -84,11 +57,12 @@ body {
   box-sizing: border-box;
 }
 
+/* Default heading type for screens that don't size their own. */
 h1,
 h2 {
-  font-family: var(--heading);
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
   font-weight: 500;
-  color: var(--text-h);
+  color: var(--ink);
 }
 
 h1 {
@@ -113,17 +87,13 @@ p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
+code {
+  font-family: ui-monospace, Consolas, monospace;
   display: inline-flex;
   border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
+  color: var(--ink);
   font-size: 15px;
   line-height: 135%;
   padding: 4px 8px;
-  background: var(--code-bg);
+  background: var(--surface-2);
 }

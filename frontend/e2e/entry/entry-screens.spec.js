@@ -1,12 +1,13 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { AXE_TAGS, leftoverLatin } from "../lib/audit.mjs";
+import { AXE_TAGS, THEME_MODES, leftoverLatin } from "../lib/audit.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { SCREENS, SESSION_KEY } from "./screens.js";
 
 /* =========================================================================
-   Entry-screen audit: every screen in screens.js × EN/AR × light/dark.
+   Entry-screen audit: every screen in screens.js × EN/AR × the four theme
+   modes in THEME_MODES (OS light/dark, and the toggle overriding the OS).
 
    For each:
      · axe (WCAG 2 A + AA, including color contrast) must find nothing;
@@ -47,13 +48,13 @@ async function installApi(page, screen, unexpected) {
   });
 }
 
-async function open(page, screen, lang, theme) {
-  await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
-  await page.addInitScript(({ lang, theme, session, key }) => {
+async function open(page, screen, lang, mode) {
+  await page.emulateMedia({ colorScheme: mode.os, reducedMotion: "reduce" });
+  await page.addInitScript(({ lang, stored, session, key }) => {
     localStorage.setItem("platform.lang", lang);
-    localStorage.setItem("platform.theme", theme);
+    if (stored) localStorage.setItem("platform.theme", stored);
     if (session) localStorage.setItem(key, JSON.stringify(session));
-  }, { lang, theme, session: screen.session ?? null, key: SESSION_KEY });
+  }, { lang, stored: mode.stored, session: screen.session ?? null, key: SESSION_KEY });
   await page.goto(screen.route);
   await page.waitForLoadState("networkidle");
   await page.waitForFunction(() => !document.querySelector('[role="status"] .lw-entry__spin'));
@@ -63,18 +64,19 @@ async function open(page, screen, lang, theme) {
 
 for (const screen of SCREENS) {
   for (const lang of ["en", "ar"]) {
-    for (const theme of ["light", "dark"]) {
-      test(`${screen.id} · ${lang} · ${theme}`, async ({ page }) => {
+    for (const mode of THEME_MODES) {
+      test(`${screen.id} · ${lang} · ${mode.id}`, async ({ page }) => {
         const unexpected = [];
         await installApi(page, screen, unexpected);
         await page.setViewportSize(DEVICES.desktop);
-        await open(page, screen, lang, theme);
+        await open(page, screen, lang, mode);
 
         expect(unexpected, "the screen called an endpoint this audit doesn't stub").toEqual([]);
 
         const root = page.locator(".lw-entry").first();
         await expect(root).toHaveAttribute("lang", lang);
         await expect(root).toHaveAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+        await expect(page.locator("html")).toHaveAttribute("data-theme", mode.theme);
 
         const axe = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
         const violations = axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
@@ -87,10 +89,10 @@ for (const screen of SCREENS) {
 
         const dir = path.join(SHOTS, screen.id);
         fs.mkdirSync(dir, { recursive: true });
-        await page.screenshot({ path: path.join(dir, `${lang}-${theme}-desktop.png`), fullPage: true });
+        await page.screenshot({ path: path.join(dir, `${lang}-${mode.id}-desktop.png`), fullPage: true });
         await page.setViewportSize(DEVICES.mobile);
         await page.waitForTimeout(400); // let layout settle at the new width before the mobile shot
-        await page.screenshot({ path: path.join(dir, `${lang}-${theme}-mobile.png`), fullPage: true });
+        await page.screenshot({ path: path.join(dir, `${lang}-${mode.id}-mobile.png`), fullPage: true });
       });
     }
   }
