@@ -81,6 +81,21 @@ public class LicensingService(PlatformDbContext db, EntitlementResolutionService
     }
 
     /// <summary>
+    /// Recomputes the License of whatever Subscription a Workspace currently has, if any — for
+    /// changes that come from outside the Subscription, such as credits added to the ledger.
+    /// The materialized AI levels depend on the balance (the zero-balance rule), so without this
+    /// a workspace at zero that just bought credits stays locked until the next sweep.
+    /// </summary>
+    public async Task RecomputeForWorkspaceAsync(Guid workspaceId, CancellationToken ct = default)
+    {
+        var subscriptionId = await db.WorkspaceLicenses.AsNoTracking()
+            .Where(l => l.WorkspaceId == workspaceId)
+            .Select(l => (Guid?)l.SubscriptionId)
+            .FirstOrDefaultAsync(ct);
+        if (subscriptionId is { } id) await RecomputeLicenseAsync(id, ct);
+    }
+
+    /// <summary>
     /// Grants (or tops up) this period's AiCreditsIncluded, only while the
     /// License is genuinely Active — deliberately not extended to Grace or
     /// Restricted in this pass (an overdue-but-not-yet-suspended workspace
