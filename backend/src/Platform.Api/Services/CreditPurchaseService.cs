@@ -13,7 +13,7 @@ namespace Platform.Api.Services;
 /// Operator marks it paid once payment is confirmed outside the platform,
 /// which appends the resulting grant to the workspace's Credit Ledger.
 /// </summary>
-public class CreditPurchaseService(PlatformDbContext db)
+public class CreditPurchaseService(PlatformDbContext db, LicensingService licensing)
 {
     private static readonly WorkspaceRoleName[] BillingRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.FinanceManager];
@@ -29,16 +29,10 @@ public class CreditPurchaseService(PlatformDbContext db)
         var tier = CreditPackCatalog.Find(creditPackCode);
         if (tier is null) return Fail<CreditPurchaseOrderRow>((ProvisioningError.Invalid, $"\"{creditPackCode}\" is not a credit pack tier."));
 
-        // Buying credits nobody can spend doesn't make sense — but since
-        // EntitlementResolutionService.CreditFundedAiDomains (2026-10-03), every
-        // plan can spend credits on Learning and Branding AI, so bought credits
-        // are always spendable. The old check read the materialized ai:* levels,
-        // which the zero-balance rule turns Manual: a workspace that had run out
-        // could never buy the credits that would turn its AI back on (and an
-        // Essential workspace, whose trial credits end at upgrade, never could).
-        if (EntitlementResolutionService.CreditFundedAiDomains.Count == 0)
-            return Fail<CreditPurchaseOrderRow>((ProvisioningError.Conflict,
-                "AI features aren't enabled on any capability for this workspace yet — upgrade your plan or add an AI-enabling pack before buying credits."));
+        // No "is AI enabled for this workspace?" gate: Learning and Branding AI run on credits on
+        // every plan (EntitlementResolutionService.CreditFundedAiDomains), so bought credits are
+        // always spendable. (The old gate read the materialized ai:* levels, which the
+        // zero-balance rule sets to Manual, and so locked out exactly the workspaces that had run out.)
 
         var order = CreditPurchaseOrder.Create(
             workspace.Workspace!.Id, callerIdentityId, tier.Code, tier.CreditAmount, tier.Price, tier.Currency);
@@ -129,6 +123,10 @@ public class CreditPurchaseService(PlatformDbContext db)
         order.AttachLedgerEntry(entry.Id);
 
         await db.SaveChangesAsync(ct);
+
+        // The credits must work now, not at the next sweep: a workspace that had run out has
+        // its AI levels stored as Manual until something re-resolves them.
+        await licensing.RecomputeForWorkspaceAsync(order.WorkspaceId, ct);
 
         return ProvisioningResult<CreditPurchaseOrderAdminRow>.Success(await DescribeAdminRowAsync(order, ct));
     }

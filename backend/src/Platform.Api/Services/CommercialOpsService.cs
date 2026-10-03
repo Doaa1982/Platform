@@ -59,7 +59,6 @@ public class CommercialOpsService(
 
         db.SubscriptionEvents.Add(activation);
         await db.SaveChangesAsync(ct);
-        await licensing.RecomputeLicenseAsync(subscription.Id, ct);
 
         // A4: trial credits expire "30 days after grant, or at first paid
         // conversion, whichever comes first" — the 30-day timer is
@@ -68,16 +67,32 @@ public class CommercialOpsService(
         // subscription is already paid takes the Activate() branch above,
         // never this one, so its just-granted trial credits are never
         // clawed back in the same transaction they were given in.
-        if (isConfirmingRequestedChange)
-        {
-            var prices = await db.ConfigurationSnapshots.AsNoTracking()
-                .Where(s => s.Id == previousSnapshotId || s.Id == newSnapshotId)
-                .ToDictionaryAsync(s => s.Id, s => s.PriceAmount, ct);
-            if (prices.GetValueOrDefault(previousSnapshotId!.Value) == 0 && prices.GetValueOrDefault(newSnapshotId!.Value) > 0)
-                await credits.ExpireTrialCreditsAsync(subscription.WorkspaceId, ct);
-        }
+        // Done before the recompute below, so the entitlements it resolves
+        // see the balance the workspace is actually left with.
+        if (isConfirmingRequestedChange && await TrialEndsAtConversionAsync(previousSnapshotId!.Value, newSnapshotId!.Value, ct))
+            await credits.ExpireTrialCreditsAsync(subscription.WorkspaceId, ct);
+
+        await licensing.RecomputeLicenseAsync(subscription.Id, ct);
 
         return ProvisioningResult<SubscriptionSummary>.Success(await subscriptions.BuildSummaryAsync(subscription, ct));
+    }
+
+    /// <summary>
+    /// Whether moving from one plan to another ends the workspace's trial credits early: only a
+    /// free→paid conversion onto a plan that includes AI credits of its own. A paid plan with
+    /// none (Solo Essential) keeps the trial credits until their normal 30-day expiry — otherwise
+    /// upgrading would switch AI off, since Learning/Branding AI run on credits
+    /// (EntitlementResolutionService.CreditFundedAiDomains). Every path that converts a
+    /// workspace to paid goes through MarkInvoicePaidAsync, the only caller.
+    /// </summary>
+    private async Task<bool> TrialEndsAtConversionAsync(Guid previousSnapshotId, Guid newSnapshotId, CancellationToken ct)
+    {
+        var snapshots = await db.ConfigurationSnapshots.AsNoTracking()
+            .Where(s => s.Id == previousSnapshotId || s.Id == newSnapshotId)
+            .ToDictionaryAsync(s => s.Id, s => new { s.PriceAmount, s.AiCreditsIncluded }, ct);
+        var before = snapshots.GetValueOrDefault(previousSnapshotId);
+        var after = snapshots.GetValueOrDefault(newSnapshotId);
+        return before is { PriceAmount: 0 } && after is { PriceAmount: > 0, AiCreditsIncluded: > 0 };
     }
 
     /// <summary>Rejects an Invoice nobody confirmed paying — voids it, and if it was tied to a requested plan/pack change, withdraws that request too (nothing is granted).</summary>
@@ -182,13 +197,14 @@ public class CommercialOpsService(
     }
 
     /// <summary>
-    /// Re-resolves every License whose stored AI level for a credit-funded domain
-    /// (<see cref="EntitlementResolutionService.CreditFundedAiDomains"/>) is Manual although the
-    /// Workspace has AI credits — which resolution today would never produce. Catches Licenses
-    /// materialized before that rule existed (so they pick it up on the first sweep after a
-    /// deploy, with no operator action) and any whose balance was topped up since the last
-    /// recompute. Self-limiting: once re-resolved they no longer match, and Licenses at zero
-    /// balance are skipped rather than recomputed every tick.
+    /// Re-resolves Licenses whose stored AI level for a credit-funded domain
+    /// (<see cref="EntitlementResolutionService.CreditFundedAiDomains"/>) is Manual although credits
+    /// were added after their last recompute (<see cref="WorkspaceLicense.UpdatedAt"/>) and the
+    /// Workspace has a balance — i.e. a grant that didn't re-resolve on its own. Every grant path
+    /// recomputes today (checkout's trial grant, period grants, credit purchases), so this is the
+    /// safety net, not the main path. Only Licenses with such a credit change are looked at, so a
+    /// tick costs nothing when nothing changed. (The one-time catch-up of Licenses resolved before
+    /// the credit-funded rule existed was this sweep's first version, PR #13, run on its deploy.)
     /// </summary>
     public async Task<int> SweepStaleAiEntitlementsAsync(CancellationToken ct = default)
     {
@@ -197,6 +213,8 @@ public class CommercialOpsService(
         var candidates = await (
             from license in db.WorkspaceLicenses
             where license.Status == LicenseStatus.Active || license.Status == LicenseStatus.Grace
+            where db.CreditLedgerEntries.Any(e => e.WorkspaceId == license.WorkspaceId && e.Amount > 0
+                                                  && e.OccurredAtUtc > license.UpdatedAt)
             where db.Set<Entitlement>().Any(e => e.LicenseId == license.Id && e.EffectiveUntil == null
                                                  && keys.Contains(e.Key) && e.Value == manual)
             select new { license.WorkspaceId, license.SubscriptionId }).ToListAsync(ct);

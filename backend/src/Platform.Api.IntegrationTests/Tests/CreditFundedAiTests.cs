@@ -16,12 +16,12 @@ namespace Platform.Api.IntegrationTests.Tests;
 /// content and branding text without a paid plan. Only the AI level moves; the capability profile
 /// stays the plan's, Assessment AI still follows the plan, and no credits means no AI.
 /// </summary>
-public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture<PlatformApiTestFixture>
+public class CreditFundedAiTests(PlatformApiTestFixture fixture) : CreditFundedAiTestBase(fixture), IClassFixture<PlatformApiTestFixture>
 {
     [Fact]
     public async Task Free_Plan_With_Gift_Credits_Can_Use_Branding_Ai_But_Not_Assessment_Ai()
     {
-        var client = fixture.CreateClient();
+        var client = Fixture.CreateClient();
         var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
         var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "credit-ai-free@integrationtest.local", "credit-ai-free");
         Assert.True(await TestOnboarding.GetAiCreditsRemainingAsync(client, tutor.Token, tutor.WorkspaceSlug) > 0);
@@ -38,14 +38,18 @@ public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture
     }
 
     [Fact]
-    public async Task Essential_Plan_Gets_The_Same_Credit_Funded_Ai_As_Free()
+    public async Task Upgrading_Free_To_Essential_Keeps_The_Gift_Credits_And_Ai()
     {
-        var client = fixture.CreateClient();
+        // Essential is paid but includes no AI credits: ending the trial here would switch AI off.
+        var client = Fixture.CreateClient();
         var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
         var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "credit-ai-essential@integrationtest.local", "credit-ai-essential");
-        await TestOnboarding.UpgradePlanAsync(client, adminToken, tutor.Token, tutor.WorkspaceSlug, "solo-essential");
-        await GrantCreditsAndRecomputeAsync(tutor, 100);
+        var before = await TestOnboarding.GetAiCreditsRemainingAsync(client, tutor.Token, tutor.WorkspaceSlug);
 
+        var after = await TestOnboarding.UpgradePlanAsync(client, adminToken, tutor.Token, tutor.WorkspaceSlug, "solo-essential");
+
+        Assert.Equal(before, after);
+        Assert.Equal(before, await TrialRemainingAsync(client, tutor));
         var levels = await EntitlementsAsync(tutor.WorkspaceSlug);
         Assert.Equal("Assist", levels["ai:Learning"]);
         Assert.Equal("Foundation", levels["profile:Learning"]);
@@ -55,9 +59,25 @@ public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture
     }
 
     [Fact]
+    public async Task Upgrading_Free_To_Professional_Still_Ends_The_Trial()
+    {
+        // Professional brings its own monthly credits, so the trial ends at conversion as before (§A4).
+        var client = Fixture.CreateClient();
+        var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
+        var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "credit-ai-pro@integrationtest.local", "credit-ai-pro");
+        Assert.True(await TrialRemainingAsync(client, tutor) > 0);
+
+        var after = await TestOnboarding.UpgradePlanAsync(client, adminToken, tutor.Token, tutor.WorkspaceSlug, "solo-professional");
+
+        Assert.Equal(0, await TrialRemainingAsync(client, tutor));
+        Assert.True(after > 0);                                   // the plan's own credits
+        Assert.Equal("Assist", (await EntitlementsAsync(tutor.WorkspaceSlug))["ai:Assessment"]);
+    }
+
+    [Fact]
     public async Task No_Credits_Means_No_Credit_Funded_Ai()
     {
-        var client = fixture.CreateClient();
+        var client = Fixture.CreateClient();
         var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
         var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "credit-ai-empty@integrationtest.local", "credit-ai-empty");
         await ExpireAllCreditsAsync(tutor.WorkspaceSlug);
@@ -68,13 +88,21 @@ public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture
         Assert.Equal("Manual", levels["ai:Learning"]);
         Assert.Equal(HttpStatusCode.Forbidden, await SuggestDescriptionAsync(client, tutor));
     }
+}
 
+/// <summary>
+/// Credits re-resolve AI the moment they change — a purchase marked paid, or (as a safety net) the
+/// lifecycle sweep for a grant that didn't. Its own class: each onboarding counts against the
+/// signup rate limit, which a fixture (one app instance) shares across its tests.
+/// </summary>
+public class CreditRecomputeTests(PlatformApiTestFixture fixture) : CreditFundedAiTestBase(fixture), IClassFixture<PlatformApiTestFixture>
+{
     [Fact]
-    public async Task A_Workspace_Out_Of_Credits_Can_Still_Buy_More()
+    public async Task Bought_Credits_Work_As_Soon_As_The_Purchase_Is_Marked_Paid()
     {
-        // Upgrading Free → Essential ends the trial credits, and Essential includes none: before this
-        // change every AI level was Manual here and the purchase was refused, so AI could never return.
-        var client = fixture.CreateClient();
+        // A workspace at zero has its AI levels stored as Manual. Buying must be allowed, and marking
+        // the purchase paid must turn AI back on at once, not at the next 15-minute sweep.
+        var client = Fixture.CreateClient();
         var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
         var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "credit-ai-buy@integrationtest.local", "credit-ai-buy");
         await TestOnboarding.UpgradePlanAsync(client, adminToken, tutor.Token, tutor.WorkspaceSlug, "solo-essential");
@@ -82,19 +110,33 @@ public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture
         await RecomputeAsync(tutor);
         Assert.Equal("Manual", (await EntitlementsAsync(tutor.WorkspaceSlug))["ai:Learning"]);
 
-        Assert.Equal(HttpStatusCode.OK, await PostAsync(client, tutor, "credit-purchases", new { creditPackCode = "credits-s" }));
+        using var buy = new HttpRequestMessage(HttpMethod.Post, $"/api/workspaces/{tutor.WorkspaceSlug}/credit-purchases");
+        buy.Headers.Authorization = new("Bearer", tutor.Token);
+        buy.Content = JsonContent.Create(new { creditPackCode = "credits-s" });
+        var bought = await client.SendAsync(buy);
+        Assert.Equal(HttpStatusCode.OK, bought.StatusCode);
+        var orderId = (await bought.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>())!["id"]!.GetValue<Guid>();
+
+        using var pay = new HttpRequestMessage(HttpMethod.Post, $"/api/admin/credit-purchases/{orderId}/mark-paid");
+        pay.Headers.Authorization = new("Bearer", adminToken);
+        pay.Content = JsonContent.Create(new { referenceNote = "Integration test" });
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(pay)).StatusCode);
+
+        var levels = await EntitlementsAsync(tutor.WorkspaceSlug);                 // no sweep in between
+        Assert.Equal("Assist", levels["ai:Learning"]);
+        Assert.Equal("Assist", levels["ai:Branding"]);
+        Assert.Equal(HttpStatusCode.OK, await SuggestDescriptionAsync(client, tutor));
     }
 
     [Fact]
-    public async Task The_Sweep_Refreshes_Workspaces_Resolved_Before_The_Rule_Existed()
+    public async Task The_Sweep_Only_Picks_Up_Workspaces_With_A_Credit_Change_Since_Their_Last_Recompute()
     {
-        var client = fixture.CreateClient();
+        var client = Fixture.CreateClient();
         var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
         var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "credit-ai-stale@integrationtest.local", "credit-ai-stale");
 
-        // What an existing production workspace looks like before the deploy: credits in hand,
-        // but ai:Branding materialized as Manual by the old resolution.
-        using (var scope = fixture.Services.CreateScope())
+        // ai:Branding stored as Manual although the workspace has credits.
+        using (var scope = Fixture.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
             var licenseId = await LicenseIdAsync(db, tutor.WorkspaceSlug);
@@ -102,25 +144,30 @@ public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture
                 .Where(e => e.LicenseId == licenseId && e.Key == "ai:Branding" && e.EffectiveUntil == null)
                 .ExecuteUpdateAsync(u => u.SetProperty(e => e.Value, "Manual"));
         }
-        Assert.Equal(HttpStatusCode.Forbidden, await SuggestDescriptionAsync(client, tutor));
 
-        using (var scope = fixture.Services.CreateScope())
-        {
-            var ops = scope.ServiceProvider.GetRequiredService<CommercialOpsService>();
-            Assert.True(await ops.SweepStaleAiEntitlementsAsync() >= 1);
-            Assert.Equal(0, await ops.SweepStaleAiEntitlementsAsync());   // nothing left to pick up the second time round
-        }
+        // No credits added since the last recompute: not the sweep's business.
+        await SweepAsync();
+        Assert.Equal("Manual", (await EntitlementsAsync(tutor.WorkspaceSlug))["ai:Branding"]);
 
+        // Credits added without a recompute (a grant path that forgot to): the sweep catches it, once.
+        await GrantCreditsAsync(tutor, 50);
+        Assert.True(await SweepAsync() >= 1);
         Assert.Equal("Assist", (await EntitlementsAsync(tutor.WorkspaceSlug))["ai:Branding"]);
+        Assert.Equal(0, await SweepAsync());
         Assert.Equal(HttpStatusCode.OK, await SuggestDescriptionAsync(client, tutor));
     }
+}
+
+public abstract class CreditFundedAiTestBase(PlatformApiTestFixture fixture)
+{
+    protected PlatformApiTestFixture Fixture => fixture;
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private static Task<HttpStatusCode> SuggestDescriptionAsync(HttpClient client, TestOnboarding.OnboardedTutor tutor)
+    protected static Task<HttpStatusCode> SuggestDescriptionAsync(HttpClient client, TestOnboarding.OnboardedTutor tutor)
         => PostAsync(client, tutor, "setup/ai-suggest-description", new { name = $"{tutor.WorkspaceSlug} academy", courseCategories = new[] { "Math" } });
 
-    private static async Task<HttpStatusCode> PostAsync(HttpClient client, TestOnboarding.OnboardedTutor tutor, string path, object body)
+    protected static async Task<HttpStatusCode> PostAsync(HttpClient client, TestOnboarding.OnboardedTutor tutor, string path, object body)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/workspaces/{tutor.WorkspaceSlug}/{path}");
         req.Headers.Authorization = new("Bearer", tutor.Token);
@@ -128,7 +175,7 @@ public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture
         return (await client.SendAsync(req)).StatusCode;
     }
 
-    private async Task<Dictionary<string, string>> EntitlementsAsync(string slug)
+    protected async Task<Dictionary<string, string>> EntitlementsAsync(string slug)
     {
         using var scope = fixture.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
@@ -138,13 +185,13 @@ public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture
             .ToDictionaryAsync(e => e.Key, e => e.Value);
     }
 
-    private static async Task<Guid> LicenseIdAsync(PlatformDbContext db, string slug)
+    protected static async Task<Guid> LicenseIdAsync(PlatformDbContext db, string slug)
     {
         var workspaceId = await TestOnboarding.GetWorkspaceIdAsync(db, slug);
         return await db.WorkspaceLicenses.Where(l => l.WorkspaceId == workspaceId).Select(l => l.Id).SingleAsync();
     }
 
-    private async Task ExpireAllCreditsAsync(string slug)
+    protected async Task ExpireAllCreditsAsync(string slug)
     {
         using var scope = fixture.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
@@ -154,20 +201,30 @@ public class CreditFundedAiTests(PlatformApiTestFixture fixture) : IClassFixture
         await db.SaveChangesAsync();
     }
 
-    private async Task GrantCreditsAndRecomputeAsync(TestOnboarding.OnboardedTutor tutor, int amount)
+    /// <summary>Straight into the ledger, with no recompute — what a grant path that forgot one would leave.</summary>
+    protected async Task GrantCreditsAsync(TestOnboarding.OnboardedTutor tutor, int amount)
     {
-        using (var scope = fixture.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
-            var workspaceId = await TestOnboarding.GetWorkspaceIdAsync(db, tutor.WorkspaceSlug);
-            db.CreditLedgerEntries.Add(CreditLedgerEntry.Grant(
-                workspaceId, CreditLedgerEntryType.PromotionalGrant, amount, expiresAtUtc: DateTime.UtcNow.AddDays(1)));
-            await db.SaveChangesAsync();
-        }
-        await RecomputeAsync(tutor);
+        using var scope = fixture.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+        var workspaceId = await TestOnboarding.GetWorkspaceIdAsync(db, tutor.WorkspaceSlug);
+        db.CreditLedgerEntries.Add(CreditLedgerEntry.Grant(
+            workspaceId, CreditLedgerEntryType.PromotionalGrant, amount, expiresAtUtc: DateTime.UtcNow.AddDays(1)));
+        await db.SaveChangesAsync();
     }
 
-    private async Task RecomputeAsync(TestOnboarding.OnboardedTutor tutor)
+    protected async Task<int> SweepAsync()
+    {
+        using var scope = fixture.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<CommercialOpsService>().SweepStaleAiEntitlementsAsync();
+    }
+
+    protected static async Task<int> TrialRemainingAsync(HttpClient client, TestOnboarding.OnboardedTutor tutor)
+    {
+        var json = await TestOnboarding.GetJsonAuthorizedAsync(client, tutor.Token, $"/api/workspaces/{tutor.WorkspaceSlug}/subscription");
+        return json["aiCreditsTrialRemaining"]!.GetValue<int>();
+    }
+
+    protected async Task RecomputeAsync(TestOnboarding.OnboardedTutor tutor)
     {
         using var scope = fixture.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<LicensingService>().RecomputeLicenseAsync(tutor.SubscriptionId);

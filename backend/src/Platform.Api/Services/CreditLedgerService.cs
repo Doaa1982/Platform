@@ -40,6 +40,10 @@ public class CreditLedgerService(PlatformDbContext db) : ICreditLedgerService
         var total = entries.Sum(e => e.Amount);
         var trialGranted = entries.Where(e => e.EntryType == CreditLedgerEntryType.TrialGrant).Sum(e => e.Amount);
         var consumedTotal = -entries.Where(e => e.EntryType == CreditLedgerEntryType.Consumption).Sum(e => e.Amount);
+        // Expiration entries only ever offset trial credits ended early at a paid conversion
+        // (ExpireTrialCreditsAsync) — without subtracting them, a workspace that converted kept
+        // reporting its whole trial as still remaining (Billing: "includes 200 trial credits").
+        var trialExpiredEarly = -entries.Where(e => e.EntryType == CreditLedgerEntryType.Expiration).Sum(e => e.Amount);
 
         // §A3's documented order spends Trial first — approximating that here
         // (not a precise per-entry attribution; see CreditBalanceBreakdown's
@@ -47,7 +51,7 @@ public class CreditLedgerService(PlatformDbContext db) : ICreditLedgerService
         // until it's exhausted. Also capped at `total`: an already-expired-by-
         // timer trial grant must not make TrialRemaining exceed what's actually
         // still in the live balance.
-        var trialRemaining = Math.Clamp(trialGranted - consumedTotal, 0, Math.Min(trialGranted, Math.Max(total, 0)));
+        var trialRemaining = Math.Clamp(trialGranted - trialExpiredEarly - consumedTotal, 0, Math.Min(trialGranted, Math.Max(total, 0)));
 
         return new CreditBalanceBreakdown(trialRemaining, total - trialRemaining, total);
     }
