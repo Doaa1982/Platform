@@ -454,6 +454,41 @@ export const APP_CSS = `
   .lw-notice--warning svg { flex-shrink: 0; margin-top: 1px; }
   .lw-notice--warning .lw-notice__body { flex: 1; }
 
+  /* AI buttons (components/AiSuggestButton.jsx): a locked one, its note, and a failed call's note. */
+  .lw-ai-spin { animation: lwSpin .9s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .lw-ai-spin { animation: none; } }
+  .lw-btn.lw-ai-locked { color: var(--ink-soft); border-style: dashed; cursor: help; }
+  .lw-btn.lw-ai-locked:hover { transform: none; }
+  .lw-ainote-anchor { position: relative; display: inline-flex; }
+  .lw-ainote {
+    display: flex; align-items: flex-start; gap: 8px; text-align: start;
+    border-radius: var(--radius-sm); padding: 9px 10px 9px 12px;
+    font-family: var(--font-body); font-size: 0.8rem; font-weight: 400; line-height: 1.5;
+    color: var(--ink); text-transform: none; letter-spacing: normal;
+  }
+  .lw-ainote--pop {
+    position: absolute; top: calc(100% + 6px); inset-inline-start: 0; z-index: 30;
+    width: max-content; max-width: min(320px, 80vw);
+    background: var(--surface); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  }
+  .lw-ainote--inline {
+    margin-top: 6px;
+    background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+  }
+  .lw-ainote__icon { flex-shrink: 0; margin-top: 2px; color: color-mix(in srgb, var(--danger) 70%, var(--ink)); }
+  .lw-ainote--pop .lw-ainote__icon { color: var(--ink-soft); }
+  .lw-ainote__body { flex: 1; min-width: 0; }
+  .lw-ainote__body p { margin: 0; }
+  .lw-ainote__action {
+    margin-top: 6px; padding: 0; border: 0; background: none; cursor: pointer;
+    font: inherit; font-weight: 600; color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+  }
+  .lw-ainote__close {
+    flex-shrink: 0; display: inline-flex; padding: 2px; border: 0; background: none; cursor: pointer;
+    color: var(--ink-soft); border-radius: 4px;
+  }
+
   .lw-unitlist { display: flex; flex-direction: column; gap: 14px; }
   .lw-unitcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
   .lw-unitcard__head { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 600; font-size: 1rem; margin-bottom: 10px; }

@@ -39,6 +39,7 @@ import { formatDateActive, roleLabel } from "./i18n/format";
 import { APP_CSS } from "./styles/appCss";
 import { ACCOUNTBAR_COMPACT_PX, NAV_BREAKPOINT_PX } from "./styles/breakpoints";
 import { useAssetUrl } from "./hooks/useAssetUrl";
+import AiAccessProvider from "./ai/AiAccessProvider";
 
 /* Single breakpoint the app shell collapses at — shared between the JS
    media-query check (drawer open/close logic) and the CSS block below, so
@@ -868,6 +869,17 @@ export default function App() {
      learnerLessonId live here (not inside the screens) so a one-off "jump
      straight to X" action from elsewhere (e.g. Products' "Build curriculum"
      button) can preset them, but the nav itself must not inherit that. */
+  /* Screens with AI buttons learn from the workspace's subscription whether each one is
+     available, and link to Plans / AI credits when it isn't (components/AiSuggestButton.jsx).
+     Read on every visit to such a screen, so a plan or credit change made meanwhile shows. */
+  function withAiAccess(screen) {
+    return (
+      <AiAccessProvider token={session.token} slug={workspace.slug} navigate={goToOwnerScreen}>
+        {screen}
+      </AiAccessProvider>
+    );
+  }
+
   function goToOwnerScreen(id, opts) {
     setStudioProductId(null);
     setOwnerScreen(id);
@@ -1021,18 +1033,18 @@ export default function App() {
           {role === "owner" && ownerScreen === "overview" && <WorkspaceHomeScreen onNavigate={goToOwnerScreen} />}
           {role === "owner" && ownerScreen === "members" && <MembersScreen key={membersKey} initialTab={membersInitialTab} />}
           {role === "owner" && ownerScreen === "enrollment" && <CourseEnrollmentScreen />}
-          {role === "owner" && ownerScreen === "setup" && <WorkspaceSetupScreen />}
+          {role === "owner" && ownerScreen === "setup" && withAiAccess(<WorkspaceSetupScreen />)}
           {role === "owner" && ownerScreen === "billing" && <SubscriptionScreen />}
           {role === "owner" && ownerScreen === "plans" && <PlansScreen />}
           {role === "owner" && ownerScreen === "aiCredits" && <AiCreditsScreen />}
 
           {role === "owner" && ownerScreen === "products" && (
-            <ProductsScreen onOpenStudio={(id) => { setStudioProductId(id); setOwnerScreen("studio"); }} />
+            withAiAccess(<ProductsScreen onOpenStudio={(id) => { setStudioProductId(id); setOwnerScreen("studio"); }} />)
           )}
           {role === "owner" && ownerScreen === "studio" && (
-            <ContentStudioScreen productId={studioProductId} onSelectProduct={setStudioProductId} />
+            withAiAccess(<ContentStudioScreen productId={studioProductId} onSelectProduct={setStudioProductId} />)
           )}
-          {role === "owner" && ownerScreen === "editLesson" && <LessonEditorScreen />}
+          {role === "owner" && ownerScreen === "editLesson" && withAiAccess(<LessonEditorScreen />)}
           {role === "owner" && ownerScreen === "scheduling" && (
             <NotBuiltYet area={t("notBuilt.scheduleArea")} onNavigate={setOwnerScreen}
               blurb={t("notBuilt.schedulingBlurbOwner")} />

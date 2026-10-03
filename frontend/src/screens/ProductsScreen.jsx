@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { languageName } from "../i18n/format";
 import {
   LoaderCircle, Plus, RefreshCw, Send, Undo2,
-  Globe, Archive, Pencil, BookOpen, Layers, X, Sparkles, Image as ImageIcon,
+  Globe, Archive, Pencil, BookOpen, Layers, X, Image as ImageIcon,
 } from "lucide-react";
 import * as api from "../api/client";
+import AiSuggestButton, { AiErrorNote } from "../components/AiSuggestButton";
 import { useAssetUrl } from "../hooks/useAssetUrl";
 import AssetImage from "../components/AssetImage";
 import { useAuth } from "../auth/authContext";
@@ -356,7 +357,7 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, on
         tags: tags.split(",").map((tg) => tg.trim()).filter(Boolean),
       });
       setDescription(r.description);
-    } catch (e) { setAiError(e.message); }
+    } catch (e) { setAiError(e); }
     finally { setAiBusy(false); }
   }
 
@@ -412,16 +413,12 @@ function ProductForm({ product, onSubmit, onCancel, busy, onToggleSequential, on
       <label>
         <span className="lw-prod__desclabel">
           {t("products.descriptionLabel")}
-          <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={suggestDescription}
-                  disabled={busy || aiBusy || !title.trim()} title={t("products.aiSuggestDescription")}>
-            {aiBusy
-              ? <LoaderCircle size={12} className="lw-prod__spin" />
-              : <Sparkles size={12} />} {t("products.aiSuggestDescription")}
-          </button>
+          <AiSuggestButton domain="Learning" onClick={suggestDescription} busy={aiBusy}
+                    disabled={busy || aiBusy || !title.trim()} label={t("products.aiSuggestDescription")} />
         </span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
                   placeholder={t("products.descPlaceholder")} disabled={busy} />
-        {aiError && <Message type="error">{aiError}</Message>}
+        <AiErrorNote error={aiError} domain="Learning" onDismiss={() => setAiError(null)} />
       </label>
       <label>
         <span>{t("products.whoCanJoin")} <InfoTip text={t(ENROLLMENT.find((m) => m.value === enrollmentMode)?.helpKey ?? "")} /></span>

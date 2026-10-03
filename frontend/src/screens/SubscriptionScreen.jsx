@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { catalogName, gb, money, num, quantity } from "../i18n/format";
 import { LoaderCircle, ArrowLeft, Zap } from "lucide-react";
 import * as api from "../api/client";
+import { CREDIT_FUNDED_AI_DOMAINS } from "../ai/aiAccessStore";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
@@ -483,6 +484,10 @@ function subscriptionEntitlement(subscription, key, domain) {
   return subscription.entitlements.find((e) => e.key === key && (domain === undefined || e.domain === domain));
 }
 function hasAnyAiDomain(subscription) {
+  // Learning and Branding AI run on credits on every plan (ai/aiAccessStore.js), so bought credits
+  // are always spendable. The ai:* levels themselves read Manual at zero balance, and that must
+  // never hide the way to buy more.
+  if (CREDIT_FUNDED_AI_DOMAINS.length > 0) return true;
   return ENTITLEMENT_DOMAINS.some((d) => {
     const level = subscriptionEntitlement(subscription, `ai:${d}`, d)?.value;
     return level === "Assist" || level === "CoPilot";

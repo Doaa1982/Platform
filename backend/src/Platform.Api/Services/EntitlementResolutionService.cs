@@ -26,6 +26,18 @@ public class EntitlementResolutionService(PlatformDbContext db, ICreditLedgerSer
         CapabilityDomain.Analytics, CapabilityDomain.Branding,
     ];
 
+    /// <summary>
+    /// Domains whose AI is paid for by credits alone: on any plan, while the workspace has AI
+    /// credits, AI here is at least <see cref="AiAssistanceLevel.Assist"/> — even where the plan's
+    /// profile is Foundation (Solo Free's Branding, Solo Essential's Learning and Branding). Only
+    /// the AI level is raised; the capability profile, and every non-AI feature it gates, stays
+    /// the plan's. Product decision 2026-10-03: the welcome gift's credits must work for lesson
+    /// content and branding text without a paid plan. Assessment and Analytics AI still follow
+    /// the plan. The zero-balance rule below still turns all of it off when credits run out.
+    /// </summary>
+    public static readonly IReadOnlySet<CapabilityDomain> CreditFundedAiDomains =
+        new HashSet<CapabilityDomain> { CapabilityDomain.Learning, CapabilityDomain.Branding };
+
     public async Task RecomputeAsync(Guid licenseId, CancellationToken ct = default)
     {
         var license = await db.WorkspaceLicenses
@@ -86,6 +98,8 @@ public class EntitlementResolutionService(PlatformDbContext db, ICreditLedgerSer
                     EntitlementType.CapabilityProfile, domain, ProfileKey(domain), profileValue.ToString(), profileSource, profileRef));
 
                 var aiValue = restrictAi ? AiAssistanceLevel.Manual : AiLevelFor(profileValue);
+                if (!restrictAi && CreditFundedAiDomains.Contains(domain) && aiValue < AiAssistanceLevel.Assist)
+                    aiValue = AiAssistanceLevel.Assist;
                 resolved.Add(new ResolvedEntitlement(
                     EntitlementType.AiAssistanceLevel, domain, AiKey(domain), aiValue.ToString(), profileSource, profileRef));
             }

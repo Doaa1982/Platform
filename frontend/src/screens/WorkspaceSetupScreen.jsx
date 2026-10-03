@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LANGUAGES } from "../i18n/languageStore";
 import {
   LoaderCircle, AlertCircle, Check, Circle, Minus, ArrowRight, Globe, Lock,
-  Sparkles, Image as ImageIcon, X,
+  Image as ImageIcon, X,
 } from "lucide-react";
 import * as api from "../api/client";
+import AiSuggestButton, { AiErrorNote } from "../components/AiSuggestButton";
 import { joinPath } from "../utils/joinUrl";
 import AssetImage from "../components/AssetImage";
 import { useAssetUrl } from "../hooks/useAssetUrl";
@@ -200,7 +201,7 @@ export default function WorkspaceSetupScreen() {
       {/* Renaming after publication changes the address people already have */}
       {setup.status === "Published" || setup.status === "Active" ? (
         <p className="lw-setup__note">
-          <Globe size={13} /> {t("setup.discoverablePrefix")} <code>/{setup.slug}</code>. {t("setup.discoverableSuffix")}
+          <Globe size={13} /> {t("setup.discoverablePrefix")} <code>{joinPath(setup.slug)}</code>. {t("setup.discoverableSuffix")}
         </p>
       ) : (
         <p className="lw-setup__note">
@@ -375,7 +376,7 @@ function IdentityForm({ setup, onSubmit, onCancel, busy, session, slug: workspac
         name: name.trim(), courseCategories: setup.courseCategories,
       });
       setDescription(r.text);
-    } catch (e) { setAiError(e.message); }
+    } catch (e) { setAiError(e); }
     finally { setAiBusy(false); }
   }
 
@@ -406,20 +407,16 @@ function IdentityForm({ setup, onSubmit, onCancel, busy, session, slug: workspac
         />
       </label>
       {isPublished && slugChanged && (
-        <Notice tone="warning" style={{ gridColumn: "1 / -1" }}>{t("setup.slugChangeWarning", { old: setup.slug })}</Notice>
+        <Notice tone="warning" style={{ gridColumn: "1 / -1" }}>{t("setup.slugChangeWarning", { old: joinPath(setup.slug) })}</Notice>
       )}
       <label className="lw-setup__wide">
         <span className="lw-setup__desclabel">
           {t("setup.descriptionLabel")}
-          <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={suggestDescription}
-                  disabled={busy || aiBusy || !name.trim()} title={t("setup.aiSuggestDescription")}>
-            {aiBusy
-              ? <LoaderCircle size={12} className="lw-setup__spin" />
-              : <Sparkles size={12} />} {t("setup.aiSuggestDescription")}
-          </button>
+          <AiSuggestButton domain="Branding" onClick={suggestDescription} busy={aiBusy}
+                    disabled={busy || aiBusy || !name.trim()} label={t("setup.aiSuggestDescription")} />
         </span>
         <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} disabled={busy} />
-        {aiError && <Message type="error">{aiError}</Message>}
+        <AiErrorNote error={aiError} domain="Branding" onDismiss={() => setAiError(null)} />
       </label>
       <div className="lw-setup__formactions">
         <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" onClick={onCancel} disabled={busy}>{t("setup.cancel")}</button>
@@ -473,7 +470,7 @@ function BrandingForm({ setup, onSubmit, onCancel, busy, session, slug }) {
         courseCategories: categories.split(",").map((c) => c.trim()).filter(Boolean),
       });
       setWelcomeMessage(r.text);
-    } catch (e) { setAiError(e.message); }
+    } catch (e) { setAiError(e); }
     finally { setAiBusy(false); }
   }
 
@@ -520,16 +517,12 @@ function BrandingForm({ setup, onSubmit, onCancel, busy, session, slug }) {
       <label className="lw-setup__wide">
         <span className="lw-setup__desclabel">
           {t("setup.welcomeMessageLabel")}
-          <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" onClick={suggestWelcome}
-                  disabled={busy || aiBusy || !setup.name.trim()} title={t("setup.aiSuggestWelcome")}>
-            {aiBusy
-              ? <LoaderCircle size={12} className="lw-setup__spin" />
-              : <Sparkles size={12} />} {t("setup.aiSuggestWelcome")}
-          </button>
+          <AiSuggestButton domain="Branding" onClick={suggestWelcome} busy={aiBusy}
+                    disabled={busy || aiBusy || !setup.name.trim()} label={t("setup.aiSuggestWelcome")} />
         </span>
         <textarea rows={2} value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)}
                   placeholder={t("setup.welcomeMessagePlaceholder")} disabled={busy} />
-        {aiError && <Message type="error">{aiError}</Message>}
+        <AiErrorNote error={aiError} domain="Branding" onDismiss={() => setAiError(null)} />
       </label>
       <label>
         <span>{t("setup.courseCategoriesLabel")} <em>{t("setup.courseCategoriesHint")}</em></span>
