@@ -13,14 +13,10 @@ namespace Platform.Api.Services;
 /// Operator marks it paid once payment is confirmed outside the platform,
 /// which appends the resulting grant to the workspace's Credit Ledger.
 /// </summary>
-public class CreditPurchaseService(PlatformDbContext db, EntitlementResolutionService entitlements)
+public class CreditPurchaseService(PlatformDbContext db)
 {
     private static readonly WorkspaceRoleName[] BillingRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.FinanceManager];
-
-    /// <summary>Same four domains ConfigurationService/EntitlementResolutionService track AI assistance against — Collaboration has no AI concept.</summary>
-    private static readonly CapabilityDomain[] AiDomains =
-        [CapabilityDomain.Learning, CapabilityDomain.Assessment, CapabilityDomain.Analytics, CapabilityDomain.Branding];
 
     public IReadOnlyList<CreditPackTier> GetTiers() => CreditPackCatalog.Tiers;
 
@@ -33,21 +29,14 @@ public class CreditPurchaseService(PlatformDbContext db, EntitlementResolutionSe
         var tier = CreditPackCatalog.Find(creditPackCode);
         if (tier is null) return Fail<CreditPurchaseOrderRow>((ProvisioningError.Invalid, $"\"{creditPackCode}\" is not a credit pack tier."));
 
-        // Buying credits nobody can spend doesn't make sense — every AI skill
-        // call requires at least Assist on some domain (Foundation always
-        // resolves to Manual, which blocks every call outright). Existing
-        // balances (trial grants, earlier purchases) are left alone either
-        // way; this only blocks adding to an unusable pile.
-        var hasAnyAiDomain = false;
-        foreach (var domain in AiDomains)
-        {
-            if (await entitlements.HasEntitlementAsync(workspace.Workspace!.Id, EntitlementResolutionService.AiKey(domain), AiAssistanceLevel.Assist.ToString(), ct))
-            {
-                hasAnyAiDomain = true;
-                break;
-            }
-        }
-        if (!hasAnyAiDomain)
+        // Buying credits nobody can spend doesn't make sense — but since
+        // EntitlementResolutionService.CreditFundedAiDomains (2026-10-03), every
+        // plan can spend credits on Learning and Branding AI, so bought credits
+        // are always spendable. The old check read the materialized ai:* levels,
+        // which the zero-balance rule turns Manual: a workspace that had run out
+        // could never buy the credits that would turn its AI back on (and an
+        // Essential workspace, whose trial credits end at upgrade, never could).
+        if (EntitlementResolutionService.CreditFundedAiDomains.Count == 0)
             return Fail<CreditPurchaseOrderRow>((ProvisioningError.Conflict,
                 "AI features aren't enabled on any capability for this workspace yet — upgrade your plan or add an AI-enabling pack before buying credits."));
 

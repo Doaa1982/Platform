@@ -54,10 +54,13 @@ public class CommercialLifecycleSweepBackgroundService(
 
         var overdueCount = await ops.SweepOverdueInvoicesAsync(ct);
         var renewedCount = await ops.SweepDueRenewalsAsync(ct);
+        var aiRefreshedCount = await ops.SweepStaleAiEntitlementsAsync(ct);
 
         if (overdueCount > 0 || renewedCount > 0)
             logger.LogInformation(
                 "Commercial lifecycle sweep: {OverdueCount} invoice(s) marked overdue, {RenewedCount} subscription(s) rolled to a new period.",
                 overdueCount, renewedCount);
+        if (aiRefreshedCount > 0)
+            logger.LogInformation("Commercial lifecycle sweep: refreshed AI entitlements for {Count} workspace(s).", aiRefreshedCount);
     }
 }

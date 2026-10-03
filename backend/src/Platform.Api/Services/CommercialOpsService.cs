@@ -182,6 +182,36 @@ public class CommercialOpsService(
     }
 
     /// <summary>
+    /// Re-resolves every License whose stored AI level for a credit-funded domain
+    /// (<see cref="EntitlementResolutionService.CreditFundedAiDomains"/>) is Manual although the
+    /// Workspace has AI credits — which resolution today would never produce. Catches Licenses
+    /// materialized before that rule existed (so they pick it up on the first sweep after a
+    /// deploy, with no operator action) and any whose balance was topped up since the last
+    /// recompute. Self-limiting: once re-resolved they no longer match, and Licenses at zero
+    /// balance are skipped rather than recomputed every tick.
+    /// </summary>
+    public async Task<int> SweepStaleAiEntitlementsAsync(CancellationToken ct = default)
+    {
+        var keys = EntitlementResolutionService.CreditFundedAiDomains.Select(EntitlementResolutionService.AiKey).ToList();
+        var manual = AiAssistanceLevel.Manual.ToString();
+        var candidates = await (
+            from license in db.WorkspaceLicenses
+            where license.Status == LicenseStatus.Active || license.Status == LicenseStatus.Grace
+            where db.Set<Entitlement>().Any(e => e.LicenseId == license.Id && e.EffectiveUntil == null
+                                                 && keys.Contains(e.Key) && e.Value == manual)
+            select new { license.WorkspaceId, license.SubscriptionId }).ToListAsync(ct);
+
+        var refreshed = 0;
+        foreach (var candidate in candidates)
+        {
+            if (await credits.GetBalanceAsync(candidate.WorkspaceId, ct) <= 0) continue;
+            await licensing.RecomputeLicenseAsync(candidate.SubscriptionId, ct);
+            refreshed++;
+        }
+        return refreshed;
+    }
+
+    /// <summary>
     /// Re-derives a Workspace's Entitlement Set from its current Configuration
     /// Snapshot without changing Subscription state. Needed because
     /// EntitlementResolutionService writes a materialized set rather than
