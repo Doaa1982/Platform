@@ -2793,7 +2793,7 @@ function fromLocalInputValue(v) {
   return v ? new Date(v).toISOString() : null;
 }
 
-function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
+export function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -2852,16 +2852,58 @@ function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
     if (result) { applyToForm(result); setAssignment(result); onChanged(); }
   }
 
-  async function handleConfigure() {
-    const body = {
-      availabilityMode, scheduledAvailabilityAt: availabilityMode === "Scheduled" ? fromLocalInputValue(scheduledAt) : null,
-      dueDateMode, dueAt: dueDateMode === "Fixed" ? fromLocalInputValue(dueAt) : null,
-      submissionWindowStartAt: fromLocalInputValue(windowStart), submissionWindowEndAt: fromLocalInputValue(windowEnd),
-      attemptMode, maxAttempts: attemptMode === "Multiple" ? (Number(maxAttempts) || 1) : null,
-      evaluationMethod, notifyOnPublish, notifyOnFeedbackPublished,
+  // What Save settings sends — and, built from the saved assignment instead of the form, what
+  // tells Publish whether there's anything unsaved to save first.
+  function configureBody(f) {
+    return {
+      availabilityMode: f.availabilityMode,
+      scheduledAvailabilityAt: f.availabilityMode === "Scheduled" ? fromLocalInputValue(f.scheduledAt) : null,
+      dueDateMode: f.dueDateMode, dueAt: f.dueDateMode === "Fixed" ? fromLocalInputValue(f.dueAt) : null,
+      submissionWindowStartAt: fromLocalInputValue(f.windowStart), submissionWindowEndAt: fromLocalInputValue(f.windowEnd),
+      attemptMode: f.attemptMode, maxAttempts: f.attemptMode === "Multiple" ? (Number(f.maxAttempts) || 1) : null,
+      evaluationMethod: f.evaluationMethod, notifyOnPublish: f.notifyOnPublish, notifyOnFeedbackPublished: f.notifyOnFeedbackPublished,
     };
-    const result = await run(() => api.configureAssignment(session.token, slug, lessonId, activity.id, body), t("studio.toastAssignmentConfigured"));
+  }
+  const formBody = () => configureBody({
+    availabilityMode, scheduledAt, dueDateMode, dueAt, windowStart, windowEnd,
+    attemptMode, maxAttempts, evaluationMethod, notifyOnPublish, notifyOnFeedbackPublished,
+  });
+  const savedBody = (a) => configureBody({
+    availabilityMode: a.availabilityMode, scheduledAt: toLocalInputValue(a.scheduledAvailabilityAt),
+    dueDateMode: a.dueDateMode, dueAt: toLocalInputValue(a.dueAt),
+    windowStart: toLocalInputValue(a.submissionWindowStartAt), windowEnd: toLocalInputValue(a.submissionWindowEndAt),
+    attemptMode: a.attemptMode, maxAttempts: a.maxAttempts != null ? String(a.maxAttempts) : "2",
+    evaluationMethod: a.evaluationMethod, notifyOnPublish: a.notifyOnPublish, notifyOnFeedbackPublished: a.notifyOnFeedbackPublished,
+  });
+  const hasUnsavedChanges = () => !!assignment && JSON.stringify(formBody()) !== JSON.stringify(savedBody(assignment));
+
+  async function handleConfigure() {
+    const result = await run(() => api.configureAssignment(session.token, slug, lessonId, activity.id, formBody()), t("studio.toastAssignmentConfigured"));
     if (result) { applyToForm(result); setAssignment(result); onChanged(); }
+  }
+
+  // One click: a draft that was never saved, or has changes since, is saved first — Publish used
+  // to be disabled until Save settings had run, so changing a setting and clicking Publish did
+  // nothing at all. A failed save shows inline and nothing is published.
+  async function handlePublish() {
+    setBusy(true); setError(null); setSuccess(null);
+    let changed = false;
+    try {
+      let current = assignment;
+      if (current.publicationBlocker || hasUnsavedChanges()) {
+        current = await api.configureAssignment(session.token, slug, lessonId, activity.id, formBody());
+        applyToForm(current); setAssignment(current); changed = true;
+      }
+      if (current.publicationBlocker) { setError(current.publicationBlocker); return; }
+      const published = await api.assignmentTransition(session.token, slug, lessonId, activity.id, "publish");
+      applyToForm(published); setAssignment(published); changed = true;
+      setSuccess(t("studio.toastAssignmentPublished"));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+      if (changed) onChanged();
+    }
   }
 
   async function handleTransition(transition, successKey) {
@@ -2892,7 +2934,8 @@ function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
     <Modal onClose={onClose} closeLabel={t("studio.close")}>
       <h2 className="lw-modal__title">{t("studio.assignActivity", { title: activity.title })}</h2>
 
-      {error && <Message type="error">{error}</Message>}
+      {/* Inline, not the corner toast: it stays beside the form it's about until the next action. */}
+      {error && <div className="lw-studio__blocker lw-studio__formerror" role="alert"><AlertCircle size={14} /> {error}</div>}
       {success && <Message type="success">{success}</Message>}
 
       {assignment === undefined && (
@@ -2913,10 +2956,6 @@ function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
           <div className="lw-studio__heading" style={{ marginBottom: 8 }}>
             <span className={`lw-studio__pill is-${assignment.status.toLowerCase()}`}>{human(t, assignment.status)}</span>
           </div>
-
-          {assignment.publicationBlocker && (
-            <div className="lw-studio__blocker"><AlertCircle size={14} /> {assignment.publicationBlocker}</div>
-          )}
 
           <div className="lw-studio__draftform">
             <label>
@@ -2947,7 +2986,7 @@ function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
 
             <label>
               <span>{t("studio.submissionWindowLabel")}</span>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="lw-studio__daterange">
                 <input type="datetime-local" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} disabled={busy} />
                 <input type="datetime-local" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} disabled={busy} />
               </div>
@@ -2986,14 +3025,13 @@ function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
               </label>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="lw-studio__actionrow">
               <button className="lw-btn lw-btn--primary lw-btn--sm" disabled={busy} onClick={handleConfigure}>
                 <Check size={13} /> {t("studio.saveConfiguration")}
               </button>
 
               {assignment.status === "Draft" && (
-                <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!assignment.publicationBlocker}
-                        onClick={() => handleTransition("publish", "studio.toastAssignmentPublished")}>
+                <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handlePublish}>
                   <Send size={13} /> {t("studio.publishAssignment")}
                 </button>
               )}
@@ -3017,12 +3055,12 @@ function AssignmentModal({ lessonId, activity, onClose, onChanged }) {
             </div>
 
             {assignment.dueDateMode === "Fixed" && !["Draft", "Archived"].includes(assignment.status) && (
-              <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy} onClick={handleExtendDueDate} style={{ alignSelf: "flex-start" }}>
+              <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy} onClick={handleExtendDueDate}>
                 <CalendarClock size={13} /> {t("studio.extendDueDate")}
               </button>
             )}
             {assignment.attemptMode !== "Unlimited" && !["Draft", "Archived"].includes(assignment.status) && (
-              <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy} onClick={handleChangeAttemptLimit} style={{ alignSelf: "flex-start" }}>
+              <button className="lw-btn lw-btn--ghost lw-btn--xs" disabled={busy} onClick={handleChangeAttemptLimit}>
                 <RotateCcw size={13} /> {t("studio.applyAttemptLimit")}
               </button>
             )}
@@ -4384,7 +4422,9 @@ const CSS = `
      grid per form. Multi-part editors (option lists, alerts, action rows)
      are direct children too, so they get grid-column: 1 / -1 to span both
      columns instead of being squeezed into the label/value layout. */
-  .lw-studio__draftform { display: grid; grid-template-columns: max-content 1fr; row-gap: 14px; column-gap: 16px; align-items: start; }
+  /* minmax(0, 1fr), not 1fr: a column of 1fr won't shrink below its widest control, so a long
+     select or date input pushed the form past the dialog's edge. */
+  .lw-studio__draftform { display: grid; grid-template-columns: max-content minmax(0, 1fr); row-gap: 14px; column-gap: 16px; align-items: start; min-width: 0; }
   .lw-studio__draftform > label, .lw-studio__draftform > .lw-studio__minsfield { display: contents; }
   .lw-studio__draftform label > span:first-child,
   .lw-studio__draftform > .lw-studio__minsfield > span:first-child {
@@ -4395,13 +4435,30 @@ const CSS = `
     font-family: var(--font-body); font-size: 0.9rem; color: var(--ink);
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 9px 11px; resize: vertical;
+    box-sizing: border-box; min-width: 0; max-width: 100%;
   }
   .lw-studio__draftform > .lw-studio__blocker,
   .lw-studio__draftform > p,
   .lw-studio__draftform > .lw-options,
   .lw-studio__draftform > button,
-  .lw-studio__draftform > .lw-studio__panelactions {
+  .lw-studio__draftform > .lw-studio__panelactions,
+  .lw-studio__draftform > .lw-studio__actionrow {
     grid-column: 1 / -1;
+  }
+  /* Lone action buttons (Apply new due date, Apply attempt limit) keep their own width. */
+  .lw-studio__draftform > button { justify-self: start; max-width: 100%; }
+  /* A row of actions spans the form — as a bare grid child it landed in the label column, whose
+     max-content width then grew to the whole button row and pushed every field off the dialog. */
+  .lw-studio__actionrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .lw-studio__daterange { display: flex; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .lw-studio__daterange input { flex: 1 1 11rem; }
+  .lw-studio__formerror { margin-bottom: 12px; }
+  /* Narrow screens: the label sits above its field instead of beside it. */
+  @media (max-width: 560px) {
+    .lw-studio__draftform { grid-template-columns: minmax(0, 1fr); row-gap: 6px; }
+    .lw-studio__draftform input:not([type="checkbox"]), .lw-studio__draftform select, .lw-studio__draftform textarea { width: 100%; }
+    .lw-studio__draftform label > span:first-child,
+    .lw-studio__draftform > .lw-studio__minsfield > span:first-child { padding-top: 8px; white-space: normal; }
   }
   /* A checkbox + its own label read as one unit, not a label/value pair.
      Deliberately a <div>, not a <label>, as the grid's direct child — the

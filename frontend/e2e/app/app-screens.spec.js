@@ -165,6 +165,77 @@ const AI_STATES = [
     } },
 ];
 
+// The "Assign activity" dialog (lesson editor → Activities → Assign), in its Draft and Published
+// states. The seeded lessons have no activities, so one is added to the recorded lesson, and the
+// assignment it opens is served as a draft or as published (with a due date and an attempt limit,
+// so "Apply new due date" / "Apply attempt limit" show too).
+const ACTIVITY = { id: "00000000-0000-4000-8000-0000000000a1", title: "ورقة عمل: مساحة شبه المنحرف", type: "Homework",
+  position: 0, hasAssignment: true, assignmentStatus: "Draft", instructions: null };
+const withActivity = (context) => context.route(/\/api\/workspaces\/[^/]+\/lessons\/[^/?]+$/, (route) => {
+  const pathname = new URL(route.request().url()).pathname;
+  const entry = route.request().method() === "GET" && ownerHar.log.entries.find(
+    (e) => e.request.method === "GET" && new URL(e.request.url).pathname === pathname);
+  if (!entry) return route.fallback();
+  const lesson = JSON.parse(entry.response.content.text);
+  for (const revision of [lesson.currentRevision, lesson.draftRevision].filter(Boolean)) revision.learningActivities = [ACTIVITY];
+  return route.fulfill({ json: lesson });
+});
+const assignment = (status) => ({
+  id: "00000000-0000-4000-8000-0000000000b1", learningActivityId: ACTIVITY.id, learningProductId: "00000000-0000-4000-8000-0000000000c1",
+  status, availabilityMode: "Immediate", scheduledAvailabilityAt: null,
+  dueDateMode: status === "Draft" ? "None" : "Fixed", dueAt: status === "Draft" ? null : "2026-10-20T15:00:00Z",
+  submissionWindowStartAt: null, submissionWindowEndAt: null,
+  attemptMode: status === "Draft" ? "Single" : "Multiple", maxAttempts: status === "Draft" ? null : 3,
+  evaluationMethod: "Manual", visible: true, notifyOnPublish: true, notifyOnFeedbackPublished: true,
+  configured: status !== "Draft", createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z",
+  publishedAt: status === "Draft" ? null : "2026-10-01T10:00:00Z", closedAt: null, archivedAt: null,
+  publicationBlocker: status === "Draft" ? "Configure this assignment before publishing." : null,
+});
+
+/** Every control in the dialog lies within the dialog, at 1280×720 and at phone width. */
+async function expectControlsInsideDialog(page) {
+  for (const size of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(150);
+    const panel = page.locator(".lw-modal__panel");
+    const box = await panel.boundingBox();
+    const outside = [];
+    for (const control of await panel.locator("input, select, textarea, button").all()) {
+      if (!(await control.isVisible())) continue;
+      const b = await control.boundingBox();
+      if (b.x < box.x - 0.5 || b.x + b.width > box.x + box.width + 0.5)
+        outside.push(`${await control.evaluate((el) => el.outerHTML.slice(0, 80))} at x ${Math.round(b.x)}–${Math.round(b.x + b.width)} (dialog ${Math.round(box.x)}–${Math.round(box.x + box.width)}, ${size.width}px)`);
+    }
+    expect(outside, "controls outside the dialog").toEqual([]);
+  }
+  await page.setViewportSize({ width: 1280, height: 860 });
+}
+
+const DIALOG_STATES = ["Draft", "Published"].map((status) => ({
+  id: `assign-dialog-${status.toLowerCase()}`, screen: "owner-lesson-editor",
+  routes: async (context) => {
+    await withActivity(context);
+    await context.route("**/api/workspaces/*/lessons/*/activities/*/assignment", (route) =>
+      route.request().method() === "GET" ? route.fulfill({ json: assignment(status) }) : route.fallback());
+  },
+  act: async (page) => {
+    await page.locator(".lw-studio__tabs button").last().click();         // Activities
+    await page.locator(".lw-studio__unitrow .lw-btn").filter({ has: page.locator("svg.lucide-send") }).first().click();
+    await expect(page.locator(".lw-modal__panel .lw-studio__draftform")).toBeVisible();
+    if (status === "Published") await expect(page.locator(".lw-modal__panel .lw-studio__draftform > button")).toHaveCount(2);
+    await expectControlsInsideDialog(page);
+  },
+}));
+
+for (const state of DIALOG_STATES) {
+  for (const lang of ["en", "ar"]) {
+    for (const mode of THEME_MODES) {
+      test(`${state.id} · ${lang} · ${mode.id}`, ({ browser, baseURL }) =>
+        auditScreen({ browser, baseURL }, screenById(state.screen), lang, mode, { shotId: state.id, routes: state.routes, act: state.act }));
+    }
+  }
+}
+
 for (const state of AI_STATES) {
   for (const lang of ["en", "ar"]) {
     for (const mode of THEME_MODES) {
