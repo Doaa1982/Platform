@@ -16,6 +16,8 @@ public record LearningProductRow(
     DateTime? PublishedAt,
     /// <summary>Whether the product has a published Curriculum behind it (INV-006).</summary>
     bool HasCurriculum,
+    /// <summary>Published, with Edit Mode changes not yet published (learners still see the published version).</summary>
+    bool CurriculumHasUnpublishedChanges,
     /// <summary>
     /// Mirrors the product's Curriculum.RequiresSequentialCompletion (Curriculum
     /// Aggregate Design §18) — surfaced here so a tutor can set it from the same

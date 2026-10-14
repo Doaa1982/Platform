@@ -110,6 +110,26 @@ public class Lesson
     }
 
     /// <summary>
+    /// Why the open draft can't be published yet, or null when it can (or there is no draft).
+    /// Returned rather than thrown so a curriculum publish can check every lesson first.
+    /// </summary>
+    public string? PublishDraftBlocker()
+    {
+        var draft = DraftRevision;
+        if (draft is null) return null;
+
+        if (string.IsNullOrWhiteSpace(draft.Body))
+            return "A lesson revision needs content before it can be published.";
+
+        // A recorded lesson is nothing but its video — a live session needs
+        // no pre-recorded file, so the check is delivery-mode-scoped.
+        if (draft.DeliveryMode == LessonDeliveryMode.Recorded && draft.VideoAssetId is null && string.IsNullOrWhiteSpace(draft.VideoUrl))
+            return "A recorded lesson needs a video, or a link to one, before it can be published.";
+
+        return null;
+    }
+
+    /// <summary>
     /// Publishes the open draft and retires whatever it replaces. This is the
     /// only way a Lesson becomes Published (§8).
     /// </summary>
@@ -120,13 +140,8 @@ public class Lesson
         var draft = DraftRevision
             ?? throw new InvalidOperationException("There is no draft revision to publish.");
 
-        if (string.IsNullOrWhiteSpace(draft.Body))
-            throw new InvalidOperationException("A lesson revision needs content before it can be published.");
-
-        // A recorded lesson is nothing but its video — a live session needs
-        // no pre-recorded file, so the check is delivery-mode-scoped.
-        if (draft.DeliveryMode == LessonDeliveryMode.Recorded && draft.VideoAssetId is null && string.IsNullOrWhiteSpace(draft.VideoUrl))
-            throw new InvalidOperationException("A recorded lesson needs a video, or a link to one, before it can be published.");
+        var blocker = PublishDraftBlocker();
+        if (blocker is not null) throw new InvalidOperationException(blocker);
 
         CurrentRevision?.Supersede();
         draft.Publish();

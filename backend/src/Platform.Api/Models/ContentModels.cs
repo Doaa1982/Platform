@@ -13,6 +13,8 @@ public record CurriculumResponse(
     string? PublicationBlocker,
     /// <summary>Whether a Learner must complete each lesson before the next one unlocks.</summary>
     bool RequiresSequentialCompletion,
+    /// <summary>Edit Mode is on: Units is the tutor's unpublished working copy; learners still see what was last published.</summary>
+    bool DraftOpen,
     IReadOnlyList<CurriculumUnitRow> Units,
     /// <summary>Lessons in this product not yet placed in any unit.</summary>
     IReadOnlyList<LessonRow> UnplacedLessons);

@@ -62,6 +62,14 @@ public class LearningActivity
 {
     public Guid Id { get; private set; }
     public Guid LessonRevisionId { get; private set; }
+
+    /// <summary>
+    /// The same activity across a lesson's revisions: a new activity's own Id, and carried over
+    /// unchanged when a new revision copies the activity. An Assignment belongs to one activity
+    /// row, and follows it into the next revision through this (it used to stay behind on the
+    /// superseded copy, so the activity showed as never assigned and got assigned twice).
+    /// </summary>
+    public Guid LineageId { get; private set; }
     public LearningActivityType Type { get; private set; }
     public string Title { get; private set; } = string.Empty;
     public string? Instructions { get; private set; }
@@ -94,9 +102,11 @@ public class LearningActivity
     internal static LearningActivity Create(
         Guid lessonRevisionId, LearningActivityType type, string title, string? instructions,
         int position, Guid? assessmentId, string? externalUrl,
-        Guid? activityFileAssetId = null, LearningActivitySubmissionMode submissionMode = LearningActivitySubmissionMode.TextOrFile)
+        Guid? activityFileAssetId = null, LearningActivitySubmissionMode submissionMode = LearningActivitySubmissionMode.TextOrFile,
+        Guid? lineageId = null)
     {
-        var activity = new LearningActivity { Id = Guid.NewGuid(), LessonRevisionId = lessonRevisionId, Position = position, CreatedAt = DateTime.UtcNow };
+        var id = Guid.NewGuid();
+        var activity = new LearningActivity { Id = id, LineageId = lineageId ?? id, LessonRevisionId = lessonRevisionId, Position = position, CreatedAt = DateTime.UtcNow };
         activity.Apply(type, title, instructions, assessmentId, externalUrl, activityFileAssetId, submissionMode);
         return activity;
     }

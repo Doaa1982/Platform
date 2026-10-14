@@ -50,10 +50,12 @@ public class LearningProductService(
             .ToListAsync(ct);
 
         // One query for the whole page rather than one per product
-        var withCurriculum = await db.Curricula.AsNoTracking()
+        var publishedCurricula = await db.Curricula.AsNoTracking()
             .Where(c => c.WorkspaceId == ctx.Workspace!.Id && c.Status == CurriculumStatus.Published)
-            .Select(c => c.LearningProductId)
+            .Select(c => new { c.LearningProductId, c.DraftOpen })
             .ToListAsync(ct);
+        var withCurriculum = publishedCurricula.Select(c => c.LearningProductId).ToHashSet();
+        var withDraftChanges = publishedCurricula.Where(c => c.DraftOpen).Select(c => c.LearningProductId).ToHashSet();
 
         // Read regardless of Curriculum status — a tutor may set this before
         // ever publishing, from the product edit form rather than Content Studio.
@@ -65,11 +67,11 @@ public class LearningProductService(
             WorkspaceName: ctx.Workspace!.Name,
             CanAuthor:     ctx.CanAuthor,
             Products:      products.Select(p => Describe(
-                p, withCurriculum.Contains(p.Id), sequentialByProduct.GetValueOrDefault(p.Id))).ToList()));
+                p, withCurriculum.Contains(p.Id), sequentialByProduct.GetValueOrDefault(p.Id), withDraftChanges.Contains(p.Id))).ToList()));
     }
 
     private static LearningProductRow Describe(
-        LearningProduct p, bool hasCurriculum = false, bool requiresSequentialCompletion = false) => new(
+        LearningProduct p, bool hasCurriculum = false, bool requiresSequentialCompletion = false, bool curriculumHasUnpublishedChanges = false) => new(
         Id:              p.Id,
         Title:           p.Title,
         Description:     p.Description,
@@ -83,6 +85,7 @@ public class LearningProductService(
         UpdatedAt:       p.UpdatedAt,
         PublishedAt:     p.PublishedAt,
         HasCurriculum:   hasCurriculum,
+        CurriculumHasUnpublishedChanges: curriculumHasUnpublishedChanges,
         RequiresSequentialCompletion: requiresSequentialCompletion,
         CoverImageAssetId: p.CoverImageAssetId);
 
