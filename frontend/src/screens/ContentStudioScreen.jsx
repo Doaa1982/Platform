@@ -237,7 +237,9 @@ function CurriculumBuilder({ productId, onBack }) {
     );
   }
 
-  const editable = data.canAuthor && data.status !== "Published" && data.status !== "Archived";
+  // Edit Mode (draftOpen): still Published, so students keep the published course, while the
+  // tutor edits a private draft of it.
+  const editable = data.canAuthor && data.status !== "Archived" && (data.status !== "Published" || data.draftOpen);
 
   return (
     <div className="lw-page">
@@ -248,16 +250,22 @@ function CurriculumBuilder({ productId, onBack }) {
       <div className="lw-studio__heading">
         <h1>{data.title ?? t("studio.curriculumFallback")}</h1>
         <span className={`lw-studio__pill is-${data.status.toLowerCase()}`}>{human(t, data.status)}</span>
+        {data.draftOpen && <span className="lw-studio__pill is-draft">{t("studio.draftChanges")}</span>}
       </div>
       {error && <Message type="error">{error}</Message>}
       {success && <Message type="success">{success}</Message>}
 
       {data.canAuthor && (
         <div className="lw-studio__bar">
-          {data.status === "Published" ? (
+          {data.status === "Published" && !data.draftOpen ? (
             <button className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy}
-                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "unpublish"), t("studio.toastCurriculumUnpublished")).then(load)}>
+                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "edit"), t("studio.toastEditModeOn")).then(load)}>
               <Undo2 size={13} /> {t("studio.editMode")}
+            </button>
+          ) : data.draftOpen ? (
+            <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
+                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "publish"), t("studio.toastChangesPublished")).then(load)}>
+              <Globe size={13} /> {t("studio.publishChanges")}
             </button>
           ) : data.status !== "Archived" && (
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
@@ -272,10 +280,13 @@ function CurriculumBuilder({ productId, onBack }) {
         <div className="lw-studio__blocker"><AlertCircle size={14} /> {data.publicationBlocker}</div>
       )}
 
-      {data.canAuthor && data.status === "Published" && (
+      {data.canAuthor && data.status === "Published" && !data.draftOpen && (
         <p className="muted" style={{ margin: "-6px 0 16px" }}>
           {t("studio.publishedNoticePrefix")} <strong>{t("studio.editMode")}</strong> {t("studio.publishedNoticeSuffix")}
         </p>
+      )}
+      {data.canAuthor && data.draftOpen && (
+        <p className="muted" style={{ margin: "-6px 0 16px" }}>{t("studio.draftOpenNotice")}</p>
       )}
 
       {editable && !data.publicationBlocker && data.status !== "Published" && (
@@ -464,11 +475,22 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
   // above) — surfaced here too, since a tutor who came straight from "Edit lesson"
   // would otherwise have no way to leave view-only mode without navigating away
   // to the tree first just to unpublish, then coming back.
+  // Edit Mode opens a private draft: the course stays published for students until "Publish changes".
   async function handleEditMode() {
     setBusy(true);
     setActionError(null);
     try {
-      await api.curriculumTransition(session.token, slug, productId, "unpublish");
+      await api.curriculumTransition(session.token, slug, productId, "edit");
+      await load();
+    } catch (e) { setActionError(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function handlePublishChanges() {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.curriculumTransition(session.token, slug, productId, "publish");
       await load();
     } catch (e) { setActionError(e.message); }
     finally { setBusy(false); }
@@ -501,7 +523,7 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
       : []),
   ];
   const lessons = unitOptions.find((u) => u.id === unitId)?.lessons ?? [];
-  const editable = curriculum.canAuthor && curriculum.status !== "Published" && curriculum.status !== "Archived";
+  const editable = curriculum.canAuthor && curriculum.status !== "Archived" && (curriculum.status !== "Published" || curriculum.draftOpen);
 
   return (
     <>
@@ -529,14 +551,26 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
 
       {curriculum.canAuthor && curriculum.status === "Published" && (
         <div className="lw-studio__pickeredit" style={{ gridColumn: "1 / -1" }}>
-          {actionError && <Message type="error">{actionError}</Message>}
+          {actionError && <div className="lw-studio__blocker" role="alert"><AlertCircle size={14} /> {actionError}</div>}
           <div className="lw-studio__bar">
-            <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleEditMode}>
-              <Undo2 size={13} /> {t("studio.editMode")}
-            </button>
+            {curriculum.draftOpen ? (
+              <>
+                <span className="lw-studio__pill is-published">{human(t, "Published")}</span>
+                <span className="lw-studio__pill is-draft">{t("studio.draftChanges")}</span>
+                <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!curriculum.publicationBlocker} onClick={handlePublishChanges}>
+                  <Globe size={13} /> {t("studio.publishChanges")}
+                </button>
+              </>
+            ) : (
+              <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={handleEditMode}>
+                <Undo2 size={13} /> {t("studio.editMode")}
+              </button>
+            )}
           </div>
           <p className="muted">
-            {t("studio.publishedNoticePrefix")} <strong>{t("studio.editMode")}</strong> {t("studio.publishedNoticeSuffix")}
+            {curriculum.draftOpen
+              ? t("studio.draftOpenNotice")
+              : <>{t("studio.publishedNoticePrefix")} <strong>{t("studio.editMode")}</strong> {t("studio.publishedNoticeSuffix")}</>}
           </p>
         </div>
       )}
@@ -551,6 +585,7 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
             key={lessonId}
             lessonId={lessonId}
             editable={editable}
+            editMode={curriculum.status === "Published" && !!curriculum.draftOpen}
             onChanged={() => { load(); onChanged?.(); }}
             onDuplicated={(newId) => { setUnitId(UNPLACED_UNIT); setLessonId(newId); }}
           />
@@ -742,7 +777,7 @@ function LessonRowView({ lesson, onOpen, onRemove, editable, isFirst, isLast, on
 
 /* ── Lesson editor overlay ─────────────────────────────────────────────── */
 
-function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
+function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, onDuplicated }) {
   const { session, workspace } = useAuth();
   const { t } = useLanguage();
   const slug = workspace?.slug;
@@ -1044,9 +1079,18 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
     }, t("studio.toastLessonPublished")).then((l) => l && setLesson(l));
   }
 
-  /** Lesson Editing & Publication UX, Scenario 3 — no new revision, no republish. */
+  /** Lesson Editing & Publication UX, Scenario 3 — no new revision, no republish. In Edit Mode
+      students keep the published course until the tutor publishes it again, so the change goes
+      into a new version of the lesson instead, published with the course. */
   function handleQuickSave() {
     if (!title.trim() || !body.trim()) { setActiveTab("content"); setAttempted(true); return; }
+    if (editMode) {
+      run(async () => {
+        await api.startLessonRevision(session.token, slug, lessonId);
+        return api.saveLessonDraft(session.token, slug, lessonId, draftPayload());
+      }, t("studio.toastDraftSaved")).then((l) => l && setLesson(l));
+      return;
+    }
     run(() => api.quickEditPublishedLesson(session.token, slug, lessonId, {
       title: title.trim(), body: body.trim() || null, whatYoullLearn: whatYoullLearn.trim() || null,
       learningObjectives: learningObjectives.trim() || null, glossary: glossary.trim() || null,
@@ -1139,7 +1183,7 @@ function LessonEditorContent({ lessonId, editable, onChanged, onDuplicated }) {
             {editable && lesson.currentRevision && (
               <p className="lw-studio__panelnote">
                 {t("studio.publishedAsRevision", { version: lesson.currentRevision.version })}{" "}
-                {lesson.draftRevision ? t("studio.learnersSeeThat") : t("studio.directEditNote")}
+                {lesson.draftRevision ? t("studio.learnersSeeThat") : editMode ? t("studio.editModeVersionNote") : t("studio.directEditNote")}
               </p>
             )}
 
