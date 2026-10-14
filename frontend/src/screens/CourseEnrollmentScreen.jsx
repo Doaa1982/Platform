@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatDateActive } from "../i18n/format";
-import { LoaderCircle, RefreshCw, UserX, X } from "lucide-react";
+import { Check, LoaderCircle, RefreshCw, UserX, X } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
@@ -25,6 +25,9 @@ export default function CourseEnrollmentScreen() {
   const [products, setProducts] = useState([]);
   const [productId, setProductId] = useState("");
   const [roster, setRoster] = useState(null);
+  // Members asking for a course: listed here too, next to who's enrolled (they used to be only
+  // under Members → Pending), with the same Approve / Decline.
+  const [courseRequests, setCourseRequests] = useState([]);
   const [tab, setTab] = useState("enrolled");
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -45,8 +48,11 @@ export default function CourseEnrollmentScreen() {
 
   const loadRoster = useCallback(() => {
     if (!productId) return Promise.resolve();
-    return api.getProductRoster(session.token, slug, productId)
-      .then((r) => { setRoster(r); setError(null); })
+    return Promise.all([
+      api.getProductRoster(session.token, slug, productId),
+      api.getCourseJoinRequests(session.token, slug).catch(() => []),
+    ])
+      .then(([r, requests]) => { setRoster(r); setCourseRequests(requests); setError(null); })
       .catch((e) => setError(e.message));
   }, [session.token, slug, productId]);
 
@@ -55,6 +61,7 @@ export default function CourseEnrollmentScreen() {
   // ready — comparing rather than nulling the state on every switch keeps
   // this effect free of synchronous setState calls.
   const rosterReady = roster && roster.productId === productId;
+  const pendingRequests = courseRequests.filter((r) => r.learningProductId === productId && r.status === "Submitted");
 
   async function run(fn, successMessage) {
     setBusy(true);
@@ -113,7 +120,44 @@ export default function CourseEnrollmentScreen() {
                     className={tab === "invited" ? "is-active" : ""} onClick={() => setTab("invited")}>
               {t("enrollment.tabInvited", { count: roster.invited.length })}
             </button>
+            <button type="button" role="tab" aria-selected={tab === "requests"}
+                    className={tab === "requests" ? "is-active" : ""} onClick={() => setTab("requests")}>
+              {t("enrollment.tabRequests", { count: pendingRequests.length })}
+            </button>
           </div>
+
+          {tab === "requests" && (
+            pendingRequests.length === 0 ? (
+              <p className="lw-enroll__empty">{t("enrollment.requestsEmpty")}</p>
+            ) : (
+              <div className="lw-enroll__grid">
+                {pendingRequests.map((r) => (
+                  <div className="lw-enroll__row" key={r.id}>
+                    <div className="lw-enroll__avatar">{r.memberFullName.trim()[0]}</div>
+                    <div className="lw-enroll__who">
+                      <div className="lw-enroll__name">{r.memberFullName}</div>
+                      <div className="lw-enroll__email">{r.memberEmail}</div>
+                      {r.message && <div className="lw-enroll__date">“{r.message}”</div>}
+                    </div>
+                    {roster.canManage && (
+                      <div className="lw-enroll__actions">
+                        <button type="button" disabled={busy}
+                                onClick={() => run(() => api.decideCourseJoinRequest(session.token, slug, r.id, "approve"),
+                                  t("members.toastCourseRequestApproved", { name: r.memberFullName, course: r.productTitle }))}>
+                          <Check size={12} /> {t("members.approve")}
+                        </button>
+                        <button type="button" disabled={busy}
+                                onClick={() => run(() => api.decideCourseJoinRequest(session.token, slug, r.id, "decline"),
+                                  t("members.toastCourseRequestDeclined", { name: r.memberFullName }))}>
+                          <X size={12} /> {t("members.decline")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          )}
 
           {tab === "enrolled" && (
             roster.enrolled.length === 0 ? (
