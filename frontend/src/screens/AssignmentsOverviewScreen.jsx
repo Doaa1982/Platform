@@ -84,9 +84,9 @@ function OverviewTable({ slug, token, onSelect, t }) {
             {data.rows.map((r) => (
               <tr key={r.assignmentId} className="lw-assign__row"
                   onClick={() => onSelect({ lessonId: r.lessonId, activityId: r.learningActivityId, activityTitle: r.activityTitle })}>
-                <td className="lw-assign__nowrap">{r.productTitle}</td>
-                <td className="lw-assign__nowrap">{r.lessonTitle}</td>
-                <td className="lw-assign__nowrap">{r.activityTitle}<div className="lw-assign__submeta">{t(`studio.activityType.${r.activityType}`)}</div></td>
+                <td className="lw-assign__namecell">{r.productTitle}</td>
+                <td className="lw-assign__namecell">{r.lessonTitle}</td>
+                <td className="lw-assign__namecell">{r.activityTitle}<div className="lw-assign__submeta">{t(`studio.activityType.${r.activityType}`)}</div></td>
                 <td className="lw-assign__nowrap"><span className={`lw-assign__pill is-${r.status.toLowerCase()}`}>{r.status}</span></td>
                 <td className="lw-assign__nowrap">{r.dueAt ? formatDateActive(r.dueAt) : "—"}</td>
                 <td className="lw-assign__nowrap">{r.recipientCount}</td>
@@ -282,6 +282,9 @@ const CSS = `
   .lw-assign__row:hover { background: var(--surface-2); }
   .lw-assign__submeta { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
   .lw-assign__nowrap { white-space: nowrap; }
+  /* Course, lesson and activity names wrap instead of each forcing one long line — kept on one
+     line they made the list ~1150px wide, pushing Recipients and Submitted behind a scroll at 1280px. */
+  .lw-assign__namecell { white-space: normal; min-width: 12ch; overflow-wrap: anywhere; }
   .lw-assign__responsecell { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lw-assign__downloadlink { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); }
   .lw-assign__resultcell { max-width: 22ch; white-space: normal; }

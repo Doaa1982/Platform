@@ -546,7 +546,7 @@ export const APP_CSS = `
   .lw-dropzone__meta { font-size: 0.78rem; }
   .lw-dropzone--compact { padding: 20px; margin-bottom: 4px; }
   .lw-videosource { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
-  .lw-tag--source { background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color: var(--accent); margin-inline-start: 6px; }
+  .lw-tag--source { background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color: color-mix(in srgb, var(--accent) 75%, var(--ink)); margin-inline-start: 6px; }
 
   .lw-transcriptpanel { display: flex; flex-direction: column; gap: 12px; }
   .lw-transcriptbox { width: 100%; font-family: var(--font-mono, monospace); font-size: 13px; resize: vertical; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); color: var(--ink); }
