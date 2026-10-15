@@ -257,8 +257,11 @@ export default function ProductsScreen({ onOpenStudio }) {
                   )}
 
                   <span className="lw-prod__proplabel">📚 {t("products.curriculum")}</span>
+                  {/* Edit Mode keeps it published: students still see the last published version. */}
                   {p.hasCurriculum
-                    ? <span className="lw-prod__propvalue is-ready">{t("products.curriculumPublished")}</span>
+                    ? <span className="lw-prod__propvalue is-ready">
+                        {p.curriculumHasUnpublishedChanges ? t("products.curriculumPublishedWithChanges") : t("products.curriculumPublished")}
+                      </span>
                     : <span className="lw-prod__propvalue is-empty">{t("products.curriculumNotPublished")}</span>}
                 </div>
               </div>

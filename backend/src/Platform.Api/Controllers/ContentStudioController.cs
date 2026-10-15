@@ -76,6 +76,11 @@ public class ContentStudioController(ContentStudioService studio) : ControllerBa
     public async Task<ActionResult<CurriculumResponse>> Publish(string slug, Guid productId, CancellationToken ct)
         => Run(await studio.PublishCurriculumAsync(slug, Caller(), productId, ct));
 
+    /// <summary>Edit Mode: a private working copy; learners keep the published course until publish.</summary>
+    [HttpPost("edit")]
+    public async Task<ActionResult<CurriculumResponse>> OpenDraft(string slug, Guid productId, CancellationToken ct)
+        => Run(await studio.OpenCurriculumDraftAsync(slug, Caller(), productId, ct));
+
     [HttpPost("unpublish")]
     public async Task<ActionResult<CurriculumResponse>> Unpublish(string slug, Guid productId, CancellationToken ct)
         => Run(await studio.UnpublishCurriculumAsync(slug, Caller(), productId, ct));
@@ -136,6 +141,11 @@ public class LessonsController(ContentStudioService studio) : ControllerBase
     [HttpPost("publish")]
     public async Task<ActionResult<LessonDetailResponse>> Publish(string slug, Guid lessonId, CancellationToken ct)
         => Run(await studio.PublishLessonAsync(slug, Caller(), lessonId, ct));
+
+    /// <summary>Edit Mode: a private working copy; learners keep the published course until publish.</summary>
+    [HttpPost("edit")]
+    public async Task<ActionResult<CurriculumResponse>> OpenDraft(string slug, Guid productId, CancellationToken ct)
+        => Run(await studio.OpenCurriculumDraftAsync(slug, Caller(), productId, ct));
 
     [HttpPost("unpublish")]
     public async Task<ActionResult<LessonDetailResponse>> Unpublish(string slug, Guid lessonId, CancellationToken ct)

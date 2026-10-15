@@ -391,6 +391,8 @@ public class PlatformDbContext : DbContext
             entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.RequiresSequentialCompletion).IsRequired().HasDefaultValue(false);
+            entity.Property(e => e.DraftOpen).IsRequired().HasDefaultValue(false);
+            entity.Property(e => e.PublishedStructure).HasColumnType("text");
 
             // INV-003 (Learning Product): at most one active Curriculum per product,
             // so every read is by product. Enforced here, not just assumed —
@@ -495,6 +497,9 @@ public class PlatformDbContext : DbContext
             entity.ToTable("learning_activities");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedNever();
+            // The same activity across revisions; assignments are found through it.
+            entity.Property(e => e.LineageId).IsRequired();
+            entity.HasIndex(e => e.LineageId);
 
             entity.Property(e => e.LessonRevisionId).IsRequired();
             entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(32);

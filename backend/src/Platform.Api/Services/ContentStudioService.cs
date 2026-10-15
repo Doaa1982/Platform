@@ -100,6 +100,7 @@ public class ContentStudioService(
                                 ? "This product has no curriculum yet — add a unit to start one."
                                 : curriculum.PublicationBlocker(),
             RequiresSequentialCompletion: curriculum?.RequiresSequentialCompletion ?? false,
+            DraftOpen: curriculum?.DraftOpen ?? false,
             Units: curriculum is null ? [] : curriculum.Units.OrderBy(u => u.Position)
                 .Select(u => new CurriculumUnitRow(u.Id, u.Title, u.Position,
                     u.Lessons.OrderBy(l => l.Position)
@@ -130,11 +131,18 @@ public class ContentStudioService(
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
         if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
 
-        var activityIds = lesson.Revisions.SelectMany(r => r.LearningActivities).Select(a => a.Id).ToList();
+        var allActivities = lesson.Revisions.SelectMany(r => r.LearningActivities).ToList();
+        var activityIds = allActivities.Select(a => a.Id).ToList();
         var assignmentByActivity = activityIds.Count == 0
             ? new Dictionary<Guid, Assignment>()
             : await db.Assignments.AsNoTracking()
                 .Where(a => activityIds.Contains(a.LearningActivityId)).ToDictionaryAsync(a => a.LearningActivityId, ct);
+        // A draft's copy of an activity is the same activity (LineageId): it shows the assignment
+        // still sitting on the published copy, which moves over when the draft is published.
+        var lineageOf = allActivities.ToDictionary(a => a.Id, a => a.LineageId);
+        var assignmentByLineage = assignmentByActivity
+            .GroupBy(kv => lineageOf[kv.Key])
+            .ToDictionary(g => g.Key, g => g.Select(kv => kv.Value).OrderByDescending(a => a.CreatedAt).First());
 
         var assetIds = lesson.Revisions.Where(r => r.VideoAssetId is not null)
             .Select(r => r.VideoAssetId!.Value)
@@ -195,7 +203,8 @@ public class ContentStudioService(
                 r.RequireQuizToComplete,
                 r.LearningActivities.OrderBy(la => la.Position).Select(la =>
                 {
-                    assignmentByActivity.TryGetValue(la.Id, out var assignment);
+                    if (!assignmentByActivity.TryGetValue(la.Id, out var assignment))
+                        assignmentByLineage.TryGetValue(la.LineageId, out assignment);
                     var effectiveAssessmentId = la.Type is LearningActivityType.Quiz or LearningActivityType.QuestionSet
                         ? standaloneAssessmentIdByRevision.GetValueOrDefault(r.Id)
                         : (Guid?)null;
@@ -252,9 +261,57 @@ public class ContentStudioService(
         string slug, Guid caller, Guid productId, SetSequentialUnlockRequest request, CancellationToken ct = default)
         => MutateAsync(slug, caller, productId, (c, _) => c.SetSequentialUnlock(request.Enabled), ct, createIfMissing: true);
 
-    public Task<ProvisioningResult<CurriculumResponse>> PublishCurriculumAsync(
+    /// <summary>
+    /// Publishes the curriculum — first publication, or everything changed in Edit Mode. In Edit
+    /// Mode lesson changes go into lesson drafts (learners keep the published lesson), so this
+    /// also publishes the open draft of every lesson the curriculum places: one Publish makes
+    /// the whole course live, as the Edit Mode notice promises. Every lesson draft is checked
+    /// before anything changes, so a lesson that can't be published yet blocks the whole publish
+    /// with its name rather than leaving the course half-published.
+    /// </summary>
+    public async Task<ProvisioningResult<CurriculumResponse>> PublishCurriculumAsync(
         string slug, Guid caller, Guid productId, CancellationToken ct = default)
-        => MutateAsync(slug, caller, productId, (c, _) => c.Publish(), ct);
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<CurriculumResponse>(ctx.Error.Value);
+
+        var curriculum = await LoadCurriculumAsync(productId, ct, tracked: true);
+        if (curriculum is null || curriculum.WorkspaceId != ctx.Workspace!.Id)
+            return Fail<CurriculumResponse>((ProvisioningError.Conflict, "This product has no curriculum yet."));
+
+        var placedLessonIds = curriculum.AllLessonIds.Distinct().ToList();
+        var lessonsWithDrafts = await db.Lessons.Include(l => l.Revisions)
+            .Where(l => placedLessonIds.Contains(l.Id) && l.WorkspaceId == ctx.Workspace!.Id)
+            .ToListAsync(ct);
+        lessonsWithDrafts = lessonsWithDrafts.Where(l => l.DraftRevision is not null && l.Status != LessonStatus.Archived).ToList();
+
+        var blocked = lessonsWithDrafts
+            .Select(l => (l.Title, Blocker: l.PublishDraftBlocker()))
+            .Where(x => x.Blocker is not null).ToList();
+        if (blocked.Count > 0)
+            return Fail<CurriculumResponse>((ProvisioningError.Conflict,
+                "Some lessons have changes that can't be published yet: " +
+                string.Join("; ", blocked.Select(b => $"{b.Title}: {b.Blocker}"))));
+
+        try { curriculum.Publish(); }
+        catch (InvalidOperationException ex) { return Fail<CurriculumResponse>((ProvisioningError.Conflict, ex.Message)); }
+
+        foreach (var lesson in lessonsWithDrafts)
+            await PublishLessonDraftAsync(lesson, ct);
+
+        await db.SaveChangesAsync(ct);
+        return await GetAsync(slug, caller, productId, ct);
+    }
+
+    /// <summary>
+    /// Edit Mode: a private working copy of a published curriculum. It stays Published and
+    /// learners keep the last published course until <see cref="PublishCurriculumAsync"/>.
+    /// (This used to call <see cref="UnpublishCurriculumAsync"/>, which locked every enrolled
+    /// learner out of the course while the tutor edited.)
+    /// </summary>
+    public Task<ProvisioningResult<CurriculumResponse>> OpenCurriculumDraftAsync(
+        string slug, Guid caller, Guid productId, CancellationToken ct = default)
+        => MutateAsync(slug, caller, productId, (c, _) => c.OpenDraft(), ct);
 
     public Task<ProvisioningResult<CurriculumResponse>> UnpublishCurriculumAsync(
         string slug, Guid caller, Guid productId, CancellationToken ct = default)
@@ -339,7 +396,7 @@ public class ContentStudioService(
         if (previousRevision is not null)
         {
             await CloneAssessmentAsync(ctx.Workspace!.Id, lessonId, previousRevision.Id, draft.Id, ct);
-            await CloneLearningActivitiesAsync(previousRevision.Id, draft, ct);
+            await CloneLearningActivitiesAsync(previousRevision.Id, draft, sameLesson: true, ct);
             await CloneResourcesAsync(previousRevision.Id, draft, ct);
         }
 
@@ -381,7 +438,7 @@ public class ContentStudioService(
         clone.DraftRevision!.CopyContentFrom(sourceRevision);
 
         await CloneAssessmentAsync(ctx.Workspace!.Id, clone.Id, sourceRevision.Id, clone.DraftRevision!.Id, ct);
-        await CloneLearningActivitiesAsync(sourceRevision.Id, clone.DraftRevision!, ct);
+        await CloneLearningActivitiesAsync(sourceRevision.Id, clone.DraftRevision!, sameLesson: false, ct);
         await CloneResourcesAsync(sourceRevision.Id, clone.DraftRevision!, ct);
 
         await db.SaveChangesAsync(ct);
@@ -414,13 +471,13 @@ public class ContentStudioService(
     /// <summary>
     /// Copies a revision's Learning Activities onto a newly-started draft —
     /// used by both StartRevisionAsync and DuplicateLessonAsync, same
-    /// reasoning as <see cref="CloneAssessmentAsync"/>. Not the Assignment
-    /// that may deliver each one, though — a new revision's activities start
-    /// with no Assignment of their own (INV-002's 1:1 still holds against
-    /// the *new* activity id, which is a fresh Guid); a tutor re-schedules
-    /// delivery for the new revision explicitly.
+    /// reasoning as <see cref="CloneAssessmentAsync"/>. A new revision of the
+    /// same lesson keeps each activity's <see cref="LearningActivity.LineageId"/>:
+    /// it is the same activity, so its Assignment is found from the draft and
+    /// moves to the copy when the revision is published (PublishLessonDraftAsync).
+    /// A duplicated lesson is a separate lesson, so its copies start new lineages.
     /// </summary>
-    private async Task CloneLearningActivitiesAsync(Guid sourceRevisionId, LessonRevision targetRevision, CancellationToken ct)
+    private async Task CloneLearningActivitiesAsync(Guid sourceRevisionId, LessonRevision targetRevision, bool sameLesson, CancellationToken ct)
     {
         var sources = await db.LearningActivities.AsNoTracking()
             .Where(a => a.LessonRevisionId == sourceRevisionId).OrderBy(a => a.Position).ToListAsync(ct);
@@ -428,7 +485,7 @@ public class ContentStudioService(
         foreach (var source in sources)
             targetRevision.AddLearningActivity(
                 source.Type, source.Title, source.Instructions, source.AssessmentId, source.ExternalUrl,
-                source.ActivityFileAssetId, source.SubmissionMode);
+                source.ActivityFileAssetId, source.SubmissionMode, sameLesson ? source.LineageId : null);
     }
 
     /// <summary>
@@ -455,19 +512,99 @@ public class ContentStudioService(
     /// safe to change on the currently published revision directly — no new
     /// revision, no republish.
     /// </summary>
-    public Task<ProvisioningResult<LessonDetailResponse>> QuickEditPublishedAsync(
+    public async Task<ProvisioningResult<LessonDetailResponse>> QuickEditPublishedAsync(
         string slug, Guid caller, Guid lessonId, SaveRevisionRequest request, CancellationToken ct = default)
-        => MutateLessonAsync(slug, caller, lessonId, l =>
+    {
+        // In Edit Mode learners keep the published course until the tutor publishes again, so a
+        // change to a published lesson goes into a new version (the editor starts one), never
+        // straight onto what learners are reading.
+        var inEditMode = await (
+            from lesson in db.Lessons
+            join curriculum in db.Curricula on lesson.LearningProductId equals curriculum.LearningProductId
+            where lesson.Id == lessonId && curriculum.DraftOpen && curriculum.Status == CurriculumStatus.Published
+            select curriculum.Id).AnyAsync(ct);
+        if (inEditMode)
+            return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
+                "This course is in Edit Mode: changes to a published lesson go into a new version, published with the course."));
+
+        return await MutateLessonAsync(slug, caller, lessonId, l =>
         {
             var current = l.CurrentRevision
                 ?? throw new InvalidOperationException("This lesson has no published revision to edit.");
             current.QuickEditPublished(request.Title, request.Body, request.EstimatedMinutes, request.WhatYoullLearn, request.LearningObjectives, request.Glossary, request.Homework);
             l.Rename(request.Title);
         }, ct);
+    }
 
-    public Task<ProvisioningResult<LessonDetailResponse>> PublishLessonAsync(
+    public async Task<ProvisioningResult<LessonDetailResponse>> PublishLessonAsync(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
-        => MutateLessonAsync(slug, caller, lessonId, l => l.PublishDraft(), ct);
+    {
+        var ctx = await ResolveAsync(slug, caller, requireAuthor: true, ct);
+        if (ctx.Error is not null) return Fail<LessonDetailResponse>(ctx.Error.Value);
+
+        var lesson = await db.Lessons.Include(l => l.Revisions)
+            .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
+        if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        try { await PublishLessonDraftAsync(lesson, ct); }
+        catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }
+
+        await db.SaveChangesAsync(ct);
+        return await GetLessonAsync(slug, caller, lessonId, ct);
+    }
+
+    /// <summary>
+    /// Publishes a lesson's open draft revision, and carries over what learners had on the one it
+    /// replaces — so publishing a new version never takes anything away from them:
+    ///   · interactive questions / lesson quiz: a new revision gets Draft copies of the previous
+    ///     revision's assessments (CloneAssessmentAsync); each one whose original was published is
+    ///     published too. Before this, the questions and the Gradebook entry silently dropped back
+    ///     to Draft for learners until the tutor noticed and republished them.
+    ///   · assignments: each activity copied into the new revision is the same activity
+    ///     (LearningActivity.LineageId), so its assignment — settings, recipients, submissions —
+    ///     moves to the copy instead of staying behind on the superseded revision.
+    /// The caller saves.
+    /// </summary>
+    private async Task PublishLessonDraftAsync(Lesson lesson, CancellationToken ct)
+    {
+        var previousRevisionId = lesson.CurrentRevisionId;
+        lesson.PublishDraft();
+        var newRevisionId = lesson.CurrentRevisionId!.Value;
+
+        if (previousRevisionId is { } previousId)
+        {
+            var assessments = await db.Assessments.Include(a => a.Questions)
+                .Where(a => a.LessonRevisionId == previousId || a.LessonRevisionId == newRevisionId)
+                .ToListAsync(ct);
+            var publishedKinds = assessments
+                .Where(a => a.LessonRevisionId == previousId && a.Status == AssessmentStatus.Published)
+                .Select(a => a.Kind).ToHashSet();
+            foreach (var copy in assessments.Where(a => a.LessonRevisionId == newRevisionId
+                         && a.Status == AssessmentStatus.Draft && publishedKinds.Contains(a.Kind)
+                         && a.PublicationBlocker() is null))
+                copy.Publish();
+        }
+
+        var activities = await db.LearningActivities.AsNoTracking()
+            .Where(a => a.LessonRevisionId == newRevisionId).ToListAsync(ct);
+        if (activities.Count == 0) return;
+
+        var lineages = activities.Select(a => a.LineageId).ToList();
+        var assignments = await (
+            from assignment in db.Assignments
+            join activity in db.LearningActivities on assignment.LearningActivityId equals activity.Id
+            where lineages.Contains(activity.LineageId)
+            select new { assignment, activity.LineageId }).ToListAsync(ct);
+        foreach (var activity in activities)
+        {
+            // One assignment per activity: the one already on this copy wins; otherwise the
+            // most recently created one in its lineage follows it here.
+            if (assignments.Any(x => x.assignment.LearningActivityId == activity.Id)) continue;
+            var carried = assignments.Where(x => x.LineageId == activity.LineageId)
+                .OrderByDescending(x => x.assignment.CreatedAt).Select(x => x.assignment).FirstOrDefault();
+            carried?.MoveToActivity(activity.Id);
+        }
+    }
 
     public Task<ProvisioningResult<LessonDetailResponse>> UnpublishLessonAsync(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)

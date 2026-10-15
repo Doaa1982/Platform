@@ -150,6 +150,14 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
           {t("learnerAssignments.startAssignment")}
         </button>
       )}
+      {/* Start is unavailable once the assignment has closed: say so, instead of a button that does nothing. */}
+      {!canStart && (
+        <p className="lw-assign__closednote" role="note">
+          {(assignment.closedAt ?? assignment.dueAt)
+            ? t("learnerAssignments.closedOn", { date: formatDateActive(assignment.closedAt ?? assignment.dueAt, { dateStyle: "medium" }) })
+            : t("learnerAssignments.closedNoDate")}
+        </p>
+      )}
 
       {latest?.status === "InProgress" && (
         <div className="lw-assign__responsearea">
@@ -245,6 +253,7 @@ export default function AssignmentSubmissionScreen({ lessonId, activityId, onBac
 }
 
 const CSS = `
+  .lw-assign__closednote { margin: 10px 0 0; padding: 9px 12px; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--ink); font-size: 0.86rem; line-height: 1.5; }
   .lw-learn__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
   .lw-learn__spin { animation: lwLearnSpin 0.9s linear infinite; }
   @keyframes lwLearnSpin { to { transform: rotate(360deg); } }

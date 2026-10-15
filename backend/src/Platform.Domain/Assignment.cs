@@ -96,6 +96,20 @@ public class Assignment
     }
 
     /// <summary>
+    /// Follows its activity into a newly published lesson revision: the copy there is the same
+    /// activity (same <see cref="LearningActivity.LineageId"/>), so the assignment — settings,
+    /// recipients and every submission — moves with it rather than staying on the superseded
+    /// copy. Submissions reference the Assignment, not the activity row, so nothing else moves.
+    /// </summary>
+    public void MoveToActivity(Guid learningActivityId)
+    {
+        if (learningActivityId == Guid.Empty)
+            throw new ArgumentException("An Assignment delivers exactly one Learning Activity.", nameof(learningActivityId));
+        LearningActivityId = learningActivityId;
+        Touch();
+    }
+
+    /// <summary>
     /// Sets the Assignment's delivery policy — Assignment Business Analysis
     /// §8's full configuration surface in one call, matching the BA's own
     /// "Configure Assignment" workflow step. Callable in any status except

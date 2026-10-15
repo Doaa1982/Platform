@@ -457,7 +457,7 @@ export default function MembersScreen({ initialTab }) {
                     {data.canManage && (
                       <div className="lw-members__actions">
                         <button disabled={busy}
-                                onClick={() => run(() => api.decideCourseJoinRequest(session.token, slug, r.id, "approve"), t("members.toastCourseRequestApproved", { name: r.memberFullName }))}>
+                                onClick={() => run(() => api.decideCourseJoinRequest(session.token, slug, r.id, "approve"), t("members.toastCourseRequestApproved", { name: r.memberFullName, course: r.productTitle }))}>
                           <UserCheck size={12} /> {t("members.approve")}
                         </button>
                         <button disabled={busy}

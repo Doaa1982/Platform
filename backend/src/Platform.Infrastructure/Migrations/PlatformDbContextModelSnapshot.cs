@@ -659,11 +659,19 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("DraftOpen")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<Guid>("LearningProductId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PublishedStructure")
+                        .HasColumnType("text");
 
                     b.Property<bool>("RequiresSequentialCompletion")
                         .ValueGeneratedOnAdd()
@@ -1181,6 +1189,9 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<Guid>("LessonRevisionId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("LineageId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Position")
                         .HasColumnType("integer");
 
@@ -1207,6 +1218,8 @@ namespace Platform.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("LessonRevisionId");
+
+                    b.HasIndex("LineageId");
 
                     b.ToTable("learning_activities", (string)null);
                 });

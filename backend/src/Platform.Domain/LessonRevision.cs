@@ -416,12 +416,14 @@ public class LessonRevision
     }
 
     /// <summary>Adds a Learning Activity to this revision's instructional design. Draft-only — see <see cref="LearningActivities"/>.</summary>
+    /// <param name="lineageId">Set only when copying an activity from an earlier revision of the same lesson, so it stays the same activity (<see cref="LearningActivity.LineageId"/>).</param>
     public LearningActivity AddLearningActivity(
         LearningActivityType type, string title, string? instructions, Guid? assessmentId = null, string? externalUrl = null,
-        Guid? activityFileAssetId = null, LearningActivitySubmissionMode submissionMode = LearningActivitySubmissionMode.TextOrFile)
+        Guid? activityFileAssetId = null, LearningActivitySubmissionMode submissionMode = LearningActivitySubmissionMode.TextOrFile,
+        Guid? lineageId = null)
     {
         RequireDraft();
-        var activity = LearningActivity.Create(Id, type, title, instructions, _learningActivities.Count, assessmentId, externalUrl, activityFileAssetId, submissionMode);
+        var activity = LearningActivity.Create(Id, type, title, instructions, _learningActivities.Count, assessmentId, externalUrl, activityFileAssetId, submissionMode, lineageId);
         _learningActivities.Add(activity);
         UpdatedAt = DateTime.UtcNow;
         return activity;

@@ -66,7 +66,7 @@ public class LearnerAccess(PlatformDbContext db)
             .FirstOrDefaultAsync(c => c.LearningProductId == learningProductId && c.Status == CurriculumStatus.Published, ct);
         if (curriculum is null || !curriculum.RequiresSequentialCompletion) return false;
 
-        var orderedLessonIds = curriculum.Units.OrderBy(u => u.Position)
+        var orderedLessonIds = curriculum.PublishedUnits().OrderBy(u => u.Position)
             .SelectMany(u => u.Lessons.OrderBy(l => l.Position))
             .Select(l => l.LessonId).ToList();
 

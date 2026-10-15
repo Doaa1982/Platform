@@ -107,7 +107,7 @@ public class LearningDeliveryService(
         // otherwise a course with unfinished draft lessons could never show
         // 100%, and the "X of Y" denominator wouldn't match what the course
         // content sidebar actually lists.
-        var placedLessonIds = curricula.SelectMany(c => c.Units).SelectMany(u => u.Lessons)
+        var placedLessonIds = curricula.SelectMany(c => c.PublishedUnits()).SelectMany(u => u.Lessons)
             .Select(l => l.LessonId).Distinct().ToList();
         var publishedLessonIdSet = placedLessonIds.Count == 0 ? [] : (await db.Lessons.AsNoTracking()
             .Where(l => placedLessonIds.Contains(l.Id) && l.Status == LessonStatus.Published)
@@ -123,7 +123,7 @@ public class LearningDeliveryService(
         var completedProducts = curricula.GroupBy(c => c.LearningProductId)
             .Count(g =>
             {
-                var lessonIds = g.SelectMany(c => c.Units).SelectMany(u => u.Lessons)
+                var lessonIds = g.SelectMany(c => c.PublishedUnits()).SelectMany(u => u.Lessons)
                     .Select(l => l.LessonId).Distinct().Where(publishedLessonIdSet.Contains).ToList();
                 return lessonIds.Count > 0 && lessonIds.All(completedLessonIdSet.Contains);
             });
@@ -222,7 +222,7 @@ public class LearningDeliveryService(
             return ProvisioningResult<LearnerCurriculumResponse>.Success(
                 new LearnerCurriculumResponse(product.Id, product.Title, null, null, false, []));
 
-        var lessonIds = curriculum.Units.SelectMany(u => u.Lessons).Select(l => l.LessonId).Distinct().ToList();
+        var lessonIds = curriculum.PublishedUnits().SelectMany(u => u.Lessons).Select(l => l.LessonId).Distinct().ToList();
         var lessons = lessonIds.Count == 0
             ? new Dictionary<Guid, Lesson>()
             : await db.Lessons.Include(l => l.Revisions).AsNoTracking()
@@ -235,7 +235,7 @@ public class LearningDeliveryService(
         // Curriculum order — every placed lesson, regardless of its own
         // publish state, so a lesson the tutor temporarily unpublished still
         // occupies its place in the sequence rather than silently skipping.
-        var orderedLessonIds = curriculum.Units.OrderBy(u => u.Position)
+        var orderedLessonIds = curriculum.PublishedUnits().OrderBy(u => u.Position)
             .SelectMany(u => u.Lessons.OrderBy(l => l.Position))
             .Select(l => l.LessonId).ToList();
 
@@ -248,7 +248,7 @@ public class LearningDeliveryService(
             return !progress.TryGetValue(previousLessonId, out var pr) || pr.Status != LessonProgressStatus.Completed;
         }
 
-        var units = curriculum.Units.OrderBy(u => u.Position)
+        var units = curriculum.PublishedUnits().OrderBy(u => u.Position)
             .Select(u => new LearnerUnitRow(
                 u.Title, u.Position,
                 u.Lessons.OrderBy(l => l.Position)
@@ -301,7 +301,7 @@ public class LearningDeliveryService(
             .Where(c => productIds.Contains(c.LearningProductId) && c.Status == CurriculumStatus.Published)
             .ToListAsync(ct);
 
-        var lessonIds = curricula.SelectMany(c => c.Units).SelectMany(u => u.Lessons).Select(l => l.LessonId).Distinct().ToList();
+        var lessonIds = curricula.SelectMany(c => c.PublishedUnits()).SelectMany(u => u.Lessons).Select(l => l.LessonId).Distinct().ToList();
         var lessons = lessonIds.Count == 0
             ? new Dictionary<Guid, Lesson>()
             : await db.Lessons.AsNoTracking()
@@ -339,7 +339,7 @@ public class LearningDeliveryService(
         {
             if (!products.TryGetValue(curriculum.LearningProductId, out var product)) continue;
 
-            var orderedLessonIds = curriculum.Units.OrderBy(u => u.Position)
+            var orderedLessonIds = curriculum.PublishedUnits().OrderBy(u => u.Position)
                 .SelectMany(u => u.Lessons.OrderBy(l => l.Position))
                 .Select(l => l.LessonId).ToList();
 

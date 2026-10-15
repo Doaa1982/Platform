@@ -31,7 +31,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: false, ct);
         if (ctx.Error is not null) return Fail<AssignmentResponse>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        var assignment = await FindForActivityAsync(ctx.Activity!, ct);
         if (assignment is null) return Fail<AssignmentResponse>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
         if (assignment.PromoteIfDue(DateTime.UtcNow)) await db.SaveChangesAsync(ct);
@@ -45,7 +45,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssignmentResponse>(ctx.Error.Value);
 
-        if (await db.Assignments.AnyAsync(a => a.LearningActivityId == activityId, ct))
+        if (await FindForActivityAsync(ctx.Activity!, ct) is not null)
             return Fail<AssignmentResponse>((ProvisioningError.Conflict, "This learning activity already has an assignment."));
 
         var assignment = Assignment.Create(ctx.Workspace!.Id, activityId, ctx.LearningProductId, ctx.MembershipId);
@@ -70,7 +70,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssignmentResponse>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        var assignment = await FindForActivityAsync(ctx.Activity!, ct);
         if (assignment is null) return Fail<AssignmentResponse>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
         // Learning Activity BA §8 / Assignment Aggregate Design §8: a
@@ -124,7 +124,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssignmentResponse>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        var assignment = await FindForActivityAsync(ctx.Activity!, ct);
         if (assignment is null) return Fail<AssignmentResponse>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
         var maxUsed = await db.Submissions.AsNoTracking()
@@ -147,7 +147,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssignmentResponse>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        var assignment = await FindForActivityAsync(ctx.Activity!, ct);
         if (assignment is null) return Fail<AssignmentResponse>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
         var submissions = await db.Submissions
@@ -212,7 +212,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssignmentSubmissionsResponse>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        var assignment = await FindForActivityAsync(ctx.Activity!, ct);
         if (assignment is null) return Fail<AssignmentSubmissionsResponse>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
         if (assignment.PromoteIfDue(DateTime.UtcNow)) await db.SaveChangesAsync(ct);
@@ -247,7 +247,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssignmentSubmissionRow>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        var assignment = await FindForActivityAsync(ctx.Activity!, ct);
         if (assignment is null) return Fail<AssignmentSubmissionRow>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
         var submission = await db.Submissions.FirstOrDefaultAsync(s => s.Id == submissionId && s.AssignmentId == assignment.Id, ct);
@@ -267,7 +267,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssignmentSubmissionRow>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        var assignment = await FindForActivityAsync(ctx.Activity!, ct);
         if (assignment is null) return Fail<AssignmentSubmissionRow>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
         var submission = await db.Submissions.FirstOrDefaultAsync(s => s.Id == submissionId && s.AssignmentId == assignment.Id, ct);
@@ -568,7 +568,7 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         var ctx = await ResolveActivityAsync(slug, caller, lessonId, activityId, requireAuthor: true, ct);
         if (ctx.Error is not null) return Fail<AssignmentResponse>(ctx.Error.Value);
 
-        var assignment = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activityId, ct);
+        var assignment = await FindForActivityAsync(ctx.Activity!, ct);
         if (assignment is null) return Fail<AssignmentResponse>((ProvisioningError.NotFound, "This learning activity has no assignment yet."));
 
         assignment.PromoteIfDue(DateTime.UtcNow);
@@ -578,6 +578,25 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
 
         await db.SaveChangesAsync(ct);
         return ProvisioningResult<AssignmentResponse>.Success(Describe(assignment));
+    }
+
+    /// <summary>
+    /// The assignment delivering this activity, for the tutor: the one on this activity row, or —
+    /// for an activity copied into a newer draft revision — the one on an earlier copy of the same
+    /// activity (LearningActivity.LineageId), which moves to this copy when the revision is
+    /// published. So a draft never shows a published activity as unassigned, and assigning it
+    /// again can't create a second assignment for the same activity.
+    /// </summary>
+    private async Task<Assignment?> FindForActivityAsync(LearningActivity activity, CancellationToken ct)
+    {
+        var direct = await db.Assignments.FirstOrDefaultAsync(a => a.LearningActivityId == activity.Id, ct);
+        if (direct is not null) return direct;
+        return await (
+            from a in db.Assignments
+            join act in db.LearningActivities on a.LearningActivityId equals act.Id
+            where act.LineageId == activity.LineageId
+            orderby a.CreatedAt descending
+            select a).FirstOrDefaultAsync(ct);
     }
 
     // ── Context resolution ───────────────────────────────────────────────────

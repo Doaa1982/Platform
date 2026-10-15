@@ -36,6 +36,8 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
   const [setup, setSetup] = useState(null);
   const [members, setMembers] = useState(null);
   const [requests, setRequests] = useState([]);
+  const [courseRequests, setCourseRequests] = useState([]);
+  const [loadedAt, setLoadedAt] = useState(0);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -45,10 +47,12 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
       api.getMembers(session.token, slug),
       // Only owners and admins can read this; anyone else simply has no queue
       api.getJoinRequests(session.token, slug).catch(() => []),
+      // Existing members asking for a course: requests too, waiting on the same people.
+      api.getCourseJoinRequests(session.token, slug).catch(() => []),
     ])
-      .then(([s, m, j]) => {
+      .then(([s, m, j, c]) => {
         if (cancelled) return;
-        setSetup(s); setMembers(m); setRequests(j); setError(null);
+        setSetup(s); setMembers(m); setRequests(j); setCourseRequests(c); setLoadedAt(Date.now()); setError(null);
       })
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
@@ -72,6 +76,12 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
     m.roles.some((r) => ["Teacher", "AssistantTeacher", "Owner", "Administrator"].includes(r)));
   const pendingInvites = members.invitations.filter((i) => i.isOpen);
   const pendingRequests = requests.filter((r) => r.status === "Submitted");
+  const pendingCourseRequests = courseRequests.filter((r) => r.status === "Submitted");
+  const waitingRequests = pendingRequests.length + pendingCourseRequests.length;
+  // Who joined lately (an accepted invitation, or an approved request), newest first.
+  const recentJoins = activeMembers
+    .filter((m) => !m.isOwner && loadedAt - new Date(m.createdAt).getTime() < RECENT_JOIN_MS)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   // Nobody but the owner yet, and not published — this is genuinely day one
   const isFirstRun = !isLive && activeMembers.length <= 1 && pendingInvites.length === 0;
@@ -126,9 +136,9 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
               note={learners.length === 0 ? t("home.statLearnersNoteNone") : t("home.statLearnersNote")} />
         <Stat icon={UserPlus} color={CARD_COLORS.invites} label={t("home.statInvites")} value={pendingInvites.length}
               note={pendingInvites.length === 0 ? t("home.statInvitesNoteNone") : t("home.statInvitesNote")} />
-        <Stat icon={Inbox} color={CARD_COLORS.requests} label={t("home.statRequests")} value={pendingRequests.length}
-              note={pendingRequests.length > 0 ? t("home.statRequestsWaiting") : setup.acceptsJoinRequests ? t("home.statRequestsNone") : t("home.statRequestsNotAccepting")}
-              urgent={pendingRequests.length > 0} />
+        <Stat icon={Inbox} color={CARD_COLORS.requests} label={t("home.statRequests")} value={waitingRequests}
+              note={waitingRequests > 0 ? t("home.statRequestsWaiting") : setup.acceptsJoinRequests ? t("home.statRequestsNone") : t("home.statRequestsNotAccepting")}
+              urgent={waitingRequests > 0} />
       </div>
 
       {/* ── Every real destination this workspace has today, one tap away ─ */}
@@ -142,7 +152,8 @@ export default function WorkspaceHomeScreen({ onNavigate }) {
         ))}
       </div>
 
-      <RecentActivity requests={pendingRequests} invitations={pendingInvites} onNavigate={onNavigate} t={t} />
+      <RecentActivity requests={pendingRequests} courseRequests={pendingCourseRequests} joins={recentJoins}
+                      invitations={pendingInvites} onNavigate={onNavigate} t={t} />
 
       {/* ── What to do next, in the order it makes sense ─────────────────
           Only while there's a "next" left to do — once the workspace is
@@ -289,13 +300,24 @@ function humanise(t, role) {
   return t(`roles.${role}`) !== `roles.${role}` ? t(`roles.${role}`) : role.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
-// Real, already-fetched data (the same join requests and open invitations
-// MembersScreen shows) — not a fabricated activity log.
-function RecentActivity({ requests, invitations, onNavigate, t }) {
+/** How long a new member stays in Recent activity. */
+const RECENT_JOIN_MS = 14 * 24 * 60 * 60 * 1000;
+
+// Real, already-fetched data (the same join and course requests, new members
+// and open invitations MembersScreen shows) — not a fabricated activity log.
+function RecentActivity({ requests, courseRequests, joins, invitations, onNavigate, t }) {
   const items = [
     ...requests.map((r) => ({
       key: `req-${r.id}`, icon: Inbox, color: CARD_COLORS.requests.icon,
       text: t("members.askedToJoinAs", { email: r.email, role: humanise(t, r.requestedRole) }),
+    })),
+    ...courseRequests.map((r) => ({
+      key: `creq-${r.id}`, icon: Inbox, color: CARD_COLORS.requests.icon,
+      text: t("home.askedToJoinCourse", { name: r.memberFullName, course: r.productTitle }),
+    })),
+    ...joins.map((m) => ({
+      key: `join-${m.membershipId}`, icon: Users, color: CARD_COLORS.learners.icon,
+      text: t("home.joinedWorkspace", { name: m.fullName, date: formatDateActive(m.createdAt) }),
     })),
     ...invitations.map((i) => ({
       key: `inv-${i.id}`, icon: UserPlus, color: CARD_COLORS.invites.icon,

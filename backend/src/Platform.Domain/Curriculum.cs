@@ -1,4 +1,12 @@
+using System.Text.Json;
+
 namespace Platform.Domain;
+
+/// <summary>A lesson's place in the structure learners see — part of <see cref="Curriculum.PublishedUnits"/>.</summary>
+public sealed record PublishedCurriculumLesson(Guid LessonId, int Position);
+
+/// <summary>A unit as learners see it: the structure as it stood when the curriculum was last published.</summary>
+public sealed record PublishedCurriculumUnit(Guid Id, string Title, int Position, IReadOnlyList<PublishedCurriculumLesson> Lessons);
 
 /// <summary>
 /// One lesson's placement inside a Curriculum Unit.
@@ -118,6 +126,23 @@ public class Curriculum
     public string Title { get; private set; } = string.Empty;
 
     public CurriculumStatus Status { get; private set; }
+
+    /// <summary>
+    /// Edit Mode on a published curriculum: the units below are a private working copy the tutor
+    /// may restructure, while learners keep the structure in <see cref="PublishedStructure"/>
+    /// until <see cref="Publish"/> runs again. (Edit Mode used to unpublish the curriculum
+    /// outright, locking every enrolled learner out of the course while the tutor edited.)
+    /// </summary>
+    public bool DraftOpen { get; private set; }
+
+    /// <summary>
+    /// The units and lesson placements as of the last <see cref="Publish"/>, serialized — what
+    /// learners are served (<see cref="PublishedUnits"/>). Null for a curriculum published
+    /// before snapshots existed: its live units are by definition what was published, since
+    /// they could not change while it was published.
+    /// </summary>
+    public string? PublishedStructure { get; private set; }
+
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
     public DateTime? PublishedAt { get; private set; }
@@ -266,22 +291,48 @@ public class Curriculum
         return null;
     }
 
+    /// <summary>
+    /// Publishes the structure: first publication, or the tutor publishing their Edit Mode
+    /// changes. Either way the current units become what learners see.
+    /// </summary>
     public void Publish()
     {
-        RequireEditable();
+        if (Status == CurriculumStatus.Archived)
+            throw new InvalidOperationException("An archived curriculum cannot be edited.");
+        if (Status == CurriculumStatus.Published && !DraftOpen)
+            throw new InvalidOperationException("This curriculum is already published, with no unpublished changes.");
 
         var blocker = PublicationBlocker();
         if (blocker is not null) throw new InvalidOperationException(blocker);
 
+        PublishedStructure = JsonSerializer.Serialize(SnapshotOfLiveUnits());
         Status = CurriculumStatus.Published;
+        DraftOpen = false;
         PublishedAt = DateTime.UtcNow;
         Touch();
     }
 
     /// <summary>
-    /// Back to Draft. Structure becomes editable again — which is why editing is
-    /// blocked while Published: a learner partway through a course should not
-    /// have units appear and vanish beneath them.
+    /// Edit Mode: opens a private working copy of a published curriculum's structure. The
+    /// curriculum stays Published and learners keep what was last published
+    /// (<see cref="PublishedUnits"/>) until <see cref="Publish"/>. Idempotent.
+    /// </summary>
+    public void OpenDraft()
+    {
+        if (Status != CurriculumStatus.Published)
+            throw new InvalidOperationException("Only a published curriculum has an Edit Mode — a draft one can be edited directly.");
+        if (DraftOpen) return;
+
+        // A curriculum published before snapshots existed: its live units are what was
+        // published, so freeze them now, before the first edit changes them.
+        PublishedStructure ??= JsonSerializer.Serialize(SnapshotOfLiveUnits());
+        DraftOpen = true;
+        Touch();
+    }
+
+    /// <summary>
+    /// Withdraws the curriculum from learners altogether — back to Draft. Not Edit Mode
+    /// (<see cref="OpenDraft"/>), which keeps learners on the published structure.
     /// </summary>
     public void Unpublish()
     {
@@ -289,8 +340,28 @@ public class Curriculum
             throw new InvalidOperationException("Only a published curriculum can be unpublished.");
 
         Status = CurriculumStatus.Draft;
+        DraftOpen = false;
+        PublishedStructure = null;
         Touch();
     }
+
+    /// <summary>
+    /// The structure learners see: the last published one. Empty unless Published. Every
+    /// learner-facing read goes through this, never through <see cref="Units"/>, which while
+    /// <see cref="DraftOpen"/> is the tutor's unpublished working copy.
+    /// </summary>
+    public IReadOnlyList<PublishedCurriculumUnit> PublishedUnits()
+    {
+        if (Status != CurriculumStatus.Published) return [];
+        if (PublishedStructure is null) return SnapshotOfLiveUnits();
+        return JsonSerializer.Deserialize<List<PublishedCurriculumUnit>>(PublishedStructure) ?? [];
+    }
+
+    private List<PublishedCurriculumUnit> SnapshotOfLiveUnits() =>
+        _units.OrderBy(u => u.Position)
+            .Select(u => new PublishedCurriculumUnit(u.Id, u.Title, u.Position,
+                u.Lessons.OrderBy(l => l.Position).Select(l => new PublishedCurriculumLesson(l.LessonId, l.Position)).ToList()))
+            .ToList();
 
     public void Archive()
     {
@@ -298,6 +369,7 @@ public class Curriculum
             throw new InvalidOperationException("This curriculum is already archived.");
 
         Status = CurriculumStatus.Archived;
+        DraftOpen = false;
         Touch();
     }
 
@@ -309,9 +381,9 @@ public class Curriculum
     {
         if (Status == CurriculumStatus.Archived)
             throw new InvalidOperationException("An archived curriculum cannot be edited.");
-        if (Status == CurriculumStatus.Published)
+        if (Status == CurriculumStatus.Published && !DraftOpen)
             throw new InvalidOperationException(
-                "A published curriculum cannot be restructured. Unpublish it first — learners are following it as it stands.");
+                "A published curriculum cannot be restructured directly. Turn on Edit Mode first — learners are following it as it stands.");
     }
 
     private void Touch() => UpdatedAt = DateTime.UtcNow;
