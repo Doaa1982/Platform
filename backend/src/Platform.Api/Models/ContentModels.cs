@@ -28,7 +28,13 @@ public record LessonRow(
     int RevisionCount,
     /// <summary>Whether a draft revision is currently open for editing.</summary>
     bool HasOpenDraft,
-    int? EstimatedMinutes);
+    int? EstimatedMinutes,
+    /// <summary>
+    /// Why the open draft can't be published yet ("NeedsContent", "NeedsVideo"), or null. On a
+    /// live lesson this blocks Publish; on a never-live lesson Publish skips it (see
+    /// ContentStudioService.PublishCurriculumAsync).
+    /// </summary>
+    string? PublishBlocker = null);
 
 /// <summary>The lesson a tutor is currently writing, with its editable draft.</summary>
 public record LessonDetailResponse(

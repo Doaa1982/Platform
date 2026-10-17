@@ -153,6 +153,8 @@ function CurriculumBuilder({ productId, onBack }) {
   const [success, setSuccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [openLessonId, setOpenLessonId] = useState(null);
+  // A refused publish stays on screen (not a 4-second toast) until the tutor edits or retries.
+  const [publishError, setPublishError] = useState(null);
 
   const load = useCallback(
     () => api.getCurriculum(session.token, slug, productId)
@@ -172,6 +174,7 @@ function CurriculumBuilder({ productId, onBack }) {
     setBusy(true);
     setError(null);
     setSuccess(null);
+    setPublishError(null);
     try {
       const r = await fn();
       if (successMessage) setSuccess(successMessage);
@@ -179,6 +182,24 @@ function CurriculumBuilder({ productId, onBack }) {
     }
     catch (e) { setError(e.message); return null; }
     finally { setBusy(false); }
+  }
+
+  async function publish(successMessage) {
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    setPublishError(null);
+    try {
+      await api.curriculumTransition(session.token, slug, productId, "publish");
+      setSuccess(successMessage);
+    } catch (e) {
+      setPublishError(e.message);
+    } finally {
+      setBusy(false);
+    }
+    // Either way, reload: on success to show the published state, on failure so the list of
+    // unready lessons reflects what the server just refused.
+    await load();
   }
 
   function moveUnit(unitId, direction) {
@@ -232,7 +253,7 @@ function CurriculumBuilder({ productId, onBack }) {
         initialProductId={productId}
         initialLessonId={openLessonId}
         onBack={() => setOpenLessonId(null)}
-        onChanged={load}
+        onChanged={() => { setPublishError(null); load(); }}
       />
     );
   }
@@ -264,12 +285,12 @@ function CurriculumBuilder({ productId, onBack }) {
             </button>
           ) : data.draftOpen ? (
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
-                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "publish"), t("studio.toastChangesPublished")).then(load)}>
+                    onClick={() => publish(t("studio.toastChangesPublished"))}>
               <Globe size={13} /> {t("studio.publishChanges")}
             </button>
           ) : data.status !== "Archived" && (
             <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy || !!data.publicationBlocker}
-                    onClick={() => run(() => api.curriculumTransition(session.token, slug, productId, "publish"), t("studio.toastCurriculumPublished")).then(load)}>
+                    onClick={() => publish(t("studio.toastCurriculumPublished"))}>
               <Globe size={13} /> {t("studio.publishCurriculum")}
             </button>
           )}
@@ -279,6 +300,8 @@ function CurriculumBuilder({ productId, onBack }) {
       {data.publicationBlocker && (
         <div className="lw-studio__blocker"><AlertCircle size={14} /> {data.publicationBlocker}</div>
       )}
+
+      {data.canAuthor && <PublishReadiness curriculum={data} error={publishError} onOpenLesson={setOpenLessonId} />}
 
       {data.canAuthor && data.status === "Published" && !data.draftOpen && (
         <p className="muted" style={{ margin: "-6px 0 16px" }}>
@@ -464,6 +487,7 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
   // appropriate for a failed initial load, not for a failed button click that
   // should leave the dropdowns/lesson content right where they were).
   const [actionError, setActionError] = useState(null);
+  const [publishError, setPublishError] = useState(null);
 
   const load = useCallback(
     () => api.getCurriculum(session.token, slug, productId)
@@ -489,11 +513,17 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
   async function handlePublishChanges() {
     setBusy(true);
     setActionError(null);
+    setPublishError(null);
     try {
       await api.curriculumTransition(session.token, slug, productId, "publish");
-      await load();
-    } catch (e) { setActionError(e.message); }
+    } catch (e) { setPublishError(e.message); }
     finally { setBusy(false); }
+    await load();
+  }
+
+  function openLesson(id) {
+    setUnitId(unitContaining(curriculum, id));
+    setLessonId(id);
   }
 
   useEffect(() => {
@@ -572,6 +602,9 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
               ? t("studio.draftOpenNotice")
               : <>{t("studio.publishedNoticePrefix")} <strong>{t("studio.editMode")}</strong> {t("studio.publishedNoticeSuffix")}</>}
           </p>
+          {curriculum.draftOpen && (
+            <PublishReadiness curriculum={curriculum} error={publishError} onOpenLesson={openLesson} currentLessonId={lessonId} />
+          )}
         </div>
       )}
 
@@ -586,7 +619,7 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
             lessonId={lessonId}
             editable={editable}
             editMode={curriculum.status === "Published" && !!curriculum.draftOpen}
-            onChanged={() => { load(); onChanged?.(); }}
+            onChanged={() => { setPublishError(null); load(); onChanged?.(); }}
             onDuplicated={(newId) => { setUnitId(UNPLACED_UNIT); setLessonId(newId); }}
           />
         </div>
@@ -596,6 +629,67 @@ function LessonPicker({ productId, initialLessonId, onChanged }) {
         )
       )}
     </>
+  );
+}
+
+const BLOCKER_KEY = { NeedsContent: "studio.blockerNeedsContent", NeedsVideo: "studio.blockerNeedsVideo" };
+
+/**
+ * What "Publish" will do with lessons that aren't ready — shown before the click, and again with
+ * the server's refusal after one. Mirrors ContentStudioService.PublishCurriculumAsync:
+ *   · a lesson students can already see (Published) whose changes aren't ready blocks Publish;
+ *   · a lesson that isn't live yet and isn't ready is skipped — it stays hidden from students.
+ * Each lesson is a link that opens it in the editor.
+ */
+export function PublishReadiness({ curriculum, error, onOpenLesson, currentLessonId = null }) {
+  const { t } = useLanguage();
+  const placed = curriculum.units.flatMap((u) => u.lessons);
+  const blocking = placed.filter((l) => l.publishBlocker && l.status === "Published");
+  const skipped = placed.filter((l) => l.publishBlocker && l.status !== "Published" && l.status !== "Archived");
+  const canPublish = curriculum.status !== "Archived" && (curriculum.status !== "Published" || curriculum.draftOpen);
+  if (!error && (!canPublish || (blocking.length === 0 && skipped.length === 0))) return null;
+
+  const lessonLinks = (lessons) => (
+    <ul className="lw-studio__readylist">
+      {lessons.map((l) => (
+        <li key={l.id}>
+          {l.id === currentLessonId
+            ? <strong>{l.title}</strong>
+            : <button type="button" className="lw-studio__linkbtn" onClick={() => onOpenLesson(l.id)}>{l.title}</button>}
+          {" — "}{t(BLOCKER_KEY[l.publishBlocker] ?? "studio.blockerNeedsContent")}
+        </li>
+      ))}
+    </ul>
+  );
+
+  return (
+    <div className="lw-studio__readiness">
+      {error ? (
+        <div className="lw-studio__publisherror" role="alert">
+          <AlertCircle size={15} aria-hidden="true" />
+          <div>
+            {/* The server's own words when it isn't about unready lessons (or the data hasn't caught up). */}
+            <strong>{blocking.length > 0 ? t("studio.publishRefusedTitle") : error}</strong>
+            {blocking.length > 0 && lessonLinks(blocking)}
+            {blocking.length > 0 && <p>{t("studio.publishRefusedFix")}</p>}
+          </div>
+        </div>
+      ) : blocking.length > 0 && (
+        <div className="lw-studio__notready">
+          <AlertCircle size={15} aria-hidden="true" />
+          <div>
+            <strong>{t("studio.notReadyTitle")}</strong>
+            {lessonLinks(blocking)}
+          </div>
+        </div>
+      )}
+      {skipped.length > 0 && (
+        <div className="lw-studio__notincluded">
+          <strong>{t("studio.notIncludedTitle")}</strong> {t("studio.notIncludedBody")}
+          {lessonLinks(skipped)}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1183,7 +1277,9 @@ function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, 
             {editable && lesson.currentRevision && (
               <p className="lw-studio__panelnote">
                 {t("studio.publishedAsRevision", { version: lesson.currentRevision.version })}{" "}
-                {lesson.draftRevision ? t("studio.learnersSeeThat") : editMode ? t("studio.editModeVersionNote") : t("studio.directEditNote")}
+                {lesson.draftRevision
+                  ? (editMode ? t("studio.editModeDraftNote") : t("studio.learnersSeeThat"))
+                  : editMode ? t("studio.editModeVersionNote") : t("studio.directEditNote")}
               </p>
             )}
 
@@ -1281,11 +1377,17 @@ function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, 
                   <input type="number" min="0" value={minutes}
                          onChange={(e) => setMinutes(e.target.value)} disabled={busy || !editable} />
                 </label>
-                {editable && (
+                {/* In Edit Mode there's no per-lesson Publish: a saved draft goes live with the
+                    course's "Publish changes" (the editor's banner says the same). */}
+                {editable && (editMode ? (
+                  <p className="muted" style={{ margin: 0 }}>
+                    <strong>{t("studio.saveDraftHintPrefix")}</strong> {t("studio.editModeSaveHintMid")} <strong>{t("studio.publishChanges")}</strong>{t("studio.editModeSaveHintSuffix")}
+                  </p>
+                ) : (
                   <p className="muted" style={{ margin: 0 }}>
                     <strong>{t("studio.saveDraftHintPrefix")}</strong> {t("studio.saveDraftHintMid")} <strong>{t("studio.saveDraftHintPublish")}</strong> {t("studio.saveDraftHintSuffix")}
                   </p>
-                )}
+                ))}
                 {publishAttempted && !body.trim() && (
                   <Message type="error">{t("studio.addContentBeforePublish")}</Message>
                 )}
@@ -1369,11 +1471,15 @@ function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, 
                   <input type="number" min="0" value={minutes}
                          onChange={(e) => setMinutes(e.target.value)} disabled={busy || !editable} />
                 </label>
-                {editable && (
+                {editable && (editMode ? (
+                  <p className="muted" style={{ margin: 0 }}>
+                    <strong>{t("studio.publishedDirectNoteBold")}</strong> {t("studio.editModeSaveChangesMid")} <strong>{t("studio.publishChanges")}</strong>{t("studio.editModeSaveHintSuffix")}
+                  </p>
+                ) : (
                   <p className="muted" style={{ margin: 0 }}>
                     {t("studio.publishedDirectNotePrefix")} <strong>{t("studio.publishedDirectNoteBold")}</strong> {t("studio.publishedDirectNoteSuffix")}
                   </p>
-                )}
+                ))}
               </div>
             ) : (
               <div className="lw-studio__nodraft">
@@ -1543,7 +1649,7 @@ function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, 
                     {t("studio.saveDraft")}
                   </button>
                 )}
-                {lesson.draftRevision && lesson.status !== "Archived" && (
+                {lesson.draftRevision && lesson.status !== "Archived" && !editMode && (
                   <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={handlePublish}>
                     <Globe size={13} /> {t("studio.publish")}
                   </button>
@@ -1555,7 +1661,7 @@ function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, 
                 {!lesson.draftRevision && lesson.status === "Draft" && lesson.currentRevision && (
                   <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}
                           onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "republish"), t("studio.toastLessonPublished")).then((l) => l && setLesson(l))}>
-                    <Globe size={13} /> {t("studio.publish")}
+                    <Globe size={13} /> {editMode ? t("studio.publishNow") : t("studio.publish")}
                   </button>
                 )}
                 {lesson.status === "Published" && (
@@ -1571,6 +1677,11 @@ function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, 
                   </button>
                 )}
               </div>
+            )}
+            {/* These three act on the live lesson at once, even in Edit Mode — said plainly, so
+                the "stays private" notes above aren't taken to cover them too. */}
+            {editable && editMode && lesson.status !== "Archived" && (
+              <p className="muted lw-studio__footnote">{t("studio.editModeFooterNote")}</p>
             )}
 
             {lesson.history.length > 1 && (
@@ -4544,6 +4655,25 @@ const CSS = `
   @media (max-width: 480px) { .lw-studio__versionoptions { grid-template-columns: 1fr; } }
 
   .lw-studio__panelfooter { display: flex; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .lw-studio__footnote { margin: 8px 0 0; font-size: 0.8rem; }
+  .lw-studio__readiness { display: flex; flex-direction: column; gap: 10px; margin: 0 0 16px; max-width: 72ch; text-align: start; }
+  .lw-studio__publisherror, .lw-studio__notready {
+    display: flex; align-items: flex-start; gap: 9px; border-radius: var(--radius-sm); padding: 11px 14px;
+    font-size: 0.86rem; line-height: 1.5;
+  }
+  .lw-studio__publisherror { color: var(--ink); background: color-mix(in srgb, var(--danger) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); }
+  .lw-studio__publisherror > svg { color: var(--danger); flex-shrink: 0; margin-top: 2px; }
+  .lw-studio__notready { color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); }
+  .lw-studio__notready > svg { color: var(--ink-soft); flex-shrink: 0; margin-top: 2px; }
+  .lw-studio__publisherror p { margin: 6px 0 0; }
+  .lw-studio__notincluded { font-size: 0.83rem; color: var(--ink-soft); line-height: 1.5; }
+  .lw-studio__notincluded strong { color: var(--ink); }
+  .lw-studio__readylist { margin: 6px 0 0; padding-inline-start: 18px; }
+  .lw-studio__readylist li { margin: 2px 0; }
+  .lw-studio__linkbtn {
+    background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: inherit;
+    text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: start;
+  }
 
   .lw-studio__history { margin-top: 16px; font-size: 0.82rem; color: var(--ink-soft); }
   .lw-studio__history summary { cursor: pointer; font-weight: 600; }
