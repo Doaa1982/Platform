@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatDateActive } from "../i18n/format";
-import { LoaderCircle, ListChecks, Lock, CheckCircle2, ArrowRight } from "lucide-react";
+import { LoaderCircle, ListChecks, Lock, CheckCircle2, ArrowRight, Hourglass, MessageSquareText, XCircle } from "lucide-react";
 import * as api from "../api/client";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
@@ -9,7 +9,7 @@ import Message from "../components/Message";
 /* =========================================================================
    ASSIGNMENTS (Learner) — every Assignment targeting this learner, across
    every course they're enrolled in, grouped by product. LearnerStatus
-   (Locked/Available/InProgress/Submitted/UnderReview/Completed/Overdue) is
+   (Locked/Available/InProgress/Submitted/UnderReview/Completed/Overdue/Closed) is
    computed server-side (Assignment Business Analysis §11) — never stored,
    so it's always current the moment this loads.
    ========================================================================= */
@@ -66,8 +66,12 @@ export default function LearnerAssignmentsScreen({ onOpenAssignment }) {
                   <span className="lw-lassign__rowtitle">{r.activityTitle}</span>
                   <span className="lw-lassign__lesson">{r.lessonTitle}</span>
                   <StatusPill status={r.learnerStatus} t={t} />
-                  {r.dueAt && r.learnerStatus !== "Completed" && (
-                    <span className="lw-lassign__due">{t("learnerAssignments.dueLabel", { date: formatDateActive(r.dueAt) })}</span>
+                  {r.learnerStatus === "Completed" && <ResultPill passed={r.passed} t={t} />}
+                  <span className="lw-lassign__due">
+                    {r.dueAt ? t("learnerAssignments.dueLabel", { date: formatDateActive(r.dueAt) }) : t("learnerAssignments.noDueDate")}
+                  </span>
+                  {r.hasFeedback && (
+                    <span className="lw-lassign__feedback"><MessageSquareText size={12} /> {t("learnerAssignments.viewFeedback")}</span>
                   )}
                 </div>
                 {!locked && <ArrowRight size={14} className="lw-lassign__rowarrow" />}
@@ -80,12 +84,29 @@ export default function LearnerAssignmentsScreen({ onOpenAssignment }) {
   );
 }
 
+/* Red is kept for a real problem (Overdue). Every other open state is neutral: Submitted/Under
+   review are waiting on the teacher ("waiting" pill), Not started/In progress are outlined. They
+   used the workspace accent, and with a red brand accent Submitted looked as alarming as Overdue. */
 function StatusPill({ status, t }) {
   if (status === "Locked") return <span className="lw-lassign__pill"><Lock size={11} /> {t("learnerAssignments.statusLocked")}</span>;
   if (status === "Completed") return <span className="lw-lassign__pill is-passed"><CheckCircle2 size={11} /> {t("learnerAssignments.statusCompleted")}</span>;
   if (status === "Overdue") return <span className="lw-lassign__pill is-failed">{t("learnerAssignments.statusOverdue")}</span>;
-  const key = { Available: "statusAvailable", InProgress: "statusInProgress", Submitted: "statusSubmitted", UnderReview: "statusUnderReview" }[status];
+  if (status === "Closed") return <span className="lw-lassign__pill"><Lock size={11} /> {t("learnerAssignments.statusClosed")}</span>;
+  if (status === "Submitted" || status === "UnderReview") {
+    return (
+      <span className="lw-lassign__pill is-waiting">
+        <Hourglass size={11} /> {t(status === "Submitted" ? "learnerAssignments.statusSubmitted" : "learnerAssignments.statusUnderReview")}
+      </span>
+    );
+  }
+  const key = { Available: "statusAvailable", InProgress: "statusInProgress" }[status];
   return <span className="lw-lassign__pill is-pending">{t(`learnerAssignments.${key ?? "statusAvailable"}`)}</span>;
+}
+
+function ResultPill({ passed, t }) {
+  if (passed === true) return <span className="lw-lassign__pill is-passed"><CheckCircle2 size={11} /> {t("learnerAssignments.resultPassed")}</span>;
+  if (passed === false) return <span className="lw-lassign__pill is-notpassed"><XCircle size={11} /> {t("learnerAssignments.resultNotPassed")}</span>;
+  return <span className="lw-lassign__pill">{t("learnerAssignments.resultReviewed")}</span>;
 }
 
 function groupByProduct(rows) {
@@ -137,7 +158,7 @@ const CSS = `
   .lw-lassign__rowtitle { font-size: 0.95rem; font-weight: 600; }
   .lw-lassign__lesson {
     font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--ink-soft); background: var(--surface-2); padding: 2px 8px; border-radius: 6px;
+    color: color-mix(in srgb, var(--ink-soft) 45%, var(--ink)); background: var(--surface-2); padding: 2px 8px; border-radius: 6px;
   }
   .lw-lassign__due {
     font-size: 0.82rem; color: var(--ink-soft); background: color-mix(in srgb, var(--surface-2) 60%, transparent);
@@ -148,9 +169,14 @@ const CSS = `
 
   .lw-lassign__pill {
     display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-    border-radius: 20px; padding: 4px 11px; background: var(--surface-2); color: var(--ink-soft);
+    border-radius: 20px; padding: 4px 11px; background: var(--surface-2); color: color-mix(in srgb, var(--ink-soft) 45%, var(--ink));
   }
-  .lw-lassign__pill.is-pending { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  .lw-lassign__pill.is-passed { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
-  .lw-lassign__pill.is-failed { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+  /* Status text is mixed toward --ink so the small mono labels clear 4.5:1 on their tint in
+     both themes (the plain accent/danger colours didn't, once the screen had data). */
+  .lw-lassign__pill.is-pending { color: var(--ink); background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+  .lw-lassign__pill.is-passed { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: color-mix(in srgb, var(--accent-2) 55%, var(--ink)); }
+  .lw-lassign__pill.is-failed { background: color-mix(in srgb, var(--danger) 14%, transparent); color: color-mix(in srgb, var(--danger) 60%, var(--ink)); }
+  .lw-lassign__pill.is-waiting { background: var(--surface-2); color: var(--ink); }
+  .lw-lassign__pill.is-notpassed { background: var(--surface-2); color: var(--ink); }
+  .lw-lassign__feedback { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; color: color-mix(in srgb, var(--accent) 60%, var(--ink)); font-weight: 600; }
 `;

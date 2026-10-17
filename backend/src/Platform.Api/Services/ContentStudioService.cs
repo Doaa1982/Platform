@@ -118,7 +118,8 @@ public class ContentStudioService(
         Status:           l.Status.ToString(),
         RevisionCount:    l.Revisions.Count,
         HasOpenDraft:     l.DraftRevision is not null,
-        EstimatedMinutes: l.CurrentRevision?.EstimatedMinutes ?? l.DraftRevision?.EstimatedMinutes);
+        EstimatedMinutes: l.CurrentRevision?.EstimatedMinutes ?? l.DraftRevision?.EstimatedMinutes,
+        PublishBlocker:   l.PublishDraftBlockerCode());
 
     public async Task<ProvisioningResult<LessonDetailResponse>> GetLessonAsync(
         string slug, Guid caller, Guid lessonId, CancellationToken ct = default)
@@ -265,9 +266,15 @@ public class ContentStudioService(
     /// Publishes the curriculum — first publication, or everything changed in Edit Mode. In Edit
     /// Mode lesson changes go into lesson drafts (learners keep the published lesson), so this
     /// also publishes the open draft of every lesson the curriculum places: one Publish makes
-    /// the whole course live, as the Edit Mode notice promises. Every lesson draft is checked
-    /// before anything changes, so a lesson that can't be published yet blocks the whole publish
-    /// with its name rather than leaving the course half-published.
+    /// the whole course live, as the Edit Mode notice promises.
+    ///
+    /// Which unready drafts block: only those of lessons learners can already see (Status
+    /// Published). Their drafts are checked before anything changes, so one of them blocks the
+    /// whole publish with its name rather than leaving the course half-published. A lesson that
+    /// isn't live (never published, or unpublished) with an unready draft is skipped instead: it
+    /// stays hidden from learners — every learner read filters on Status Published — and the
+    /// tutor sees it listed as not included. (It used to block too, so an empty new lesson
+    /// stopped a text fix on another lesson from going live.)
     /// </summary>
     public async Task<ProvisioningResult<CurriculumResponse>> PublishCurriculumAsync(
         string slug, Guid caller, Guid productId, CancellationToken ct = default)
@@ -286,12 +293,16 @@ public class ContentStudioService(
         lessonsWithDrafts = lessonsWithDrafts.Where(l => l.DraftRevision is not null && l.Status != LessonStatus.Archived).ToList();
 
         var blocked = lessonsWithDrafts
+            .Where(l => l.Status == LessonStatus.Published)
             .Select(l => (l.Title, Blocker: l.PublishDraftBlocker()))
             .Where(x => x.Blocker is not null).ToList();
         if (blocked.Count > 0)
             return Fail<CurriculumResponse>((ProvisioningError.Conflict,
                 "Some lessons have changes that can't be published yet: " +
                 string.Join("; ", blocked.Select(b => $"{b.Title}: {b.Blocker}"))));
+
+        // Not live and not ready: left as a draft, hidden from learners.
+        lessonsWithDrafts = lessonsWithDrafts.Where(l => l.PublishDraftBlocker() is null).ToList();
 
         try { curriculum.Publish(); }
         catch (InvalidOperationException ex) { return Fail<CurriculumResponse>((ProvisioningError.Conflict, ex.Message)); }
@@ -512,18 +523,19 @@ public class ContentStudioService(
     /// safe to change on the currently published revision directly — no new
     /// revision, no republish.
     /// </summary>
+    private Task<bool> InEditModeAsync(Guid lessonId, CancellationToken ct) => (
+        from lesson in db.Lessons
+        join curriculum in db.Curricula on lesson.LearningProductId equals curriculum.LearningProductId
+        where lesson.Id == lessonId && curriculum.DraftOpen && curriculum.Status == CurriculumStatus.Published
+        select curriculum.Id).AnyAsync(ct);
+
     public async Task<ProvisioningResult<LessonDetailResponse>> QuickEditPublishedAsync(
         string slug, Guid caller, Guid lessonId, SaveRevisionRequest request, CancellationToken ct = default)
     {
         // In Edit Mode learners keep the published course until the tutor publishes again, so a
         // change to a published lesson goes into a new version (the editor starts one), never
         // straight onto what learners are reading.
-        var inEditMode = await (
-            from lesson in db.Lessons
-            join curriculum in db.Curricula on lesson.LearningProductId equals curriculum.LearningProductId
-            where lesson.Id == lessonId && curriculum.DraftOpen && curriculum.Status == CurriculumStatus.Published
-            select curriculum.Id).AnyAsync(ct);
-        if (inEditMode)
+        if (await InEditModeAsync(lessonId, ct))
             return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
                 "This course is in Edit Mode: changes to a published lesson go into a new version, published with the course."));
 
@@ -545,6 +557,12 @@ public class ContentStudioService(
         var lesson = await db.Lessons.Include(l => l.Revisions)
             .FirstOrDefaultAsync(l => l.Id == lessonId && l.WorkspaceId == ctx.Workspace!.Id, ct);
         if (lesson is null) return Fail<LessonDetailResponse>((ProvisioningError.NotFound, "No such lesson."));
+
+        // In Edit Mode a lesson draft goes live only with the course's "Publish changes" — the
+        // editor promises the tutor that saved changes stay private until then.
+        if (await InEditModeAsync(lessonId, ct))
+            return Fail<LessonDetailResponse>((ProvisioningError.Conflict,
+                "This course is in Edit Mode: lesson changes go live when you publish the course's changes."));
 
         try { await PublishLessonDraftAsync(lesson, ct); }
         catch (InvalidOperationException ex) { return Fail<LessonDetailResponse>((ProvisioningError.Conflict, ex.Message)); }

@@ -175,10 +175,20 @@ export const APP_CSS = `
     font-family: var(--font-body, system-ui); font-weight: 700; font-size: 1.4rem;
     line-height: 1.2; color: #fff; letter-spacing: -0.01em;
   }
+  .lw-academyheader__text { min-width: 0; flex: 1; }
   .lw-academyheader__tagline { font-size: 0.85rem; color: rgba(255,255,255,0.9); margin-top: 2px; }
+  /* Phones: a long description used to wrap to 3+ lines and the 56px logo tile crowded the
+     banner. The logo shrinks and stays inside its tile; the description is clamped to two lines. */
   @media (max-width: 640px) {
-    .lw-academyheader { padding: 14px 16px; }
-    .lw-academyheader__name { font-size: 1.15rem; }
+    .lw-academyheader { padding: 12px 16px; }
+    .lw-academyheader__inner { gap: 12px; }
+    .lw-academyheader__mark { padding: 5px; border-radius: 10px; overflow: hidden; }
+    .lw-academyheader__mark .lw-brandmark, .lw-academyheader__mark svg { width: 32px !important; height: 32px !important; }
+    .lw-academyheader__name { font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lw-academyheader__tagline {
+      font-size: 0.8rem; line-height: 1.35; overflow: hidden;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+    }
   }
 
   .lw-shell { display: flex; flex: 1; min-height: 0; }

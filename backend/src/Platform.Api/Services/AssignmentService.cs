@@ -104,9 +104,19 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
         string slug, Guid caller, Guid lessonId, Guid activityId, CancellationToken ct = default)
         => MutateAsync(slug, caller, lessonId, activityId, a => a.Close(DateTime.UtcNow), ct);
 
+    /// <summary>
+    /// "Remove from learners": hides the assignment from learners and the tutor's active list,
+    /// keeping every submission. An assignment still open is closed first, in the same save, so
+    /// one action does it. Reached by the activity id the Assignments list carries, which works
+    /// for an assignment left on an older lesson version too.
+    /// </summary>
     public Task<ProvisioningResult<AssignmentResponse>> ArchiveAssignmentAsync(
         string slug, Guid caller, Guid lessonId, Guid activityId, CancellationToken ct = default)
-        => MutateAsync(slug, caller, lessonId, activityId, a => a.Archive(), ct);
+        => MutateAsync(slug, caller, lessonId, activityId, a =>
+        {
+            if (a.Status != AssignmentStatus.Closed) a.Close(DateTime.UtcNow);
+            a.Archive();
+        }, ct);
 
     /// <summary>BA-007 — a due date may only move later.</summary>
     public Task<ProvisioningResult<AssignmentResponse>> ExtendDueDateAsync(
@@ -324,7 +334,9 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
             rows.Add(new LearnerAssignmentRow(
                 a.Id, a.LearningActivityId, actx.ActivityTitle, actx.ActivityType,
                 actx.LessonId, actx.LessonTitle, actx.ProductId, actx.ProductTitle,
-                a.DueAt, ComputeLearnerStatus(a, sub), sub?.Id));
+                a.DueAt, ComputeLearnerStatus(a, sub, now), sub?.Id,
+                sub?.Status == SubmissionStatus.Evaluated ? sub.AssignmentPassed : null,
+                sub?.Status == SubmissionStatus.Evaluated && !string.IsNullOrWhiteSpace(sub.Feedback)));
         }
 
         return ProvisioningResult<LearnerAssignmentListResponse>.Success(new LearnerAssignmentListResponse(
@@ -435,9 +447,19 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
 
     // ── Student-facing status (Assignment BA §11 — computed, never stored) ────
 
-    private static string ComputeLearnerStatus(Assignment a, Submission? sub)
+    /// <remarks>
+    /// "Closed" (not "Overdue") once the assignment can no longer be started or finished — it
+    /// matches the learner page's "This assignment closed on {date}" note. "Overdue" is kept for
+    /// one still open but past its due date, which the learner can still act on.
+    /// </remarks>
+    private static string ComputeLearnerStatus(Assignment a, Submission? sub, DateTime now)
     {
-        if (sub is null) return a.Status == AssignmentStatus.Closed ? "Overdue" : "Available";
+        if (sub is null || sub.Status == SubmissionStatus.InProgress)
+        {
+            if (a.Status == AssignmentStatus.Closed) return "Closed";
+            if (a.DueAt is { } due && due < now) return "Overdue";
+        }
+        if (sub is null) return "Available";
         return sub.Status switch
         {
             SubmissionStatus.InProgress => "InProgress",

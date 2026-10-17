@@ -227,6 +227,74 @@ const DIALOG_STATES = ["Draft", "Published"].map((status) => ({
   },
 }));
 
+// PR #16 follow-ups. A refused "Publish changes" explains itself inline and names the lessons
+// (one live lesson with an unready draft, one never-live empty lesson that publishing skips);
+// the Assignments list with every status and the "Remove from learners" dialog; and the
+// learner's assignment cards with a result, feedback, Closed and Submitted.
+const recordedCurriculum = recorded(/\/products\/[^/]+\/curriculum$/);
+const refusedCurriculum = () => {
+  const c = structuredClone(recordedCurriculum);
+  c.draftOpen = true;
+  const unit = c.units[0];
+  unit.lessons[0] = { ...unit.lessons[0], hasOpenDraft: true, publishBlocker: "NeedsContent" };
+  unit.lessons.push({ id: "00000000-0000-4000-8000-0000000000d1", title: "درس جديد: محيط الدائرة", status: "Draft",
+    revisionCount: 1, hasOpenDraft: true, estimatedMinutes: null, publishBlocker: "NeedsContent" });
+  return c;
+};
+const overviewRow = (id, title, status, extra = {}) => ({
+  assignmentId: `00000000-0000-4000-8000-0000000000e${id}`, learningActivityId: `00000000-0000-4000-8000-0000000000f${id}`,
+  activityTitle: title, activityType: "Homework", lessonId: recordedCurriculum.units[0].lessons[0].id, lessonTitle: recordedCurriculum.units[0].lessons[0].title,
+  productId: recordedCurriculum.learningProductId, productTitle: recordedCurriculum.productTitle, status,
+  dueAt: "2026-10-20T15:00:00Z", recipientCount: 3, submittedCount: 1, ...extra,
+});
+const learnerRow = (id, title, learnerStatus, extra = {}) => ({
+  assignmentId: `00000000-0000-4000-8000-00000000001${id}`, learningActivityId: `00000000-0000-4000-8000-00000000002${id}`,
+  activityTitle: title, activityType: "Homework", lessonId: recordedCurriculum.units[0].lessons[0].id, lessonTitle: recordedCurriculum.units[0].lessons[0].title,
+  productId: recordedCurriculum.learningProductId, productTitle: recordedCurriculum.productTitle,
+  dueAt: "2026-10-20T15:00:00Z", learnerStatus, submissionId: null, passed: null, hasFeedback: false, ...extra,
+});
+const FOLLOWUP_STATES = [
+  { id: "publish-refused", screen: "owner-studio-course",
+    routes: async (context) => {
+      await context.route("**/api/workspaces/*/products/*/curriculum", (route) =>
+        route.request().method() === "GET" ? route.fulfill({ json: refusedCurriculum() }) : route.fallback());
+      await context.route("**/api/workspaces/*/products/*/curriculum/publish", (route) => route.fulfill({ status: 409, json: {
+        message: "Some lessons have changes that can't be published yet: مساحة شبه المنحرف: A lesson revision needs content before it can be published." } }));
+    },
+    act: async (page) => {
+      await page.locator(".lw-studio__bar .lw-btn--accent").click();
+      await expect(page.getByRole("alert")).toBeVisible();
+    } },
+  { id: "assignments-remove", screen: "owner-assignments",
+    routes: (context) => context.route(`**/api/workspaces/${SLUG}/assignments`, (route) => route.fulfill({ json: { rows: [
+      overviewRow(1, "ورقة عمل: مساحة شبه المنحرف", "Active"),
+      overviewRow(2, "تدريب: مساحة شبه المنحرف", "Closed", { submittedCount: 2 }),
+      overviewRow(3, "واجب قديم", "Archived"),
+    ] } })),
+    act: async (page) => {
+      await page.locator("tr", { hasText: "تدريب: مساحة شبه المنحرف" }).getByRole("button").click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+    } },
+  { id: "learner-assignment-cards", screen: "learner-assignments",
+    routes: (context) => context.route(`**/api/workspaces/${SLUG}/learn/assignments`, (route) => route.fulfill({ json: { rows: [
+      learnerRow(1, "واجب: مساحة شبه المنحرف", "Completed", { passed: true, hasFeedback: true, submissionId: "00000000-0000-4000-8000-000000000031" }),
+      learnerRow(2, "تدريب إضافي", "Submitted", { submissionId: "00000000-0000-4000-8000-000000000032" }),
+      learnerRow(3, "ورقة عمل: الدائرة", "Closed"),
+      learnerRow(4, "مراجعة الوحدة", "Overdue"),
+      learnerRow(5, "تمارين الأسبوع", "Available", { dueAt: null }),
+    ] } })),
+    act: async (page) => { await expect(page.locator(".lw-lassign__row")).toHaveCount(5); } },
+];
+
+for (const state of FOLLOWUP_STATES) {
+  for (const lang of ["en", "ar"]) {
+    for (const mode of THEME_MODES) {
+      test(`${state.id} · ${lang} · ${mode.id}`, ({ browser, baseURL }) =>
+        auditScreen({ browser, baseURL }, screenById(state.screen), lang, mode, { shotId: state.id, routes: state.routes, act: state.act }));
+    }
+  }
+}
+
 for (const state of DIALOG_STATES) {
   for (const lang of ["en", "ar"]) {
     for (const mode of THEME_MODES) {

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatDateActive } from "../i18n/format";
-import { LoaderCircle, ArrowLeft, ClipboardCheck, RotateCcw, Paperclip } from "lucide-react";
+import { LoaderCircle, ArrowLeft, ClipboardCheck, RotateCcw, Paperclip, Archive } from "lucide-react";
 import * as api from "../api/client";
 import AssetLink from "../components/AssetLink";
 import { useAuth } from "../auth/authContext";
 import { useLanguage } from "../i18n/useLanguage";
 import Message from "../components/Message";
 import Notice from "../components/Notice";
+import Modal, { MODAL_CSS } from "../components/Modal";
 
 /* =========================================================================
    ASSIGNMENTS OVERVIEW — the tutor's Assignment dashboard: one row per
@@ -16,6 +17,20 @@ import Notice from "../components/Notice";
    counts come straight from Assignment/Submission, the same live-Enrollment
    resolution the backend already does (Assignment Aggregate Design INV-004).
    ========================================================================= */
+
+/** Every Assignment and Submission status the API sends, as a translated label — never the raw enum. */
+const ASSIGNMENT_STATUS_KEY = {
+  Draft: "assignOverview.statusDraft", Scheduled: "assignOverview.statusScheduled",
+  Published: "assignOverview.statusPublished", Active: "assignOverview.statusActive",
+  Closed: "assignOverview.statusClosed", Archived: "assignOverview.statusArchived",
+};
+const SUBMISSION_STATUS_KEY = {
+  NotStarted: "assignOverview.subNotStarted", InProgress: "assignOverview.subInProgress",
+  Graded: "assignOverview.subGraded", Submitted: "assignOverview.subSubmitted",
+  UnderReview: "assignOverview.subUnderReview", Evaluated: "assignOverview.subEvaluated",
+};
+const assignmentStatusLabel = (t, s) => (ASSIGNMENT_STATUS_KEY[s] ? t(ASSIGNMENT_STATUS_KEY[s]) : s);
+const submissionStatusLabel = (t, s) => (SUBMISSION_STATUS_KEY[s] ? t(SUBMISSION_STATUS_KEY[s]) : s);
 
 export default function AssignmentsOverviewScreen() {
   const { session, workspace } = useAuth();
@@ -38,6 +53,15 @@ export default function AssignmentsOverviewScreen() {
 function OverviewTable({ slug, token, onSelect, t }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [removing, setRemoving] = useState(null); // the row being removed from learners
+
+  const load = useCallback(() => (
+    api.getAssignmentsOverview(token, slug)
+      .then((d) => { setData(d); setError(null); })
+      .catch((e) => setError(e.message))
+  ), [token, slug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +71,9 @@ function OverviewTable({ slug, token, onSelect, t }) {
     return () => { cancelled = true; };
   }, [token, slug]);
 
+  const archivedCount = data ? data.rows.filter((r) => r.status === "Archived").length : 0;
+  const rows = data ? data.rows.filter((r) => (r.status === "Archived") === showArchived) : [];
+
   return (
     <div className="lw-page">
       <style>{CSS}</style>
@@ -55,9 +82,25 @@ function OverviewTable({ slug, token, onSelect, t }) {
       <p className="lw-sub">{t("assignOverview.lead")}</p>
 
       {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
 
       {!data && !error && (
         <div className="lw-assign__loading"><LoaderCircle size={18} className="lw-assign__spin" /> {t("assignOverview.loading")}</div>
+      )}
+
+      {data && data.rows.length > 0 && (
+        <div className="lw-assign__filter" role="group" aria-label={t("assignOverview.filterLabel")}>
+          <button type="button" className={!showArchived ? "active" : ""} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>
+            {t("assignOverview.filterCurrent")}
+          </button>
+          <button type="button" className={showArchived ? "active" : ""} aria-pressed={showArchived} onClick={() => setShowArchived(true)}>
+            {t("assignOverview.filterArchived", { count: archivedCount })}
+          </button>
+        </div>
+      )}
+
+      {data && data.rows.length > 0 && rows.length === 0 && (
+        <p className="muted">{showArchived ? t("assignOverview.noArchived") : t("assignOverview.noCurrent")}</p>
       )}
 
       {data && data.rows.length === 0 && (
@@ -66,7 +109,7 @@ function OverviewTable({ slug, token, onSelect, t }) {
         </Notice>
       )}
 
-      {data && data.rows.length > 0 && (
+      {rows.length > 0 && (
         <div className="lw-assign__tablescroll">
         <table className="lw-assign__table">
           <thead>
@@ -78,26 +121,81 @@ function OverviewTable({ slug, token, onSelect, t }) {
               <th>{t("assignOverview.colDueAt")}</th>
               <th>{t("assignOverview.colRecipients")}</th>
               <th>{t("assignOverview.colSubmitted")}</th>
+              <th><span className="lw-assign__srOnly">{t("assignOverview.colActions")}</span></th>
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((r) => (
+            {rows.map((r) => (
               <tr key={r.assignmentId} className="lw-assign__row"
                   onClick={() => onSelect({ lessonId: r.lessonId, activityId: r.learningActivityId, activityTitle: r.activityTitle })}>
                 <td className="lw-assign__namecell">{r.productTitle}</td>
                 <td className="lw-assign__namecell">{r.lessonTitle}</td>
                 <td className="lw-assign__namecell">{r.activityTitle}<div className="lw-assign__submeta">{t(`studio.activityType.${r.activityType}`)}</div></td>
-                <td className="lw-assign__nowrap"><span className={`lw-assign__pill is-${r.status.toLowerCase()}`}>{r.status}</span></td>
+                <td className="lw-assign__nowrap"><span className={`lw-assign__pill is-${r.status.toLowerCase()}`}>{assignmentStatusLabel(t, r.status)}</span></td>
                 <td className="lw-assign__nowrap">{r.dueAt ? formatDateActive(r.dueAt) : "—"}</td>
                 <td className="lw-assign__nowrap">{r.recipientCount}</td>
                 <td className="lw-assign__nowrap">{r.submittedCount}</td>
+                <td className="lw-assign__nowrap">
+                  {r.status !== "Archived" && (
+                    <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs"
+                            onClick={(e) => { e.stopPropagation(); setRemoving(r); }}>
+                      <Archive size={12} /> {t("assignOverview.removeFromLearners")}
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
         </div>
       )}
+
+      {removing && (
+        <RemoveFromLearnersDialog
+          row={removing} slug={slug} token={token}
+          onCancel={() => setRemoving(null)}
+          onDone={() => {
+            setSuccess(t("assignOverview.toastRemoved", { title: removing.activityTitle }));
+            setRemoving(null);
+            load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Confirms "Remove from learners" (archive) — an in-app dialog, not window.confirm(). The
+ * assignment is closed if still open, then archived: learners stop seeing it, submissions stay.
+ */
+export function RemoveFromLearnersDialog({ row, slug, token, onCancel, onDone }) {
+  const { t } = useLanguage();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function confirm() {
+    setBusy(true); setError(null);
+    try {
+      await api.assignmentTransition(token, slug, row.lessonId, row.learningActivityId, "archive");
+      onDone();
+    } catch (e) { setError(e.message); setBusy(false); }
+  }
+
+  return (
+    <Modal onClose={busy ? () => {} : onCancel} closeLabel={t("studio.close")} panelClassName="lw-assign__confirm">
+      <style>{MODAL_CSS}</style>
+      <h2 className="lw-modal__title">{t("assignOverview.removeTitle", { title: row.activityTitle })}</h2>
+      <p>{t("assignOverview.removeBody")}</p>
+      {row.submittedCount > 0 && <p className="muted">{t("assignOverview.removeKeepsSubmissions", { count: row.submittedCount })}</p>}
+      {error && <div className="lw-assign__inlineerror" role="alert">{error}</div>}
+      <div className="lw-modal__actions">
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={onCancel}>{t("studio.cancel")}</button>
+        <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy} onClick={confirm}>
+          <Archive size={13} /> {t("assignOverview.removeConfirm")}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -106,6 +204,8 @@ function AssignmentDetail({ lessonId, activityId, activityTitle, slug, token, on
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [evaluating, setEvaluating] = useState(null); // membershipId being evaluated
+  const [removing, setRemoving] = useState(false);
+  const [success, setSuccess] = useState(null);
 
   const load = useCallback(() => (
     api.getAssignmentSubmissions(token, slug, lessonId, activityId)
@@ -130,6 +230,7 @@ function AssignmentDetail({ lessonId, activityId, activityTitle, slug, token, on
       </button>
 
       {error && <Message type="error">{error}</Message>}
+      {success && <Message type="success">{success}</Message>}
       {!data && !error && (
         <div className="lw-assign__loading"><LoaderCircle size={18} className="lw-assign__spin" /> {t("assignOverview.loading")}</div>
       )}
@@ -138,9 +239,15 @@ function AssignmentDetail({ lessonId, activityId, activityTitle, slug, token, on
         <div className="lw-eyebrow">{activityTitle}</div>
         <h1>{t("assignOverview.submissionsTitle")}</h1>
         <p className="lw-assign__meta">
-          <span className={`lw-assign__pill is-${data.assignment.status.toLowerCase()}`}>{data.assignment.status}</span>
+          <span className={`lw-assign__pill is-${data.assignment.status.toLowerCase()}`}>{assignmentStatusLabel(t, data.assignment.status)}</span>
           {" · "}{data.rows.length} {t("assignOverview.recipientsWord")}
+          {data.assignment.status !== "Archived" && (
+            <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs lw-assign__metaaction" onClick={() => setRemoving(true)}>
+              <Archive size={12} /> {t("assignOverview.removeFromLearners")}
+            </button>
+          )}
         </p>
+        {data.assignment.status === "Archived" && <p className="muted">{t("assignOverview.archivedNote")}</p>}
 
         {data.rows.length === 0 && <p className="muted">{t("assignOverview.noRecipients")}</p>}
 
@@ -161,7 +268,7 @@ function AssignmentDetail({ lessonId, activityId, activityTitle, slug, token, on
               {data.rows.map((r) => (
                 <tr key={r.membershipId}>
                   <td className="lw-assign__nowrap">{r.fullName}<div className="lw-assign__submeta">{r.email}</div></td>
-                  <td className="lw-assign__nowrap"><span className={`lw-assign__pill is-${r.status.toLowerCase()}`}>{r.status}</span></td>
+                  <td className="lw-assign__nowrap"><span className={`lw-assign__pill is-${r.status.toLowerCase()}`}>{submissionStatusLabel(t, r.status)}</span></td>
                   <td className="lw-assign__nowrap">{r.attemptNumber || "—"}</td>
                   <td className="lw-assign__responsecell">
                     {r.responseText || (!r.responseLearningAssetId && "—")}
@@ -198,6 +305,15 @@ function AssignmentDetail({ lessonId, activityId, activityTitle, slug, token, on
             </tbody>
           </table>
           </div>
+        )}
+
+        {removing && (
+          <RemoveFromLearnersDialog
+            row={{ lessonId, learningActivityId: activityId, activityTitle, submittedCount: data.rows.filter((r) => r.submissionId).length }}
+            slug={slug} token={token}
+            onCancel={() => setRemoving(false)}
+            onDone={() => { setRemoving(false); setSuccess(t("assignOverview.toastRemoved", { title: activityTitle })); load(); }}
+          />
         )}
 
         {evaluating && (
@@ -291,12 +407,24 @@ const CSS = `
 
   .lw-assign__pill {
     display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 10px;
-    border-radius: 20px; padding: 3px 9px; background: var(--surface-2); color: var(--ink-soft);
+    border-radius: 20px; padding: 3px 9px; background: var(--surface-2); color: color-mix(in srgb, var(--ink-soft) 45%, var(--ink));
   }
-  .lw-assign__pill.is-published, .lw-assign__pill.is-active, .lw-assign__pill.is-evaluated { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
-  .lw-assign__pill.is-failed, .lw-assign__pill.is-closed { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+  .lw-assign__pill.is-published, .lw-assign__pill.is-active, .lw-assign__pill.is-evaluated { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: color-mix(in srgb, var(--accent-2) 55%, var(--ink)); }
+  .lw-assign__pill.is-failed, .lw-assign__pill.is-closed { background: color-mix(in srgb, var(--danger) 12%, transparent); color: color-mix(in srgb, var(--danger) 60%, var(--ink)); }
 
-  .lw-assign__meta { color: var(--ink-soft); font-size: 0.85rem; margin: -6px 0 20px; }
+  .lw-assign__meta { color: var(--ink-soft); font-size: 0.85rem; margin: -6px 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+  .lw-assign__metaaction { margin-inline-start: auto; }
+  .lw-assign__pill.is-archived { background: var(--surface-2); color: var(--ink-soft); }
+  .lw-assign__filter { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 0 0 14px; }
+  .lw-assign__filter button {
+    background: transparent; border: none; padding: 6px 12px; font: inherit; font-size: 0.82rem; color: var(--ink-soft); cursor: pointer;
+  }
+  .lw-assign__filter button + button { border-inline-start: 1px solid var(--line); }
+  .lw-assign__filter button.active { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+  .lw-assign__srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .lw-assign__inlineerror { color: var(--danger); font-size: 0.86rem; margin: 0 0 12px; }
+  .lw-assign__confirm { max-width: 460px; }
+  .lw-assign__confirm p { margin: 0 0 14px; line-height: 1.55; }
 
   .lw-assign__evalpanel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 16px; margin-top: 18px; }
   .lw-assign__responsefull { white-space: pre-wrap; background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 0.86rem; }
