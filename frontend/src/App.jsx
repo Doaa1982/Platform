@@ -440,8 +440,9 @@ function AcademyHeader({ c }) {
       <div className="lw-academyheader__inner">
         <div className="lw-academyheader__mark"><BrandMark c={c} size={42} /></div>
         <div className="lw-academyheader__text">
-          <div className="lw-academyheader__name">{c.name}</div>
-          {c.tagline && <div className="lw-academyheader__tagline">{c.tagline}</div>}
+          <div className="lw-academyheader__name" dir="auto">{c.name}</div>
+          {/* Clamped on phones (see .lw-academyheader__tagline) — the full text stays in the title. */}
+          {c.tagline && <div className="lw-academyheader__tagline" dir="auto" title={c.tagline}>{c.tagline}</div>}
         </div>
       </div>
     </div>

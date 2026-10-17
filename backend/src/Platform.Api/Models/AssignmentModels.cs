@@ -51,7 +51,11 @@ public record AssignmentSubmissionsResponse(AssignmentResponse Assignment, IRead
 public record LearnerAssignmentRow(
     Guid AssignmentId, Guid LearningActivityId, string ActivityTitle, string ActivityType,
     Guid LessonId, string LessonTitle, Guid ProductId, string ProductTitle,
-    DateTime? DueAt, string LearnerStatus, Guid? SubmissionId);
+    DateTime? DueAt, string LearnerStatus, Guid? SubmissionId,
+    /// <summary>The teacher's result once evaluated (null = reviewed without pass/fail, or not evaluated).</summary>
+    bool? Passed = null,
+    /// <summary>Whether the evaluated submission carries written feedback to open.</summary>
+    bool HasFeedback = false);
 
 public record LearnerAssignmentListResponse(IReadOnlyList<LearnerAssignmentRow> Rows);
 
