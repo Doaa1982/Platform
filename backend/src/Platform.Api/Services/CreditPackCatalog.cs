@@ -17,9 +17,9 @@ public static class CreditPackCatalog
 {
     public static readonly IReadOnlyList<CreditPackTier> Tiers =
     [
-        new("credits-s", "5,000 AI credits", 5_000, 15m, "USD"),
-        new("credits-m", "20,000 AI credits", 20_000, 50m, "USD"),
-        new("credits-l", "50,000 AI credits", 50_000, 110m, "USD"),
+        new("credits-s", "1,000 AI credits", 1_000, 199m, "EGP"),
+        new("credits-m", "5,000 AI credits", 5_000, 899m, "EGP"),
+        new("credits-l", "15,000 AI credits", 15_000, 2_499m, "EGP"),
     ];
 
     public static CreditPackTier? Find(string code) =>

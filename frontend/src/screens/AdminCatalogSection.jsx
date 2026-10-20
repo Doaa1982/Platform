@@ -27,7 +27,7 @@ const CATALOG_STATUS_KEY = { Draft: "admin.catalogDraft", Published: "admin.cata
 const catalogStatusLabel = (t, v) => t(CATALOG_STATUS_KEY[v] ?? "") || v;
 
 const EMPTY_PRODUCT_VERSION = {
-  monthlyPrice: "", annualPrice: "", currency: "USD",
+  monthlyPrice: "", annualPrice: "", currency: "EGP",
   tutorCapacityBase: "1", tutorCapacityMax: "1",
   learnerCapacityBase: "1", learnerCapacityMax: "1",
   videoStorageGbBase: "1", videoStorageGbMax: "1",
@@ -37,7 +37,7 @@ const EMPTY_PRODUCT_VERSION = {
 };
 
 const EMPTY_PACK_VERSION = {
-  monthlyPrice: "", currency: "USD",
+  monthlyPrice: "", currency: "EGP",
   learningGrant: "", assessmentGrant: "", analyticsGrant: "", brandingGrant: "",
   extraTutorCapacity: "0", extraLearnerCapacity: "0", extraVideoStorageGb: "0", extraResourceStorageGb: "0",
   requiresDomain: "", requiresMinLevel: "",

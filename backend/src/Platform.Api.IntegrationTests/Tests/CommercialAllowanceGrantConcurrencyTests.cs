@@ -24,14 +24,14 @@ public class CommercialAllowanceGrantConcurrencyTests(PlatformApiTestFixture fix
         var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
         var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, "grant-test-tutor@integrationtest.local", "grant-test-workspace");
 
-        // solo-professional promises 20,000 included AI credits (CommercialCatalog.cs).
+        // solo-professional promises 5,000 included AI credits (CommercialCatalog.cs).
         // The workspace's Free-plan trial grant (200) does NOT carry over: this
         // upgrade is a free→paid conversion, so §A4 ("at first paid conversion,
         // whichever comes first") expires whatever trial balance remains —
         // CommercialOpsService.MarkInvoicePaidAsync — leaving exactly the new
-        // plan's 20,000.
+        // plan's 5,000.
         var balanceAfterUpgrade = await TestOnboarding.UpgradePlanAsync(client, adminToken, tutor.Token, tutor.WorkspaceSlug, "solo-professional");
-        Assert.Equal(20_000, balanceAfterUpgrade);
+        Assert.Equal(5_000, balanceAfterUpgrade);
 
         using var scope = fixture.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
@@ -41,7 +41,7 @@ public class CommercialAllowanceGrantConcurrencyTests(PlatformApiTestFixture fix
             .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.SubscriptionGrant)
             .ToListAsync();
         var thisWorkspaceGrant = grants.Single(); // exactly one SubscriptionGrant for THIS workspace
-        Assert.Equal(20_000, thisWorkspaceGrant.Amount);
+        Assert.Equal(5_000, thisWorkspaceGrant.Amount);
 
         // Append-only / auditable: the original trial grant is still present,
         // untouched — a new compensating Expiration entry revoked it instead
@@ -112,7 +112,7 @@ public class CommercialAllowanceGrantConcurrencyTests(PlatformApiTestFixture fix
             .SumAsync(e => e.Amount);
 
         Assert.Equal(1, grantCount);
-        Assert.Equal(20_000, grantTotal);
+        Assert.Equal(5_000, grantTotal);
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class CommercialAllowanceGrantConcurrencyTests(PlatformApiTestFixture fix
             .ToListAsync();
 
         Assert.Equal(2, grants.Count); // original period + the renewed period, both present
-        Assert.All(grants, g => Assert.Equal(20_000, g.Amount));
+        Assert.All(grants, g => Assert.Equal(5_000, g.Amount));
         Assert.NotEqual(grants[0].ExpiresAtUtc, grants[1].ExpiresAtUtc); // two genuinely distinct periods
     }
 }
