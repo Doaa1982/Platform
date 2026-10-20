@@ -8,6 +8,7 @@ import {
   ListChecks, Send, CalendarClock, RotateCcw, Mic, MonitorPlay,
 } from "lucide-react";
 import * as api from "../api/client";
+import { trackLessonPublished } from "../utils/analytics";
 import AiSuggestButton, { AiErrorNote } from "../components/AiSuggestButton";
 import AssetImage from "../components/AssetImage";
 import { useAuth } from "../auth/authContext";
@@ -1170,7 +1171,7 @@ function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, 
     run(async () => {
       await api.saveLessonDraft(session.token, slug, lessonId, draftPayload());
       return api.lessonTransition(session.token, slug, lessonId, "publish");
-    }, t("studio.toastLessonPublished")).then((l) => l && setLesson(l));
+    }, t("studio.toastLessonPublished")).then((l) => { if (l) { setLesson(l); trackLessonPublished(slug); } });
   }
 
   /** Lesson Editing & Publication UX, Scenario 3 — no new revision, no republish. In Edit Mode
@@ -1660,7 +1661,7 @@ function LessonEditorContent({ lessonId, editable, editMode = false, onChanged, 
                     the status flipped back via Lesson.Republish. */}
                 {!lesson.draftRevision && lesson.status === "Draft" && lesson.currentRevision && (
                   <button className="lw-btn lw-btn--accent lw-btn--sm" disabled={busy}
-                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "republish"), t("studio.toastLessonPublished")).then((l) => l && setLesson(l))}>
+                          onClick={() => run(() => api.lessonTransition(session.token, slug, lessonId, "republish"), t("studio.toastLessonPublished")).then((l) => { if (l) { setLesson(l); trackLessonPublished(slug); } })}>
                     <Globe size={13} /> {editMode ? t("studio.publishNow") : t("studio.publish")}
                   </button>
                 )}

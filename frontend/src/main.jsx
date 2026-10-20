@@ -5,6 +5,10 @@ import './styles/designSystem.css';
 import AppRoot from './AppRoot.jsx'
 import { LanguageProvider } from './i18n/LanguageContext.jsx'
 import { ThemeProvider } from './theme/ThemeContext.jsx'
+import { initAnalytics } from './utils/analytics.js'
+
+// No-op unless a GA4 measurement ID was set at build time
+initAnalytics()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -3,6 +3,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { useLanguage } from "../i18n/useLanguage";
 import EntryShell from "../components/EntryShell";
 import * as api from "../api/client";
+import { trackTutorCta } from "../utils/analytics";
 import PlanPickerCards from "../components/PlanPickerCards";
 
 /* =========================================================================
@@ -76,7 +77,7 @@ export default function LandingScreen({ onBecomeTutor, onSignIn }) {
           </div>
 
           {/* ADR-EA-002: exactly one call to action */}
-          <button type="button" className="lw-btn lw-btn--accent lw-btn--lg" onClick={onBecomeTutor}>
+          <button type="button" className="lw-btn lw-btn--accent lw-btn--lg" onClick={() => { trackTutorCta("hero"); onBecomeTutor(); }}>
             {t("landing.cta")} <ArrowRight size={18} className="lw-flip" aria-hidden="true" />
           </button>
 
@@ -138,7 +139,7 @@ function PlansSection({ plans, onBecomeTutor }) {
     <section className="lw-land__plans">
       <h2 className="lw-land__plantitle">{t("landing.plansTitle")}</h2>
       <p className="lw-sub">{t("landing.plansLead")}</p>
-      <PlanPickerCards plans={plans} layout="carousel" ctaLabel={t("landing.cta")} onChoosePlan={() => onBecomeTutor()} />
+      <PlanPickerCards plans={plans} layout="carousel" ctaLabel={t("landing.cta")} onChoosePlan={() => { trackTutorCta("plans"); onBecomeTutor(); }} />
     </section>
   );
 }

@@ -73,8 +73,12 @@ jobs:
       # `npm run lint` currently reports 14 pre-existing errors; add it here
       # once those are cleared so it can gate deploys.
 
+      # GA4 is off unless the GA_MEASUREMENT_ID repository variable is set
+      # (Settings → Secrets and variables → Actions → Variables), e.g. G-XXXXXXXXXX.
       - name: Build frontend
         working-directory: frontend
+        env:
+          VITE_GA_MEASUREMENT_ID: ${{ vars.GA_MEASUREMENT_ID }}
         run: npm run build
 
       # ── Backend ──────────────────────────────────────────────────────────
