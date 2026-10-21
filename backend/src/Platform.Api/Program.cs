@@ -632,7 +632,7 @@ app.MapDefaultEndpoints();
     // $0.75→$1.50, output incl. thinking $3.75→$7.50 per 1M tokens). New rows,
     // never edits: ResolveCostAsync takes the latest EffectiveFrom per band, so
     // a future-dated row switches itself on, and history stays auditable.
-    // Each batch is keyed by its EffectiveFrom so it seeds exactly once.
+    // Each row seeds exactly once (see SeedRepricing).
     //   • Now: transcription and transcript enhancement were flat-priced far below
     //     cost for long lessons (a 60-min audio transcript ≈ 115k input + ~30k
     //     output tokens ≈ $0.40 at 2027 rates, against 40 credits). Interim flat
@@ -654,11 +654,24 @@ app.MapDefaultEndpoints();
         (AiSkillKeys.GenerateGlossary, null, 15),
         (AiSkillKeys.GenerateHomework, null, 20));
 
-    static void SeedRepricing(PlatformDbContext db, DateTime effectiveFrom, params (string SkillKey, int? Band, int Credits)[] rows)
+    // notBefore is the earliest the new price may apply. On a database seeded
+    // after that date (a fresh install, every integration-test run) the base
+    // rows above were stamped DateTime.UtcNow, i.e. later than notBefore, so
+    // the repriced row must be stamped "now" too or the older price would
+    // keep winning. Idempotent per row: a (skill, band, credits) row already
+    // effective from notBefore onwards is never added twice.
+    static void SeedRepricing(PlatformDbContext db, DateTime notBefore, params (string SkillKey, int? Band, int Credits)[] rows)
     {
-        if (db.SkillCreditCosts.Any(c => c.EffectiveFrom == effectiveFrom)) return;
-        db.SkillCreditCosts.AddRange(rows.Select(r => SkillCreditCost.Create(r.SkillKey, r.Band, r.Credits, effectiveFrom)));
-        db.SaveChanges();
+        var effectiveFrom = notBefore > DateTime.UtcNow ? notBefore : DateTime.UtcNow;
+        var added = false;
+        foreach (var (skillKey, band, credits) in rows)
+        {
+            if (db.SkillCreditCosts.Any(c => c.SkillKey == skillKey && c.Band == band && c.CreditCost == credits && c.EffectiveFrom >= notBefore))
+                continue;
+            db.SkillCreditCosts.Add(SkillCreditCost.Create(skillKey, band, credits, effectiveFrom));
+            added = true;
+        }
+        if (added) db.SaveChanges();
     }
 
     // ── Initial Platform Operator bootstrap ─────────────────────────────────
