@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AuthProvider } from "./auth/AuthProvider";
 import { sideFromPath, SIDE_KEYS } from "./auth/sides";
 import { useRoute } from "./hooks/useRoute";
@@ -12,6 +13,7 @@ import JoinRequestStatusScreen from "./screens/JoinRequestStatusScreen";
 import AuthGate from "./AuthGate";
 import AdminGate from "./AdminGate";
 import NotFoundScreen from "./screens/NotFoundScreen";
+import { trackPageView } from "./utils/analytics";
 
 /* =========================================================================
    APP ROOT — routing sits above the auth provider.
@@ -42,6 +44,9 @@ import NotFoundScreen from "./screens/NotFoundScreen";
 
 export default function AppRoot() {
   const { pathname, navigate } = useRoute();
+
+  // One (token-redacted) analytics page view per route; a no-op without GA configured
+  useEffect(() => { trackPageView(pathname); }, [pathname]);
 
   // These two must work for someone with no account at all, so they resolve
   // before any authentication decision.

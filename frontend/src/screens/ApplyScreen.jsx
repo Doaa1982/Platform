@@ -6,6 +6,7 @@ import RequiredMark from "../components/RequiredMark";
 import { useLanguage } from "../i18n/useLanguage";
 import EntryShell, { EntryCard, EntryField } from "../components/EntryShell";
 import { apiErrorMessage } from "../i18n/apiErrors";
+import { trackSignUp } from "../utils/analytics";
 
 /* =========================================================================
    APPLY — /apply
@@ -51,6 +52,7 @@ export default function ApplyScreen({ onBack, onSignIn, onStatus }) {
         email: email.trim(),
         about: about.trim() || null,
       }));
+      trackSignUp();
     } catch (e) {
       setError(apiErrorMessage(t, e, { 400: "apply.errBothRequired", 409: "apply.errAlreadyApplied" }));
       setSubmitting(false);
