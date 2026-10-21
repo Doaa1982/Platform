@@ -43,13 +43,17 @@ const locale = () => LOCALES[currentLang()] ?? LOCALES.en;
 /** 1234 → "1,234" in the active language (Latin digits in Arabic, matching the rest of the app). */
 export const num = (n) => (n == null || n === "" ? "" : new Intl.NumberFormat(locale()).format(Number(n)));
 
-/** 15, "USD" → "$15" in English, "15 $" in Arabic. Intl's Arabic data has no narrow symbol for
- *  USD (it prints "US$"), so the symbol always comes from the English data. */
-export function money(amount, currency = "USD") {
+/** Arabic symbols Intl gets wrong or clutters (its "ج.م.‏" carries a trailing dot and an RLM). */
+const AR_SYMBOLS = { EGP: "ج.م" };
+
+/** 699, "EGP" → "E£699" in English, "699 ج.م" in Arabic. For other currencies the symbol comes
+ *  from the English data — Intl's Arabic data has no narrow symbol for USD (it prints "US$"). */
+export function money(amount, currency = "EGP") {
   const value = Number(amount);
   const digits = { minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 };
-  const symbol = new Intl.NumberFormat("en", { style: "currency", currency, currencyDisplay: "narrowSymbol" })
-    .formatToParts(0).find((p) => p.type === "currency")?.value ?? currency;
+  const symbol = (currentLang() === "ar" && AR_SYMBOLS[currency])
+    || new Intl.NumberFormat("en", { style: "currency", currency, currencyDisplay: "narrowSymbol" })
+      .formatToParts(0).find((p) => p.type === "currency")?.value || currency;
   const number = new Intl.NumberFormat(locale(), digits).format(value);
   return currentLang() === "ar" ? `${number}\u00A0${symbol}` : new Intl.NumberFormat("en", { style: "currency", currency, currencyDisplay: "narrowSymbol", ...digits }).format(value);
 }

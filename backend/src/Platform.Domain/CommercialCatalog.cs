@@ -76,7 +76,7 @@ public sealed record CapabilityPackDefinition
 /// </summary>
 public static class CommercialCatalog
 {
-    public const string DefaultCurrency = "USD";
+    public const string DefaultCurrency = "EGP";
 
     /// <summary>
     /// The one plan whose capacity ceiling (Base/Max) is actually enforced at
@@ -133,8 +133,8 @@ public static class CommercialCatalog
         {
             Code = "solo-essential",
             Name = "Solo Essential",
-            MonthlyPrice = 19m,
-            AnnualPrice = 190m,
+            MonthlyPrice = 299m,
+            AnnualPrice = 2_990m,
             Currency = DefaultCurrency,
             TutorCapacityBase = 1,
             // Paid plans have no capacity ceiling — Max is kept equal to Base
@@ -147,7 +147,7 @@ public static class CommercialCatalog
             VideoStorageGbMax = 10,
             ResourceStorageGbBase = 2,
             ResourceStorageGbMax = 2,
-            AiCreditsIncluded = 5_000,
+            AiCreditsIncluded = 1_500,
             LearningProfile = CapabilityProfileLevel.Foundation,
             AssessmentProfile = CapabilityProfileLevel.Foundation,
             AnalyticsProfile = CapabilityProfileLevel.Foundation,
@@ -157,8 +157,8 @@ public static class CommercialCatalog
         {
             Code = "solo-professional",
             Name = "Solo Professional",
-            MonthlyPrice = 39m,
-            AnnualPrice = 390m,
+            MonthlyPrice = 699m,
+            AnnualPrice = 6_990m,
             Currency = DefaultCurrency,
             TutorCapacityBase = 1,
             TutorCapacityMax = 1,
@@ -168,7 +168,7 @@ public static class CommercialCatalog
             VideoStorageGbMax = 50,
             ResourceStorageGbBase = 10,
             ResourceStorageGbMax = 10,
-            AiCreditsIncluded = 20_000,
+            AiCreditsIncluded = 5_000,
             LearningProfile = CapabilityProfileLevel.Professional,
             AssessmentProfile = CapabilityProfileLevel.Professional,
             AnalyticsProfile = CapabilityProfileLevel.Professional,
@@ -178,8 +178,8 @@ public static class CommercialCatalog
         {
             Code = "solo-ai-plus",
             Name = "Solo AI+",
-            MonthlyPrice = 79m,
-            AnnualPrice = 790m,
+            MonthlyPrice = 1_499m,
+            AnnualPrice = 14_990m,
             Currency = DefaultCurrency,
             TutorCapacityBase = 1,
             TutorCapacityMax = 1,
@@ -189,7 +189,7 @@ public static class CommercialCatalog
             VideoStorageGbMax = 200,
             ResourceStorageGbBase = 40,
             ResourceStorageGbMax = 40,
-            AiCreditsIncluded = 75_000,
+            AiCreditsIncluded = 12_000,
             LearningProfile = CapabilityProfileLevel.AiPlus,
             AssessmentProfile = CapabilityProfileLevel.AiPlus,
             AnalyticsProfile = CapabilityProfileLevel.AiPlus,
@@ -206,7 +206,7 @@ public static class CommercialCatalog
         {
             Code = CapabilityPack.AiAuthor,
             Name = "AI Author",
-            MonthlyPrice = 9m,
+            MonthlyPrice = 149m,
             Currency = DefaultCurrency,
             DomainGrants = new Dictionary<CapabilityDomain, CapabilityProfileLevel>
             {
@@ -217,7 +217,7 @@ public static class CommercialCatalog
         {
             Code = CapabilityPack.AiAssessment,
             Name = "AI Assessment",
-            MonthlyPrice = 9m,
+            MonthlyPrice = 149m,
             Currency = DefaultCurrency,
             DomainGrants = new Dictionary<CapabilityDomain, CapabilityProfileLevel>
             {
@@ -230,7 +230,7 @@ public static class CommercialCatalog
         {
             Code = CapabilityPack.AiMentor,
             Name = "AI Mentor",
-            MonthlyPrice = 9m,
+            MonthlyPrice = 149m,
             Currency = DefaultCurrency,
             DomainGrants = new Dictionary<CapabilityDomain, CapabilityProfileLevel>
             {
@@ -241,7 +241,7 @@ public static class CommercialCatalog
         {
             Code = CapabilityPack.Branding,
             Name = "Branding",
-            MonthlyPrice = 5m,
+            MonthlyPrice = 99m,
             Currency = DefaultCurrency,
             DomainGrants = new Dictionary<CapabilityDomain, CapabilityProfileLevel>
             {
@@ -252,7 +252,7 @@ public static class CommercialCatalog
         {
             Code = CapabilityPack.Collaboration,
             Name = "Collaboration",
-            MonthlyPrice = 5m,
+            MonthlyPrice = 149m,
             Currency = DefaultCurrency,
             ExtraTutorCapacity = 1,
         },
@@ -260,7 +260,7 @@ public static class CommercialCatalog
         {
             Code = CapabilityPack.CollaborationPlus,
             Name = "Collaboration+",
-            MonthlyPrice = 20m,
+            MonthlyPrice = 549m,
             Currency = DefaultCurrency,
             ExtraTutorCapacity = 5,
         },
@@ -268,7 +268,7 @@ public static class CommercialCatalog
         {
             Code = CapabilityPack.ExtraStudents,
             Name = "Extra Students",
-            MonthlyPrice = 10m,
+            MonthlyPrice = 149m,
             Currency = DefaultCurrency,
             ExtraLearnerCapacity = 250,
         },
@@ -276,7 +276,7 @@ public static class CommercialCatalog
         {
             Code = CapabilityPack.ExtraStorage,
             Name = "Extra Storage",
-            MonthlyPrice = 8m,
+            MonthlyPrice = 129m,
             Currency = DefaultCurrency,
             ExtraVideoStorageGb = 50,
             ExtraResourceStorageGb = 10,

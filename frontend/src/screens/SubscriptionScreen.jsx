@@ -216,7 +216,7 @@ export function PlansScreen() {
               if (r) {
                 setSuccess(t("subscription.toastChangeRequested", {
                   plan: catalogName(t, plans.find((p) => p.code === planCode)) || planCode,
-                  amount: money(r.currentInvoiceAmount ?? 0, r.currentInvoiceCurrency || "USD"),
+                  amount: money(r.currentInvoiceAmount ?? 0, r.currentInvoiceCurrency || "EGP"),
                 }));
               }
               return r;
@@ -617,7 +617,7 @@ function BillingOverview({
           {subscription.currentInvoiceStatus === "Overdue"
             ? t("subscription.invoiceOverdue", { date: fmtDate(subscription.currentInvoiceDueDate) })
             : t("subscription.invoiceAwaiting", {
-                amount: money(subscription.currentInvoiceAmount ?? 0, subscription.currentInvoiceCurrency || "USD"),
+                amount: money(subscription.currentInvoiceAmount ?? 0, subscription.currentInvoiceCurrency || "EGP"),
                 date: fmtDate(subscription.currentInvoiceDueDate),
               })}
         </div>

@@ -103,7 +103,7 @@ public class TranscriptionInputModeTests(PlatformApiTestFixture fixture) : IClas
         var charged = await db.CreditLedgerEntries.AsNoTracking()
             .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.Consumption && e.SkillKey == AI.AiSkillKeys.GenerateTranscript)
             .SingleAsync();
-        Assert.Equal(-40, charged.Amount); // base GenerateTranscriptSkill price seeded by Program.cs
+        Assert.Equal(-120, charged.Amount); // current GenerateTranscriptSkill price (Program.cs Oct 2026 repricing)
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class TranscriptionInputModeTests(PlatformApiTestFixture fixture) : IClas
         var charged = await db.CreditLedgerEntries.AsNoTracking()
             .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.Consumption && e.SkillKey == AI.AiSkillKeys.GenerateTranscript)
             .SingleAsync();
-        Assert.Equal(-120, charged.Amount); // 40 base * 3 (default VideoLowResCostMultiplier)
+        Assert.Equal(-360, charged.Amount); // 120 base * 3 (default VideoLowResCostMultiplier)
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class TranscriptionInputModeTests(PlatformApiTestFixture fixture) : IClas
         var charged = await db.CreditLedgerEntries.AsNoTracking()
             .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.Consumption && e.SkillKey == AI.AiSkillKeys.GenerateTranscript)
             .SingleAsync();
-        Assert.Equal(-40, charged.Amount); // normalized to Audio, so the base price, not the multiplier
+        Assert.Equal(-120, charged.Amount); // normalized to Audio, so the base price, not the multiplier
     }
 
     [Fact]
@@ -218,10 +218,10 @@ public class TranscriptionInputModeTests(PlatformApiTestFixture fixture) : IClas
         var charged = await db.CreditLedgerEntries.AsNoTracking()
             .Where(e => e.WorkspaceId == workspaceId && e.EntryType == CreditLedgerEntryType.Consumption && e.SkillKey == AI.AiSkillKeys.GenerateTranscript)
             .SingleAsync();
-        Assert.Equal(-120, charged.Amount); // fell back to VideoLowRes, so the multiplier price, not the base one
+        Assert.Equal(-360, charged.Amount); // fell back to VideoLowRes, so the multiplier price, not the base one
     }
 
-    // ── transcript/cost: the panel's "40 / 120 credits" hint, read live off config ──────
+    // ── transcript/cost: the panel's "120 / 360 credits" hint, read live off config ──────
 
     [Fact]
     public async Task TranscriptCost_Reports_The_Base_Price_And_The_VideoLowRes_Multiplier_Live_From_Config()
@@ -235,8 +235,8 @@ public class TranscriptionInputModeTests(PlatformApiTestFixture fixture) : IClas
 
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var body = await res.Content.ReadFromJsonAsync<JsonObject>();
-        Assert.Equal(40, body!["audioCredits"]!.GetValue<int>());
-        Assert.Equal(120, body["videoLowResCredits"]!.GetValue<int>()); // 40 base * default VideoLowResCostMultiplier (3)
+        Assert.Equal(120, body!["audioCredits"]!.GetValue<int>());
+        Assert.Equal(360, body["videoLowResCredits"]!.GetValue<int>()); // 120 base * default VideoLowResCostMultiplier (3)
     }
 
     [Fact]

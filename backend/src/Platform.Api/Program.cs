@@ -626,6 +626,54 @@ app.MapDefaultEndpoints();
         db.SaveChanges();
     }
 
+    // ── Gemini 3.6 Flash repricing (EGP launch, Oct 2026) ───────────────────
+    // The credit table above was sized for Claude Sonnet 5; production now runs
+    // Gemini 3.6 Flash, whose paid-tier rate doubles on 1 Jan 2027 (input
+    // $0.75→$1.50, output incl. thinking $3.75→$7.50 per 1M tokens). New rows,
+    // never edits: ResolveCostAsync takes the latest EffectiveFrom per band, so
+    // a future-dated row switches itself on, and history stays auditable.
+    // Each row seeds exactly once (see SeedRepricing).
+    //   • Now: transcription and transcript enhancement were flat-priced far below
+    //     cost for long lessons (a 60-min audio transcript ≈ 115k input + ~30k
+    //     output tokens ≈ $0.40 at 2027 rates, against 40 credits). Interim flat
+    //     increase until transcription is priced per minute of media.
+    //   • 1 Jan 2027: output-heavy skills whose estimated cost per credit would
+    //     otherwise exceed what a credit sells for.
+    SeedRepricing(db, new DateTime(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc),
+        (AiSkillKeys.GenerateTranscript, null, 120),
+        (AiSkillKeys.EnhanceTranscript, null, 60));
+    SeedRepricing(db, new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        (AiSkillKeys.GenerateQuestions, null, 25),
+        (AiSkillKeys.GenerateStandaloneQuestions, 15, 25),
+        (AiSkillKeys.GenerateStandaloneQuestions, CreditLedgerService.UnboundedBand, 45),
+        (AiSkillKeys.GenerateLessonQuiz, 10, 25),
+        (AiSkillKeys.GenerateLessonQuiz, CreditLedgerService.UnboundedBand, 45),
+        (AiSkillKeys.GradeAssessment, 10, 15),
+        (AiSkillKeys.GradeAssessment, 30, 30),
+        (AiSkillKeys.GradeAssessment, CreditLedgerService.UnboundedBand, 50),
+        (AiSkillKeys.GenerateGlossary, null, 15),
+        (AiSkillKeys.GenerateHomework, null, 20));
+
+    // notBefore is the earliest the new price may apply. On a database seeded
+    // after that date (a fresh install, every integration-test run) the base
+    // rows above were stamped DateTime.UtcNow, i.e. later than notBefore, so
+    // the repriced row must be stamped "now" too or the older price would
+    // keep winning. Idempotent per row: a (skill, band, credits) row already
+    // effective from notBefore onwards is never added twice.
+    static void SeedRepricing(PlatformDbContext db, DateTime notBefore, params (string SkillKey, int? Band, int Credits)[] rows)
+    {
+        var effectiveFrom = notBefore > DateTime.UtcNow ? notBefore : DateTime.UtcNow;
+        var added = false;
+        foreach (var (skillKey, band, credits) in rows)
+        {
+            if (db.SkillCreditCosts.Any(c => c.SkillKey == skillKey && c.Band == band && c.CreditCost == credits && c.EffectiveFrom >= notBefore))
+                continue;
+            db.SkillCreditCosts.Add(SkillCreditCost.Create(skillKey, band, credits, effectiveFrom));
+            added = true;
+        }
+        if (added) db.SaveChanges();
+    }
+
     // ── Initial Platform Operator bootstrap ─────────────────────────────────
     // Without this, a fresh production deployment has no PlatformOperator row
     // at all and — since that grant is the sole authority AdminController's
