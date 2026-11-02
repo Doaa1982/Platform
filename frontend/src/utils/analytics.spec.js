@@ -7,6 +7,8 @@ describe("redactPath", () => {
     expect(redactPath("/apply/status/abc123SECRET")).toBe("/apply/status/:token");
     expect(redactPath("/join-requests/status/abc123SECRET")).toBe("/join-requests/status/:token");
     expect(redactPath("/reset-password/abc123SECRET/")).toBe("/reset-password/:token");
+    expect(redactPath("/parent/confirm/p1.SECRET.SIG")).toBe("/parent/confirm/:token");
+    expect(redactPath("/parent/unsubscribe/p1.SECRET.SIG")).toBe("/parent/unsubscribe/:token");
   });
 
   it("leaves ordinary routes as they are", () => {

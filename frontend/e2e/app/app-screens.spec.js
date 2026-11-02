@@ -28,7 +28,9 @@ const CATALOG_DATA = [
   "solo-professional", "solo-essential", "solo-free", "solo-ai-plus",
   "AiAssessment", "AiMentor", "AiAuthor", "ExtraStudents", "ExtraStorage", "CollaborationPlus",
 ];
-const ALLOWED = { default: [SLUG], "admin-catalog": [SLUG, ...CATALOG_DATA] };
+// The import's file formats and the uploaded file's name are names, not copy to translate.
+const IMPORT_TERMS = ["Excel", "xlsx", "CSV", "csv", "parents.csv"];
+const ALLOWED = { default: [SLUG], "admin-catalog": [SLUG, ...CATALOG_DATA], "members-import-parents": [SLUG, ...IMPORT_TERMS] };
 
 /** The recordings carry the recording stack's own origin; HAR replay matches full URLs, so each
  *  recording is re-pointed at the origin this run serves on (once per worker). */
@@ -54,6 +56,26 @@ async function replay(context, role, unexpected, baseURL) {
     return route.fulfill({ status: 204 });
   });
   await context.routeFromHAR(harFor(role, baseURL), { url: "**/api/**", notFound: "fallback" });
+
+  // Parent contacts came after the recordings: served here for every screen, with the recorded learner.
+  await context.route(/\/api\/workspaces\/[^/]+\/parent-contacts$/, (route) =>
+    route.request().method() === "GET" ? route.fulfill({ json: { canManage: true, maxPerLearner: 2, contacts: parentContacts() } }) : route.fallback());
+  await context.route(/\/api\/workspaces\/[^/]+\/me\/parent-contacts$/, (route) =>
+    route.request().method() === "GET" ? route.fulfill({ json: { maxPerLearner: 2, contacts: parentContacts().slice(0, 2) } }) : route.fallback());
+}
+
+/** Two parents of the recorded learner (one confirmed, one waiting) — the Members screen and the learner's own page. */
+function parentContacts() {
+  const members = JSON.parse(ownerHar.log.entries.find((e) => e.request.method === "GET" && /\/members$/.test(new URL(e.request.url).pathname)).response.content.text);
+  const learner = members.members.find((m) => m.roles.includes("Learner"));
+  const base = { learnerMembershipId: learner.membershipId, source: "Tutor", createdAt: "2026-10-01T10:00:00Z",
+    confirmationExpiresAt: "2026-10-15T10:00:00Z", unsubscribedAt: null };
+  return [
+    { ...base, id: "00000000-0000-4000-8000-0000000000a1", name: "هالة أحمد", email: "hala.ahmed@example.com", language: "ar",
+      whatsAppPhone: "+201001234567", status: "Confirmed", confirmedAt: "2026-10-02T10:00:00Z" },
+    { ...base, id: "00000000-0000-4000-8000-0000000000a2", name: "عمر أحمد", email: "omar.ahmed@example.com", language: "en",
+      whatsAppPhone: null, status: "Waiting", confirmedAt: null },
+  ];
 }
 
 /** Opens `screen` as its role in `lang`/`mode`, runs every check, and writes the screenshots.
@@ -93,7 +115,7 @@ async function auditScreen({ browser, baseURL }, screen, lang, mode, { shotId = 
 
   if (lang === "ar") {
     const text = await page.locator("body").innerText();
-    expect(leftoverLatin(text, ALLOWED[screen.id] ?? ALLOWED.default), "English text left on an Arabic screen").toEqual([]);
+    expect(leftoverLatin(text, ALLOWED[shotId] ?? ALLOWED[screen.id] ?? ALLOWED.default), "English text left on an Arabic screen").toEqual([]);
   }
 
   const dir = path.join(SHOTS, shotId);
@@ -287,6 +309,46 @@ const FOLLOWUP_STATES = [
 ];
 
 for (const state of FOLLOWUP_STATES) {
+  for (const lang of ["en", "ar"]) {
+    for (const mode of THEME_MODES) {
+      test(`${state.id} · ${lang} · ${mode.id}`, ({ browser, baseURL }) =>
+        auditScreen({ browser, baseURL }, screenById(state.screen), lang, mode, { shotId: state.id, routes: state.routes, act: state.act }));
+    }
+  }
+}
+
+// Parent progress reports: a learner's Parents panel open, the "Import parents" preview with a
+// problem row, and the bulk invite form with a student's Parents part open.
+const PARENT_STATES = [
+  { id: "members-parents", screen: "owner-members",
+    act: async (page) => {
+      await page.locator(".lw-members__parentsbtn").first().click();
+      await expect(page.locator(".lw-parent__item")).toHaveCount(2);
+    } },
+  { id: "members-import-parents", screen: "owner-members",
+    routes: (context) => context.route("**/api/workspaces/*/parent-contacts/import/preview**", (route) => route.fulfill({ json: {
+      mode: "existing", fileProblem: null, rows: [
+        { rowNumber: 2, studentEmail: "sara.ahmed@example.com", studentName: "سارة أحمد", learnerMembershipId: null,
+          parents: [{ name: "هالة أحمد", email: "hala.ahmed@example.com", language: "ar", whatsAppPhone: null }], problems: [] },
+        { rowNumber: 3, studentEmail: "nobody@example.com", studentName: null, learnerMembershipId: null,
+          parents: [{ name: "منى", email: "منى@", language: "ar", whatsAppPhone: null }], problems: ["studentNotFound", "parentEmailInvalid"] },
+      ] } })),
+    act: async (page) => {
+      await page.locator(".lw-members__importbar button").click();
+      await page.locator(".lw-modal__panel input[type=file]").setInputFiles({ name: "parents.csv", mimeType: "text/csv", buffer: Buffer.from("student_email\n") });
+      await expect(page.locator(".lw-pimport__table tbody tr")).toHaveCount(2);
+    } },
+  { id: "invite-parents", screen: "owner-members",
+    act: async (page) => {
+      await page.locator('.lw-members__tabs [role="tab"]').nth(2).click();
+      await page.locator(".lw-members__form textarea").fill("new.student@example.com");
+      await page.locator("details.lw-members__invparentspart summary").click();
+      await page.locator("details.lw-members__invparentspart button").last().click(); // Add a parent
+      await expect(page.locator(".lw-members__invparent")).toHaveCount(1);
+    } },
+];
+
+for (const state of PARENT_STATES) {
   for (const lang of ["en", "ar"]) {
     for (const mode of THEME_MODES) {
       test(`${state.id} · ${lang} · ${mode.id}`, ({ browser, baseURL }) =>

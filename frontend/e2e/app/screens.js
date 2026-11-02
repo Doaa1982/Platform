@@ -42,6 +42,7 @@ export const APP_SCREENS = [
   learner("assessments", "Assessments", "assessments"),
   learner("assignments", "Assignments", "assignments"),
   learner("ai", "AI tutor", "ai"),
+  learner("parents", "My parents", "parents"),
 
   admin("applications", "Admin: applications", 0),
   admin("invitations", "Admin: workspaces & invitations", 1),

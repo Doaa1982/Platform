@@ -53,6 +53,14 @@ const join = (extra) => ({
   },
 });
 
+const parentLink = (status) => ({
+  [`POST /api/parent-links/${status === "Unsubscribed" ? "unsubscribe" : "confirm"}`]: {
+    json: status === "Invalid"
+      ? { status, workspaceName: null, learnerFirstName: null, language: null }
+      : { status, workspaceName: "أكاديمية النور", learnerFirstName: "سارة", language: "ar" },
+  },
+});
+
 const notFound = (prefix) => ({ [prefix]: { status: 404, json: { message: "Not found (server English, must not be shown)." } } });
 
 export const SCREENS = [
@@ -140,6 +148,14 @@ export const SCREENS = [
     api: { "GET /api/me": { json: me([]) }, "GET /api/admin/": { status: 403, json: { message: "Forbidden." } } } },
 
   { id: "not-found", name: "Page not found", route: "/no-such-page", roles: "Everyone" },
+
+  // The links in a parent's emails (Parent Progress Reports BA §7) — no account, the token is the authorisation.
+  { id: "parent-confirmed", name: "Parent: updates confirmed", route: "/parent/confirm/p1.abc.def", roles: "Parent (no account)",
+    api: parentLink("Confirmed") },
+  { id: "parent-unsubscribed", name: "Parent: unsubscribed", route: "/parent/unsubscribe/p1.abc.def", roles: "Parent (no account)",
+    api: parentLink("Unsubscribed") },
+  { id: "parent-link-invalid", name: "Parent: link no longer valid", route: "/parent/confirm/p1.abc.def", roles: "Parent (no account)",
+    api: parentLink("Invalid") },
 ];
 
 export const SESSION_KEY = "platform.session";

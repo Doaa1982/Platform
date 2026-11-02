@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMediaQuery } from "usehooks-ts";
 import {
-  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, ListChecks, Lock, LogOut, Menu, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, Zap
+  ArrowLeftRight, Award, BarChart3, BookOpen, Bell, Bot, Building2, CheckCircle2, ChevronDown, ClipboardCheck, GraduationCap, LayoutDashboard, ListChecks, Lock, LogOut, Menu, Pencil, PlayCircle, Receipt, Rocket, Settings, Sparkles, Users, Wand2, Zap,
+  HeartHandshake,
 } from "lucide-react";
 import { useAuth } from "./auth/authContext";
 import { SIDES, rolesMatchSide } from "./auth/sides";
@@ -30,6 +31,8 @@ import HomeworkScreen from "./screens/HomeworkScreen";
 import ResourcesScreen from "./screens/ResourcesScreen";
 import AssessmentsOverviewScreen from "./screens/AssessmentsOverviewScreen";
 import LearnerAssessmentsScreen from "./screens/LearnerAssessmentsScreen";
+import WorkspaceSettingsScreen from "./screens/WorkspaceSettingsScreen";
+import LearnerParentsScreen from "./screens/LearnerParentsScreen";
 import AssignmentsOverviewScreen from "./screens/AssignmentsOverviewScreen";
 import LearnerAssignmentsScreen from "./screens/LearnerAssignmentsScreen";
 import AssignmentSubmissionScreen from "./screens/AssignmentSubmissionScreen";
@@ -470,6 +473,8 @@ const LEARNER_NAV = [
   { id: "assessments", labelKey: "learnerNav.assessments", icon: ClipboardCheck, capability: "assessments" },
   { id: "assignments", labelKey: "learnerNav.assignments", icon: ListChecks },
   { id: "ai", labelKey: "__AI__", icon: Bot, capability: "aiTutor" },
+  // Who gets the academy's progress emails about me (Parent Progress Reports BA) — under "More".
+  { id: "parents", labelKey: "learnerNav.parents", icon: HeartHandshake },
 ];
 const PRIMARY_LEARNER_NAV = ["dashboard", "courses"];
 
@@ -1019,6 +1024,9 @@ export default function App() {
             <NotBuiltYet area={t("notBuilt.communityArea")} onNavigate={setLearnerScreen}
               blurb={t("notBuilt.communityBlurb")} />
           )}
+          {role === "learner" && learnerScreen === "parents" && (
+            <LearnerParentsScreen />
+          )}
           {role === "learner" && learnerScreen === "ai" && (
             <AiAssistantScreen
               lessonId={learnerLessonId}
@@ -1066,9 +1074,7 @@ export default function App() {
             <AssignmentsOverviewScreen />
           )}
           {role === "owner" && ownerScreen === "settings" && (
-            <NotBuiltYet area={t("notBuilt.settingsArea")} onNavigate={setOwnerScreen}
-              blurb={t("notBuilt.settingsBlurb")}
-              next={{ text: t("notBuilt.openWorkspaceSetup"), to: "setup" }} />
+            <WorkspaceSettingsScreen onOpenMembers={() => setOwnerScreen("members")} />
           )}
         </div>
       </div>
