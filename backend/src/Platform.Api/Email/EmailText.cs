@@ -126,9 +126,9 @@ public static class EmailText
         ["footer.unsubscribe"] = "لا تريد هذه الرسائل؟",
         ["footer.unsubscribeLink"] = "إلغاء الاشتراك",
 
-        ["parentConfirm.subject"] = "{workspace} يرغب في إرسال تحديثات عن تقدّم {learner} إليك",
+        ["parentConfirm.subject"] = "تحديثات عن تقدّم {learner} من {workspace}",
         ["parentConfirm.preheader"] = "أكّد لتصلك نتائج {learner} بالبريد الإلكتروني.",
-        ["parentConfirm.body"] = "يرغب {workspace} في إرسال تحديثات قصيرة إليك عن تعلّم {learner}: نتائج الواجبات والاختبارات بعد تصحيحها، وملخص شهري.",
+        ["parentConfirm.body"] = "نودّ في {workspace} أن نرسل إليك تحديثات قصيرة عن تعلّم {learner}: نتائج الواجبات والاختبارات بعد تصحيحها، وملخصًا شهريًا.",
         ["parentConfirm.body2"] = "لن نرسلها إلا إذا وافقت. كل تحديث يحتوي على رابط لإيقافها بنقرة واحدة.",
         ["parentConfirm.button"] = "نعم، أرسلوا لي التحديثات",
         ["parentConfirm.safety"] = "إذا لم تكن تتوقع هذه الرسالة فتجاهلها، ولن تصلك أي تحديثات.",
@@ -148,8 +148,8 @@ public static class EmailText
         ["parentAssignment.body"] = "تم تصحيح واجب {learner}. إليك النتيجة.",
 
         ["parentQuiz.subject"] = "نتيجة اختبار {learner}: {activity}",
-        ["parentQuiz.preheader"] = "أكمل {learner} اختبارًا في {course}.",
-        ["parentQuiz.body"] = "أكمل {learner} اختبارًا. إليك النتيجة.",
+        ["parentQuiz.preheader"] = "اكتمل اختبار {learner} في {course}.",
+        ["parentQuiz.body"] = "اكتمل اختبار {learner}. إليك النتيجة.",
 
         ["parentMonthly.subject"] = "تقدّم {learner} في {month}",
         ["parentMonthly.preheader"] = "ملخص لعمل {learner} في {workspace} خلال {month}.",
