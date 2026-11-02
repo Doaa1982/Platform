@@ -31,6 +31,11 @@ public abstract record EmailSender
 /// One email's words, already in the recipient's language, as plain text. Nothing here is HTML —
 /// <see cref="EmailLayout"/> escapes every field when it renders, so a value that came from a user
 /// (a name, a workspace name) can be placed here as-is.
+///
+/// A report to a parent has no button (parents have no login, so there is nothing to open):
+/// <see cref="ButtonLabel"/>/<see cref="ButtonUrl"/> are null there. <see cref="Details"/> are
+/// label/value rows (a result, a score), <see cref="Quote"/> is text quoted as the tutor wrote
+/// it (feedback), and <see cref="UnsubscribeUrl"/> adds a one-click unsubscribe line to the footer.
 /// </summary>
 public record EmailContent(
     string Language,
@@ -39,9 +44,17 @@ public record EmailContent(
     string Preheader,
     string Greeting,
     IReadOnlyList<string> Paragraphs,
-    string ButtonLabel,
-    string ButtonUrl,
+    string? ButtonLabel,
+    string? ButtonUrl,
     string? ExpiryNote,
-    string SafetyNote);
+    string? SafetyNote,
+    IReadOnlyList<EmailDetail>? Details = null,
+    string? QuoteLabel = null,
+    string? Quote = null,
+    string? UnsubscribeUrl = null,
+    IReadOnlyList<string>? ClosingParagraphs = null);
+
+/// <summary>One "label: value" row in an email (e.g. "Result: Passed").</summary>
+public record EmailDetail(string Label, string Value);
 
 public record RenderedEmail(string Subject, string Html, string Text);

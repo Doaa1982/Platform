@@ -47,6 +47,12 @@ public class WorkspaceSetupController(WorkspaceSetupService setup) : ControllerB
         string slug, [FromBody] SetDefaultLanguageRequest request, CancellationToken ct)
         => Run(await setup.SetDefaultLanguageAsync(slug, Caller(), request.Language, ct));
 
+    /// <summary>PUT /parent-reports — email parents results / a monthly summary (both off by default).</summary>
+    [HttpPut("parent-reports")]
+    public async Task<ActionResult<WorkspaceSetupResponse>> SetParentReports(
+        string slug, [FromBody] SetParentReportsRequest request, CancellationToken ct)
+        => Run(await setup.SetParentReportsAsync(slug, Caller(), request, ct));
+
     /// <summary>PUT /branding — logo, welcome message and course categories.</summary>
     [HttpPut("branding")]
     public async Task<ActionResult<WorkspaceSetupResponse>> UpdateBranding(

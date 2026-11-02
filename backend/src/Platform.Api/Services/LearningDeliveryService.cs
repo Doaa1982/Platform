@@ -22,7 +22,7 @@ namespace Platform.Api.Services;
 /// </summary>
 public class LearningDeliveryService(
     PlatformDbContext db, LessonAssistantSkill lessonAssistant, GenerateLessonQuizSkill generateLessonQuiz,
-    LearnerAccess learnerAccess)
+    LearnerAccess learnerAccess, ParentReportService parentReports)
 {
     // ── Products ─────────────────────────────────────────────────────────────
 
@@ -734,6 +734,7 @@ public class LearningDeliveryService(
         progress.RecomputeCompletion(hasVideo, hasGradableAssessment: true, hasPassingSubmission: submission.Passed, requiresQuiz, quizPassed);
 
         await db.SaveChangesAsync(ct);
+        await parentReports.QuizGradedAsync(submission.Id, ct); // after the save; never fails the submit
 
         var gradedCount = perQuestion.Count(q => q.Correct is not null);
         var correctCount = perQuestion.Count(q => q.Correct == true);
@@ -820,6 +821,7 @@ public class LearningDeliveryService(
         }
 
         await db.SaveChangesAsync(ct);
+        await parentReports.QuizGradedAsync(submission.Id, ct); // after the save; never fails the submit
 
         var gradedCount = perQuestion.Count(q => q.Correct is not null);
         var correctCount = perQuestion.Count(q => q.Correct == true);
@@ -990,6 +992,7 @@ public class LearningDeliveryService(
             }
 
             await db.SaveChangesAsync(ct);
+            await parentReports.QuizGradedAsync(submission.Id, ct); // after the save; never fails the answer
 
             // This Submission was already counted by CountPriorAttemptsAsync
             // at StartAdaptiveAssessmentAsync — it's "prior" no longer, it's

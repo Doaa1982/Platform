@@ -25,6 +25,49 @@ public static class EmailText
         ["footer.helpLink"] = "Contact us",
         ["footer.copyright"] = "© {year} Teach Tandem",
 
+        ["footer.unsubscribe"] = "Don't want these emails?",
+        ["footer.unsubscribeLink"] = "Unsubscribe",
+
+        ["parentConfirm.subject"] = "{workspace} would like to send you {learner}'s progress updates",
+        ["parentConfirm.preheader"] = "Confirm to get {learner}'s results by email.",
+        ["parentConfirm.body"] = "{workspace} would like to email you short updates about {learner}'s learning: results of marked assignments and quizzes, and a monthly summary.",
+        ["parentConfirm.body2"] = "We'll only send them if you say yes. Every update has a link to stop them with one click.",
+        ["parentConfirm.button"] = "Yes, send me updates",
+        ["parentConfirm.safety"] = "If you weren't expecting this, ignore this email and you won't receive any updates.",
+
+        ["parentReport.labelAssignment"] = "Assignment",
+        ["parentReport.labelQuiz"] = "Quiz",
+        ["parentReport.labelCourse"] = "Course",
+        ["parentReport.labelResult"] = "Result",
+        ["parentReport.labelScore"] = "Score",
+        ["parentReport.feedbackLabel"] = "Teacher's feedback:",
+        ["parentReport.passed"] = "Passed",
+        ["parentReport.notPassed"] = "Not passed",
+        ["parentReport.reviewed"] = "Reviewed",
+
+        ["parentAssignment.subject"] = "{learner}'s result: {activity}",
+        ["parentAssignment.preheader"] = "{learner}'s assignment in {course} has been marked.",
+        ["parentAssignment.body"] = "{learner}'s assignment has been marked. Here is the result.",
+
+        ["parentQuiz.subject"] = "{learner}'s quiz result: {activity}",
+        ["parentQuiz.preheader"] = "{learner} completed a quiz in {course}.",
+        ["parentQuiz.body"] = "{learner} has completed a quiz. Here is the result.",
+
+        ["parentMonthly.subject"] = "{learner}'s progress in {month}",
+        ["parentMonthly.preheader"] = "A summary of {learner}'s work at {workspace} in {month}.",
+        ["parentMonthly.body"] = "Here is a summary of {learner}'s work at {workspace} in {month}.",
+        ["parentMonthly.labelAssignments"] = "Assignments completed",
+        ["parentMonthly.labelQuizzes"] = "Quizzes completed",
+        ["parentMonthly.labelMissed"] = "Missed (past due, not submitted)",
+        ["parentMonthly.labelAverage"] = "Average quiz score",
+        ["parentMonthly.labelChange"] = "Compared with {previousMonth}",
+        ["parentMonthly.labelLowest"] = "Lowest result",
+        ["parentMonthly.noQuizzes"] = "No quizzes this month",
+        ["parentMonthly.changeUp"] = "Up {points} points",
+        ["parentMonthly.changeDown"] = "Down {points} points",
+        ["parentMonthly.changeSame"] = "The same",
+        ["parentMonthly.changeNone"] = "No quizzes last month",
+
         ["role.Owner"] = "the owner",
         ["role.Administrator"] = "an administrator",
         ["role.Teacher"] = "a teacher",
@@ -79,6 +122,49 @@ public static class EmailText
         ["footer.help"] = "تحتاج إلى مساعدة؟",
         ["footer.helpLink"] = "تواصل معنا",
         ["footer.copyright"] = "© {year} Teach Tandem",
+
+        ["footer.unsubscribe"] = "لا تريد هذه الرسائل؟",
+        ["footer.unsubscribeLink"] = "إلغاء الاشتراك",
+
+        ["parentConfirm.subject"] = "تحديثات عن تقدّم {learner} من {workspace}",
+        ["parentConfirm.preheader"] = "أكّد لتصلك نتائج {learner} بالبريد الإلكتروني.",
+        ["parentConfirm.body"] = "نودّ في {workspace} أن نرسل إليك تحديثات قصيرة عن تعلّم {learner}: نتائج الواجبات والاختبارات بعد تصحيحها، وملخصًا شهريًا.",
+        ["parentConfirm.body2"] = "لن نرسلها إلا إذا وافقت. كل تحديث يحتوي على رابط لإيقافها بنقرة واحدة.",
+        ["parentConfirm.button"] = "نعم، أرسلوا لي التحديثات",
+        ["parentConfirm.safety"] = "إذا لم تكن تتوقع هذه الرسالة فتجاهلها، ولن تصلك أي تحديثات.",
+
+        ["parentReport.labelAssignment"] = "الواجب",
+        ["parentReport.labelQuiz"] = "الاختبار",
+        ["parentReport.labelCourse"] = "المقرر",
+        ["parentReport.labelResult"] = "النتيجة",
+        ["parentReport.labelScore"] = "الدرجة",
+        ["parentReport.feedbackLabel"] = "ملاحظات المعلم:",
+        ["parentReport.passed"] = "ناجح",
+        ["parentReport.notPassed"] = "لم ينجح",
+        ["parentReport.reviewed"] = "تمت المراجعة",
+
+        ["parentAssignment.subject"] = "نتيجة {learner}: {activity}",
+        ["parentAssignment.preheader"] = "تم تصحيح واجب {learner} في {course}.",
+        ["parentAssignment.body"] = "تم تصحيح واجب {learner}. إليك النتيجة.",
+
+        ["parentQuiz.subject"] = "نتيجة اختبار {learner}: {activity}",
+        ["parentQuiz.preheader"] = "اكتمل اختبار {learner} في {course}.",
+        ["parentQuiz.body"] = "اكتمل اختبار {learner}. إليك النتيجة.",
+
+        ["parentMonthly.subject"] = "تقدّم {learner} في {month}",
+        ["parentMonthly.preheader"] = "ملخص لعمل {learner} في {workspace} خلال {month}.",
+        ["parentMonthly.body"] = "إليك ملخصًا لعمل {learner} في {workspace} خلال {month}.",
+        ["parentMonthly.labelAssignments"] = "واجبات مكتملة",
+        ["parentMonthly.labelQuizzes"] = "اختبارات مكتملة",
+        ["parentMonthly.labelMissed"] = "فائتة (انتهى موعدها دون تسليم)",
+        ["parentMonthly.labelAverage"] = "متوسط درجات الاختبارات",
+        ["parentMonthly.labelChange"] = "مقارنةً بـ{previousMonth}",
+        ["parentMonthly.labelLowest"] = "أدنى نتيجة",
+        ["parentMonthly.noQuizzes"] = "لا اختبارات هذا الشهر",
+        ["parentMonthly.changeUp"] = "ارتفع {points} نقطة",
+        ["parentMonthly.changeDown"] = "انخفض {points} نقطة",
+        ["parentMonthly.changeSame"] = "بلا تغيير",
+        ["parentMonthly.changeNone"] = "لا اختبارات في الشهر السابق",
 
         ["role.Owner"] = "المالك",
         ["role.Administrator"] = "مسؤول",
@@ -136,6 +222,15 @@ public static class EmailText
         return System.Text.RegularExpressions.Regex.Replace(text, @"\{(\w+)\}",
             m => values.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
     }
+
+    private static readonly string[] EnglishMonths =
+        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    private static readonly string[] ArabicMonths =
+        ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+
+    /// <summary>"October 2026" / "أكتوبر 2026" — Egyptian month names, Latin digits like the rest of the app.</summary>
+    public static string MonthYear(string language, DateOnly month) =>
+        $"{(language == SupportedLanguage.Arabic ? ArabicMonths : EnglishMonths)[month.Month - 1]} {month.Year}";
 
     /// <summary>
     /// "7 days", "1 hour", "يومين" — the largest whole unit, rounded to nearest, at least 1 minute.

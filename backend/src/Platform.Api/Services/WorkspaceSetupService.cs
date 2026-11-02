@@ -60,7 +60,9 @@ public class WorkspaceSetupService(
             Blocker:             blocker,
             LogoAssetId:         w.LogoAssetId,
             WelcomeMessage:      w.WelcomeMessage,
-            CourseCategories:    w.CourseCategories.ToList());
+            CourseCategories:    w.CourseCategories.ToList(),
+            EmailParentsResults:        w.EmailParentsResults,
+            EmailParentsMonthlySummary: w.EmailParentsMonthlySummary);
     }
 
     /// <summary>
@@ -155,6 +157,23 @@ public class WorkspaceSetupService(
         workspace!.SetAcceptsJoinRequests(accepts);
         await db.SaveChangesAsync(ct);
 
+        return ProvisioningResult<WorkspaceSetupResponse>.Success(Describe(workspace, canManage));
+    }
+
+    /// <summary>
+    /// The academy's parent-report switches (Parent Progress Reports Business Analysis §8): one for
+    /// results after each marked assignment or quiz, one for the monthly summary. Both off by
+    /// default; no plan gating.
+    /// </summary>
+    public async Task<ProvisioningResult<WorkspaceSetupResponse>> SetParentReportsAsync(
+        string slug, Guid callerIdentityId, SetParentReportsRequest request, CancellationToken ct = default)
+    {
+        var (workspace, canManage, error) = await ResolveAsync(slug, callerIdentityId, requireManage: true, ct);
+        if (error is not null)
+            return ProvisioningResult<WorkspaceSetupResponse>.Fail(error.Value.Error, error.Value.Message);
+
+        workspace!.SetParentReports(request.Results, request.MonthlySummary);
+        await db.SaveChangesAsync(ct);
         return ProvisioningResult<WorkspaceSetupResponse>.Success(Describe(workspace, canManage));
     }
 

@@ -1519,3 +1519,63 @@ export function getEmailPreviews(token) {
 export function getEmailPreview(token, template, language) {
   return request(`/admin/email-previews/${encodeURIComponent(template)}?language=${encodeURIComponent(language)}`, { token });
 }
+
+/* ── Parent progress reports (Documents/Parent Progress Reports Business Analysis.md) ── */
+
+const ws = (slug) => `/workspaces/${encodeURIComponent(slug)}`;
+
+/** PUT /setup/parent-reports — the academy's two switches (both off by default). */
+export function setParentReports(token, slug, { results, monthlySummary }) {
+  return request(`${ws(slug)}/setup/parent-reports`, { method: "PUT", body: { results, monthlySummary }, token });
+}
+
+/** GET → { canManage, maxPerLearner, contacts[] } — every parent contact in the workspace. */
+export function getParentContacts(token, slug) {
+  return request(`${ws(slug)}/parent-contacts`, { token });
+}
+
+export function addParentContact(token, slug, membershipId, parent) {
+  return request(`${ws(slug)}/members/${membershipId}/parent-contacts`, { method: "POST", body: parent, token });
+}
+
+export function updateParentContact(token, slug, contactId, parent) {
+  return request(`${ws(slug)}/parent-contacts/${contactId}`, { method: "PUT", body: parent, token });
+}
+
+export function resendParentContact(token, slug, contactId) {
+  return request(`${ws(slug)}/parent-contacts/${contactId}/resend`, { method: "POST", token });
+}
+
+export function removeParentContact(token, slug, contactId) {
+  return request(`${ws(slug)}/parent-contacts/${contactId}`, { method: "DELETE", token });
+}
+
+/** Uploads a .csv/.xlsx and gets every row back with its problems; saves nothing. mode: "invite" | "existing". */
+export function previewParentImport(token, slug, mode, file) {
+  const form = new FormData();
+  form.append("file", file);
+  return requestForm(`${ws(slug)}/parent-contacts/import/preview?mode=${encodeURIComponent(mode)}`, { form, token });
+}
+
+/** "Import parents" for existing students — the rows the tutor kept after the preview. */
+export function commitParentImport(token, slug, rows) {
+  return request(`${ws(slug)}/parent-contacts/import`, { method: "POST", body: { rows }, token });
+}
+
+/** The learner's own parent contacts. */
+export function getMyParentContacts(token, slug) {
+  return request(`${ws(slug)}/me/parent-contacts`, { token });
+}
+
+export function addMyParentContact(token, slug, parent) {
+  return request(`${ws(slug)}/me/parent-contacts`, { method: "POST", body: parent, token });
+}
+
+export function removeMyParentContact(token, slug, contactId) {
+  return request(`${ws(slug)}/me/parent-contacts/${contactId}`, { method: "DELETE", token });
+}
+
+/** The links in a parent's email (no login). action: "confirm" | "unsubscribe". */
+export function redeemParentLink(action, linkToken) {
+  return request(`/parent-links/${action}`, { method: "POST", body: { token: linkToken } });
+}

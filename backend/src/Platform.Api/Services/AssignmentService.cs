@@ -18,7 +18,7 @@ namespace Platform.Api.Services;
 /// top of every read/mutate path here, the same lazy-promotion pattern
 /// already used elsewhere in this codebase (e.g. Invitation expiry).
 /// </summary>
-public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess)
+public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess, ParentReportService parentReports)
 {
     private static readonly WorkspaceRoleName[] AuthorRoles =
         [WorkspaceRoleName.Owner, WorkspaceRoleName.Administrator, WorkspaceRoleName.Teacher];
@@ -291,6 +291,10 @@ public class AssignmentService(PlatformDbContext db, LearnerAccess learnerAccess
             await NotifyFeedbackPublishedAsync(submission, assignment, lessonId, ctx.Activity!.Title, ct);
 
         await db.SaveChangesAsync(ct);
+
+        // Only after the result is saved: a failed save never emails a parent, and a failed email
+        // (handled inside) never fails the tutor's evaluation.
+        await parentReports.AssignmentEvaluatedAsync(submission.Id, ct);
         return ProvisioningResult<AssignmentSubmissionRow>.Success(await DescribeSubmissionRowAsync(submission, ct));
     }
 

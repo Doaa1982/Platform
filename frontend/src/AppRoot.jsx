@@ -10,6 +10,7 @@ import SignupStatusScreen from "./screens/SignupStatusScreen";
 import ForgotPasswordScreen from "./screens/ForgotPasswordScreen";
 import ResetPasswordScreen from "./screens/ResetPasswordScreen";
 import JoinRequestStatusScreen from "./screens/JoinRequestStatusScreen";
+import ParentLinkScreen from "./screens/ParentLinkScreen";
 import AuthGate from "./AuthGate";
 import AdminGate from "./AdminGate";
 import NotFoundScreen from "./screens/NotFoundScreen";
@@ -29,6 +30,7 @@ import { trackPageView } from "./utils/analytics";
      /join-requests/status/{token}   a requester checking on (or cancelling) their own request
      /forgot-password/{side}   requesting a password reset link
      /reset-password/{token}   redeeming one
+     /parent/confirm/{token}, /parent/unsubscribe/{token}   the links in a parent's emails (no account)
      anything else    not found
 
    There is deliberately no route that lists workspaces. Discovery happens
@@ -65,6 +67,16 @@ export default function AppRoot() {
     return (
       <AuthProvider side={null}>
         <JoinRequestStatusScreen token={joinRequestToken} />
+      </AuthProvider>
+    );
+  }
+
+  // A parent has no account at all — the link's signed token is the whole authorisation.
+  const parentLink = pathname.match(/^\/parent\/(confirm|unsubscribe)\/([^/]+)\/?$/);
+  if (parentLink) {
+    return (
+      <AuthProvider side={null}>
+        <ParentLinkScreen key={pathname} action={parentLink[1]} token={decodeURIComponent(parentLink[2])} />
       </AuthProvider>
     );
   }

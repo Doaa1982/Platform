@@ -50,7 +50,8 @@ public static class EmailLayout
 
     public static RenderedEmail Render(EmailContent content, EmailBrandingOptions branding, int year)
     {
-        RequireSafeUrl(content.ButtonUrl, allowMailto: false);
+        if (content.ButtonUrl is not null) RequireSafeUrl(content.ButtonUrl, allowMailto: false);
+        if (content.UnsubscribeUrl is not null) RequireSafeUrl(content.UnsubscribeUrl, allowMailto: false);
         var websiteUrl = RequireSafeUrl(branding.WebsiteUrl, allowMailto: false);
         var helpUrl = RequireSafeUrl(string.IsNullOrWhiteSpace(branding.HelpUrl) ? branding.WebsiteUrl : branding.HelpUrl, allowMailto: true);
         var logoUrl = string.IsNullOrWhiteSpace(branding.LogoUrl) ? null : RequireSafeUrl(branding.LogoUrl, allowMailto: false);
@@ -94,6 +95,40 @@ public static class EmailLayout
         foreach (var p in c.Paragraphs)
             paragraphs.Append($"""<p class="tt-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:{Ink};">{H(p)}</p>""");
 
+        var details = new StringBuilder();
+        if (c.Details is { Count: > 0 })
+        {
+            details.Append($"""<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;border-collapse:collapse;">""");
+            foreach (var d in c.Details)
+                details.Append($"""<tr><td class="tt-muted" valign="top" style="padding:6px 0;font-size:14px;line-height:21px;color:{Muted};width:42%;border-bottom:1px solid {CardBorder};">{H(d.Label)}</td><td class="tt-text" valign="top" dir="auto" style="padding:6px 0;font-size:15px;line-height:21px;font-weight:600;color:{Ink};border-bottom:1px solid {CardBorder};">{H(d.Value)}</td></tr>""");
+            details.Append("</table>");
+        }
+
+        // The tutor's own words, shown as written (dir="auto" keeps an English comment readable in an Arabic email).
+        var quote = c.Quote is null ? "" :
+            (c.QuoteLabel is null ? "" : $"""<p class="tt-muted" style="margin:0 0 6px;font-size:14px;line-height:21px;color:{Muted};">{H(c.QuoteLabel)}</p>""")
+            + $"""<p class="tt-text" dir="auto" style="margin:0 0 16px;padding:10px 14px;border-{(rtl ? "right" : "left")}:3px solid {CardBorder};font-size:15px;line-height:23px;color:{Ink};white-space:pre-line;">{H(c.Quote)}</p>""";
+
+        var closing = new StringBuilder();
+        foreach (var p in c.ClosingParagraphs ?? [])
+            closing.Append($"""<p class="tt-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:{Ink};">{H(p)}</p>""");
+
+        var button = c.ButtonUrl is null ? "" : $"""
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;">
+<tr><td align="center" bgcolor="{Accent}" style="border-radius:8px;background:{Accent};">
+<a href="{A(c.ButtonUrl)}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 28px;font-family:{font};font-size:16px;font-weight:600;line-height:20px;color:#FFFFFF;text-decoration:none;border-radius:8px;">{H(c.ButtonLabel ?? "")}</a>
+</td></tr>
+</table>
+<p class="tt-muted" style="margin:0 0 4px;font-size:14px;line-height:21px;color:{Muted};">{H(t("button.fallback", []))}</p>
+<p style="margin:0 0 20px;font-size:14px;line-height:21px;word-break:break-all;"><a class="tt-link" href="{A(c.ButtonUrl)}" target="_blank" rel="noopener" dir="ltr" style="color:{Accent};text-decoration:underline;">{H(c.ButtonUrl)}</a></p>
+""";
+
+        var safety = c.SafetyNote is null ? "" :
+            $"""<p class="tt-muted" style="margin:0;font-size:14px;line-height:21px;color:{Muted};">{H(c.SafetyNote)}</p>""";
+
+        var unsubscribe = c.UnsubscribeUrl is null ? "" :
+            $"""<p class="tt-muted" style="margin:0 0 4px;font-size:12px;line-height:18px;color:{Muted};">{H(t("footer.unsubscribe", []))} <a class="tt-link" href="{A(c.UnsubscribeUrl)}" target="_blank" rel="noopener" style="color:{Accent};text-decoration:underline;">{H(t("footer.unsubscribeLink", []))}</a></p>""";
+
         var expiry = c.ExpiryNote is null ? "" :
             $"""<p class="tt-muted" style="margin:0 0 8px;font-size:14px;line-height:21px;color:{Muted};">{H(c.ExpiryNote)}</p>""";
 
@@ -125,19 +160,17 @@ public static class EmailLayout
 <tr><td class="tt-card" align="{align}" dir="{dir}" style="background:{Card};border:1px solid {CardBorder};border-radius:12px;padding:32px;text-align:{align};font-family:{font};">
 <p class="tt-text" style="margin:0 0 16px;font-size:16px;line-height:24px;color:{Ink};">{H(c.Greeting)}</p>
 {paragraphs}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;">
-<tr><td align="center" bgcolor="{Accent}" style="border-radius:8px;background:{Accent};">
-<a href="{A(c.ButtonUrl)}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 28px;font-family:{font};font-size:16px;font-weight:600;line-height:20px;color:#FFFFFF;text-decoration:none;border-radius:8px;">{H(c.ButtonLabel)}</a>
-</td></tr>
-</table>
-<p class="tt-muted" style="margin:0 0 4px;font-size:14px;line-height:21px;color:{Muted};">{H(t("button.fallback", []))}</p>
-<p style="margin:0 0 20px;font-size:14px;line-height:21px;word-break:break-all;"><a class="tt-link" href="{A(c.ButtonUrl)}" target="_blank" rel="noopener" dir="ltr" style="color:{Accent};text-decoration:underline;">{H(c.ButtonUrl)}</a></p>
+{details}
+{quote}
+{closing}
+{button}
 {expiry}
-<p class="tt-muted" style="margin:0;font-size:14px;line-height:21px;color:{Muted};">{H(c.SafetyNote)}</p>
+{safety}
 </td></tr>
 <tr><td align="{align}" dir="{dir}" style="padding:20px 8px 8px;text-align:{align};font-family:{font};">
 <p class="tt-text" style="margin:0 0 4px;font-size:14px;line-height:21px;font-weight:600;color:{Ink};">{H(signature)}</p>
 {sentViaLine}
+{unsubscribe}
 <p class="tt-muted" style="margin:0 0 4px;font-size:12px;line-height:18px;color:{Muted};">{H(t("footer.help", []))} <a class="tt-link" href="{A(helpUrl)}" target="_blank" rel="noopener" style="color:{Accent};text-decoration:underline;">{H(t("footer.helpLink", []))}</a></p>
 <p class="tt-muted" style="margin:0;font-size:12px;line-height:18px;color:{Muted};">{H(copyright)} &middot; <a class="tt-link" href="{A(websiteUrl)}" target="_blank" rel="noopener" dir="ltr" style="color:{Accent};text-decoration:underline;">{H(websiteLabel)}</a></p>
 </td></tr>
@@ -157,11 +190,23 @@ public static class EmailLayout
         var sb = new StringBuilder();
         sb.AppendLine(c.Greeting).AppendLine();
         foreach (var p in c.Paragraphs) sb.AppendLine(p).AppendLine();
-        sb.AppendLine(c.ButtonLabel + ":").AppendLine(c.ButtonUrl).AppendLine();
+        if (c.Details is { Count: > 0 })
+        {
+            foreach (var d in c.Details) sb.AppendLine($"{d.Label}: {d.Value}");
+            sb.AppendLine();
+        }
+        if (c.Quote is not null)
+        {
+            if (c.QuoteLabel is not null) sb.AppendLine(c.QuoteLabel);
+            sb.AppendLine($"\"{c.Quote}\"").AppendLine();
+        }
+        foreach (var p in c.ClosingParagraphs ?? []) sb.AppendLine(p).AppendLine();
+        if (c.ButtonUrl is not null) sb.AppendLine(c.ButtonLabel + ":").AppendLine(c.ButtonUrl).AppendLine();
         if (c.ExpiryNote is not null) sb.AppendLine(c.ExpiryNote).AppendLine();
-        sb.AppendLine(c.SafetyNote).AppendLine();
+        if (c.SafetyNote is not null) sb.AppendLine(c.SafetyNote).AppendLine();
         sb.AppendLine("--").AppendLine(signature);
         if (sentVia is not null) sb.AppendLine(sentVia);
+        if (c.UnsubscribeUrl is not null) sb.AppendLine($"{t("footer.unsubscribe", [])} {t("footer.unsubscribeLink", [])}: {c.UnsubscribeUrl}");
         sb.AppendLine($"{t("footer.help", [])} {helpUrl}");
         sb.AppendLine($"{copyright} · {websiteUrl}");
         return sb.ToString();

@@ -29,6 +29,23 @@ public static class EmailPreviews
                 language, person, workspace, "owner@example.com", SampleLink.Replace("/invite/", "/join-request/"), TimeSpan.FromDays(90)),
             EmailTemplate.SignupReceived => EmailTemplates.SignupReceived(
                 language, person, SampleLink.Replace("/invite/", "/signup/status/"), TimeSpan.FromDays(90)),
+            EmailTemplate.ParentConfirmation => EmailTemplates.ParentConfirmation(
+                language, ar ? "هالة أحمد" : "Hala Ahmed", ar ? "سارة" : "Sara", workspace, "owner@example.com",
+                SampleLink.Replace("/invite/", "/parent/confirm/"), TimeSpan.FromDays(14)),
+            EmailTemplate.ParentAssignmentResult => EmailTemplates.ParentAssignmentResult(
+                language, ar ? "هالة أحمد" : "Hala Ahmed", ar ? "سارة" : "Sara", workspace, "owner@example.com",
+                ar ? "واجب: حل المعادلات" : "Homework: solving equations", ar ? "الرياضيات للصف الثامن" : "Grade 8 Maths",
+                true, ar ? "عمل ممتاز يا سارة، خطواتك واضحة. راجعي السؤال الرابع." : "Great work, Sara. Your steps are clear — have another look at question 4.",
+                SampleLink.Replace("/invite/", "/parent/unsubscribe/")),
+            EmailTemplate.ParentQuizResult => EmailTemplates.ParentQuizResult(
+                language, ar ? "هالة أحمد" : "Hala Ahmed", ar ? "سارة" : "Sara", workspace, "owner@example.com",
+                ar ? "اختبار: مساحة الدائرة" : "Quiz: area of a circle", ar ? "الرياضيات للصف الثامن" : "Grade 8 Maths",
+                80, true, null, SampleLink.Replace("/invite/", "/parent/unsubscribe/")),
+            EmailTemplate.ParentMonthlySummary => EmailTemplates.ParentMonthlySummary(
+                language, ar ? "هالة أحمد" : "Hala Ahmed", ar ? "سارة" : "Sara", workspace, "owner@example.com",
+                new DateOnly(2026, 10, 1),
+                new ParentMonthlyFigures(4, 3, 1, 78, 72, ar ? "اختبار: الكسور" : "Quiz: fractions", "55%"),
+                SampleLink.Replace("/invite/", "/parent/unsubscribe/")),
             _ => throw new ArgumentOutOfRangeException(nameof(template)),
         };
     }

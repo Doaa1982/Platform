@@ -30,7 +30,11 @@ public record WorkspaceSetupResponse(
     string? Blocker,
     Guid? LogoAssetId,
     string? WelcomeMessage,
-    IReadOnlyList<string> CourseCategories);
+    IReadOnlyList<string> CourseCategories,
+    /// <summary>Email confirmed parents after each marked assignment or graded quiz. Off by default.</summary>
+    bool EmailParentsResults = false,
+    /// <summary>Email confirmed parents a monthly summary. Off by default.</summary>
+    bool EmailParentsMonthlySummary = false);
 
 /// <summary>Amend the Workspace's public-facing profile — logo, welcome message and taught subject areas.</summary>
 public record SetDefaultLanguageRequest(string? Language);

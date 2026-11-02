@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { formatDateActive } from "../i18n/format";
 import { Toaster, toast } from "sonner";
 import {
-  LoaderCircle, Crown, UploadCloud, Download, Search,
+  LoaderCircle, Crown, Download, Search,
   PauseCircle, PlayCircle, UserX, UserCheck, Plus, X, RefreshCw,
   ChevronLeft, ChevronRight, Mail, Inbox, GraduationCap, Users,
-  Copy, Check, QrCode, Printer, MessageCircle,
+  Copy, Check, QrCode, Printer, MessageCircle, HeartHandshake, FileSpreadsheet,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { joinPath, joinUrl } from "../utils/joinUrl";
@@ -16,6 +16,9 @@ import { useTheme } from "../theme/useTheme";
 import Message from "../components/Message";
 import Notice from "../components/Notice";
 import Modal, { MODAL_CSS } from "../components/Modal";
+import { ParentContactList, ParentFields } from "../components/ParentContacts";
+import { ParentImportUpload, ParentImportPreview, ParentImportGuide } from "../components/ParentImport";
+import { PARENT_CSS, EMPTY_PARENT, parentProblems, toParentRequest, okRowNumbers, PARENT_IMPORT_CSS } from "../utils/parentContacts";
 
 /* =========================================================================
    MEMBERS SCREEN — the tutor's own member management.
@@ -77,6 +80,11 @@ export default function MembersScreen({ initialTab }) {
   // Which member row (if any) has its inline "enrol in a course" picker open.
   const [enrollingId, setEnrollingId] = useState(null);
   const [enrollProductId, setEnrollProductId] = useState("");
+  // Parent contacts (Parent Progress Reports BA): every contact in the workspace, grouped per
+  // learner on render; null when the caller may not see them.
+  const [parentData, setParentData] = useState(null);
+  const [openParentsId, setOpenParentsId] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const load = useCallback(
     () => Promise.all([
@@ -86,9 +94,11 @@ export default function MembersScreen({ initialTab }) {
       api.getCourseJoinRequests(session.token, slug).catch(() => []),
       api.getSetup(session.token, slug).catch(() => null),
       api.getProducts(session.token, slug).catch(() => null),
-    ]).then(([members, joins, courseJoins, setupResp, productsResp]) => {
+      api.getParentContacts(session.token, slug).catch(() => null),
+    ]).then(([members, joins, courseJoins, setupResp, productsResp, parentsResp]) => {
       setData(members); setRequests(joins); setCourseRequests(courseJoins); setSetup(setupResp);
       setProducts(productsResp?.products ?? []);
+      setParentData(parentsResp);
     }).catch((e) => toast.error(e.message)),
     [session.token, slug]);
 
@@ -100,10 +110,12 @@ export default function MembersScreen({ initialTab }) {
       api.getCourseJoinRequests(session.token, slug).catch(() => []),
       api.getSetup(session.token, slug).catch(() => null),
       api.getProducts(session.token, slug).catch(() => null),
-    ]).then(([members, joins, courseJoins, setupResp, productsResp]) => {
+      api.getParentContacts(session.token, slug).catch(() => null),
+    ]).then(([members, joins, courseJoins, setupResp, productsResp, parentsResp]) => {
       if (cancelled) return;
       setData(members); setRequests(joins); setCourseRequests(courseJoins); setSetup(setupResp);
       setProducts(productsResp?.products ?? []);
+      setParentData(parentsResp);
       setError(null);
     }).catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
@@ -224,6 +236,7 @@ export default function MembersScreen({ initialTab }) {
           app's ThemeContext (2026-08-21 fix) so that palette still follows
           the owner's actual mode instead of defaulting to light always. */}
       <Toaster position="top-right" richColors closeButton theme={mode} />
+      <style>{PARENT_CSS + PARENT_IMPORT_CSS}</style>
 
       <div className="lw-eyebrow">{t("members.eyebrow")}</div>
       <h1>{t("members.title")}</h1>
@@ -257,6 +270,13 @@ export default function MembersScreen({ initialTab }) {
 
       {tab === "current" && (
         <>
+          {data.canManage && parentData && (
+            <div className="lw-members__importbar">
+              <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={busy} onClick={() => setImportOpen(true)}>
+                <FileSpreadsheet size={13} /> {t("members.importParents")}
+              </button>
+            </div>
+          )}
           <GridToolbar
             search={memberSearch}
             onSearchChange={(v) => { setMemberSearch(v); setMemberPage(0); }}
@@ -386,6 +406,30 @@ export default function MembersScreen({ initialTab }) {
                     )}
                   </div>
                 )}
+
+                  {m.roles.includes("Learner") && parentData && (() => {
+                    const mine = parentData.contacts.filter((c) => c.learnerMembershipId === m.membershipId);
+                    const open = openParentsId === m.membershipId;
+                    const confirmed = mine.filter((c) => c.status === "Confirmed").length;
+                    return (
+                      <div className="lw-members__parents">
+                        <button type="button" className="lw-members__parentsbtn" aria-expanded={open}
+                                onClick={() => setOpenParentsId(open ? null : m.membershipId)}>
+                          <HeartHandshake size={12} />
+                          {mine.length === 0 ? t("members.parentsNone") : t("members.parentsCount", { count: mine.length, confirmed })}
+                        </button>
+                        {open && (
+                          <ParentContactList
+                            mode="tutor" contacts={mine} max={parentData.maxPerLearner} busy={busy}
+                            onAdd={data.canManage ? (p) => run(() => api.addParentContact(session.token, slug, m.membershipId, p), t("parents.toastAdded", { email: p.email })) : undefined}
+                            onUpdate={(c, p) => run(() => api.updateParentContact(session.token, slug, c.id, p), t("parents.toastUpdated", { name: p.name }))}
+                            onResend={(c) => run(() => api.resendParentContact(session.token, slug, c.id), t("parents.toastResent", { email: c.email }))}
+                            onRemove={(c) => run(() => api.removeParentContact(session.token, slug, c.id), t("parents.toastRemoved", { name: c.name }))}
+                          />
+                        )}
+                      </div>
+                    );
+                  })()}
               </div>
             ))}
           </div>
@@ -504,6 +548,9 @@ export default function MembersScreen({ initialTab }) {
                       {i.intendedLearningProductTitle && (
                         <div className="lw-members__course">{t("members.invitedCourse", { course: i.intendedLearningProductTitle })}</div>
                       )}
+                      {i.parentCount > 0 && (
+                        <div className="lw-members__invparents"><HeartHandshake size={11} /> {t("members.invitedParents", { count: i.parentCount })}</div>
+                      )}
                     </div>
                     <span className={`lw-members__status is-${i.status.toLowerCase()}`}>{statusLabel(t, i.status)}</span>
 
@@ -586,7 +633,60 @@ export default function MembersScreen({ initialTab }) {
           )}
         </div>
       )}
+
+      {importOpen && (
+        <ImportParentsModal
+          onClose={() => setImportOpen(false)}
+          onImported={(result) => {
+            setImportOpen(false);
+            toast.success(t("members.importDone", { created: result.created, updated: result.updated, skipped: result.skipped }));
+            load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * "Import parents" for students who are already members: upload → preview (each row matched to a
+ * learner by email, with its problems) → confirm the rows to keep. Nothing is saved before that.
+ */
+function ImportParentsModal({ onClose, onImported }) {
+  const { session, workspace } = useAuth();
+  const { t } = useLanguage();
+  const [preview, setPreview] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function confirm() {
+    const rows = preview.rows.filter((r) => r.problems.length === 0 && selected.has(r.rowNumber))
+      .map((r) => ({ studentEmail: r.studentEmail, parents: r.parents }));
+    setSaving(true); setError(null);
+    try { onImported(await api.commitParentImport(session.token, workspace.slug, rows)); }
+    catch (e) { setError(e.message); setSaving(false); }
+  }
+
+  return (
+    <Modal onClose={saving ? () => {} : onClose} closeLabel={t("studio.close")} panelClassName="lw-members__importpanel">
+      <style>{MODAL_CSS}</style>
+      <h2 className="lw-modal__title">{t("members.importTitle")}</h2>
+      <p className="lw-members__importlead">{t("members.importLead")}</p>
+      <ParentImportGuide mode="existing" />
+      <ParentImportUpload mode="existing" disabled={saving}
+                          onPreview={(p) => { setPreview(p); setSelected(okRowNumbers(p)); }} />
+      <ParentImportPreview preview={preview} selected={selected} showStudentName
+                           onToggle={(n) => setSelected((s) => { const next = new Set(s); if (next.has(n)) next.delete(n); else next.add(n); return next; })} />
+      {error && <p className="lw-pimport__error" role="alert">{error}</p>}
+      <div className="lw-modal__actions" style={{ marginTop: 16 }}>
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--sm" disabled={saving} onClick={onClose}>{t("studio.cancel")}</button>
+        <button type="button" className="lw-btn lw-btn--accent lw-btn--sm" disabled={saving || selected.size === 0 || !!preview?.fileProblem}
+                onClick={confirm}>
+          {saving ? <LoaderCircle size={14} className="lw-members__spin" /> : t("members.importConfirm", { count: selected.size })}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -624,73 +724,6 @@ function splitEmailList(text) {
   return text.split(/[\n,]+/).map((email) => ({ email }));
 }
 
-/** Header + one example row, in the exact "Name,Email" shape parseCsvRecipients expects. */
-const CSV_TEMPLATE = "Name,Email\nJane Doe,jane.doe@example.com\n";
-
-function downloadCsvTemplate() {
-  const blob = new Blob([CSV_TEMPLATE], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "invitation-template.csv";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-/**
- * Parses a simple CSV student list (§4.2). If a header row names an "email"
- * column, that column is used (and "name", if present, is kept for preview
- * only — it is never sent to the backend, which has no name field on
- * Invitation). Without a recognisable header, a two-column file is assumed
- * to be "Name,Email" per the doc's own example; a single column is treated
- * as email-only.
- */
-function parseCsvRecipients(text) {
-  const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => l.split(","));
-  if (rows.length === 0) return [];
-
-  const header = rows[0].map((c) => c.trim().toLowerCase());
-  let emailIdx = header.indexOf("email");
-  let nameIdx = header.indexOf("name");
-  let dataRows = rows;
-
-  if (emailIdx !== -1) {
-    dataRows = rows.slice(1);
-  } else {
-    emailIdx = rows[0].length > 1 ? 1 : 0;
-    nameIdx = rows[0].length > 1 ? 0 : -1;
-  }
-
-  return dataRows.map((r) => ({
-    email: (r[emailIdx] ?? "").trim(),
-    name: nameIdx >= 0 ? (r[nameIdx] ?? "").trim() : "",
-  }));
-}
-
-/**
- * Cheap heuristic for "this isn't actually text" — catches the common
- * mistake of picking a spreadsheet (.xlsx/.xls/.ods) instead of a real CSV.
- * Office Open XML / ODF files are ZIP archives, always starting with the
- * "PK" local-file-header signature; genuine CSV/text never does, and never
- * contains a NUL byte or a dense run of other control characters.
- */
-function looksLikeBinary(text) {
-  if (text.startsWith("PK")) return true;
-
-  const sample = text.slice(0, 2000);
-  if (sample.length === 0) return false;
-
-  let controlCount = 0;
-  for (let i = 0; i < sample.length; i++) {
-    const code = sample.charCodeAt(i);
-    if (code === 0) return true;
-    if (code < 32 && code !== 9 && code !== 10 && code !== 13) controlCount++;
-  }
-  return controlCount / sample.length > 0.05;
-}
-
 /** Trims, lower-cases, drops blanks/malformed addresses, and dedupes case-insensitively. */
 function normaliseRecipients(entries) {
   const seen = new Set();
@@ -708,37 +741,77 @@ function normaliseRecipients(entries) {
   return { valid, invalidCount };
 }
 
+/** A parent block nobody has typed into is ignored rather than reported as invalid. */
+const isBlankParent = (p) => !p.name.trim() && !p.email.trim() && !(p.whatsAppPhone || "").trim();
+
+/**
+ * One student's optional parents in the bulk invite (Parent Progress Reports BA §6.1): collapsed
+ * until opened, up to two. They're stored with the invitation and only contacted once the student
+ * joins.
+ */
+export function InviteParentsPart({ email, parents, onChange, disabled, idPrefix }) {
+  const { t } = useLanguage();
+  const filled = parents.filter((p) => !isBlankParent(p));
+  return (
+    <details className="lw-members__invparentspart">
+      <summary>
+        <span dir="ltr">{email}</span>
+        <span className="lw-members__invparentscount">
+          <HeartHandshake size={11} /> {filled.length === 0 ? t("members.inviteParentsAdd") : t("members.inviteParentsCount", { count: filled.length })}
+        </span>
+      </summary>
+      <p className="lw-parent__hint">{t("members.inviteParentsHint")}</p>
+      {parents.map((p, i) => (
+        <div key={i} className="lw-members__invparent">
+          <div className="lw-members__invparenthead">
+            <span>{t("members.inviteParentN", { n: i + 1 })}</span>
+            <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" disabled={disabled}
+                    onClick={() => onChange(parents.filter((_, j) => j !== i))}>
+              <X size={11} /> {t("parents.remove")}
+            </button>
+          </div>
+          <ParentFields value={p} disabled={disabled} idPrefix={`${idPrefix}-${i}`} showErrors={!isBlankParent(p)}
+                        onChange={(next) => onChange(parents.map((q, j) => (j === i ? next : q)))} />
+        </div>
+      ))}
+      {parents.length < 2 && (
+        <button type="button" className="lw-btn lw-btn--ghost lw-btn--xs" disabled={disabled}
+                onClick={() => onChange([...parents, { ...EMPTY_PARENT }])}>
+          <Plus size={11} /> {t("parents.addParent")}
+        </button>
+      )}
+    </details>
+  );
+}
+
 function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
   const { t } = useLanguage();
   const [mode, setMode] = useState("emails");
   const [role, setRole] = useState("Learner");
   const [text, setText] = useState("");
-  const [csvFile, setCsvFile] = useState(null);
-  const [csvEntries, setCsvEntries] = useState([]);
-  const [csvError, setCsvError] = useState(null);
-  const fileInputRef = useRef(null);
+  // Typed-email mode: each student's optional parents, by email.
+  const [parentsByEmail, setParentsByEmail] = useState({});
+  // Spreadsheet mode: the server's preview of the uploaded file, and the rows kept.
+  const [preview, setPreview] = useState(null);
+  const [selected, setSelected] = useState(new Set());
   // §12.3 "Invite + Enroll": one course applies to the whole batch, not per
   // recipient. Nothing to offer if the workspace has no Published product yet.
   const [enrollMode, setEnrollMode] = useState("workspace");
   const [courseId, setCourseId] = useState("");
 
-  const rawEntries = mode === "emails" ? splitEmailList(text) : csvEntries;
-  const { valid, invalidCount } = normaliseRecipients(rawEntries);
+  const learner = role === "Learner";
+  const { valid, invalidCount } = normaliseRecipients(mode === "emails" ? splitEmailList(text) : []);
 
-  async function handleFile(file) {
-    if (!file) return;
-    setCsvFile(file);
-
-    const content = await file.text();
-    if (looksLikeBinary(content)) {
-      setCsvEntries([]);
-      setCsvError(t("members.bulkCsvBinaryError"));
-      return;
-    }
-
-    setCsvError(null);
-    setCsvEntries(parseCsvRecipients(content));
-  }
+  // What will be sent: typed emails with their filled-in parents, or the kept spreadsheet rows.
+  const recipients = mode === "emails"
+    ? valid.map((v) => ({
+        email: v.email,
+        parents: learner ? (parentsByEmail[v.email] ?? []).filter((p) => !isBlankParent(p)).map(toParentRequest) : [],
+      }))
+    : (preview?.rows ?? []).filter((r) => r.problems.length === 0 && selected.has(r.rowNumber))
+        .map((r) => ({ email: r.studentEmail, parents: learner ? r.parents : [] }));
+  const parentsInvalid = mode === "emails" && learner && recipients.some((r) =>
+    (parentsByEmail[r.email] ?? []).some((p) => !isBlankParent(p) && Object.keys(parentProblems(p)).length > 0));
 
   return (
     <form
@@ -748,7 +821,7 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
         onSubmit({
           role,
           source: mode === "emails" ? "EmailList" : "CsvImport",
-          recipients: valid.map((v) => ({ email: v.email })),
+          recipients: recipients.map((r) => (r.parents.length > 0 ? r : { email: r.email })),
           intendedLearningProductId: enrollMode === "course" && courseId ? courseId : null,
         });
       }}
@@ -782,7 +855,7 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
         </div>
       </label>
 
-      {role === "Learner" && publishedProducts.length > 0 && (
+      {learner && publishedProducts.length > 0 && (
         <>
           <div className="lw-members__formsection"><GraduationCap size={13} /> {t("members.bulkSectionEnrollment")}</div>
           <div className="lw-members__formrow">
@@ -811,42 +884,37 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
 
       <div className="lw-members__formsection"><Users size={13} /> {t("members.bulkSectionRecipients")}</div>
       {mode === "emails" ? (
-        <label>
-          <span>{t("members.bulkEmailsLabel")}</span>
-          <textarea
-            rows={5} value={text} onChange={(e) => setText(e.target.value)}
-            placeholder={t("members.bulkEmailsPlaceholder")} disabled={busy} autoFocus
-          />
-        </label>
+        <>
+          <label>
+            <span>{t("members.bulkEmailsLabel")}</span>
+            <textarea
+              rows={5} value={text} onChange={(e) => setText(e.target.value)}
+              placeholder={t("members.bulkEmailsPlaceholder")} disabled={busy} autoFocus
+            />
+          </label>
+          {learner && valid.length > 0 && (
+            <div className="lw-members__formrow">
+              <span>{t("members.inviteParentsLabel")}</span>
+              <div className="lw-members__invparentslist">
+                {valid.map((v) => (
+                  <InviteParentsPart key={v.email} email={v.email} idPrefix={`inv-${v.email}`} disabled={busy}
+                                     parents={parentsByEmail[v.email] ?? []}
+                                     onChange={(next) => setParentsByEmail((m) => ({ ...m, [v.email]: next }))} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       ) : (
-        // Deliberately NOT a <label> wrapping the file input: a label
-        // natively forwards its own click to a nested form control, which
-        // would fire a *second* click on the input alongside the explicit
-        // fileInputRef.click() below. Chromium silently drops the redundant
-        // one, but WebKit/Firefox are known to actually open (or reset) a
-        // second file dialog for this exact pattern, breaking selection —
-        // this is what made CSV import unreliable. ContentStudioScreen's
-        // working dropzone avoids a <label> wrapper for the same reason.
         <div className="lw-members__formrow">
           <span>{t("members.bulkCsvLabel")}</span>
           <div>
-            <div className="lw-dropzone lw-dropzone--compact" role="button" tabIndex={0}
-                 onClick={() => fileInputRef.current?.click()}>
-              <UploadCloud size={22} />
-              <span className="lw-dropzone__title">
-                {csvFile
-                  ? (csvError ? csvFile.name : t("members.bulkCsvChosen", { name: csvFile.name, count: valid.length }))
-                  : t("members.bulkCsvChoose")}
-              </span>
-              <span className="lw-dropzone__meta">{t("members.bulkCsvHint")}</span>
-              <input
-                ref={fileInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }}
-                onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ""; }}
-              />
-            </div>
-            <button type="button" className="lw-members__templatelink" onClick={downloadCsvTemplate}>
-              <Download size={12} /> {t("members.bulkCsvTemplateLink")}
-            </button>
+            <ParentImportGuide mode="invite" />
+            <ParentImportUpload mode="invite" disabled={busy}
+                                onPreview={(p) => { setPreview(p); setSelected(okRowNumbers(p)); }} />
+            <ParentImportPreview preview={preview} selected={selected}
+                                 onToggle={(n) => setSelected((s) => { const next = new Set(s); if (next.has(n)) next.delete(n); else next.add(n); return next; })} />
+            {!learner && preview && <p className="lw-parent__hint">{t("members.bulkParentsLearnersOnly")}</p>}
           </div>
         </div>
       )}
@@ -854,12 +922,11 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
       <div className="lw-members__formrow">
         <span />
         <div className="lw-members__bulkpreview">
-          {mode === "csv" && csvError ? (
-            <span className="is-warn">{csvError}</span>
-          ) : valid.length > 0 ? (
+          {recipients.length > 0 ? (
             <>
-              <span>{t("members.bulkReadyCount", { count: valid.length })}</span>
+              <span>{t("members.bulkReadyCount", { count: recipients.length })}</span>
               {invalidCount > 0 && <span className="is-warn">{t("members.bulkInvalidSkipped", { count: invalidCount })}</span>}
+              {parentsInvalid && <span className="is-warn">{t("members.inviteParentsFix")}</span>}
             </>
           ) : invalidCount > 0 ? (
             <span className="is-warn">{t("members.bulkNoValidFound")}</span>
@@ -871,7 +938,7 @@ function BulkInviteForm({ onSubmit, busy, publishedProducts }) {
 
       <div className="lw-members__formactions">
         <button type="submit" className="lw-btn lw-btn--accent lw-btn--sm"
-                disabled={busy || valid.length === 0 || (enrollMode === "course" && !courseId)}>
+                disabled={busy || recipients.length === 0 || parentsInvalid || (enrollMode === "course" && !courseId)}>
           {busy ? <LoaderCircle size={14} className="lw-members__spin" /> : t("members.bulkSend")}
         </button>
       </div>
@@ -1082,6 +1149,24 @@ function statusLabel(t, status) {
 }
 
 const CSS = `
+  /* Parent contacts (Parent Progress Reports BA) */
+  .lw-members__importbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }
+  /* Its own full-width line at the bottom of the card, so the parents' details aren't squeezed into the name column. */
+  .lw-members__parents { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .lw-members__parentsbtn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; background: none;
+    border: 1px dashed var(--line); border-radius: 20px; padding: 3px 10px; font: inherit; font-size: 0.78rem; color: var(--ink); cursor: pointer; }
+  .lw-members__parentsbtn[aria-expanded="true"] { border-style: solid; background: var(--surface-2); }
+  .lw-members__invparents { display: inline-flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--ink-soft); margin-top: 4px; }
+  .lw-members__invparentslist { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .lw-members__invparentspart { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); }
+  .lw-members__invparentspart summary { cursor: pointer; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: 0.85rem; overflow-wrap: anywhere; }
+  .lw-members__invparentspart[open] summary { margin-bottom: 8px; }
+  .lw-members__invparentscount { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-soft); font-size: 0.78rem; }
+  .lw-members__invparent { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .lw-members__invparenthead { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 600; }
+  .lw-members__importpanel { max-width: 760px; }
+  .lw-members__importlead { margin: 0 0 10px; font-size: 0.9rem; line-height: 1.55; color: var(--ink-soft); }
+
   .lw-members__loading { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); padding: 30px 0; }
 
   /* ── Tabs ─────────────────────────────────────────────────────────────── */

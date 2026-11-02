@@ -1009,6 +1009,46 @@ namespace Platform.Infrastructure.Migrations
                     b.ToTable("invitation_batches", (string)null);
                 });
 
+            modelBuilder.Entity("Platform.Domain.InvitationParentContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("InvitationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("WhatsAppPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvitationId");
+
+                    b.ToTable("invitation_parent_contacts", (string)null);
+                });
+
             modelBuilder.Entity("Platform.Domain.Invoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1687,6 +1727,124 @@ namespace Platform.Infrastructure.Migrations
                     b.ToTable("notifications", (string)null);
                 });
 
+            modelBuilder.Entity("Platform.Domain.ParentContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ConfirmationExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<Guid>("LearnerMembershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LinkVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("UnsubscribedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WhatsAppPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LearnerMembershipId", "Email")
+                        .IsUnique()
+                        .HasFilter("\"Status\" <> 'Removed'");
+
+                    b.HasIndex("WorkspaceId", "LearnerMembershipId");
+
+                    b.ToTable("parent_contacts", (string)null);
+                });
+
+            modelBuilder.Entity("Platform.Domain.ParentReportDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("LearnerMembershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ParentContactId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SubjectKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentContactId", "Kind", "SubjectKey");
+
+                    b.ToTable("parent_report_deliveries", (string)null);
+                });
+
             modelBuilder.Entity("Platform.Domain.PasswordReset", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2195,6 +2353,12 @@ namespace Platform.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
+
+                    b.Property<bool>("EmailParentsMonthlySummary")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("EmailParentsResults")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid?>("LogoAssetId")
                         .HasColumnType("uuid");

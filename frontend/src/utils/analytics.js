@@ -25,6 +25,7 @@ const TOKEN_ROUTES = [
   /^(\/apply\/status\/)[^/]+/,
   /^(\/join-requests\/status\/)[^/]+/,
   /^(\/reset-password\/)[^/]+/,
+  /^(\/parent\/(?:confirm|unsubscribe)\/)[^/]+/,
 ];
 
 /** The path as analytics may see it: token segments replaced, trailing slash dropped. */
