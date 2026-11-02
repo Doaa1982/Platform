@@ -37,19 +37,31 @@ public class EmailTemplateTests
 
         Assert.Contains(System.Net.WebUtility.HtmlEncode(content.Preheader), email.Html);   // hidden preheader
         Assert.Contains("max-width:600px", email.Html);
+        Assert.Contains("© 2026 Teach Tandem", System.Net.WebUtility.HtmlDecode(email.Html));
+        Assert.Contains("teachtandem.com", email.Html);
+        Assert.False(string.IsNullOrWhiteSpace(email.Text));
+        Assert.Contains(content.Greeting, email.Text);
+        Assert.DoesNotContain("<", email.Text);
+
+        if (IsParentReport(template))
+        {
+            // A report to a parent: no button (parents have no login), a one-click unsubscribe instead.
+            Assert.Null(content.ButtonUrl);
+            Assert.DoesNotContain(System.Net.WebUtility.HtmlEncode(T("button.fallback")), email.Html);
+            Assert.Contains($"href=\"{content.UnsubscribeUrl}\"", email.Html);
+            Assert.Contains(content.UnsubscribeUrl!, email.Text);
+            Assert.Contains(System.Net.WebUtility.HtmlEncode(T("footer.unsubscribeLink")), email.Html);
+            return;
+        }
+
         Assert.Contains($"href=\"{content.ButtonUrl}\"", email.Html);                       // the main button
         Assert.Contains(System.Net.WebUtility.HtmlEncode(T("button.fallback")), email.Html); // "Button not working?"
         Assert.NotNull(content.ExpiryNote);
-        Assert.Contains(System.Net.WebUtility.HtmlEncode(content.SafetyNote), email.Html);
-        Assert.Contains("© 2026 Teach Tandem", System.Net.WebUtility.HtmlDecode(email.Html));
-        Assert.Contains("teachtandem.com", email.Html);
+        Assert.Contains(System.Net.WebUtility.HtmlEncode(content.SafetyNote!), email.Html);
 
-        // Plain-text part exists and carries the same essentials.
-        Assert.False(string.IsNullOrWhiteSpace(email.Text));
-        Assert.Contains(content.Greeting, email.Text);
-        Assert.Contains(content.ButtonUrl, email.Text);
-        Assert.Contains(content.SafetyNote, email.Text);
-        Assert.DoesNotContain("<", email.Text);
+        // Plain-text part carries the same essentials.
+        Assert.Contains(content.ButtonUrl!, email.Text);
+        Assert.Contains(content.SafetyNote!, email.Text);
     }
 
     [Theory]
@@ -60,7 +72,8 @@ public class EmailTemplateTests
         var email = EmailLayout.Render(content, Branding, 2026);
         var from = TransactionalEmails.FromDisplayName(content);
 
-        if (template is EmailTemplate.WorkspaceInvitation or EmailTemplate.JoinRequestReceipt)
+        if (template is EmailTemplate.WorkspaceInvitation or EmailTemplate.JoinRequestReceipt
+            || template.ToString().StartsWith("Parent", StringComparison.Ordinal)) // parents hear from the academy
         {
             var workspace = Assert.IsType<EmailSender.Workspace>(content.Sender);
             Assert.Contains(workspace.Name, from);
@@ -75,6 +88,25 @@ public class EmailTemplateTests
             Assert.Contains(EmailText.Get(language, "signature.team"), email.Text);
             Assert.DoesNotContain(EmailText.Get(language, "footer.sentVia"), email.Text);
         }
+    }
+
+    private static bool IsParentReport(EmailTemplate t) =>
+        t is EmailTemplate.ParentAssignmentResult or EmailTemplate.ParentQuizResult or EmailTemplate.ParentMonthlySummary;
+
+    [Fact]
+    public void A_parent_report_quotes_the_tutor_and_trims_long_feedback()
+    {
+        var feedback = string.Join(' ', Enumerable.Repeat("Very good work on this part.", 30)); // ~840 chars
+        var content = EmailTemplates.ParentAssignmentResult(
+            SupportedLanguage.English, "Hala", "Sara", "Al Noor <Academy>", "owner@example.com",
+            "Homework <1>", "Maths", false, feedback, "https://app.example.com/parent/unsubscribe/x");
+        var email = EmailLayout.Render(content, Branding, 2026);
+
+        Assert.True(content.Quote!.Length <= 301);
+        Assert.EndsWith("…", content.Quote);
+        Assert.Contains("Not passed", email.Text);
+        Assert.Contains("Homework &lt;1&gt;", email.Html); // the tutor's title, escaped, never markup
+        Assert.DoesNotContain("<Academy>", email.Html);
     }
 
     [Fact]

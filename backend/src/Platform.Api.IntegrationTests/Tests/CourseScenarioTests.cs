@@ -14,6 +14,9 @@ public abstract class CourseScenarioTests
 {
     protected abstract PlatformApiTestFixture Fixture { get; }
 
+    /// <summary>The client every seeded course uses. A derived class may serve it from its own host (e.g. one that captures email).</summary>
+    protected virtual HttpClient NewClient() => Fixture.CreateClient();
+
     // ── Seeding: a published course, one Reading lesson with a published question, one enrolled learner ──
 
     protected sealed record Course(string Slug, string TutorToken, string LearnerToken, Guid ProductId, Guid LessonId, string CurriculumPath, HttpClient Client);
@@ -22,7 +25,7 @@ public abstract class CourseScenarioTests
 
     protected async Task<Course> SeedCourseAsync(string name)
     {
-        var client = Fixture.CreateClient();
+        var client = NewClient();
         var adminToken = await TestOnboarding.LoginAsync(client, PlatformApiTestFixture.AdminEmail, PlatformApiTestFixture.AdminPassword);
         var tutor = await TestOnboarding.OnboardTutorAsync(client, adminToken, $"{name}-tutor@integrationtest.local", $"{name}-academy");
         var c = new Course(tutor.WorkspaceSlug, tutor.Token, "", Guid.Empty, Guid.Empty, "", client);

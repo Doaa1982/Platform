@@ -438,6 +438,15 @@ builder.Services.AddScoped<CatalogAdminService>();
 builder.Services.AddScoped<CreditPurchaseService>();
 builder.Services.AddHostedService<CommercialLifecycleSweepBackgroundService>();
 
+// Parent progress reports (Documents/Parent Progress Reports Business Analysis.md): parents are
+// contacts, not users; signed confirm/unsubscribe links; results by email on every plan; a
+// monthly summary sent on the 1st (Cairo time) by the background job below.
+builder.Services.AddSingleton<ParentLinkTokens>();
+builder.Services.AddScoped<ParentReportService>();
+builder.Services.AddScoped<ParentContactService>();
+if (builder.Configuration.GetValue("ParentReports:MonthlyJobEnabled", true))
+    builder.Services.AddHostedService<ParentMonthlySummaryBackgroundService>();
+
 // Guards the one endpoint a stranger can reach that creates an Identity, and
 // the forgot/reset-password endpoints (create nothing, but reachable by anyone)
 builder.Services.AddPlatformRateLimiting(builder.Configuration);

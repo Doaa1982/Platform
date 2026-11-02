@@ -103,6 +103,23 @@ public class TransactionalEmails(
         return await SendAsync(EmailTemplate.SignupReceived, toEmail, applicantName, content, ct);
     }
 
+    /// <summary>
+    /// A parent progress email (Parent Progress Reports Business Analysis). The content is already
+    /// built in the parent's own language — their stored preference, not the requester's.
+    /// </summary>
+    public Task<DeliveryOutcome> SendToParentAsync(
+        EmailTemplate template, string toEmail, string toName, EmailContent content, CancellationToken ct = default)
+        => SendAsync(template, toEmail, toName, content, ct);
+
+    /// <summary>Who replies to an email sent on a workspace's behalf reach — its owner.</summary>
+    public Task<string?> WorkspaceOwnerEmailAsync(Workspace workspace, CancellationToken ct = default) =>
+        workspace.OwnerMembershipId is { } ownerMembershipId
+            ? (from m in db.Memberships
+               join i in db.Identities on m.IdentityId equals i.Id
+               where m.Id == ownerMembershipId
+               select i.Email).SingleOrDefaultAsync(ct)
+            : Task.FromResult<string?>(null);
+
     /// <summary>The From display name, as the recipient's inbox shows it.</summary>
     public static string FromDisplayName(EmailContent content) => content.Sender switch
     {

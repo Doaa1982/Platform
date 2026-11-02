@@ -35,6 +35,9 @@ public class PlatformDbContext : DbContext
     public DbSet<Submission> Submissions => Set<Submission>();
     public DbSet<LessonProgress> LessonProgresses => Set<LessonProgress>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<ParentContact> ParentContacts => Set<ParentContact>();
+    public DbSet<InvitationParentContact> InvitationParentContacts => Set<InvitationParentContact>();
+    public DbSet<ParentReportDelivery> ParentReportDeliveries => Set<ParentReportDelivery>();
 
     // ── Commercial Domain — core spine (V1a) ────────────────────────────────
     public DbSet<ConfigurationSnapshot> ConfigurationSnapshots => Set<ConfigurationSnapshot>();
@@ -777,6 +780,59 @@ public class PlatformDbContext : DbContext
 
             // A learner's own inbox, newest first, and "how many unread" — both read together
             entity.HasIndex(e => new { e.MembershipId, e.CreatedAt });
+        });
+
+        // Parent Progress Reports Business Analysis — parents are contacts, not users.
+        modelBuilder.Entity<ParentContact>(entity =>
+        {
+            entity.ToTable("parent_contacts");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.LearnerMembershipId).IsRequired();
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(120);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Language).IsRequired().HasMaxLength(8);
+            entity.Property(e => e.WhatsAppPhone).HasMaxLength(20);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Source).HasConversion<string>().HasMaxLength(32);
+
+            // A learner's contacts are always read together (Members row, learner's own page, every report)
+            entity.HasIndex(e => new { e.WorkspaceId, e.LearnerMembershipId });
+
+            // The same parent email twice for one learner is a duplicate, whoever adds it (form,
+            // import, invitation) — backs ParentContactService's own check against a race.
+            entity.HasIndex(e => new { e.LearnerMembershipId, e.Email })
+                  .IsUnique()
+                  .HasFilter("\"Status\" <> 'Removed'");
+        });
+
+        modelBuilder.Entity<InvitationParentContact>(entity =>
+        {
+            entity.ToTable("invitation_parent_contacts");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.InvitationId).IsRequired();
+            entity.Property(e => e.WorkspaceId).IsRequired();
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(120);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Language).IsRequired().HasMaxLength(8);
+            entity.Property(e => e.WhatsAppPhone).HasMaxLength(20);
+            entity.HasIndex(e => e.InvitationId);
+        });
+
+        modelBuilder.Entity<ParentReportDelivery>(entity =>
+        {
+            entity.ToTable("parent_report_deliveries");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Kind).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.SubjectKey).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Channel).IsRequired().HasMaxLength(16);
+            entity.Property(e => e.Error).HasMaxLength(500);
+
+            // "Was this report already sent to this parent?" — asked before every send
+            entity.HasIndex(e => new { e.ParentContactId, e.Kind, e.SubjectKey });
         });
 
         modelBuilder.Entity<PlatformOperator>(entity =>

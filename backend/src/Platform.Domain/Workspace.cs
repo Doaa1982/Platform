@@ -68,6 +68,15 @@ public class Workspace
     // a Learner sees the Workspace's logo and welcome message once, on first
     // encounter, and each course's own cover photo per course after that.
 
+    /// <summary>
+    /// Email confirmed parents a short report each time the tutor issues an assignment result or
+    /// a learner's quiz is graded (Parent Progress Reports Business Analysis §8). Off by default.
+    /// </summary>
+    public bool EmailParentsResults { get; private set; }
+
+    /// <summary>Email confirmed parents a summary of the previous month on the 1st (Cairo time). Off by default.</summary>
+    public bool EmailParentsMonthlySummary { get; private set; }
+
     /// <summary>The Learning Asset (LearningAssetCategory.Image) shown as this Workspace's logo/photo, if any.</summary>
     public Guid? LogoAssetId { get; private set; }
 
@@ -143,6 +152,13 @@ public class Workspace
     /// Private, it simply cannot be found yet.
     /// </summary>
     public void SetAcceptsJoinRequests(bool accepts) => AcceptsJoinRequests = accepts;
+
+    /// <summary>The academy's two parent-report switches. Independent of the lifecycle, like SetAcceptsJoinRequests.</summary>
+    public void SetParentReports(bool results, bool monthlySummary)
+    {
+        EmailParentsResults = results;
+        EmailParentsMonthlySummary = monthlySummary;
+    }
 
     /// <summary>Independent of the lifecycle, like SetAcceptsJoinRequests.</summary>
     public void SetDefaultLanguage(string? language) => DefaultLanguage = SupportedLanguage.Require(language);

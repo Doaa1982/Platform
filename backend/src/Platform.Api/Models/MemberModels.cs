@@ -38,7 +38,9 @@ public record WorkspaceInvitationRow(
     /// <summary>The course this invitation will enrol the invitee into on acceptance, if any (§12.3).</summary>
     Guid? IntendedLearningProductId,
     /// <summary>Denormalised for display — null if no course was selected, or the course was later deleted.</summary>
-    string? IntendedLearningProductTitle);
+    string? IntendedLearningProductTitle,
+    /// <summary>Parents attached to this (still open) invitation; they become contacts when it's accepted.</summary>
+    int ParentCount = 0);
 
 /// <summary>Everything the members screen needs in one call.</summary>
 public record WorkspaceMembersResponse(
@@ -50,7 +52,8 @@ public record WorkspaceMembersResponse(
     IReadOnlyList<WorkspaceInvitationRow> Invitations);
 
 /// <summary>Invite someone into an existing Workspace.</summary>
-public record InviteMemberRequest(string Email, string Role);
+/// <param name="Parents">Learner invitations only: up to 2 parents, stored with the invitation and turned into parent contacts when it's accepted.</param>
+public record InviteMemberRequest(string Email, string Role, IReadOnlyList<ParentDetails>? Parents = null);
 
 /// <summary>Assign or remove one Workspace role on a Membership.</summary>
 public record MemberRoleRequest(string Role);
@@ -79,7 +82,8 @@ public record ProductRosterResponse(
     IReadOnlyList<WorkspaceInvitationRow> Invited);
 
 /// <summary>One recipient of a bulk invitation (§4).</summary>
-public record BulkInviteRecipient(string Email);
+/// <param name="Parents">Learner invitations only: up to 2 parents for this student (see InviteMemberRequest).</param>
+public record BulkInviteRecipient(string Email, IReadOnlyList<ParentDetails>? Parents = null);
 
 /// <summary>
 /// Invite many recipients into an existing Workspace at once, under one

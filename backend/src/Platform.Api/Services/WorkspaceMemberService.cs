@@ -30,7 +30,9 @@ public class WorkspaceMemberService(
     IConfiguration config,
     TransactionalEmails emails,
     EmailOptions email,
-    EntitlementResolutionService entitlements)
+    EntitlementResolutionService entitlements,
+    ParentContactService parentContacts,
+    IServiceScopeFactory scopes)
 {
     /// <summary>Roles that may manage members. Everyone else gets a read-only view.</summary>
     private static readonly WorkspaceRoleName[] ManagerRoles =
@@ -87,6 +89,11 @@ public class WorkspaceMemberService(
             .Where(i => i.WorkspaceId == workspace.Id)
             .OrderByDescending(i => i.IssuedAt)
             .ToListAsync(ct);
+        var parentCounts = await db.InvitationParentContacts.AsNoTracking()
+            .Where(p => p.WorkspaceId == workspace.Id)
+            .GroupBy(p => p.InvitationId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
 
         var enrollments = await db.Enrollments.AsNoTracking()
             .Where(e => e.WorkspaceId == workspace.Id && e.Status != EnrollmentStatus.Cancelled)
@@ -170,7 +177,9 @@ public class WorkspaceMemberService(
                                IntendedLearningProductId:    i.IntendedLearningProductId,
                                IntendedLearningProductTitle: i.IntendedLearningProductId is Guid pid
                                                                   ? productTitles.GetValueOrDefault(pid)
-                                                                  : null)).ToList()));
+                                                                  : null,
+                               // Only an invitation that can still be accepted carries parents.
+                               ParentCount:  i.IsOpen(now) ? parentCounts.GetValueOrDefault(i.Id) : 0)).ToList()));
     }
 
     // ── Inviting ─────────────────────────────────────────────────────────────
@@ -193,6 +202,15 @@ public class WorkspaceMemberService(
         // BA-006: ownership moves by transfer, never by inviting a second claimant
         if (role == WorkspaceRoleName.Owner)
             return Fail("Ownership is transferred, not invited. Invite an Administrator instead.", ProvisioningError.Invalid);
+
+        if (request.Parents is { Count: > 0 })
+        {
+            if (role != WorkspaceRoleName.Learner)
+                return Fail("Parents can only be added when inviting a learner.", ProvisioningError.Invalid);
+            var parentProblems = ParentContactService.ValidateForInvitation(request.Parents);
+            if (parentProblems.Count > 0)
+                return Fail($"Check the parents' details ({string.Join(", ", parentProblems)}).", ProvisioningError.Invalid);
+        }
 
         if (TutorRoles.Contains(role))
         {
@@ -255,6 +273,8 @@ public class WorkspaceMemberService(
 
         invitation.MarkSent();
         db.Invitations.Add(invitation);
+        // Stored with the invitation; no parent is emailed until the student accepts.
+        parentContacts.AttachToInvitation(invitation, request.Parents);
         await db.SaveChangesAsync(ct);
 
         var outcome = await SendInvitationEmailAsync(invitation, rawToken, ct);
@@ -316,6 +336,16 @@ public class WorkspaceMemberService(
             .Where(e => !string.IsNullOrWhiteSpace(e))
             .Distinct()
             .ToList();
+
+        // Each student's parents (first entry wins for a repeated email) — learners only.
+        var parentsByEmail = new Dictionary<string, IReadOnlyList<ParentDetails>>();
+        foreach (var r in request.Recipients ?? [])
+        {
+            var key = r.Email?.ToLowerInvariant().Trim() ?? string.Empty;
+            if (key.Length > 0 && r.Parents is { Count: > 0 }) parentsByEmail.TryAdd(key, r.Parents);
+        }
+        if (parentsByEmail.Count > 0 && role != WorkspaceRoleName.Learner)
+            return FailBulk("Parents can only be added when inviting learners.", ProvisioningError.Invalid);
 
         if (emails.Count == 0)
             return FailBulk("At least one recipient email is required.", ProvisioningError.Invalid);
@@ -403,6 +433,14 @@ public class WorkspaceMemberService(
                 continue;
             }
 
+            var recipientParents = parentsByEmail.GetValueOrDefault(recipientEmail);
+            if (ParentContactService.ValidateForInvitation(recipientParents) is { Count: > 0 } parentProblems)
+            {
+                results.Add(new BulkInvitationRecipientResult(
+                    recipientEmail, "skipped", $"Check the parents' details ({string.Join(", ", parentProblems)}).", null, null, null, null));
+                continue;
+            }
+
             var (invitation, rawToken) = Invitation.Issue(
                 workspaceId:  workspace.Id,
                 email:        recipientEmail,
@@ -414,6 +452,7 @@ public class WorkspaceMemberService(
 
             invitation.MarkSent();
             db.Invitations.Add(invitation);
+            parentContacts.AttachToInvitation(invitation, recipientParents);
             pending.Add((invitation, rawToken));
 
             if (remainingTutorSeats is not null)
@@ -429,13 +468,21 @@ public class WorkspaceMemberService(
         // strictly sequentially would make the request needlessly slow.
         // Delivery never throws (failure is captured in the outcome), so
         // Task.WhenAll needs no exception-aggregation handling here.
+        //
+        // Each send gets its own scope: TransactionalEmails reads the database (workspace, inviter,
+        // recipient), and a DbContext can't run two queries at once — sharing this request's
+        // context across the parallel sends failed the whole request with a 500 as soon as two
+        // lookups overlapped.
         using var deliveryThrottle = new SemaphoreSlim(8);
         var deliveryTasks = pending.Select(async p =>
         {
             await deliveryThrottle.WaitAsync(ct);
             try
             {
-                var outcome = await SendInvitationEmailAsync(p.Invitation, p.RawToken, ct);
+                using var scope = scopes.CreateScope();
+                var outcome = await scope.ServiceProvider.GetRequiredService<TransactionalEmails>().SendWorkspaceInvitationAsync(
+                    p.Invitation.Email, p.Invitation.WorkspaceId, p.Invitation.IntendedRole, p.Invitation.IssuedBy,
+                    AbsoluteLink(p.RawToken), p.Invitation.ExpiresAt, ct);
                 return new BulkInvitationRecipientResult(
                     p.Invitation.Email, "issued", null, p.Invitation.Id, $"/invite/{p.RawToken}",
                     outcome.Delivered, outcome.Detail);
@@ -488,6 +535,11 @@ public class WorkspaceMemberService(
                     : "A cancelled invitation cannot be resent — send a new one instead.",
                 ProvisioningError.Conflict);
 
+        // Expiring an invitation discards the parent details stored with it; a resend after
+        // expiry is a new chance to join, without parents the tutor typed for the old one.
+        if (invitation.Status == InvitationStatus.Expired)
+            await parentContacts.DiscardForInvitationAsync(invitation.Id, ct);
+
         var rawToken = invitation.Resend(ValidFor);
         await db.SaveChangesAsync(ct);
 
@@ -533,6 +585,7 @@ public class WorkspaceMemberService(
                 ProvisioningError.Conflict);
 
         invitation.Cancel();
+        await parentContacts.DiscardForInvitationAsync(invitation.Id, ct);
         await db.SaveChangesAsync(ct);
         return ProvisioningResult<string>.Success(invitation.Status.ToString());
     }

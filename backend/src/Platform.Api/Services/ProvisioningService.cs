@@ -51,7 +51,8 @@ public class ProvisioningService(
     IConfiguration config,
     TransactionalEmails emails,
     EmailOptions email,
-    CommercialSubscriptionService subscriptions)
+    CommercialSubscriptionService subscriptions,
+    ParentContactService parentContacts)
 {
 
     private TimeSpan ValidFor =>
@@ -361,6 +362,12 @@ public class ProvisioningService(
         invitation.Accept();   // single-use from here: the token can never validate again
 
         await db.SaveChangesAsync(ct);
+
+        // Parent details typed into the invitation become contacts only now that the Membership
+        // is Active, and only now do those parents get the confirmation email (never at invite
+        // time). Never throws: joining can't fail over a parent.
+        if (invitation.IntendedRole == WorkspaceRoleName.Learner)
+            await parentContacts.CreateFromAcceptedInvitationAsync(invitation.Id, membership.Id, ct);
 
         if (invitation.IntendedRole == WorkspaceRoleName.Owner)
         {
